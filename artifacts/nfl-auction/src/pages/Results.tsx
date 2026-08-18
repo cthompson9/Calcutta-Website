@@ -104,10 +104,9 @@ function ByOwnerView({
         <div className="col-span-1 text-center">Teams</div>
         {isComplete ? (
           <>
-            <div className="col-span-2 text-right font-bold text-foreground">Net P&amp;L</div>
-            <div className="col-span-2 text-right">Return</div>
             <div className="col-span-2 text-right">Cost</div>
-            <div className="col-span-1 text-right">MTM</div>
+            <div className="col-span-2 text-right">Gross</div>
+            <div className="col-span-3 text-right font-bold text-foreground">Net</div>
           </>
         ) : (
           <>
@@ -142,14 +141,13 @@ function ByOwnerView({
               <div className="col-span-1 text-center text-muted-foreground font-mono">{row.teamCount}</div>
               {isComplete ? (
                 <>
-                  {/* Net P&L — primary / sort key */}
-                  <div className={cn("col-span-1 md:col-span-2 text-right font-mono font-bold text-sm", row.totalNetReturn >= 0 ? "text-green-600" : "text-red-600")}>
-                    {row.totalNetReturn >= 0 ? "+" : ""}{formatCurrency(row.totalNetReturn)}
-                  </div>
-                  <div className="hidden md:block col-span-2 text-right font-mono text-sm text-muted-foreground">{formatCurrency(row.totalRealizedReturn)}</div>
+                  {/* Cost — leftmost */}
                   <div className="hidden md:block col-span-2 text-right font-mono text-sm text-muted-foreground">{formatCurrency(row.totalCost)}</div>
-                  <div className={cn("hidden md:block col-span-1 text-right font-mono text-xs", row.totalMtm >= 0 ? "text-green-600" : "text-red-500")}>
-                    {row.totalMtm >= 0 ? "+" : ""}{formatCurrency(row.totalMtm)}
+                  {/* Gross return */}
+                  <div className="hidden md:block col-span-2 text-right font-mono text-sm text-muted-foreground">{formatCurrency(row.totalRealizedReturn)}</div>
+                  {/* Net — primary sort key, highlighted */}
+                  <div className={cn("col-span-1 md:col-span-3 text-right font-mono font-bold text-sm", row.totalNetReturn >= 0 ? "text-green-600" : "text-red-600")}>
+                    {row.totalNetReturn >= 0 ? "+" : ""}{formatCurrency(row.totalNetReturn)}
                   </div>
                 </>
               ) : (
@@ -170,19 +168,17 @@ function ByOwnerView({
             {isComplete && (
               <div className="md:hidden grid grid-cols-3 text-xs font-mono border-t border-border bg-muted/30 px-4 py-2">
                 <div>
-                  <div className="text-muted-foreground uppercase tracking-widest text-[10px]">Return</div>
+                  <div className="text-muted-foreground uppercase tracking-widest text-[10px]">Cost</div>
+                  <div>{formatCurrency(row.totalCost)}</div>
+                </div>
+                <div>
+                  <div className="text-muted-foreground uppercase tracking-widest text-[10px]">Gross</div>
                   <div>{formatCurrency(row.totalRealizedReturn)}</div>
                 </div>
                 <div>
-                  <div className="text-muted-foreground uppercase tracking-widest text-[10px]">Net P&L</div>
+                  <div className="text-muted-foreground uppercase tracking-widest text-[10px]">Net</div>
                   <div className={row.totalNetReturn >= 0 ? "text-green-600" : "text-red-600"}>
                     {row.totalNetReturn >= 0 ? "+" : ""}{formatCurrency(row.totalNetReturn)}
-                  </div>
-                </div>
-                <div>
-                  <div className="text-muted-foreground uppercase tracking-widest text-[10px]">MTM</div>
-                  <div className={row.totalMtm >= 0 ? "text-green-600" : "text-red-500"}>
-                    {row.totalMtm >= 0 ? "+" : ""}{formatCurrency(row.totalMtm)}
                   </div>
                 </div>
               </div>
