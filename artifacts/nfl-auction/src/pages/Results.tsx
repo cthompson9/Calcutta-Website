@@ -11,7 +11,7 @@ import { formatCurrency } from "@/lib/utils";
 import { cn } from "@/lib/utils";
 import { SeasonToggle } from "@/components/SeasonToggle";
 import { useSeason } from "@/hooks/useSeason";
-import { ChevronDown, ChevronRight, Trophy, Star } from "lucide-react";
+import { ChevronDown, ChevronRight, Star } from "lucide-react";
 
 type TabId = "byTeam" | "byOwner";
 
@@ -90,8 +90,9 @@ function ByOwnerView({
 }) {
   if (!rows.length) return <Empty />;
 
+  // Always sort by MTM net return — that's the live standing metric
   const sorted = [...rows].sort((a, b) =>
-    isComplete ? b.totalNetReturn - a.totalNetReturn : b.totalCost - a.totalCost,
+    isComplete ? b.totalNetReturn - a.totalNetReturn : b.totalMtm - a.totalMtm,
   );
 
   return (
@@ -102,15 +103,24 @@ function ByOwnerView({
         <div className="col-span-3">Owner</div>
         <div className="col-span-1 text-center">Teams</div>
         <div className="col-span-2 text-right">Cost</div>
-        {isComplete && <div className="col-span-2 text-right">Return</div>}
-        {isComplete && <div className="col-span-2 text-right">Net P&amp;L</div>}
-        {isComplete && <div className="col-span-1 text-right">MTM</div>}
-        {!isComplete && <div className="col-span-6 text-right">–</div>}
+        {isComplete ? (
+          <>
+            <div className="col-span-2 text-right">Return</div>
+            <div className="col-span-2 text-right">Net P&amp;L</div>
+            <div className="col-span-1 text-right">MTM</div>
+          </>
+        ) : (
+          <>
+            <div className="col-span-4 text-right">MTM Return</div>
+            <div className="col-span-1" />
+          </>
+        )}
       </div>
 
       {sorted.map((row, idx) => {
         const isExpanded = expandedOwner === row.bidderId;
-        const isWinner = idx === 0 && isComplete && row.totalNetReturn > 0;
+        const isLeader = idx === 0;
+        const isWinner = isLeader && isComplete && row.totalNetReturn > 0;
         return (
           <div key={row.bidderId} className="border border-border bg-card overflow-hidden">
             {/* Owner row */}
@@ -121,8 +131,10 @@ function ByOwnerView({
                 isWinner && "bg-yellow-50 dark:bg-yellow-900/10"
               )}
             >
-              <div className="col-span-1 flex items-center gap-2 font-mono font-bold text-lg">
-                {isWinner && <Trophy className="w-4 h-4 text-yellow-500" />}
+              <div className="col-span-1 flex items-center gap-1 font-mono font-bold text-lg">
+                {isLeader && (
+                  <img src="/sleigh-monkey.png" alt="leader" className="w-6 h-6 object-contain shrink-0" />
+                )}
                 <span>{idx + 1}</span>
               </div>
               <div className="col-span-2 md:col-span-3 font-bold truncate">{row.bidderName}</div>
@@ -138,7 +150,11 @@ function ByOwnerView({
                     {row.totalMtm >= 0 ? "+" : ""}{formatCurrency(row.totalMtm)}
                   </div>
                 </>
-              ) : null}
+              ) : (
+                <div className={cn("hidden md:block col-span-4 text-right font-mono font-bold text-sm", row.totalMtm >= 0 ? "text-green-600" : "text-red-600")}>
+                  {row.totalMtm !== 0 ? (row.totalMtm >= 0 ? "+" : "") + formatCurrency(row.totalMtm) : "—"}
+                </div>
+              )}
               <div className="col-span-1 flex justify-end text-muted-foreground">
                 {isExpanded ? <ChevronDown className="w-4 h-4" /> : <ChevronRight className="w-4 h-4" />}
               </div>

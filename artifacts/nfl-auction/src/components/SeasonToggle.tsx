@@ -30,7 +30,7 @@ export function SeasonToggle({ year, onChange }: SeasonToggleProps) {
         >
           {s.year}
           {s.isActive && <span className="ml-1 text-[10px] opacity-60">LIVE</span>}
-          {s.isComplete && <img src="/sleigh-monkey.png" alt="complete" className="inline-block ml-1 w-5 h-5 object-contain align-middle" />}
+          {s.isComplete && <span className="ml-1 text-[10px] opacity-60">✓</span>}
         </button>
       ))}
     </div>
