@@ -1,0 +1,24 @@
+kind = "mobile"
+previewPath = "/mobile/"
+title = "NFL Auction Mobile"
+description = "A mobile companion app for the NFL Calcutta auction pool. Owners can check standings and Calcutta returns by owner or by team, toggle between the 2025 and 2026 seasons, review pending and approved trades, and the admin can approve or reject trades from their phone using an on-device admin key."
+version = "1.0.0"
+id = "artifacts/nfl-auction-mobile"
+router = "expo-domain"
+
+[[services]]
+name = "expo"
+ensurePreviewReachable = "/status"
+paths = [ "/mobile/" ]
+localPort = 19721
+
+[services.development]
+run = "pnpm --filter @workspace/nfl-auction-mobile run dev"
+
+[services.production]
+build = [ "pnpm", "--filter", "@workspace/nfl-auction-mobile", "run", "build" ]
+run = [ "pnpm", "--filter", "@workspace/nfl-auction-mobile", "run", "serve" ]
+
+[services.env]
+PORT = "19721"
+BASE_PATH = "/mobile/"
