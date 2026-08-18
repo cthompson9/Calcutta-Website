@@ -102,16 +102,17 @@ function ByOwnerView({
         <div className="col-span-1 text-center">#</div>
         <div className="col-span-3">Owner</div>
         <div className="col-span-1 text-center">Teams</div>
-        <div className="col-span-2 text-right">Cost</div>
         {isComplete ? (
           <>
+            <div className="col-span-2 text-right font-bold text-foreground">Net P&amp;L</div>
             <div className="col-span-2 text-right">Return</div>
-            <div className="col-span-2 text-right">Net P&amp;L</div>
+            <div className="col-span-2 text-right">Cost</div>
             <div className="col-span-1 text-right">MTM</div>
           </>
         ) : (
           <>
-            <div className="col-span-4 text-right">MTM Return</div>
+            <div className="col-span-3 text-right font-bold text-foreground">MTM Return</div>
+            <div className="col-span-2 text-right">Cost</div>
             <div className="col-span-1" />
           </>
         )}
@@ -139,21 +140,26 @@ function ByOwnerView({
               </div>
               <div className="col-span-2 md:col-span-3 font-bold truncate">{row.bidderName}</div>
               <div className="col-span-1 text-center text-muted-foreground font-mono">{row.teamCount}</div>
-              <div className="col-span-1 md:col-span-2 text-right font-mono text-sm">{formatCurrency(row.totalCost)}</div>
               {isComplete ? (
                 <>
-                  <div className="hidden md:block col-span-2 text-right font-mono text-sm">{formatCurrency(row.totalRealizedReturn)}</div>
-                  <div className={cn("hidden md:block col-span-2 text-right font-mono font-bold text-sm", row.totalNetReturn >= 0 ? "text-green-600" : "text-red-600")}>
+                  {/* Net P&L — primary / sort key */}
+                  <div className={cn("col-span-1 md:col-span-2 text-right font-mono font-bold text-sm", row.totalNetReturn >= 0 ? "text-green-600" : "text-red-600")}>
                     {row.totalNetReturn >= 0 ? "+" : ""}{formatCurrency(row.totalNetReturn)}
                   </div>
+                  <div className="hidden md:block col-span-2 text-right font-mono text-sm text-muted-foreground">{formatCurrency(row.totalRealizedReturn)}</div>
+                  <div className="hidden md:block col-span-2 text-right font-mono text-sm text-muted-foreground">{formatCurrency(row.totalCost)}</div>
                   <div className={cn("hidden md:block col-span-1 text-right font-mono text-xs", row.totalMtm >= 0 ? "text-green-600" : "text-red-500")}>
                     {row.totalMtm >= 0 ? "+" : ""}{formatCurrency(row.totalMtm)}
                   </div>
                 </>
               ) : (
-                <div className={cn("hidden md:block col-span-4 text-right font-mono font-bold text-sm", row.totalMtm >= 0 ? "text-green-600" : "text-red-600")}>
-                  {row.totalMtm !== 0 ? (row.totalMtm >= 0 ? "+" : "") + formatCurrency(row.totalMtm) : "—"}
-                </div>
+                <>
+                  {/* MTM Return — primary / sort key */}
+                  <div className={cn("col-span-2 md:col-span-3 text-right font-mono font-bold text-sm", row.totalMtm >= 0 ? "text-green-600" : "text-red-600")}>
+                    {row.totalMtm !== 0 ? (row.totalMtm >= 0 ? "+" : "") + formatCurrency(row.totalMtm) : "—"}
+                  </div>
+                  <div className="hidden md:block col-span-2 text-right font-mono text-sm text-muted-foreground">{formatCurrency(row.totalCost)}</div>
+                </>
               )}
               <div className="col-span-1 flex justify-end text-muted-foreground">
                 {isExpanded ? <ChevronDown className="w-4 h-4" /> : <ChevronRight className="w-4 h-4" />}
