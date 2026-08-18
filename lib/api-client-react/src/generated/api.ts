@@ -47,6 +47,7 @@ import type {
   TeamUpdate,
   TradeInput,
   TradeRow,
+  TradeStatusUpdate,
   TradeUpdate
 } from './api.schemas';
 
@@ -1378,7 +1379,7 @@ export const getUpdateTradeUrl = (id: number,) => {
 }
 
 /**
- * @summary Update a trade record
+ * @summary Update a trade record (price, date, notes, percentage)
  */
 export const updateTrade = async (id: number,
     tradeUpdate: TradeUpdate, options?: Parameters<typeof customFetch>[1]): Promise<TradeRow> => {
@@ -1428,7 +1429,7 @@ const {mutation: mutationOptions, request: requestOptions} = options ?
     export type UpdateTradeMutationError = ErrorType<ErrorResponse>
 
     /**
- * @summary Update a trade record
+ * @summary Update a trade record (price, date, notes, percentage)
  */
 export const useUpdateTrade = <TError = ErrorType<ErrorResponse>,
     TContext = unknown>(options?: { mutation?:UseMutationOptions<Awaited<ReturnType<typeof updateTrade>>, TError,{id: number;data: BodyType<TradeUpdate>}, TContext>, request?: SecondParameter<typeof customFetch>}
@@ -1510,6 +1511,78 @@ export const useDeleteTrade = <TError = ErrorType<ErrorResponse>,
         TContext
       > => {
       return useMutation(getDeleteTradeMutationOptions(options));
+    }
+
+export const getSetTradeStatusUrl = (id: number,) => {
+
+
+
+
+  return `/api/trades/${id}/status`
+}
+
+/**
+ * @summary Approve or reject a trade (admin only — requires ADMIN_API_KEY bearer token)
+ */
+export const setTradeStatus = async (id: number,
+    tradeStatusUpdate: TradeStatusUpdate, options?: Parameters<typeof customFetch>[1]): Promise<TradeRow> => {
+
+  return customFetch<TradeRow>(getSetTradeStatusUrl(id),
+  {
+    ...options,
+    method: 'PATCH',
+    headers: { 'Content-Type': 'application/json', ...options?.headers },
+    body: JSON.stringify(tradeStatusUpdate)
+  }
+);}
+
+
+
+
+
+export const getSetTradeStatusMutationOptions = <TError = ErrorType<ErrorResponse>,
+    TContext = unknown>(options?: { mutation?:UseMutationOptions<Awaited<ReturnType<typeof setTradeStatus>>, TError,{id: number;data: BodyType<TradeStatusUpdate>}, TContext>, request?: SecondParameter<typeof customFetch>}
+): UseMutationOptions<Awaited<ReturnType<typeof setTradeStatus>>, TError,{id: number;data: BodyType<TradeStatusUpdate>}, TContext> => {
+
+const mutationKey = ['setTradeStatus'];
+const {mutation: mutationOptions, request: requestOptions} = options ?
+      options.mutation && 'mutationKey' in options.mutation && options.mutation.mutationKey ?
+      options
+      : {...options, mutation: {...options.mutation, mutationKey}}
+      : {mutation: { mutationKey, }, request: undefined};
+
+
+
+
+      const mutationFn: MutationFunction<Awaited<ReturnType<typeof setTradeStatus>>, {id: number;data: BodyType<TradeStatusUpdate>}> = (props) => {
+          const {id,data} = props ?? {};
+
+          return  setTradeStatus(id,data,requestOptions)
+        }
+
+
+
+
+
+
+  return  { mutationFn, ...mutationOptions }}
+
+    export type SetTradeStatusMutationResult = NonNullable<Awaited<ReturnType<typeof setTradeStatus>>>
+    export type SetTradeStatusMutationBody = BodyType<TradeStatusUpdate>
+    export type SetTradeStatusMutationError = ErrorType<ErrorResponse>
+
+    /**
+ * @summary Approve or reject a trade (admin only — requires ADMIN_API_KEY bearer token)
+ */
+export const useSetTradeStatus = <TError = ErrorType<ErrorResponse>,
+    TContext = unknown>(options?: { mutation?:UseMutationOptions<Awaited<ReturnType<typeof setTradeStatus>>, TError,{id: number;data: BodyType<TradeStatusUpdate>}, TContext>, request?: SecondParameter<typeof customFetch>}
+ ): UseMutationResult<
+        Awaited<ReturnType<typeof setTradeStatus>>,
+        TError,
+        {id: number;data: BodyType<TradeStatusUpdate>},
+        TContext
+      > => {
+      return useMutation(getSetTradeStatusMutationOptions(options));
     }
 
 export const getGetMtmSnapshotsUrl = (params: GetMtmSnapshotsParams,) => {

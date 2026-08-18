@@ -11,7 +11,10 @@ export interface TradeInput {
   teamId: number;
   fromBidderId: number;
   toBidderId: number;
-  price: number;
+  /** Trade price. If omitted, defaults to the team's original draft cost × percentage / 100. */
+  price?: number;
+  /** Percentage of team traded (0–100). Defaults to 100. */
+  percentage?: number;
   tradeDate: string;
   notes?: string;
 }

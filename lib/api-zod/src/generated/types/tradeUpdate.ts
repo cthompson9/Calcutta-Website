@@ -8,6 +8,7 @@
 
 export interface TradeUpdate {
   price?: number;
+  percentage?: number;
   tradeDate?: string;
   notes?: string;
 }

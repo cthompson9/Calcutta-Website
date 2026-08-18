@@ -5,6 +5,7 @@
  * NFL Auction Manager API
  * OpenAPI spec version: 0.1.0
  */
+import type { TradeRowStatus } from './tradeRowStatus';
 
 export interface TradeRow {
   id: number;
@@ -16,6 +17,10 @@ export interface TradeRow {
   toBidderId: number;
   toBidderName: string;
   price: number;
+  /** Percentage of team traded (0–100). Default 100 = full transfer. */
+  percentage: number;
+  /** Approval status. New trades start as pending. */
+  status: TradeRowStatus;
   tradeDate: string;
   /** @nullable */
   notes?: string | null;

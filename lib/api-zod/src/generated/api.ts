@@ -400,6 +400,8 @@ export const GetTradesResponseItem = zod.object({
   "toBidderId": zod.number(),
   "toBidderName": zod.string(),
   "price": zod.number(),
+  "percentage": zod.number().describe('Percentage of team traded (0–100). Default 100 = full transfer.'),
+  "status": zod.enum(['pending', 'approved', 'rejected']).describe('Approval status. New trades start as pending.'),
   "tradeDate": zod.string(),
   "notes": zod.string().nullish()
 })
@@ -414,7 +416,8 @@ export const CreateTradeBody = zod.object({
   "teamId": zod.number(),
   "fromBidderId": zod.number(),
   "toBidderId": zod.number(),
-  "price": zod.number(),
+  "price": zod.number().optional().describe('Trade price. If omitted, defaults to the team\'s original draft cost × percentage \/ 100.'),
+  "percentage": zod.number().optional().describe('Percentage of team traded (0–100). Defaults to 100.'),
   "tradeDate": zod.string(),
   "notes": zod.string().optional()
 })
@@ -429,13 +432,15 @@ export const CreateTradeResponse = zod.object({
   "toBidderId": zod.number(),
   "toBidderName": zod.string(),
   "price": zod.number(),
+  "percentage": zod.number().describe('Percentage of team traded (0–100). Default 100 = full transfer.'),
+  "status": zod.enum(['pending', 'approved', 'rejected']).describe('Approval status. New trades start as pending.'),
   "tradeDate": zod.string(),
   "notes": zod.string().nullish()
 })
 
 
 /**
- * @summary Update a trade record
+ * @summary Update a trade record (price, date, notes, percentage)
  */
 export const UpdateTradeParams = zod.object({
   "id": zod.coerce.number()
@@ -443,6 +448,7 @@ export const UpdateTradeParams = zod.object({
 
 export const UpdateTradeBody = zod.object({
   "price": zod.number().optional(),
+  "percentage": zod.number().optional(),
   "tradeDate": zod.string().optional(),
   "notes": zod.string().optional()
 })
@@ -457,6 +463,8 @@ export const UpdateTradeResponse = zod.object({
   "toBidderId": zod.number(),
   "toBidderName": zod.string(),
   "price": zod.number(),
+  "percentage": zod.number().describe('Percentage of team traded (0–100). Default 100 = full transfer.'),
+  "status": zod.enum(['pending', 'approved', 'rejected']).describe('Approval status. New trades start as pending.'),
   "tradeDate": zod.string(),
   "notes": zod.string().nullish()
 })
@@ -470,6 +478,34 @@ export const DeleteTradeParams = zod.object({
 })
 
 export const DeleteTradeResponse = zod.void()
+
+
+/**
+ * @summary Approve or reject a trade (admin only — requires ADMIN_API_KEY bearer token)
+ */
+export const SetTradeStatusParams = zod.object({
+  "id": zod.coerce.number()
+})
+
+export const SetTradeStatusBody = zod.object({
+  "status": zod.enum(['approved', 'rejected'])
+})
+
+export const SetTradeStatusResponse = zod.object({
+  "id": zod.number(),
+  "seasonYear": zod.number(),
+  "teamId": zod.number(),
+  "teamName": zod.string(),
+  "fromBidderId": zod.number(),
+  "fromBidderName": zod.string(),
+  "toBidderId": zod.number(),
+  "toBidderName": zod.string(),
+  "price": zod.number(),
+  "percentage": zod.number().describe('Percentage of team traded (0–100). Default 100 = full transfer.'),
+  "status": zod.enum(['pending', 'approved', 'rejected']).describe('Approval status. New trades start as pending.'),
+  "tradeDate": zod.string(),
+  "notes": zod.string().nullish()
+})
 
 
 /**

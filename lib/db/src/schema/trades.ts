@@ -20,6 +20,10 @@ export const tradesTable = pgTable("trades", {
     .notNull()
     .references(() => biddersTable.id),
   price: numeric("price", { precision: 10, scale: 2 }).notNull().default("0"),
+  /** Percentage of the team traded, 0–100. Default 100 = full ownership transfer. */
+  percentage: numeric("percentage", { precision: 5, scale: 2 }).notNull().default("100"),
+  /** Approval workflow: pending → approved | rejected */
+  status: text("status").notNull().default("pending"),
   tradeDate: date("trade_date", { mode: "string" }).notNull(),
   notes: text("notes"),
 });

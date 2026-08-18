@@ -420,7 +420,7 @@ paths:
     patch:
       operationId: updateTrade
       tags: [trades]
-      summary: Update a trade record
+      summary: Update a trade record (price, date, notes, percentage)
       parameters:
         - name: id
           in: path
@@ -459,6 +459,43 @@ paths:
       responses:
         "204":
           description: Deleted
+        "404":
+          description: Not found
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+
+  /trades/{id}/status:
+    patch:
+      operationId: setTradeStatus
+      tags: [trades]
+      summary: Approve or reject a trade (admin only — requires ADMIN_API_KEY bearer token)
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: number
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/TradeStatusUpdate"
+      responses:
+        "200":
+          description: Updated trade
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/TradeRow"
+        "401":
+          description: Unauthorized — ADMIN_API_KEY required
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
         "404":
           description: Not found
           content:
@@ -880,6 +917,13 @@ components:
           type: string
         price:
           type: number
+        percentage:
+          type: number
+          description: Percentage of team traded (0–100). Default 100 = full transfer.
+        status:
+          type: string
+          enum: [pending, approved, rejected]
+          description: Approval status. New trades start as pending.
         tradeDate:
           type: string
         notes:
@@ -894,6 +938,8 @@ components:
         - toBidderId
         - toBidderName
         - price
+        - percentage
+        - status
         - tradeDate
 
     TradeInput:
@@ -909,21 +955,35 @@ components:
           type: number
         price:
           type: number
+          description: Trade price. If omitted, defaults to the team's original draft cost × percentage / 100.
+        percentage:
+          type: number
+          description: Percentage of team traded (0–100). Defaults to 100.
         tradeDate:
           type: string
         notes:
           type: string
-      required: [seasonYear, teamId, fromBidderId, toBidderId, price, tradeDate]
+      required: [seasonYear, teamId, fromBidderId, toBidderId, tradeDate]
 
     TradeUpdate:
       type: object
       properties:
         price:
           type: number
+        percentage:
+          type: number
         tradeDate:
           type: string
         notes:
           type: string
+
+    TradeStatusUpdate:
+      type: object
+      properties:
+        status:
+          type: string
+          enum: [approved, rejected]
+      required: [status]
 
     # MTM
     MtmSnapshot:

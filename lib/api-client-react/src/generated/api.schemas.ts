@@ -214,6 +214,18 @@ export interface TeamResultInput {
   markToMarket?: number;
 }
 
+/**
+ * Approval status. New trades start as pending.
+ */
+export type TradeRowStatus = typeof TradeRowStatus[keyof typeof TradeRowStatus];
+
+
+export const TradeRowStatus = {
+  pending: 'pending',
+  approved: 'approved',
+  rejected: 'rejected',
+} as const;
+
 export interface TradeRow {
   id: number;
   seasonYear: number;
@@ -224,6 +236,10 @@ export interface TradeRow {
   toBidderId: number;
   toBidderName: string;
   price: number;
+  /** Percentage of team traded (0–100). Default 100 = full transfer. */
+  percentage: number;
+  /** Approval status. New trades start as pending. */
+  status: TradeRowStatus;
   tradeDate: string;
   /** @nullable */
   notes?: string | null;
@@ -234,15 +250,31 @@ export interface TradeInput {
   teamId: number;
   fromBidderId: number;
   toBidderId: number;
-  price: number;
+  /** Trade price. If omitted, defaults to the team's original draft cost × percentage / 100. */
+  price?: number;
+  /** Percentage of team traded (0–100). Defaults to 100. */
+  percentage?: number;
   tradeDate: string;
   notes?: string;
 }
 
 export interface TradeUpdate {
   price?: number;
+  percentage?: number;
   tradeDate?: string;
   notes?: string;
+}
+
+export type TradeStatusUpdateStatus = typeof TradeStatusUpdateStatus[keyof typeof TradeStatusUpdateStatus];
+
+
+export const TradeStatusUpdateStatus = {
+  approved: 'approved',
+  rejected: 'rejected',
+} as const;
+
+export interface TradeStatusUpdate {
+  status: TradeStatusUpdateStatus;
 }
 
 export interface MtmSnapshot {
