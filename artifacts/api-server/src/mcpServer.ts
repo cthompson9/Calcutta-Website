@@ -16,6 +16,7 @@ import {
   teamBiddersTable,
   teamResultsTable,
   seasonsTable,
+  tradesTable,
 } from "@workspace/db";
 import type { Router, IRouter, Request, Response } from "express";
 import { Router as ExpressRouter } from "express";
@@ -281,6 +282,130 @@ function buildMcpServer() {
       if (!sid) return text(null);
       const agg = await getOwnerAgg(b.id, sid);
       return text(Math.round(agg.totalMtm * 100) / 100);
+    },
+  );
+
+  // ── Trade tools ───────────────────────────────────────────────────────────
+
+  server.tool(
+    "create_trade",
+    "Submit a trade between two owners for a team. Always creates with status PENDING — admin must approve before it affects standings. Returns the trade ID and confirmation.",
+    {
+      team:        z.string().describe("Full or partial team name, e.g. 'Seattle Seahawks'"),
+      fromOwner:   z.string().describe("Name of owner selling the stake"),
+      toOwner:     z.string().describe("Name of owner buying the stake"),
+      percentage:  z.number().min(1).max(100).optional().describe("Percentage of team traded (1–100). Default 100."),
+      price:       z.number().optional().describe("Trade price in dollars. If omitted, defaults to team's draft cost × percentage / 100."),
+      tradeDate:   z.string().optional().describe("Trade date as YYYY-MM-DD. Defaults to today."),
+      season:      z.number().optional().describe("Season year. Defaults to current active season."),
+      notes:       z.string().optional().describe("Optional notes about the trade"),
+    },
+    async ({ team, fromOwner, toOwner, percentage = 100, price, tradeDate, season, notes }) => {
+      const t = await findTeam(team);
+      if (!t) return text(`Team not found: ${team}`);
+
+      const from = await findBidder(fromOwner);
+      if (!from) return text(`Owner not found: ${fromOwner}`);
+
+      const to = await findBidder(toOwner);
+      if (!to) return text(`Owner not found: ${toOwner}`);
+
+      const activeSeasonRows = await db
+        .select({ id: seasonsTable.id, year: seasonsTable.year })
+        .from(seasonsTable)
+        .where(eq(seasonsTable.isActive, true))
+        .limit(1);
+      const defaultYear = activeSeasonRows[0]?.year ?? 2026;
+      const year = season ?? defaultYear;
+      const sid = await resolveSeasonId(year);
+      if (!sid) return text(`Season ${year} not found`);
+
+      const effectivePrice =
+        price !== undefined
+          ? price
+          : Math.round(parseFloat(t.bidAmount) * (percentage / 100) * 100) / 100;
+
+      const today = tradeDate ?? new Date().toISOString().slice(0, 10);
+
+      const [inserted] = await db
+        .insert(tradesTable)
+        .values({
+          seasonId: sid,
+          teamId: t.id,
+          fromBidderId: from.id,
+          toBidderId: to.id,
+          price: effectivePrice.toString(),
+          percentage: percentage.toString(),
+          status: "pending",
+          tradeDate: today,
+          notes,
+        })
+        .returning();
+
+      return text(
+        `Trade #${inserted.id} created: ${from.name} → ${to.name}, ${percentage}% of ${t.name} for $${effectivePrice}. Status: PENDING REVIEW. Admin must approve before it affects results.`,
+      );
+    },
+  );
+
+  server.tool(
+    "get_trade_status",
+    "Returns the current approval status of a trade by its ID (pending, approved, or rejected).",
+    { tradeId: z.number().describe("Trade ID returned by create_trade") },
+    async ({ tradeId }) => {
+      const rows = await db
+        .select({
+          id: tradesTable.id,
+          status: tradesTable.status,
+          teamId: tradesTable.teamId,
+          fromBidderId: tradesTable.fromBidderId,
+          toBidderId: tradesTable.toBidderId,
+          price: tradesTable.price,
+          percentage: tradesTable.percentage,
+          tradeDate: tradesTable.tradeDate,
+        })
+        .from(tradesTable)
+        .where(eq(tradesTable.id, tradeId))
+        .limit(1);
+
+      if (!rows[0]) return text(`Trade #${tradeId} not found`);
+      const r = rows[0];
+      return text(
+        `Trade #${r.id}: ${r.percentage}% stake for $${r.price} on ${r.tradeDate} — Status: ${r.status.toUpperCase()}`,
+      );
+    },
+  );
+
+  server.tool(
+    "set_trade_status",
+    "Approve or reject a pending trade. Requires the ADMIN_API_KEY as the adminKey parameter. Only approved trades affect owner standings and returns.",
+    {
+      tradeId:  z.number().describe("Trade ID to update"),
+      status:   z.enum(["approved", "rejected"]).describe("New status: approved or rejected"),
+      adminKey: z.string().describe("Admin API key — only the pool admin knows this"),
+    },
+    async ({ tradeId, status, adminKey }) => {
+      const expectedKey = process.env["ADMIN_API_KEY"];
+      if (!expectedKey || adminKey !== expectedKey) {
+        return text("Error: Invalid admin key. Only the pool admin can approve or reject trades.");
+      }
+
+      const rows = await db
+        .select({ id: tradesTable.id, status: tradesTable.status })
+        .from(tradesTable)
+        .where(eq(tradesTable.id, tradeId))
+        .limit(1);
+
+      if (!rows[0]) return text(`Trade #${tradeId} not found`);
+
+      await db
+        .update(tradesTable)
+        .set({ status })
+        .where(eq(tradesTable.id, tradeId));
+
+      return text(
+        `Trade #${tradeId} has been ${status.toUpperCase()}. ${status === "approved" ? "It now affects owner standings and returns." : "It has been rejected and will not affect results."}`,
+      );
     },
   );
 
