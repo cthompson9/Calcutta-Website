@@ -316,8 +316,8 @@ function checkAuth(req: Request, res: Response): boolean {
 export function createMcpRouter(): IRouter {
   const router: IRouter = ExpressRouter();
 
-  // POST /mcp — main message handler (stateless: one server per request)
-  router.post("/mcp", async (req, res): Promise<void> => {
+  // POST / — main message handler (stateless: one server per request)
+  router.post("/", async (req, res): Promise<void> => {
     if (!checkAuth(req, res)) return;
 
     const server = buildMcpServer();
@@ -339,20 +339,20 @@ export function createMcpRouter(): IRouter {
     }
   });
 
-  // GET /mcp — SSE session resumption (stateless: not supported)
-  router.get("/mcp", (_req, res): void => {
+  // GET / — SSE session resumption (stateless: not supported)
+  router.get("/", (_req, res): void => {
     res.status(405).json({
       jsonrpc: "2.0",
       error: {
         code: -32000,
-        message: "This MCP server runs in stateless mode. GET /mcp is not supported. Use POST /mcp.",
+        message: "This MCP server runs in stateless mode. GET is not supported. Use POST /api/mcp.",
       },
       id: null,
     });
   });
 
-  // DELETE /mcp — session termination (no-op in stateless mode)
-  router.delete("/mcp", (_req, res): void => {
+  // DELETE / — session termination (no-op in stateless mode)
+  router.delete("/", (_req, res): void => {
     res.status(200).json({ message: "Stateless mode — no session to terminate." });
   });
 

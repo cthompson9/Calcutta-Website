@@ -2,6 +2,7 @@ import express, { type Express } from "express";
 import cors from "cors";
 import pinoHttp from "pino-http";
 import router from "./routes";
+import { createMcpRouter } from "./mcpServer";
 import { logger } from "./lib/logger";
 
 const app: Express = express();
@@ -28,6 +29,9 @@ app.use(
 app.use(cors());
 app.use(express.json());
 app.use(express.urlencoded({ extended: true }));
+
+// MCP server — mounted at /api/mcp so Replit's proxy routes it correctly
+app.use("/api/mcp", createMcpRouter());
 
 app.use("/api", router);
 
