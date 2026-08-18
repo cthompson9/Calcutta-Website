@@ -8,11 +8,14 @@ import {
   Text,
   View,
 } from 'react-native';
+import Svg, { Polyline } from 'react-native-svg';
 import { Feather } from '@expo/vector-icons';
 import * as Haptics from 'expo-haptics';
 import {
+  useGetMtmSnapshots,
   useGetResults,
   useGetResultsByOwner,
+  type MtmOwnerSeries,
   type OwnerResultRow,
   type TeamResultRow,
 } from '@workspace/api-client-react';
@@ -31,13 +34,65 @@ import { fmtMoney, fmtMoneySigned, fmtPct, fmtShare } from '@/lib/format';
 
 type ViewMode = 'owner' | 'team';
 
+// ── Sparkline ─────────────────────────────────────────────────────────────────
+
+const SPARK_W = 64;
+const SPARK_H = 24;
+
+function Sparkline({ data, color }: { data: number[]; color: string }) {
+  if (data.length < 2) return null;
+
+  const min = Math.min(...data);
+  const max = Math.max(...data);
+  const range = max - min || 1;
+
+  const points = data
+    .map((v, i) => {
+      const x = (i / (data.length - 1)) * SPARK_W;
+      // invert y: high value → small y (top of SVG)
+      const y = SPARK_H - ((v - min) / range) * SPARK_H;
+      return `${x.toFixed(1)},${y.toFixed(1)}`;
+    })
+    .join(' ');
+
+  return (
+    <Svg width={SPARK_W} height={SPARK_H}>
+      <Polyline
+        points={points}
+        fill="none"
+        stroke={color}
+        strokeWidth={1.5}
+        strokeLinecap="round"
+        strokeLinejoin="round"
+      />
+    </Svg>
+  );
+}
+
 // ── Owner card ───────────────────────────────────────────────────────────────
 
-function OwnerCard({ owner, rank }: { owner: OwnerResultRow; rank: number }) {
+function OwnerCard({
+  owner,
+  rank,
+  weeklyTotals,
+}: {
+  owner: OwnerResultRow;
+  rank: number;
+  weeklyTotals?: number[];
+}) {
   const colors = useColors();
   const [expanded, setExpanded] = useState<boolean>(false);
   const mtmColor =
     owner.totalMtm - owner.totalCost >= 0 ? colors.success : colors.destructive;
+
+  // Week-over-week delta: last two entries in weeklyTotals
+  const wowDelta =
+    weeklyTotals && weeklyTotals.length >= 2
+      ? weeklyTotals[weeklyTotals.length - 1] - weeklyTotals[weeklyTotals.length - 2]
+      : null;
+  const wowColor =
+    wowDelta === null ? colors.mutedForeground : wowDelta >= 0 ? colors.success : colors.destructive;
+  const sparklineColor = wowDelta === null || wowDelta >= 0 ? colors.success : colors.destructive;
 
   return (
     <View
@@ -74,14 +129,36 @@ function OwnerCard({ owner, rank }: { owner: OwnerResultRow; rank: number }) {
               {fmtMoney(owner.totalCost)} invested
             </Text>
           </View>
-          <View style={{ alignItems: 'flex-end' }}>
-            <Text style={[styles.mtmValue, { color: colors.foreground }]}>
-              {fmtMoney(owner.totalMtm)}
-            </Text>
-            <Text style={[styles.mtmDelta, { color: mtmColor }]}>
-              {fmtMoneySigned(owner.totalMtm - owner.totalCost)}
-            </Text>
+
+          {/* MTM value + WoW trend */}
+          <View style={{ alignItems: 'flex-end', gap: 4 }}>
+            <View style={styles.mtmRow}>
+              {weeklyTotals && weeklyTotals.length >= 2 && (
+                <Sparkline data={weeklyTotals} color={sparklineColor} />
+              )}
+              <View style={{ alignItems: 'flex-end' }}>
+                <Text style={[styles.mtmValue, { color: colors.foreground }]}>
+                  {fmtMoney(owner.totalMtm)}
+                </Text>
+                <Text style={[styles.mtmDelta, { color: mtmColor }]}>
+                  {fmtMoneySigned(owner.totalMtm - owner.totalCost)}
+                </Text>
+              </View>
+            </View>
+            {wowDelta !== null && (
+              <View style={styles.wowRow}>
+                <Feather
+                  name={wowDelta >= 0 ? 'trending-up' : 'trending-down'}
+                  size={11}
+                  color={wowColor}
+                />
+                <Text style={[styles.wowText, { color: wowColor }]}>
+                  {fmtMoneySigned(wowDelta)} WoW
+                </Text>
+              </View>
+            )}
           </View>
+
           <Feather
             name={expanded ? 'chevron-up' : 'chevron-down'}
             size={18}
@@ -234,6 +311,15 @@ export default function StandingsScreen() {
 
   const ownerQuery = useGetResultsByOwner({ season });
   const teamQuery = useGetResults({ season });
+  const mtmQuery = useGetMtmSnapshots({ season });
+
+  // Build bidderName → weeklyTotals lookup from MTM snapshot data
+  const mtmByName = React.useMemo<Record<string, number[]>>(() => {
+    if (!mtmQuery.data?.owners) return {};
+    return Object.fromEntries(
+      mtmQuery.data.owners.map((o: MtmOwnerSeries) => [o.bidderName, o.weeklyTotals]),
+    );
+  }, [mtmQuery.data]);
 
   const active = mode === 'owner' ? ownerQuery : teamQuery;
 
@@ -265,7 +351,13 @@ export default function StandingsScreen() {
         <FlatList
           data={ownerQuery.data ?? []}
           keyExtractor={(item) => String(item.bidderId)}
-          renderItem={({ item, index }) => <OwnerCard owner={item} rank={index + 1} />}
+          renderItem={({ item, index }) => (
+            <OwnerCard
+              owner={item}
+              rank={index + 1}
+              weeklyTotals={mtmByName[item.bidderName]}
+            />
+          )}
           contentContainerStyle={[styles.listContent, { paddingBottom: listBottomPad }]}
           scrollEnabled={(ownerQuery.data ?? []).length > 0}
           refreshControl={
@@ -355,6 +447,11 @@ const styles = StyleSheet.create({
     fontFamily: 'Inter_400Regular',
     marginTop: 2,
   },
+  mtmRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 8,
+  },
   mtmValue: {
     fontSize: 16,
     fontFamily: 'Inter_700Bold',
@@ -363,6 +460,15 @@ const styles = StyleSheet.create({
     fontSize: 12,
     fontFamily: 'Inter_500Medium',
     marginTop: 2,
+  },
+  wowRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 3,
+  },
+  wowText: {
+    fontSize: 11,
+    fontFamily: 'Inter_500Medium',
   },
   statRow: {
     flexDirection: 'row',
