@@ -414,16 +414,16 @@ function buildMcpServer() {
 
   server.tool(
     "set_team_mtm",
-    "Record or update the mark-to-market value for a team in a specific week. Requires the ADMIN_API_KEY as adminKey. Week 0 = pre-season, 1–18 = regular season, 19+ = playoffs.",
+    "Record or update the mark-to-market value for a team on a specific date. Same-date submissions overwrite the previous value; different dates accumulate as separate data points. Requires the ADMIN_API_KEY as adminKey.",
     {
       team:         z.string().describe("Full or partial team name, e.g. 'Seattle Seahawks' or 'Seahawks'"),
-      weekNum:      z.number().int().min(0).max(22).describe("Week number: 0=pre-season, 1–18=regular season, 19+=playoffs"),
       mtmValue:     z.number().describe("Mark-to-market value in dollars (net profit/loss vs auction cost, e.g. 320 or -45.50)"),
+      snapshotDate: z.string().optional().describe("Date as YYYY-MM-DD. Defaults to today. Submitting the same date again overwrites the previous value for that team."),
+      weekNum:      z.number().int().min(0).max(22).optional().describe("Optional week label (0=pre-season, 1–18=regular, 19+=playoffs). Stored for display only."),
       season:       z.number().optional().describe("Season year (e.g. 2026). Defaults to the active season."),
-      snapshotDate: z.string().optional().describe("Snapshot date as YYYY-MM-DD. Defaults to today."),
       adminKey:     z.string().describe("Admin API key — only the pool admin knows this"),
     },
-    async ({ team, weekNum, mtmValue, season, snapshotDate, adminKey }) => {
+    async ({ team, mtmValue, snapshotDate, weekNum, season, adminKey }) => {
       const expectedKey = process.env["ADMIN_API_KEY"];
       if (!expectedKey || adminKey !== expectedKey) {
         return text("Error: Invalid admin key. Only the pool admin can record MTM values.");
@@ -452,22 +452,24 @@ function buildMcpServer() {
         .values({
           teamId: t.id,
           seasonId: sid,
-          weekNum,
+          weekNum: weekNum ?? null,
           snapshotDate: today,
           mtmValue: mtmValue.toString(),
         })
         .onConflictDoUpdate({
-          target: [mtmSnapshotsTable.teamId, mtmSnapshotsTable.seasonId, mtmSnapshotsTable.weekNum],
+          target: [mtmSnapshotsTable.teamId, mtmSnapshotsTable.seasonId, mtmSnapshotsTable.snapshotDate],
           set: {
-            snapshotDate: today,
+            weekNum: weekNum ?? null,
             mtmValue: mtmValue.toString(),
           },
         })
         .returning();
 
-      const weekLabel = weekNum === 0 ? "Pre-season" : weekNum <= 18 ? `Week ${weekNum}` : `Playoff Wk ${weekNum - 18}`;
+      const weekLabel = weekNum !== undefined
+        ? (weekNum === 0 ? " · Pre-season" : weekNum <= 18 ? ` · Week ${weekNum}` : ` · Playoff Wk ${weekNum - 18}`)
+        : "";
       return text(
-        `MTM snapshot saved: ${t.name} · ${weekLabel} · ${year} = $${mtmValue >= 0 ? "+" : ""}${mtmValue} (snapshot ID: ${snap.id})`,
+        `MTM snapshot saved: ${t.name}${weekLabel} · ${today} · ${year} = $${mtmValue >= 0 ? "+" : ""}${mtmValue} (snapshot ID: ${snap.id})`,
       );
     },
   );

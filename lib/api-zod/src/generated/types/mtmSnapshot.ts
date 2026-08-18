@@ -10,8 +10,8 @@ export interface MtmSnapshot {
   id: number;
   teamId: number;
   seasonId: number;
-  weekNum: number;
   /** @nullable */
-  snapshotDate?: string | null;
+  weekNum?: number | null;
+  snapshotDate: string;
   mtmValue: number;
 }

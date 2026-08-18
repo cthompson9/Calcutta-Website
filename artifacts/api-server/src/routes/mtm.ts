@@ -1,5 +1,5 @@
 import { Router, type IRouter, type Request } from "express";
-import { eq, and } from "drizzle-orm";
+import { eq, asc } from "drizzle-orm";
 import { db, teamsTable, biddersTable, teamBiddersTable, mtmSnapshotsTable, seasonsTable } from "@workspace/db";
 import { GetMtmSnapshotsQueryParams, UpsertMtmSnapshotBody } from "@workspace/api-zod";
 
@@ -34,12 +34,12 @@ router.get("/mtm", async (req, res): Promise<void> => {
     return;
   }
 
-  // Fetch all snapshots for the season
+  // Fetch all snapshots for the season ordered by date
   const snapshotsRaw = await db
     .select()
     .from(mtmSnapshotsTable)
     .where(eq(mtmSnapshotsTable.seasonId, seasonId))
-    .orderBy(mtmSnapshotsTable.weekNum, mtmSnapshotsTable.teamId);
+    .orderBy(asc(mtmSnapshotsTable.snapshotDate), asc(mtmSnapshotsTable.teamId));
 
   // Fetch team info
   const teams = await db.select().from(teamsTable);
@@ -62,14 +62,14 @@ router.get("/mtm", async (req, res): Promise<void> => {
     ownershipMap.get(o.teamId)!.push({ ...o, ownershipShare: parseFloat(o.ownershipShare) });
   }
 
-  // Get unique weeks sorted
-  const weekNums = [...new Set(snapshotsRaw.map((s) => s.weekNum))].sort((a, b) => a - b);
+  // Get unique dates sorted chronologically
+  const dates = [...new Set(snapshotsRaw.map((s) => s.snapshotDate))].sort();
 
-  // Build team series
-  const teamSnapshotMap = new Map<number, Map<number, number>>(); // teamId → weekNum → mtmValue
+  // Build team series: teamId → date → mtmValue
+  const teamSnapshotMap = new Map<number, Map<string, number>>();
   for (const s of snapshotsRaw) {
     if (!teamSnapshotMap.has(s.teamId)) teamSnapshotMap.set(s.teamId, new Map());
-    teamSnapshotMap.get(s.teamId)!.set(s.weekNum, parseFloat(s.mtmValue));
+    teamSnapshotMap.get(s.teamId)!.set(s.snapshotDate, parseFloat(s.mtmValue));
   }
 
   const teamSeries = teams
@@ -82,20 +82,20 @@ router.get("/mtm", async (req, res): Promise<void> => {
         teamName: t.name,
         conference: t.conference,
         ownerName: primaryOwner,
-        weeklyValues: weekNums.map((w) => teamSnapshotMap.get(t.id)?.get(w) ?? 0),
+        weeklyValues: dates.map((d) => teamSnapshotMap.get(t.id)?.get(d) ?? 0),
       };
     });
 
   // Build owner series
   const ownerNames = [...new Set(ownerships.map((o) => o.bidderName))].sort();
   const ownerSeries = ownerNames.map((ownerName) => {
-    const weeklyTotals = weekNums.map((w) => {
+    const weeklyTotals = dates.map((d) => {
       let total = 0;
       for (const t of teams) {
         const owners = ownershipMap.get(t.id) ?? [];
         const ownerEntry = owners.find((o) => o.bidderName === ownerName);
         if (!ownerEntry) continue;
-        const mtmVal = teamSnapshotMap.get(t.id)?.get(w) ?? 0;
+        const mtmVal = teamSnapshotMap.get(t.id)?.get(d) ?? 0;
         total += mtmVal * ownerEntry.ownershipShare;
       }
       return Math.round(total * 100) / 100;
@@ -103,14 +103,15 @@ router.get("/mtm", async (req, res): Promise<void> => {
     return { bidderName: ownerName, weeklyTotals };
   });
 
-  // Build week-level data
-  const weeks = weekNums.map((w) => {
-    const snapsForWeek = snapshotsRaw.filter((s) => s.weekNum === w);
-    const snapshotDate = snapsForWeek[0]?.snapshotDate ?? null;
+  // Build per-date week data
+  const weeks = dates.map((date) => {
+    const snapsForDate = snapshotsRaw.filter((s) => s.snapshotDate === date);
+    // weekNum from the first snapshot for this date (may be null)
+    const weekNum = snapsForDate[0]?.weekNum ?? null;
 
     const ownerTotals = ownerNames.map((ownerName) => {
       let total = 0;
-      for (const s of snapsForWeek) {
+      for (const s of snapsForDate) {
         const owners = ownershipMap.get(s.teamId) ?? [];
         const ownerEntry = owners.find((o) => o.bidderName === ownerName);
         if (!ownerEntry) continue;
@@ -119,7 +120,7 @@ router.get("/mtm", async (req, res): Promise<void> => {
       return { bidderName: ownerName, mtmTotal: Math.round(total * 100) / 100 };
     });
 
-    const teamValues = snapsForWeek.map((s) => {
+    const teamValues = snapsForDate.map((s) => {
       const t = teamMap.get(s.teamId);
       const owners = ownershipMap.get(s.teamId) ?? [];
       const primaryOwner = owners.length === 1 ? owners[0].bidderName : owners.map((o) => o.bidderName).join(" / ");
@@ -131,7 +132,7 @@ router.get("/mtm", async (req, res): Promise<void> => {
       };
     });
 
-    return { weekNum: w, snapshotDate, ownerTotals, teamValues };
+    return { snapshotDate: date, weekNum, ownerTotals, teamValues };
   });
 
   res.json({ weeks, teams: teamSeries, owners: ownerSeries });
@@ -155,19 +156,22 @@ router.post("/mtm", async (req, res): Promise<void> => {
     return;
   }
 
+  const today = new Date().toISOString().slice(0, 10);
+  const snapshotDate = data.snapshotDate ?? today;
+
   const [snap] = await db
     .insert(mtmSnapshotsTable)
     .values({
       teamId: data.teamId,
       seasonId,
-      weekNum: data.weekNum,
-      snapshotDate: data.snapshotDate,
+      weekNum: data.weekNum ?? null,
+      snapshotDate,
       mtmValue: data.mtmValue.toString(),
     })
     .onConflictDoUpdate({
-      target: [mtmSnapshotsTable.teamId, mtmSnapshotsTable.seasonId, mtmSnapshotsTable.weekNum],
+      target: [mtmSnapshotsTable.teamId, mtmSnapshotsTable.seasonId, mtmSnapshotsTable.snapshotDate],
       set: {
-        snapshotDate: data.snapshotDate,
+        weekNum: data.weekNum ?? null,
         mtmValue: data.mtmValue.toString(),
       },
     })

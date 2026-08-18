@@ -518,8 +518,8 @@ export const GetMtmSnapshotsQueryParams = zod.object({
 
 export const GetMtmSnapshotsResponse = zod.object({
   "weeks": zod.array(zod.object({
-  "weekNum": zod.number(),
-  "snapshotDate": zod.string().nullish(),
+  "snapshotDate": zod.string(),
+  "weekNum": zod.number().nullish(),
   "ownerTotals": zod.array(zod.object({
   "bidderName": zod.string(),
   "mtmTotal": zod.number()
@@ -551,8 +551,8 @@ export const GetMtmSnapshotsResponse = zod.object({
 export const UpsertMtmSnapshotBody = zod.object({
   "teamId": zod.number(),
   "seasonYear": zod.number(),
-  "weekNum": zod.number(),
-  "snapshotDate": zod.string().optional(),
+  "weekNum": zod.number().optional().describe('Optional week label (0=pre-season, 1–18=regular, 19+=playoffs)'),
+  "snapshotDate": zod.string().optional().describe('Date as YYYY-MM-DD. Defaults to today. Same-day submissions overwrite the previous value.'),
   "mtmValue": zod.number()
 })
 
@@ -560,8 +560,8 @@ export const UpsertMtmSnapshotResponse = zod.object({
   "id": zod.number(),
   "teamId": zod.number(),
   "seasonId": zod.number(),
-  "weekNum": zod.number(),
-  "snapshotDate": zod.string().nullish(),
+  "weekNum": zod.number().nullish(),
+  "snapshotDate": zod.string(),
   "mtmValue": zod.number()
 })
 

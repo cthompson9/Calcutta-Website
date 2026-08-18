@@ -14,12 +14,14 @@ export const mtmSnapshotsTable = pgTable(
     seasonId: integer("season_id")
       .notNull()
       .references(() => seasonsTable.id, { onDelete: "cascade" }),
-    weekNum: integer("week_num").notNull(), // 0=pre-season, 1-18=regular season, 19+=playoffs
-    snapshotDate: date("snapshot_date", { mode: "string" }),
+    // weekNum is now optional — a convenience label only, not the upsert key
+    weekNum: integer("week_num"),
+    // snapshotDate is the upsert key: one row per team per season per date
+    snapshotDate: date("snapshot_date", { mode: "string" }).notNull(),
     mtmValue: numeric("mtm_value", { precision: 10, scale: 4 }).notNull().default("0"),
   },
   (t) => [
-    uniqueIndex("mtm_team_season_week_idx").on(t.teamId, t.seasonId, t.weekNum),
+    uniqueIndex("mtm_team_season_date_idx").on(t.teamId, t.seasonId, t.snapshotDate),
   ],
 );
 

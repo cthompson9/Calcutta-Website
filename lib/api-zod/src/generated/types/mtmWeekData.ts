@@ -9,9 +9,9 @@ import type { MtmOwnerWeek } from './mtmOwnerWeek';
 import type { MtmTeamWeek } from './mtmTeamWeek';
 
 export interface MtmWeekData {
-  weekNum: number;
+  snapshotDate: string;
   /** @nullable */
-  snapshotDate?: string | null;
+  weekNum?: number | null;
   ownerTotals: MtmOwnerWeek[];
   teamValues: MtmTeamWeek[];
 }

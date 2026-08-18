@@ -996,20 +996,20 @@ components:
         seasonId:
           type: number
         weekNum:
-          type: number
+          type: ["number", "null"]
         snapshotDate:
-          type: ["string", "null"]
+          type: string
         mtmValue:
           type: number
-      required: [id, teamId, seasonId, weekNum, mtmValue]
+      required: [id, teamId, seasonId, snapshotDate, mtmValue]
 
     MtmWeekData:
       type: object
       properties:
-        weekNum:
-          type: number
         snapshotDate:
-          type: ["string", "null"]
+          type: string
+        weekNum:
+          type: ["number", "null"]
         ownerTotals:
           type: array
           items:
@@ -1018,7 +1018,7 @@ components:
           type: array
           items:
             $ref: "#/components/schemas/MtmTeamWeek"
-      required: [weekNum, ownerTotals, teamValues]
+      required: [snapshotDate, ownerTotals, teamValues]
 
     MtmOwnerWeek:
       type: object
@@ -1096,11 +1096,13 @@ components:
           type: number
         weekNum:
           type: number
+          description: Optional week label (0=pre-season, 1–18=regular, 19+=playoffs)
         snapshotDate:
           type: string
+          description: "Date as YYYY-MM-DD. Defaults to today. Same-day submissions overwrite the previous value."
         mtmValue:
           type: number
-      required: [teamId, seasonYear, weekNum, mtmValue]
+      required: [teamId, seasonYear, mtmValue]
 
     # Summary
     AuctionSummary:

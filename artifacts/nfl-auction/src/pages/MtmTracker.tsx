@@ -21,7 +21,7 @@ const OWNER_COLORS = [
 // ── Auth-gated MTM upsert (requires ADMIN_API_KEY as Bearer token) ─────────────
 
 async function upsertMtmSnapshot(
-  payload: { teamId: number; seasonYear: number; weekNum: number; mtmValue: number; snapshotDate?: string },
+  payload: { teamId: number; seasonYear: number; weekNum?: number; mtmValue: number; snapshotDate?: string },
   adminKey: string,
 ): Promise<{ ok: boolean; error?: string }> {
   try {
@@ -199,7 +199,7 @@ function AdminPanel({
 
 // ── MTM data-entry form ───────────────────────────────────────────────────────
 
-type EntryRow = { teamId: string; weekNum: string; mtmValue: string; snapshotDate: string };
+type EntryRow = { teamId: string; mtmValue: string; snapshotDate: string };
 
 function MtmEntryForm({
   year,
@@ -213,7 +213,7 @@ function MtmEntryForm({
   const { data: teams } = useGetTeams({});
 
   const [entries, setEntries] = useState<EntryRow[]>([
-    { teamId: "", weekNum: "", mtmValue: "", snapshotDate: "" },
+    { teamId: "", mtmValue: "", snapshotDate: "" },
   ]);
   const [pending, setPending] = useState(false);
 
@@ -222,7 +222,7 @@ function MtmEntryForm({
   const [csvError, setCsvError] = useState("");
 
   function addRow() {
-    setEntries((prev) => [...prev, { teamId: "", weekNum: "", mtmValue: "", snapshotDate: "" }]);
+    setEntries((prev) => [...prev, { teamId: "", mtmValue: "", snapshotDate: "" }]);
   }
 
   function removeRow(i: number) {
@@ -235,7 +235,7 @@ function MtmEntryForm({
 
   async function handleSingleSubmit(e: React.FormEvent) {
     e.preventDefault();
-    const valid = entries.filter((r) => r.teamId && r.weekNum !== "" && r.mtmValue !== "");
+    const valid = entries.filter((r) => r.teamId && r.mtmValue !== "");
     if (!valid.length) return;
 
     setPending(true);
@@ -248,7 +248,6 @@ function MtmEntryForm({
         {
           teamId: parseInt(r.teamId),
           seasonYear: year,
-          weekNum: parseInt(r.weekNum),
           mtmValue: parseFloat(r.mtmValue),
           snapshotDate: r.snapshotDate || undefined,
         },
@@ -283,25 +282,23 @@ function MtmEntryForm({
 
     const parsed: Array<{
       teamId: number;
-      weekNum: number;
       mtmValue: number;
       snapshotDate?: string;
     }> = [];
 
     for (const line of lines) {
       const parts = line.split(",").map((p) => p.trim());
-      if (parts.length < 3) {
-        setCsvError(`Bad line: "${line}" — expected: teamId, weekNum, mtmValue[, YYYY-MM-DD]`);
+      if (parts.length < 2) {
+        setCsvError(`Bad line: "${line}" — expected: teamId, mtmValue[, YYYY-MM-DD]`);
         return;
       }
       const teamId = parseInt(parts[0] ?? "");
-      const weekNum = parseInt(parts[1] ?? "");
-      const mtmValue = parseFloat(parts[2] ?? "");
-      if (isNaN(teamId) || isNaN(weekNum) || isNaN(mtmValue)) {
+      const mtmValue = parseFloat(parts[1] ?? "");
+      if (isNaN(teamId) || isNaN(mtmValue)) {
         setCsvError(`Bad values in: "${line}"`);
         return;
       }
-      parsed.push({ teamId, weekNum, mtmValue, snapshotDate: parts[3] || undefined });
+      parsed.push({ teamId, mtmValue, snapshotDate: parts[2] || undefined });
     }
 
     if (!parsed.length) {
@@ -337,7 +334,7 @@ function MtmEntryForm({
   }
 
   const validRowCount = entries.filter(
-    (r) => r.teamId && r.weekNum !== "" && r.mtmValue !== "",
+    (r) => r.teamId && r.mtmValue !== "",
   ).length;
 
   return (
@@ -364,16 +361,15 @@ function MtmEntryForm({
         /* ── Row entry mode ── */
         <form onSubmit={(e) => void handleSingleSubmit(e)} className="space-y-3">
           {/* Column headers */}
-          <div className="grid grid-cols-[1fr_80px_120px_130px_32px] gap-2 items-center">
+          <div className="grid grid-cols-[1fr_130px_120px_32px] gap-2 items-center">
             <span className="text-xs font-mono font-bold uppercase tracking-widest text-muted-foreground">Team</span>
-            <span className="text-xs font-mono font-bold uppercase tracking-widest text-muted-foreground">Week</span>
-            <span className="text-xs font-mono font-bold uppercase tracking-widest text-muted-foreground">MTM Value ($)</span>
             <span className="text-xs font-mono font-bold uppercase tracking-widest text-muted-foreground">Date</span>
+            <span className="text-xs font-mono font-bold uppercase tracking-widest text-muted-foreground">MTM Value ($)</span>
             <span />
           </div>
 
           {entries.map((row, i) => (
-            <div key={i} className="grid grid-cols-[1fr_80px_120px_130px_32px] gap-2 items-center">
+            <div key={i} className="grid grid-cols-[1fr_130px_120px_32px] gap-2 items-center">
               {/* Team */}
               <select
                 value={row.teamId}
@@ -392,16 +388,12 @@ function MtmEntryForm({
                   ))}
               </select>
 
-              {/* Week */}
+              {/* Date (defaults to today on submit if blank) */}
               <input
-                type="number"
-                min={0}
-                max={22}
-                value={row.weekNum}
-                onChange={(e) => updateRow(i, "weekNum", e.target.value)}
-                placeholder="0–22"
+                type="date"
+                value={row.snapshotDate}
+                onChange={(e) => updateRow(i, "snapshotDate", e.target.value)}
                 className="border border-border bg-background px-2 py-1.5 text-sm font-mono w-full"
-                required
               />
 
               {/* MTM value */}
@@ -413,14 +405,6 @@ function MtmEntryForm({
                 placeholder="e.g. 250.00"
                 className="border border-border bg-background px-2 py-1.5 text-sm font-mono w-full"
                 required
-              />
-
-              {/* Date */}
-              <input
-                type="date"
-                value={row.snapshotDate}
-                onChange={(e) => updateRow(i, "snapshotDate", e.target.value)}
-                className="border border-border bg-background px-2 py-1.5 text-sm font-mono w-full"
               />
 
               {/* Remove */}
@@ -462,10 +446,10 @@ function MtmEntryForm({
         <div className="space-y-3">
           <p className="text-xs font-mono text-muted-foreground">
             One row per line:{" "}
-            <code className="bg-muted px-1">teamId, weekNum, mtmValue[, YYYY-MM-DD]</code>
+            <code className="bg-muted px-1">teamId, mtmValue[, YYYY-MM-DD]</code>
             <br />
-            Lines starting with <code className="bg-muted px-1">#</code> are ignored. Team IDs are
-            shown in the Teams page.
+            Date defaults to today if omitted. Same date = overwrite. Lines starting with{" "}
+            <code className="bg-muted px-1">#</code> are ignored. Team IDs shown on the Teams page.
           </p>
           <textarea
             value={csvText}
@@ -475,7 +459,7 @@ function MtmEntryForm({
             }}
             rows={8}
             placeholder={
-              "# teamId, weekNum, mtmValue, date\n1, 1, 320.00, 2026-09-15\n2, 1, -45.50\n3, 1, 110.00, 2026-09-15"
+              "# teamId, mtmValue, date (date optional — defaults to today)\n1, 320.00, 2026-09-15\n2, -45.50\n3, 110.00, 2026-09-15"
             }
             className="w-full border border-border bg-background px-3 py-2 text-sm font-mono resize-y"
           />
@@ -525,7 +509,7 @@ function EmptyState({
         </button>
       ) : (
         <code className="mt-4 text-xs bg-muted px-3 py-2 font-mono text-muted-foreground">
-          POST /api/mtm {"{ teamId, seasonYear, weekNum, mtmValue }"}
+          POST /api/mtm {"{ teamId, seasonYear, mtmValue[, snapshotDate] }"}
         </code>
       )}
     </div>
@@ -537,8 +521,12 @@ function EmptyState({
 function MtmContent({ data }: { data: MtmData }) {
   const [view, setView] = useState<"owner" | "team">("owner");
 
-  const weekNums = data.weeks.map((w) => w.weekNum);
-  const weekLabels = weekNums.map((w) => (w === 0 ? "Pre" : `Wk ${w}`));
+  // Use snapshotDate as the x-axis — format as "Sep 15" style labels
+  const dates = data.weeks.map((w) => w.snapshotDate);
+  const weekLabels = dates.map((d) => {
+    const dt = new Date(d + "T12:00:00"); // noon to avoid TZ edge cases
+    return dt.toLocaleDateString("en-US", { month: "short", day: "numeric" });
+  });
 
   // Chart dimensions
   const W = 700;
@@ -557,7 +545,7 @@ function MtmContent({ data }: { data: MtmData }) {
   const range = maxVal - minVal || 1;
 
   function xPos(i: number) {
-    return PAD.left + (i / Math.max(weekNums.length - 1, 1)) * chartW;
+    return PAD.left + (i / Math.max(dates.length - 1, 1)) * chartW;
   }
   function yPos(v: number) {
     return PAD.top + chartH - ((v - minVal) / range) * chartH;
@@ -727,10 +715,10 @@ function MtmContent({ data }: { data: MtmData }) {
                 </th>
                 {data.weeks.map((w) => (
                   <th
-                    key={w.weekNum}
+                    key={w.snapshotDate}
                     className="px-3 py-2 text-right text-xs font-mono font-bold uppercase tracking-widest text-muted-foreground"
                   >
-                    {w.weekNum === 0 ? "Pre" : `Wk ${w.weekNum}`}
+                    {new Date(w.snapshotDate + "T12:00:00").toLocaleDateString("en-US", { month: "short", day: "numeric" })}
                   </th>
                 ))}
               </tr>
