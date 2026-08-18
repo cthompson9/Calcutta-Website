@@ -188,17 +188,19 @@ function ByOwnerView({
             {isExpanded && (
               <div className="border-t border-border">
                 <div className="hidden md:grid grid-cols-12 bg-muted/30 text-muted-foreground text-[10px] font-mono font-bold uppercase tracking-widest px-6 py-2 border-b border-border">
-                  <div className="col-span-4">Team</div>
-                  <div className="col-span-1 text-center">W</div>
+                  <div className="col-span-3">Team</div>
+                  <div className="col-span-2 text-center">Record</div>
                   <div className="col-span-1 text-center">PD</div>
                   <div className="col-span-1 text-center">PO</div>
                   <div className="col-span-1 text-center">SB</div>
                   <div className="col-span-2 text-right">Return</div>
                   <div className="col-span-2 text-right">Net P&L</div>
                 </div>
-                {row.teams.map((t) => (
-                  <TeamSubRow key={t.teamId} team={t} isComplete={isComplete} />
-                ))}
+                {[...row.teams]
+                  .sort((a, b) => b.markToMarket - a.markToMarket)
+                  .map((t) => (
+                    <TeamSubRow key={t.teamId} team={t} isComplete={isComplete} ownerId={row.bidderId} />
+                  ))}
               </div>
             )}
           </div>
@@ -208,28 +210,49 @@ function ByOwnerView({
   );
 }
 
-function TeamSubRow({ team, isComplete }: { team: TeamResultRow; isComplete: boolean }) {
+function formatRecord(wins: number): string {
+  const w = Math.floor(wins);
+  const ties = Math.round((wins - w) * 2); // 0.5 stored per tie
+  const l = 17 - w - ties;
+  return ties > 0 ? `${w}-${l}-${ties}` : `${w}-${l}`;
+}
+
+function TeamSubRow({
+  team,
+  isComplete,
+  ownerId,
+}: {
+  team: TeamResultRow;
+  isComplete: boolean;
+  ownerId: number;
+}) {
   const hasSB = team.sbBerth;
   const wonSB = team.winSuperBowl;
+  const ownerEntry = team.owners.find((o) => o.bidderId === ownerId);
+  const pct = ownerEntry ? Math.round(ownerEntry.ownershipShare * 100) : 100;
+
   return (
     <div className="grid grid-cols-6 md:grid-cols-12 items-center px-6 py-3 border-b border-border last:border-0 hover:bg-muted/20 transition-colors">
-      <div className="col-span-3 md:col-span-4 flex items-center gap-2">
+      <div className="col-span-3 md:col-span-3 flex items-center gap-2 min-w-0">
         {wonSB && <Star className="w-3 h-3 text-yellow-500 shrink-0" />}
-        {hasSB && !wonSB && <span className="text-[10px] text-muted-foreground">SB</span>}
+        {hasSB && !wonSB && <span className="text-[10px] text-muted-foreground shrink-0">SB</span>}
         <span className="font-medium text-sm truncate">{team.teamName}</span>
-        <span className="hidden md:inline text-[10px] text-muted-foreground font-mono">{team.conference}</span>
+        <span className="hidden md:inline text-[10px] text-muted-foreground font-mono shrink-0">{team.conference}</span>
+        {pct < 100 && (
+          <span className="shrink-0 text-[10px] font-mono bg-muted px-1 py-0.5 text-muted-foreground">{pct}%</span>
+        )}
       </div>
       {isComplete ? (
         <>
-          <div className="col-span-1 text-center font-mono text-sm">{team.wins}</div>
+          <div className="col-span-1 md:col-span-2 text-center font-mono text-xs">{formatRecord(team.wins)}</div>
           <div className={cn("hidden md:block col-span-1 text-center font-mono text-xs", team.ptDiff >= 0 ? "text-green-600" : "text-red-500")}>
             {team.ptDiff >= 0 ? "+" : ""}{team.ptDiff}
           </div>
-          <div className="col-span-1 text-center text-xs">{team.playoffBerth ? "✓" : "–"}</div>
-          <div className="col-span-1 text-center text-xs">
+          <div className="hidden md:block col-span-1 text-center text-xs">{team.playoffBerth ? "✓" : "–"}</div>
+          <div className="hidden md:block col-span-1 text-center text-xs">
             {team.winSuperBowl ? "🏆" : team.sbBerth ? "🔹" : "–"}
           </div>
-          <div className="col-span-2 text-right font-mono text-sm">{formatCurrency(team.realizedReturn)}</div>
+          <div className="hidden md:block col-span-2 text-right font-mono text-sm">{formatCurrency(team.realizedReturn)}</div>
           <div className={cn("col-span-2 text-right font-mono font-bold text-sm", team.netReturn >= 0 ? "text-green-600" : "text-red-600")}>
             {team.netReturn >= 0 ? "+" : ""}{formatCurrency(team.netReturn)}
           </div>
