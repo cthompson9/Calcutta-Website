@@ -50,6 +50,7 @@ function buildTeamResult(
       ptDiff: 0,
       startingPoints: 150,
       draftOrder: null,
+      seed: null,
       playoffBerth: false,
       divRound: false,
       confRound: false,
@@ -78,6 +79,7 @@ function buildTeamResult(
     ptDiff: result.ptDiff,
     startingPoints: parseFloat(result.startingPoints),
     draftOrder: result.draftOrder,
+    seed: result.seed,
     playoffBerth: result.playoffBerth,
     divRound: result.divRound,
     confRound: result.confRound,
@@ -90,6 +92,34 @@ function buildTeamResult(
     markToMarket: parseFloat(result.markToMarket),
   };
 }
+
+// PATCH /results/seed  — set a team's playoff seed for a season (admin only)
+router.patch("/results/seed", async (req, res): Promise<void> => {
+  const adminKey = process.env["ADMIN_API_KEY"];
+  const auth = req.headers["authorization"];
+  if (!adminKey || auth !== `Bearer ${adminKey}`) {
+    res.status(401).json({ error: "Unauthorized" });
+    return;
+  }
+  const { teamId, seasonYear, seed } = req.body as { teamId: number; seasonYear: number; seed: number | null };
+  if (!teamId || !seasonYear) {
+    res.status(400).json({ error: "teamId and seasonYear required" });
+    return;
+  }
+  const seasonId = await resolveSeasonId(seasonYear);
+  if (!seasonId) {
+    res.status(400).json({ error: `Season ${seasonYear} not found` });
+    return;
+  }
+  await db
+    .insert(teamResultsTable)
+    .values({ teamId, seasonId, seed })
+    .onConflictDoUpdate({
+      target: [teamResultsTable.teamId, teamResultsTable.seasonId],
+      set: { seed },
+    });
+  res.json({ teamId, seasonYear, seed });
+});
 
 // GET /results?season=YYYY
 router.get("/results", async (req, res): Promise<void> => {

@@ -803,6 +803,9 @@ components:
           type: number
         markToMarket:
           type: number
+        seed:
+          type: ["integer", "null"]
+          description: "Playoff seed within conference (1–7). Null if team missed playoffs or seed not yet set."
       required:
         - teamId
         - teamName

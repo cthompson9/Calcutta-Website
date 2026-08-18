@@ -413,6 +413,58 @@ function buildMcpServer() {
     },
   );
 
+  // ── Seed tools ────────────────────────────────────────────────────────────
+
+  server.tool(
+    "get_team_seed",
+    "Returns the stored playoff seed (1–7) for a team in a given season, or null if not set / team missed playoffs.",
+    { ...teamInput, ...seasonInput },
+    async ({ team, season }) => {
+      const t = await findTeam(team);
+      if (!t) return text(`Team not found: ${team}`);
+      const year = season ?? await defaultSeasonYear();
+      const sid = await resolveSeasonId(year);
+      if (!sid) return text(`Season ${year} not found`);
+      const [r] = await db
+        .select({ seed: teamResultsTable.seed })
+        .from(teamResultsTable)
+        .where(and(eq(teamResultsTable.teamId, t.id), eq(teamResultsTable.seasonId, sid)));
+      return text(r?.seed != null ? r.seed : null);
+    },
+  );
+
+  server.tool(
+    "set_team_seed",
+    "Set the playoff seed (1–7) for a team in a given season. Use null to clear a seed. Requires ADMIN_API_KEY.",
+    {
+      team:     z.string().describe("Full or partial team name, e.g. 'Seattle Seahawks' or 'Seahawks'"),
+      seed:     z.number().int().min(1).max(7).nullable().describe("Playoff seed 1–7 (1 = best), or null to clear"),
+      season:   z.number().optional().describe("Season year (e.g. 2025). Defaults to most recent completed season."),
+      adminKey: z.string().describe("Admin API key — only the pool admin knows this"),
+    },
+    async ({ team, seed, season, adminKey }) => {
+      const expectedKey = process.env["ADMIN_API_KEY"];
+      if (!expectedKey || adminKey !== expectedKey) {
+        return text("Error: Invalid admin key. Only the pool admin can set seeds.");
+      }
+      const t = await findTeam(team);
+      if (!t) return text(`Team not found: ${team}`);
+      const year = season ?? await defaultSeasonYear();
+      const sid = await resolveSeasonId(year);
+      if (!sid) return text(`Season ${year} not found`);
+      await db
+        .insert(teamResultsTable)
+        .values({ teamId: t.id, seasonId: sid, seed })
+        .onConflictDoUpdate({
+          target: [teamResultsTable.teamId, teamResultsTable.seasonId],
+          set: { seed },
+        });
+      return text(seed != null
+        ? `Seed set: ${t.name} · ${year} → #${seed}`
+        : `Seed cleared: ${t.name} · ${year}`);
+    },
+  );
+
   // ── MTM snapshot tool ─────────────────────────────────────────────────────
 
   server.tool(

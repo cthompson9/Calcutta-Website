@@ -29,4 +29,7 @@ export interface TeamResultRow {
   netReturn: number;
   netPctReturn: number;
   markToMarket: number;
+  /** Playoff seed within conference (1–7). Null if missed playoffs or not yet set.
+   * @nullable */
+  seed?: number | null;
 }

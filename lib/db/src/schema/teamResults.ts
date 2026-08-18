@@ -26,6 +26,9 @@ export const teamResultsTable = pgTable(
     sbBerth: boolean("sb_berth").notNull().default(false),
     winSuperBowl: boolean("win_super_bowl").notNull().default(false),
 
+    // Playoff seed within conference (1=best, 7=worst wildcard). Set via MCP.
+    seed: integer("seed"),
+
     // Financial results
     realizedReturn: numeric("realized_return", { precision: 10, scale: 4 }).notNull().default("0"),
     realizedMultiple: numeric("realized_multiple", { precision: 10, scale: 7 }).notNull().default("0"),

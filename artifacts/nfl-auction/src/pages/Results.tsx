@@ -295,11 +295,7 @@ type ExpandedTeamRow = {
   mtm: number;
 };
 
-type BTSortKey = keyof Pick<
-  ExpandedTeamRow,
-  "ownerName" | "teamName" | "conference" | "division" | "seed" | "pct" |
-  "wins" | "ptDiff" | "cost" | "gross" | "net" | "mtm"
->;
+type BTSortKey = "team" | "conf" | "div" | "seed" | "owner" | "pct" | "record" | "pd" | "cost" | "gross" | "net" | "mtm";
 
 /**
  * Compute playoff seeds per conference.
@@ -367,190 +363,264 @@ function expandTeams(rows: TeamResultRow[], seeds: Map<number, number | null>): 
 }
 
 function ByTeamView({ rows, isComplete }: { rows: TeamResultRow[]; isComplete: boolean }) {
+  const [splitByOwner, setSplitByOwner] = useState(false);
   const [sortKey, setSortKey] = useState<BTSortKey>(isComplete ? "net" : "mtm");
   const [sortAsc, setSortAsc] = useState(false);
   const [search, setSearch] = useState("");
 
   if (!rows.length) return <Empty />;
 
-  const seeds = computeSeeds(rows);
-  const expanded = expandTeams(rows, seeds);
-
-  const q = search.trim().toLowerCase();
-  const filtered = q
-    ? expanded.filter(
-        (r) =>
-          r.teamName.toLowerCase().includes(q) ||
-          r.ownerName.toLowerCase().includes(q) ||
-          r.conference.toLowerCase().includes(q) ||
-          r.division.toLowerCase().includes(q),
-      )
-    : expanded;
-
-  const sorted = [...filtered].sort((a, b) => {
-    let diff = 0;
-    if (sortKey === "ownerName") diff = a.ownerName.localeCompare(b.ownerName);
-    else if (sortKey === "teamName") diff = a.teamName.localeCompare(b.teamName);
-    else if (sortKey === "conference") diff = a.conference.localeCompare(b.conference) || (a.division ?? "").localeCompare(b.division ?? "");
-    else if (sortKey === "division") diff = a.division.localeCompare(b.division);
-    else if (sortKey === "seed") {
-      // nulls to bottom
-      if (a.seed === null && b.seed === null) diff = 0;
-      else if (a.seed === null) diff = 1;
-      else if (b.seed === null) diff = -1;
-      else diff = a.seed - b.seed;
-    }
-    else if (sortKey === "pct") diff = a.pct - b.pct;
-    else if (sortKey === "wins") diff = a.wins - b.wins;
-    else if (sortKey === "ptDiff") diff = a.ptDiff - b.ptDiff;
-    else if (sortKey === "cost") diff = a.cost - b.cost;
-    else if (sortKey === "gross") diff = a.gross - b.gross;
-    else if (sortKey === "net") diff = a.net - b.net;
-    else if (sortKey === "mtm") diff = a.mtm - b.mtm;
-    // For seed ascending = best first (1 before 7), so flip default direction
-    return sortKey === "seed" ? (sortAsc ? diff : diff) : (sortAsc ? diff : -diff);
-  });
+  // Prefer API-stored seeds; fall back to client-computed when all null.
+  const hasApiSeeds = rows.some((r) => r.seed != null);
+  const computedSeeds = hasApiSeeds ? new Map<number, number | null>() : computeSeeds(rows);
+  const getSeed = (row: TeamResultRow): number | null =>
+    row.seed != null ? row.seed : (computedSeeds.get(row.teamId) ?? null);
 
   function handleSort(key: BTSortKey) {
     if (sortKey === key) setSortAsc((v) => !v);
-    else {
-      setSortKey(key);
-      // seed: default ascending (1 = best); all others: default descending
-      setSortAsc(key === "seed" ? true : false);
-    }
+    else { setSortKey(key); setSortAsc(key === "seed"); }
   }
 
-  function SH({ label, k, className }: { label: string; k: BTSortKey; className?: string }) {
+  function SH({ label, k, align = "right" }: { label: string; k: BTSortKey; align?: "left" | "center" | "right" }) {
     const active = sortKey === k;
     return (
       <button
         onClick={() => handleSort(k)}
         className={cn(
-          "font-mono font-bold uppercase tracking-widest text-xs whitespace-nowrap hover:text-foreground transition-colors",
+          "font-mono font-bold uppercase tracking-widest text-xs whitespace-nowrap hover:text-foreground transition-colors w-full",
           active ? "text-primary" : "text-muted-foreground",
-          className,
+          align === "left" ? "text-left" : align === "center" ? "text-center" : "text-right",
         )}
       >
-        {label}
-        {active ? (sortAsc ? " ↑" : " ↓") : ""}
+        {label}{active ? (sortAsc ? " ↑" : " ↓") : ""}
       </button>
     );
   }
 
+  function SeedCell({ seed }: { seed: number | null }) {
+    if (seed == null) return <span className="text-muted-foreground/40">—</span>;
+    return (
+      <span className={cn("font-bold font-mono text-sm",
+        seed <= 2 ? "text-yellow-600" : seed <= 4 ? "text-foreground" : "text-muted-foreground",
+      )}>
+        {seed}
+      </span>
+    );
+  }
+
+  function ConfBadge({ conf }: { conf: string }) {
+    return (
+      <span className={cn("text-[10px] font-mono font-bold px-1.5 py-0.5",
+        conf === "AFC"
+          ? "bg-blue-100 text-blue-700 dark:bg-blue-900 dark:text-blue-300"
+          : "bg-red-100 text-red-700 dark:bg-red-900 dark:text-red-300",
+      )}>
+        {conf}
+      </span>
+    );
+  }
+
+  // ── Filter ─────────────────────────────────────────────────────────────────
+  const q = search.trim().toLowerCase();
+  const baseFiltered = q
+    ? rows.filter((r) =>
+        r.teamName.toLowerCase().includes(q) ||
+        r.conference.toLowerCase().includes(q) ||
+        r.division.toLowerCase().includes(q) ||
+        r.owners.some((o) => o.bidderName.toLowerCase().includes(q)),
+      )
+    : rows;
+
+  // ── Seed sort helper (nulls always to bottom regardless of direction) ───────
+  function seedCmp(a: number | null, b: number | null, asc: boolean): number {
+    if (a == null && b == null) return 0;
+    if (a == null) return 1;
+    if (b == null) return -1;
+    return asc ? a - b : b - a;
+  }
+
+  // ══════════════════════════════════════════════════════════════════════════
+  // TEAM MODE — one row per team, owners listed inline
+  // ══════════════════════════════════════════════════════════════════════════
+  const teamSorted = [...baseFiltered].sort((a, b) => {
+    const sa = getSeed(a), sb = getSeed(b);
+    let diff = 0;
+    switch (sortKey) {
+      case "team":   diff = a.teamName.localeCompare(b.teamName); break;
+      case "conf":   diff = a.conference.localeCompare(b.conference); break;
+      case "div":    diff = a.division.localeCompare(b.division); break;
+      case "seed":   return seedCmp(sa, sb, sortAsc);
+      case "owner":  diff = (a.owners[0]?.bidderName ?? "").localeCompare(b.owners[0]?.bidderName ?? ""); break;
+      case "record": diff = a.wins - b.wins; break;
+      case "pd":     diff = a.ptDiff - b.ptDiff; break;
+      case "cost":   diff = a.cost - b.cost; break;
+      case "gross":  diff = a.realizedReturn - b.realizedReturn; break;
+      case "net":    diff = a.netReturn - b.netReturn; break;
+      case "mtm":    diff = a.markToMarket - b.markToMarket; break;
+      default: break;
+    }
+    return sortAsc ? diff : -diff;
+  });
+
+  // ══════════════════════════════════════════════════════════════════════════
+  // OWNER MODE — one row per owner-team (expanded)
+  // ══════════════════════════════════════════════════════════════════════════
+  const expandedSeeds = hasApiSeeds
+    ? new Map(baseFiltered.map((r) => [r.teamId, r.seed ?? null]))
+    : computedSeeds;
+  const expanded = expandTeams(baseFiltered, expandedSeeds);
+
+  const ownerSorted = [...expanded].sort((a, b) => {
+    let diff = 0;
+    switch (sortKey) {
+      case "team":   diff = a.teamName.localeCompare(b.teamName); break;
+      case "conf":   diff = a.conference.localeCompare(b.conference); break;
+      case "div":    diff = a.division.localeCompare(b.division); break;
+      case "seed":   return seedCmp(a.seed, b.seed, sortAsc);
+      case "owner":  diff = a.ownerName.localeCompare(b.ownerName); break;
+      case "pct":    diff = a.pct - b.pct; break;
+      case "record": diff = a.wins - b.wins; break;
+      case "pd":     diff = a.ptDiff - b.ptDiff; break;
+      case "cost":   diff = a.cost - b.cost; break;
+      case "gross":  diff = a.gross - b.gross; break;
+      case "net":    diff = a.net - b.net; break;
+      case "mtm":    diff = a.mtm - b.mtm; break;
+      default: break;
+    }
+    return sortAsc ? diff : -diff;
+  });
+
+  const rowCount = splitByOwner ? ownerSorted.length : teamSorted.length;
+
   return (
     <div className="space-y-3">
-      {/* Search */}
-      <input
-        type="search"
-        value={search}
-        onChange={(e) => setSearch(e.target.value)}
-        placeholder="Filter by owner, team, conference, division…"
-        className="w-full md:w-80 border border-border bg-background px-3 py-1.5 text-sm font-mono placeholder:text-muted-foreground focus:outline-none focus:ring-1 focus:ring-primary"
-      />
+      {/* Controls */}
+      <div className="flex flex-wrap items-center gap-2">
+        <input
+          type="search"
+          value={search}
+          onChange={(e) => setSearch(e.target.value)}
+          placeholder="Filter by team, owner, conference, division…"
+          className="flex-1 min-w-48 md:max-w-72 border border-border bg-background px-3 py-1.5 text-sm font-mono placeholder:text-muted-foreground focus:outline-none focus:ring-1 focus:ring-primary"
+        />
+        <button
+          onClick={() => setSplitByOwner((v) => !v)}
+          className={cn(
+            "border px-3 py-1.5 text-xs font-mono font-bold uppercase tracking-widest transition-colors",
+            splitByOwner
+              ? "bg-primary text-primary-foreground border-primary"
+              : "border-border text-muted-foreground hover:bg-muted hover:text-foreground",
+          )}
+        >
+          Split by Owner
+        </button>
+      </div>
 
-      {/* Table — horizontally scrollable */}
+      {/* Table */}
       <div className="border border-border bg-card overflow-x-auto">
         <table className="text-sm whitespace-nowrap">
           <thead>
             <tr className="border-b border-border bg-muted/60">
-              <th className="px-3 py-2.5 text-left sticky left-0 bg-muted/60 z-10">
-                <SH label="Owner" k="ownerName" className="text-left" />
+              {/* Team — always leftmost sticky */}
+              <th className="px-3 py-2.5 text-left sticky left-0 bg-muted/60 z-10 min-w-[160px]">
+                <SH label="Team" k="team" align="left" />
               </th>
-              <th className="px-3 py-2.5 text-left"><SH label="Team" k="teamName" className="text-left" /></th>
-              <th className="px-3 py-2.5 text-center"><SH label="Conf" k="conference" /></th>
-              <th className="px-3 py-2.5 text-left"><SH label="Div" k="division" className="text-left" /></th>
-              <th className="px-3 py-2.5 text-center"><SH label="#" k="seed" /></th>
-              <th className="px-3 py-2.5 text-center"><SH label="%" k="pct" /></th>
-              <th className="px-3 py-2.5 text-center"><SH label="Record" k="wins" /></th>
-              <th className="px-3 py-2.5 text-right"><SH label="Net Diff" k="ptDiff" /></th>
+              <th className="px-3 py-2.5 text-center"><SH label="Conf" k="conf" align="center" /></th>
+              <th className="px-3 py-2.5 text-left"><SH label="Div" k="div" align="left" /></th>
+              <th className="px-3 py-2.5 text-center"><SH label="#" k="seed" align="center" /></th>
+              <th className="px-3 py-2.5 text-left">
+                <SH label={splitByOwner ? "Owner" : "Owner(s)"} k="owner" align="left" />
+              </th>
+              {splitByOwner && (
+                <th className="px-3 py-2.5 text-center"><SH label="%" k="pct" align="center" /></th>
+              )}
+              <th className="px-3 py-2.5 text-center"><SH label="Record" k="record" align="center" /></th>
+              <th className="px-3 py-2.5 text-right"><SH label="Net Diff" k="pd" /></th>
               <th className="px-3 py-2.5 text-right"><SH label="Cost" k="cost" /></th>
               <th className="px-3 py-2.5 text-right"><SH label="Gross" k="gross" /></th>
-              <th className="px-3 py-2.5 text-right font-bold text-foreground"><SH label="Net" k="net" /></th>
-              <th className="px-3 py-2.5 text-right font-bold text-foreground"><SH label="MTM" k="mtm" /></th>
+              <th className="px-3 py-2.5 text-right"><SH label="Net" k="net" /></th>
+              <th className="px-3 py-2.5 text-right"><SH label="MTM" k="mtm" /></th>
             </tr>
           </thead>
           <tbody>
-            {sorted.map((row, i) => (
-              <tr
-                key={`${row.teamId}-${row.bidderId}`}
-                className={cn(
-                  "border-b border-border last:border-0 hover:bg-muted/30 transition-colors",
-                  row.winSuperBowl && "bg-yellow-50/40 dark:bg-yellow-900/10",
-                )}
-              >
-                {/* Owner — sticky */}
-                <td className="px-3 py-2.5 font-medium sticky left-0 bg-card z-10 border-r border-border/50">
-                  {row.ownerName.split(" ")[0]}
-                </td>
-                {/* Team */}
-                <td className="px-3 py-2.5 font-medium">
-                  <div className="flex items-center gap-1.5">
-                    {row.winSuperBowl && (
-                      <img src="/sleigh-monkey.png" alt="🏆" className="w-4 h-4 object-contain shrink-0" />
-                    )}
-                    {row.teamName}
-                  </div>
-                </td>
-                {/* Conf */}
-                <td className="px-3 py-2.5 text-center">
-                  <span className={cn(
-                    "text-[10px] font-mono font-bold px-1.5 py-0.5",
-                    row.conference === "AFC"
-                      ? "bg-blue-100 text-blue-700 dark:bg-blue-900 dark:text-blue-300"
-                      : "bg-red-100 text-red-700 dark:bg-red-900 dark:text-red-300",
-                  )}>
-                    {row.conference}
-                  </span>
-                </td>
-                {/* Div */}
-                <td className="px-3 py-2.5 text-muted-foreground font-mono text-xs">{row.division}</td>
-                {/* Seed */}
-                <td className="px-3 py-2.5 text-center font-mono text-sm">
-                  {row.seed !== null ? (
-                    <span className={cn(
-                      "font-bold",
-                      row.seed <= 2 ? "text-yellow-600" : row.seed <= 4 ? "text-foreground" : "text-muted-foreground",
-                    )}>
-                      {row.seed}
-                    </span>
-                  ) : (
-                    <span className="text-muted-foreground/40">—</span>
-                  )}
-                </td>
-                {/* % ownership */}
-                <td className="px-3 py-2.5 text-center font-mono text-xs text-muted-foreground">
-                  {row.pct}%
-                </td>
-                {/* Record */}
-                <td className="px-3 py-2.5 text-center font-mono text-xs">{formatRecord(row.wins)}</td>
-                {/* Net Diff */}
-                <td className={cn("px-3 py-2.5 text-right font-mono text-xs", row.ptDiff >= 0 ? "text-green-600" : "text-red-500")}>
-                  {row.ptDiff >= 0 ? "+" : ""}{row.ptDiff}
-                </td>
-                {/* Cost */}
-                <td className="px-3 py-2.5 text-right font-mono text-sm text-muted-foreground">
-                  {formatCurrency(row.cost)}
-                </td>
-                {/* Gross */}
-                <td className="px-3 py-2.5 text-right font-mono text-sm text-muted-foreground">
-                  {isComplete ? formatCurrency(row.gross) : "—"}
-                </td>
-                {/* Net */}
-                <td className={cn("px-3 py-2.5 text-right font-mono font-bold text-sm", row.net >= 0 ? "text-green-600" : "text-red-600")}>
-                  {isComplete ? (row.net >= 0 ? "+" : "") + formatCurrency(row.net) : "—"}
-                </td>
-                {/* MTM */}
-                <td className={cn("px-3 py-2.5 text-right font-mono font-bold text-sm", row.mtm >= 0 ? "text-green-600" : "text-red-600")}>
-                  {row.mtm !== 0 ? (row.mtm >= 0 ? "+" : "") + formatCurrency(row.mtm) : "—"}
-                </td>
-              </tr>
-            ))}
+            {splitByOwner
+              ? ownerSorted.map((row) => (
+                  <tr key={`${row.teamId}-${row.bidderId}`}
+                    className={cn("border-b border-border last:border-0 hover:bg-muted/30 transition-colors",
+                      row.winSuperBowl && "bg-yellow-50/40 dark:bg-yellow-900/10")}>
+                    <td className="px-3 py-2.5 font-medium sticky left-0 bg-card z-10 border-r border-border/50">
+                      <div className="flex items-center gap-1.5">
+                        {row.winSuperBowl && <img src="/sleigh-monkey.png" alt="" className="w-4 h-4 object-contain shrink-0" />}
+                        {row.teamName}
+                      </div>
+                    </td>
+                    <td className="px-3 py-2.5 text-center"><ConfBadge conf={row.conference} /></td>
+                    <td className="px-3 py-2.5 text-muted-foreground font-mono text-xs">{row.division}</td>
+                    <td className="px-3 py-2.5 text-center"><SeedCell seed={row.seed} /></td>
+                    <td className="px-3 py-2.5 text-sm">{row.ownerName.split(" ")[0]}</td>
+                    <td className="px-3 py-2.5 text-center font-mono text-xs text-muted-foreground">{row.pct}%</td>
+                    <td className="px-3 py-2.5 text-center font-mono text-xs">{formatRecord(row.wins)}</td>
+                    <td className={cn("px-3 py-2.5 text-right font-mono text-xs", row.ptDiff >= 0 ? "text-green-600" : "text-red-500")}>
+                      {row.ptDiff >= 0 ? "+" : ""}{row.ptDiff}
+                    </td>
+                    <td className="px-3 py-2.5 text-right font-mono text-sm text-muted-foreground">{formatCurrency(row.cost)}</td>
+                    <td className="px-3 py-2.5 text-right font-mono text-sm text-muted-foreground">
+                      {isComplete ? formatCurrency(row.gross) : "—"}
+                    </td>
+                    <td className={cn("px-3 py-2.5 text-right font-mono font-bold text-sm", row.net >= 0 ? "text-green-600" : "text-red-600")}>
+                      {isComplete ? (row.net >= 0 ? "+" : "") + formatCurrency(row.net) : "—"}
+                    </td>
+                    <td className={cn("px-3 py-2.5 text-right font-mono font-bold text-sm", row.mtm >= 0 ? "text-green-600" : "text-red-600")}>
+                      {row.mtm !== 0 ? (row.mtm >= 0 ? "+" : "") + formatCurrency(row.mtm) : "—"}
+                    </td>
+                  </tr>
+                ))
+              : teamSorted.map((row) => {
+                  const seed = getSeed(row);
+                  const ownerLabel = row.owners.length === 1
+                    ? row.owners[0].bidderName.split(" ")[0]
+                    : row.owners.map((o) =>
+                        `${o.bidderName.split(" ")[0]}${o.ownershipShare < 1 ? ` (${Math.round(o.ownershipShare * 100)}%)` : ""}`
+                      ).join(" / ");
+                  return (
+                    <tr key={row.teamId}
+                      className={cn("border-b border-border last:border-0 hover:bg-muted/30 transition-colors",
+                        row.winSuperBowl && "bg-yellow-50/40 dark:bg-yellow-900/10")}>
+                      {/* Team — sticky */}
+                      <td className="px-3 py-2.5 font-medium sticky left-0 bg-card z-10 border-r border-border/50">
+                        <div className="flex items-center gap-1.5">
+                          {row.winSuperBowl && <img src="/sleigh-monkey.png" alt="" className="w-4 h-4 object-contain shrink-0" />}
+                          {row.teamName}
+                        </div>
+                      </td>
+                      <td className="px-3 py-2.5 text-center"><ConfBadge conf={row.conference} /></td>
+                      <td className="px-3 py-2.5 text-muted-foreground font-mono text-xs">{row.division}</td>
+                      <td className="px-3 py-2.5 text-center"><SeedCell seed={seed} /></td>
+                      <td className="px-3 py-2.5 text-sm text-muted-foreground">{ownerLabel}</td>
+                      <td className="px-3 py-2.5 text-center font-mono text-xs">{formatRecord(row.wins)}</td>
+                      <td className={cn("px-3 py-2.5 text-right font-mono text-xs", row.ptDiff >= 0 ? "text-green-600" : "text-red-500")}>
+                        {row.ptDiff >= 0 ? "+" : ""}{row.ptDiff}
+                      </td>
+                      <td className="px-3 py-2.5 text-right font-mono text-sm text-muted-foreground">{formatCurrency(row.cost)}</td>
+                      <td className="px-3 py-2.5 text-right font-mono text-sm text-muted-foreground">
+                        {isComplete ? formatCurrency(row.realizedReturn) : "—"}
+                      </td>
+                      <td className={cn("px-3 py-2.5 text-right font-mono font-bold text-sm", row.netReturn >= 0 ? "text-green-600" : "text-red-600")}>
+                        {isComplete ? (row.netReturn >= 0 ? "+" : "") + formatCurrency(row.netReturn) : "—"}
+                      </td>
+                      <td className={cn("px-3 py-2.5 text-right font-mono font-bold text-sm", row.markToMarket >= 0 ? "text-green-600" : "text-red-600")}>
+                        {row.markToMarket !== 0 ? (row.markToMarket >= 0 ? "+" : "") + formatCurrency(row.markToMarket) : "—"}
+                      </td>
+                    </tr>
+                  );
+                })
+            }
           </tbody>
         </table>
       </div>
 
       <p className="text-xs text-muted-foreground font-mono">
-        {sorted.length} rows · {isComplete ? "PO=$50 · DR=$100 · CR=$200 · SB Berth=$400 · Win SB=$800" : "financials scale to ownership %"}
+        {rowCount} {splitByOwner ? "owner-team rows" : "teams"} · {isComplete ? "PO=$50 · DR=$100 · CR=$200 · SB Berth=$400 · Win SB=$800" : "MTM = live valuation"}
       </p>
     </div>
   );
