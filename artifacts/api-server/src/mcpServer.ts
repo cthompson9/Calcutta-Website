@@ -17,6 +17,7 @@ import {
   teamResultsTable,
   seasonsTable,
   tradesTable,
+  mtmSnapshotsTable,
 } from "@workspace/db";
 import type { Router, IRouter, Request, Response } from "express";
 import { Router as ExpressRouter } from "express";
@@ -405,6 +406,68 @@ function buildMcpServer() {
 
       return text(
         `Trade #${tradeId} has been ${status.toUpperCase()}. ${status === "approved" ? "It now affects owner standings and returns." : "It has been rejected and will not affect results."}`,
+      );
+    },
+  );
+
+  // ── MTM snapshot tool ─────────────────────────────────────────────────────
+
+  server.tool(
+    "set_team_mtm",
+    "Record or update the mark-to-market value for a team in a specific week. Requires the ADMIN_API_KEY as adminKey. Week 0 = pre-season, 1–18 = regular season, 19+ = playoffs.",
+    {
+      team:         z.string().describe("Full or partial team name, e.g. 'Seattle Seahawks' or 'Seahawks'"),
+      weekNum:      z.number().int().min(0).max(22).describe("Week number: 0=pre-season, 1–18=regular season, 19+=playoffs"),
+      mtmValue:     z.number().describe("Mark-to-market value in dollars (net profit/loss vs auction cost, e.g. 320 or -45.50)"),
+      season:       z.number().optional().describe("Season year (e.g. 2026). Defaults to the active season."),
+      snapshotDate: z.string().optional().describe("Snapshot date as YYYY-MM-DD. Defaults to today."),
+      adminKey:     z.string().describe("Admin API key — only the pool admin knows this"),
+    },
+    async ({ team, weekNum, mtmValue, season, snapshotDate, adminKey }) => {
+      const expectedKey = process.env["ADMIN_API_KEY"];
+      if (!expectedKey || adminKey !== expectedKey) {
+        return text("Error: Invalid admin key. Only the pool admin can record MTM values.");
+      }
+
+      const t = await findTeam(team);
+      if (!t) return text(`Team not found: ${team}`);
+
+      let year = season;
+      if (!year) {
+        const activeRows = await db
+          .select({ year: seasonsTable.year })
+          .from(seasonsTable)
+          .where(eq(seasonsTable.isActive, true))
+          .limit(1);
+        year = activeRows[0]?.year ?? new Date().getFullYear();
+      }
+
+      const sid = await resolveSeasonId(year);
+      if (!sid) return text(`Season ${year} not found`);
+
+      const today = snapshotDate ?? new Date().toISOString().slice(0, 10);
+
+      const [snap] = await db
+        .insert(mtmSnapshotsTable)
+        .values({
+          teamId: t.id,
+          seasonId: sid,
+          weekNum,
+          snapshotDate: today,
+          mtmValue: mtmValue.toString(),
+        })
+        .onConflictDoUpdate({
+          target: [mtmSnapshotsTable.teamId, mtmSnapshotsTable.seasonId, mtmSnapshotsTable.weekNum],
+          set: {
+            snapshotDate: today,
+            mtmValue: mtmValue.toString(),
+          },
+        })
+        .returning();
+
+      const weekLabel = weekNum === 0 ? "Pre-season" : weekNum <= 18 ? `Week ${weekNum}` : `Playoff Wk ${weekNum - 18}`;
+      return text(
+        `MTM snapshot saved: ${t.name} · ${weekLabel} · ${year} = $${mtmValue >= 0 ? "+" : ""}${mtmValue} (snapshot ID: ${snap.id})`,
       );
     },
   );

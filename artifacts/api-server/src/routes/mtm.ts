@@ -1,7 +1,14 @@
-import { Router, type IRouter } from "express";
+import { Router, type IRouter, type Request } from "express";
 import { eq, and } from "drizzle-orm";
 import { db, teamsTable, biddersTable, teamBiddersTable, mtmSnapshotsTable, seasonsTable } from "@workspace/db";
 import { GetMtmSnapshotsQueryParams, UpsertMtmSnapshotBody } from "@workspace/api-zod";
+
+function isAdminRequest(req: Request): boolean {
+  const adminKey = process.env["ADMIN_API_KEY"];
+  if (!adminKey) return false;
+  const auth = req.headers["authorization"];
+  return auth === `Bearer ${adminKey}`;
+}
 
 const router: IRouter = Router();
 
@@ -131,6 +138,11 @@ router.get("/mtm", async (req, res): Promise<void> => {
 });
 
 router.post("/mtm", async (req, res): Promise<void> => {
+  if (!isAdminRequest(req)) {
+    res.status(401).json({ error: "Unauthorized. This endpoint requires the ADMIN_API_KEY bearer token." });
+    return;
+  }
+
   const parsed = UpsertMtmSnapshotBody.safeParse(req.body);
   if (!parsed.success) {
     res.status(400).json({ error: parsed.error.message });
