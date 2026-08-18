@@ -135,9 +135,13 @@ router.get("/results", async (req, res): Promise<void> => {
     ownershipMap.get(o.teamId)!.push(o);
   }
 
-  const rows = teams.map((t) =>
-    buildTeamResult(t, resultsMap.get(t.id) ?? null, ownershipMap.get(t.id) ?? []),
-  );
+  // Only include teams that have bidders or results for this specific season.
+  // Without this filter every team appears for seasons that haven't been auctioned yet.
+  const rows = teams
+    .filter((t) => ownershipMap.has(t.id) || resultsMap.has(t.id))
+    .map((t) =>
+      buildTeamResult(t, resultsMap.get(t.id) ?? null, ownershipMap.get(t.id) ?? []),
+    );
 
   res.json(rows);
 });
