@@ -1,5 +1,5 @@
 import { Link, useLocation } from "wouter";
-import { Users, LayoutDashboard, Shield, Trophy, BarChart2, ArrowLeftRight, TrendingUp } from "lucide-react";
+import { LayoutDashboard, Trophy, ArrowLeftRight, TrendingUp } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { ReactNode } from "react";
 
@@ -14,8 +14,6 @@ export function Shell({ children }: ShellProps) {
     { href: "/", label: "Results", icon: Trophy },
     { href: "/mtm", label: "M2M Tracker", icon: TrendingUp },
     { href: "/trades", label: "Trades", icon: ArrowLeftRight },
-    { href: "/teams", label: "Teams", icon: Shield },
-    { href: "/bidders", label: "Bidders", icon: Users },
     { href: "/dashboard", label: "Auction Board", icon: LayoutDashboard },
   ];
 

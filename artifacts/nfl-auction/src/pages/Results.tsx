@@ -271,138 +271,278 @@ function TeamSubRow({
 
 // ─── By Team ─────────────────────────────────────────────────────────────────
 
-type SortKey = "name" | "cost" | "wins" | "ptDiff" | "realizedReturn" | "netReturn" | "markToMarket";
+type ExpandedTeamRow = {
+  // identity
+  teamId: number;
+  teamName: string;
+  conference: string;
+  division: string;
+  seed: number | null;
+  // ownership
+  bidderId: number;
+  ownerName: string;
+  pct: number; // 1–100
+  // NFL stats (team-level, not scaled)
+  wins: number;
+  ptDiff: number;
+  playoffBerth: boolean;
+  sbBerth: boolean;
+  winSuperBowl: boolean;
+  // financials (scaled by ownership share)
+  cost: number;
+  gross: number;
+  net: number;
+  mtm: number;
+};
+
+type BTSortKey = keyof Pick<
+  ExpandedTeamRow,
+  "ownerName" | "teamName" | "conference" | "division" | "seed" | "pct" |
+  "wins" | "ptDiff" | "cost" | "gross" | "net" | "mtm"
+>;
+
+/**
+ * Compute playoff seeds per conference.
+ * Division winners (best record in each division that made playoffs) → seeds 1-4,
+ * sorted by wins desc then ptDiff desc.
+ * Wild cards → seeds 5-7, same sort.
+ * Non-playoff teams → null.
+ */
+function computeSeeds(rows: TeamResultRow[]): Map<number, number | null> {
+  const map = new Map<number, number | null>();
+  const byRecord = (a: TeamResultRow, b: TeamResultRow) =>
+    a.wins !== b.wins ? b.wins - a.wins : b.ptDiff - a.ptDiff;
+
+  for (const conf of ["AFC", "NFC"]) {
+    const confTeams = rows.filter((t) => t.conference === conf);
+    const playoff = confTeams.filter((t) => t.playoffBerth);
+
+    // Division winner = best-record team per division that made the playoffs
+    const bestInDiv = new Map<string, TeamResultRow>();
+    for (const t of confTeams) {
+      const cur = bestInDiv.get(t.division);
+      if (!cur || byRecord(t, cur) < 0) bestInDiv.set(t.division, t);
+    }
+    const divWinnerIds = new Set(
+      [...bestInDiv.values()].filter((t) => t.playoffBerth).map((t) => t.teamId),
+    );
+
+    const divWinners = [...playoff.filter((t) => divWinnerIds.has(t.teamId))].sort(byRecord);
+    const wildCards = [...playoff.filter((t) => !divWinnerIds.has(t.teamId))].sort(byRecord);
+
+    divWinners.forEach((t, i) => map.set(t.teamId, i + 1));
+    wildCards.forEach((t, i) => map.set(t.teamId, i + 5));
+    confTeams.filter((t) => !t.playoffBerth).forEach((t) => map.set(t.teamId, null));
+  }
+  return map;
+}
+
+function expandTeams(rows: TeamResultRow[], seeds: Map<number, number | null>): ExpandedTeamRow[] {
+  const result: ExpandedTeamRow[] = [];
+  for (const team of rows) {
+    for (const owner of team.owners) {
+      const s = owner.ownershipShare;
+      result.push({
+        teamId: team.teamId,
+        teamName: team.teamName,
+        conference: team.conference,
+        division: team.division,
+        seed: seeds.get(team.teamId) ?? null,
+        bidderId: owner.bidderId,
+        ownerName: owner.bidderName,
+        pct: Math.round(s * 100),
+        wins: team.wins,
+        ptDiff: team.ptDiff,
+        playoffBerth: team.playoffBerth,
+        sbBerth: team.sbBerth,
+        winSuperBowl: team.winSuperBowl,
+        cost: Math.round(team.cost * s * 100) / 100,
+        gross: Math.round(team.realizedReturn * s * 100) / 100,
+        net: Math.round(team.netReturn * s * 100) / 100,
+        mtm: Math.round(team.markToMarket * s * 100) / 100,
+      });
+    }
+  }
+  return result;
+}
 
 function ByTeamView({ rows, isComplete }: { rows: TeamResultRow[]; isComplete: boolean }) {
-  const [sortKey, setSortKey] = useState<SortKey>(isComplete ? "netReturn" : "cost");
+  const [sortKey, setSortKey] = useState<BTSortKey>(isComplete ? "net" : "mtm");
   const [sortAsc, setSortAsc] = useState(false);
-  const [conference, setConference] = useState<"ALL" | "AFC" | "NFC">("ALL");
+  const [search, setSearch] = useState("");
 
-  const filtered = rows.filter((r) => conference === "ALL" || r.conference === conference);
+  if (!rows.length) return <Empty />;
+
+  const seeds = computeSeeds(rows);
+  const expanded = expandTeams(rows, seeds);
+
+  const q = search.trim().toLowerCase();
+  const filtered = q
+    ? expanded.filter(
+        (r) =>
+          r.teamName.toLowerCase().includes(q) ||
+          r.ownerName.toLowerCase().includes(q) ||
+          r.conference.toLowerCase().includes(q) ||
+          r.division.toLowerCase().includes(q),
+      )
+    : expanded;
 
   const sorted = [...filtered].sort((a, b) => {
     let diff = 0;
-    if (sortKey === "name") diff = a.teamName.localeCompare(b.teamName);
-    else if (sortKey === "cost") diff = a.cost - b.cost;
+    if (sortKey === "ownerName") diff = a.ownerName.localeCompare(b.ownerName);
+    else if (sortKey === "teamName") diff = a.teamName.localeCompare(b.teamName);
+    else if (sortKey === "conference") diff = a.conference.localeCompare(b.conference) || (a.division ?? "").localeCompare(b.division ?? "");
+    else if (sortKey === "division") diff = a.division.localeCompare(b.division);
+    else if (sortKey === "seed") {
+      // nulls to bottom
+      if (a.seed === null && b.seed === null) diff = 0;
+      else if (a.seed === null) diff = 1;
+      else if (b.seed === null) diff = -1;
+      else diff = a.seed - b.seed;
+    }
+    else if (sortKey === "pct") diff = a.pct - b.pct;
     else if (sortKey === "wins") diff = a.wins - b.wins;
     else if (sortKey === "ptDiff") diff = a.ptDiff - b.ptDiff;
-    else if (sortKey === "realizedReturn") diff = a.realizedReturn - b.realizedReturn;
-    else if (sortKey === "netReturn") diff = a.netReturn - b.netReturn;
-    else if (sortKey === "markToMarket") diff = a.markToMarket - b.markToMarket;
-    return sortAsc ? diff : -diff;
+    else if (sortKey === "cost") diff = a.cost - b.cost;
+    else if (sortKey === "gross") diff = a.gross - b.gross;
+    else if (sortKey === "net") diff = a.net - b.net;
+    else if (sortKey === "mtm") diff = a.mtm - b.mtm;
+    // For seed ascending = best first (1 before 7), so flip default direction
+    return sortKey === "seed" ? (sortAsc ? diff : diff) : (sortAsc ? diff : -diff);
   });
 
-  function handleSort(key: SortKey) {
-    if (sortKey === key) setSortAsc(!sortAsc);
-    else { setSortKey(key); setSortAsc(false); }
+  function handleSort(key: BTSortKey) {
+    if (sortKey === key) setSortAsc((v) => !v);
+    else {
+      setSortKey(key);
+      // seed: default ascending (1 = best); all others: default descending
+      setSortAsc(key === "seed" ? true : false);
+    }
   }
 
-  function SortHeader({ label, k }: { label: string; k: SortKey }) {
+  function SH({ label, k, className }: { label: string; k: BTSortKey; className?: string }) {
     const active = sortKey === k;
     return (
       <button
         onClick={() => handleSort(k)}
-        className={cn("font-mono font-bold uppercase tracking-widest text-xs text-right hover:text-foreground transition-colors", active ? "text-primary" : "text-muted-foreground")}
+        className={cn(
+          "font-mono font-bold uppercase tracking-widest text-xs whitespace-nowrap hover:text-foreground transition-colors",
+          active ? "text-primary" : "text-muted-foreground",
+          className,
+        )}
       >
-        {label}{active ? (sortAsc ? " ↑" : " ↓") : ""}
+        {label}
+        {active ? (sortAsc ? " ↑" : " ↓") : ""}
       </button>
     );
   }
 
-  if (!rows.length) return <Empty />;
-
   return (
-    <div className="space-y-4">
-      {/* Conference filter */}
-      <div className="flex gap-0 border border-border bg-card overflow-hidden w-fit">
-        {(["ALL", "AFC", "NFC"] as const).map((c) => (
-          <button
-            key={c}
-            onClick={() => setConference(c)}
-            className={cn(
-              "px-4 py-1.5 text-xs font-mono font-bold uppercase tracking-widest transition-colors border-r border-border last:border-r-0",
-              conference === c ? "bg-primary text-primary-foreground" : "text-muted-foreground hover:bg-muted hover:text-foreground"
-            )}
-          >
-            {c}
-          </button>
-        ))}
-      </div>
+    <div className="space-y-3">
+      {/* Search */}
+      <input
+        type="search"
+        value={search}
+        onChange={(e) => setSearch(e.target.value)}
+        placeholder="Filter by owner, team, conference, division…"
+        className="w-full md:w-80 border border-border bg-background px-3 py-1.5 text-sm font-mono placeholder:text-muted-foreground focus:outline-none focus:ring-1 focus:ring-primary"
+      />
 
-      {/* Table */}
+      {/* Table — horizontally scrollable */}
       <div className="border border-border bg-card overflow-x-auto">
-        <table className="w-full text-sm">
+        <table className="text-sm whitespace-nowrap">
           <thead>
             <tr className="border-b border-border bg-muted/60">
-              <th className="px-4 py-3 text-left">
-                <button onClick={() => handleSort("name")} className={cn("font-mono font-bold uppercase tracking-widest text-xs hover:text-foreground transition-colors", sortKey === "name" ? "text-primary" : "text-muted-foreground")}>
-                  Team{sortKey === "name" ? (sortAsc ? " ↑" : " ↓") : ""}
-                </button>
+              <th className="px-3 py-2.5 text-left sticky left-0 bg-muted/60 z-10">
+                <SH label="Owner" k="ownerName" className="text-left" />
               </th>
-              <th className="px-3 py-3 text-left hidden lg:table-cell">
-                <span className="font-mono font-bold uppercase tracking-widest text-xs text-muted-foreground">Div</span>
-              </th>
-              <th className="px-3 py-3 text-left">
-                <span className="font-mono font-bold uppercase tracking-widest text-xs text-muted-foreground">Owner(s)</span>
-              </th>
-              <th className="px-3 py-3 text-right">
-                <SortHeader label="Cost" k="cost" />
-              </th>
-              {isComplete && (
-                <>
-                  <th className="px-3 py-3 text-right hidden md:table-cell"><SortHeader label="W" k="wins" /></th>
-                  <th className="px-3 py-3 text-right hidden md:table-cell"><SortHeader label="PD" k="ptDiff" /></th>
-                  <th className="px-3 py-3 text-center hidden lg:table-cell">
-                    <span className="font-mono font-bold uppercase tracking-widest text-xs text-muted-foreground">PO/DR/CR/SB/WC</span>
-                  </th>
-                  <th className="px-3 py-3 text-right hidden md:table-cell"><SortHeader label="Return" k="realizedReturn" /></th>
-                  <th className="px-3 py-3 text-right"><SortHeader label="Net P&L" k="netReturn" /></th>
-                  <th className="px-3 py-3 text-right hidden lg:table-cell"><SortHeader label="MTM" k="markToMarket" /></th>
-                </>
-              )}
+              <th className="px-3 py-2.5 text-left"><SH label="Team" k="teamName" className="text-left" /></th>
+              <th className="px-3 py-2.5 text-center"><SH label="Conf" k="conference" /></th>
+              <th className="px-3 py-2.5 text-left"><SH label="Div" k="division" className="text-left" /></th>
+              <th className="px-3 py-2.5 text-center"><SH label="#" k="seed" /></th>
+              <th className="px-3 py-2.5 text-center"><SH label="%" k="pct" /></th>
+              <th className="px-3 py-2.5 text-center"><SH label="Record" k="wins" /></th>
+              <th className="px-3 py-2.5 text-right"><SH label="Net Diff" k="ptDiff" /></th>
+              <th className="px-3 py-2.5 text-right"><SH label="Cost" k="cost" /></th>
+              <th className="px-3 py-2.5 text-right"><SH label="Gross" k="gross" /></th>
+              <th className="px-3 py-2.5 text-right font-bold text-foreground"><SH label="Net" k="net" /></th>
+              <th className="px-3 py-2.5 text-right font-bold text-foreground"><SH label="MTM" k="mtm" /></th>
             </tr>
           </thead>
           <tbody>
-            {sorted.map((row) => (
+            {sorted.map((row, i) => (
               <tr
-                key={row.teamId}
+                key={`${row.teamId}-${row.bidderId}`}
                 className={cn(
                   "border-b border-border last:border-0 hover:bg-muted/30 transition-colors",
-                  row.winSuperBowl && "bg-yellow-50/50 dark:bg-yellow-900/10",
+                  row.winSuperBowl && "bg-yellow-50/40 dark:bg-yellow-900/10",
                 )}
               >
-                <td className="px-4 py-3 font-medium">
+                {/* Owner — sticky */}
+                <td className="px-3 py-2.5 font-medium sticky left-0 bg-card z-10 border-r border-border/50">
+                  {row.ownerName.split(" ")[0]}
+                </td>
+                {/* Team */}
+                <td className="px-3 py-2.5 font-medium">
                   <div className="flex items-center gap-1.5">
-                    {row.winSuperBowl && <Trophy className="w-3 h-3 text-yellow-500 shrink-0" />}
+                    {row.winSuperBowl && (
+                      <img src="/sleigh-monkey.png" alt="🏆" className="w-4 h-4 object-contain shrink-0" />
+                    )}
                     {row.teamName}
-                    <span className={cn("hidden md:inline text-[10px] font-mono px-1 py-0.5 rounded-sm", row.conference === "AFC" ? "bg-blue-100 text-blue-700 dark:bg-blue-900 dark:text-blue-300" : "bg-red-100 text-red-700 dark:bg-red-900 dark:text-red-300")}>
-                      {row.conference}
-                    </span>
                   </div>
                 </td>
-                <td className="px-3 py-3 text-muted-foreground font-mono text-xs hidden lg:table-cell">{row.division}</td>
-                <td className="px-3 py-3 text-sm text-muted-foreground max-w-[140px] truncate">
-                  {row.owners.map((o) => o.bidderName.split(" ")[0]).join(" / ")}
+                {/* Conf */}
+                <td className="px-3 py-2.5 text-center">
+                  <span className={cn(
+                    "text-[10px] font-mono font-bold px-1.5 py-0.5",
+                    row.conference === "AFC"
+                      ? "bg-blue-100 text-blue-700 dark:bg-blue-900 dark:text-blue-300"
+                      : "bg-red-100 text-red-700 dark:bg-red-900 dark:text-red-300",
+                  )}>
+                    {row.conference}
+                  </span>
                 </td>
-                <td className="px-3 py-3 text-right font-mono text-sm">{formatCurrency(row.cost)}</td>
-                {isComplete && (
-                  <>
-                    <td className="px-3 py-3 text-right font-mono text-sm hidden md:table-cell">{row.wins}</td>
-                    <td className={cn("px-3 py-3 text-right font-mono text-xs hidden md:table-cell", row.ptDiff >= 0 ? "text-green-600" : "text-red-500")}>
-                      {row.ptDiff >= 0 ? "+" : ""}{row.ptDiff}
-                    </td>
-                    <td className="px-3 py-3 text-center font-mono text-xs hidden lg:table-cell">
-                      <PlayoffBar row={row} />
-                    </td>
-                    <td className="px-3 py-3 text-right font-mono text-sm hidden md:table-cell">{formatCurrency(row.realizedReturn)}</td>
-                    <td className={cn("px-3 py-3 text-right font-mono font-bold text-sm", row.netReturn >= 0 ? "text-green-600" : "text-red-600")}>
-                      {row.netReturn >= 0 ? "+" : ""}{formatCurrency(row.netReturn)}
-                    </td>
-                    <td className={cn("px-3 py-3 text-right font-mono text-xs hidden lg:table-cell", row.markToMarket >= 0 ? "text-green-600" : "text-red-500")}>
-                      {row.markToMarket >= 0 ? "+" : ""}{formatCurrency(row.markToMarket)}
-                    </td>
-                  </>
-                )}
+                {/* Div */}
+                <td className="px-3 py-2.5 text-muted-foreground font-mono text-xs">{row.division}</td>
+                {/* Seed */}
+                <td className="px-3 py-2.5 text-center font-mono text-sm">
+                  {row.seed !== null ? (
+                    <span className={cn(
+                      "font-bold",
+                      row.seed <= 2 ? "text-yellow-600" : row.seed <= 4 ? "text-foreground" : "text-muted-foreground",
+                    )}>
+                      {row.seed}
+                    </span>
+                  ) : (
+                    <span className="text-muted-foreground/40">—</span>
+                  )}
+                </td>
+                {/* % ownership */}
+                <td className="px-3 py-2.5 text-center font-mono text-xs text-muted-foreground">
+                  {row.pct}%
+                </td>
+                {/* Record */}
+                <td className="px-3 py-2.5 text-center font-mono text-xs">{formatRecord(row.wins)}</td>
+                {/* Net Diff */}
+                <td className={cn("px-3 py-2.5 text-right font-mono text-xs", row.ptDiff >= 0 ? "text-green-600" : "text-red-500")}>
+                  {row.ptDiff >= 0 ? "+" : ""}{row.ptDiff}
+                </td>
+                {/* Cost */}
+                <td className="px-3 py-2.5 text-right font-mono text-sm text-muted-foreground">
+                  {formatCurrency(row.cost)}
+                </td>
+                {/* Gross */}
+                <td className="px-3 py-2.5 text-right font-mono text-sm text-muted-foreground">
+                  {isComplete ? formatCurrency(row.gross) : "—"}
+                </td>
+                {/* Net */}
+                <td className={cn("px-3 py-2.5 text-right font-mono font-bold text-sm", row.net >= 0 ? "text-green-600" : "text-red-600")}>
+                  {isComplete ? (row.net >= 0 ? "+" : "") + formatCurrency(row.net) : "—"}
+                </td>
+                {/* MTM */}
+                <td className={cn("px-3 py-2.5 text-right font-mono font-bold text-sm", row.mtm >= 0 ? "text-green-600" : "text-red-600")}>
+                  {row.mtm !== 0 ? (row.mtm >= 0 ? "+" : "") + formatCurrency(row.mtm) : "—"}
+                </td>
               </tr>
             ))}
           </tbody>
@@ -410,30 +550,8 @@ function ByTeamView({ rows, isComplete }: { rows: TeamResultRow[]; isComplete: b
       </div>
 
       <p className="text-xs text-muted-foreground font-mono">
-        {sorted.length} teams · PO=$50 · DR=$100 · CR=$200 · SB Berth=$400 · Win SB=$800
+        {sorted.length} rows · {isComplete ? "PO=$50 · DR=$100 · CR=$200 · SB Berth=$400 · Win SB=$800" : "financials scale to ownership %"}
       </p>
-    </div>
-  );
-}
-
-function PlayoffBar({ row }: { row: TeamResultRow }) {
-  const rounds = [
-    { label: "PO", active: row.playoffBerth },
-    { label: "DR", active: row.divRound },
-    { label: "CR", active: row.confRound },
-    { label: "SB", active: row.sbBerth },
-    { label: "WC", active: row.winSuperBowl },
-  ];
-  return (
-    <div className="flex items-center gap-0.5">
-      {rounds.map((r) => (
-        <span
-          key={r.label}
-          className={cn("px-1 py-0.5 rounded-sm text-[10px] font-mono", r.active ? "bg-green-100 text-green-700 dark:bg-green-900 dark:text-green-300 font-bold" : "bg-muted text-muted-foreground")}
-        >
-          {r.label}
-        </span>
-      ))}
     </div>
   );
 }
