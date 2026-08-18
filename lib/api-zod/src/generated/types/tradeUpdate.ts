@@ -6,7 +6,8 @@
  * OpenAPI spec version: 0.1.0
  */
 
-export interface OwnerInput {
-  bidderId: number;
-  ownershipShare: number;
+export interface TradeUpdate {
+  price?: number;
+  tradeDate?: string;
+  notes?: string;
 }

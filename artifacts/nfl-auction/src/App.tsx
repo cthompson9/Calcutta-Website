@@ -15,6 +15,9 @@ import { Shell } from '@/components/layout/Shell';
 import Dashboard from '@/pages/Dashboard';
 import Teams from '@/pages/Teams';
 import Bidders from '@/pages/Bidders';
+import Results from '@/pages/Results';
+import Trades from '@/pages/Trades';
+import MtmTracker from '@/pages/MtmTracker';
 
 const queryClient = new QueryClient();
 
@@ -23,9 +26,12 @@ function Router() {
     <Shell>
       <RoutedErrorBoundary>
         <Switch>
-          <Route path="/" component={Dashboard} />
+          <Route path="/" component={Results} />
+          <Route path="/mtm" component={MtmTracker} />
+          <Route path="/trades" component={Trades} />
           <Route path="/teams" component={Teams} />
           <Route path="/bidders" component={Bidders} />
+          <Route path="/dashboard" component={Dashboard} />
           <Route component={NotFound} />
         </Switch>
       </RoutedErrorBoundary>

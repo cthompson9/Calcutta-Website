@@ -9,13 +9,13 @@ servers:
     description: Base API path
 tags:
   - name: health
-    description: Health operations
   - name: teams
-    description: NFL team auction entries
   - name: bidders
-    description: Auction bidder management
+  - name: seasons
+  - name: results
+  - name: trades
+  - name: mtm
   - name: summary
-    description: Auction summary and standings
 
 paths:
   /healthz:
@@ -23,7 +23,6 @@ paths:
       operationId: healthCheck
       tags: [health]
       summary: Health check
-      description: Returns server health status
       responses:
         "200":
           description: Healthy
@@ -32,12 +31,49 @@ paths:
               schema:
                 $ref: "#/components/schemas/HealthStatus"
 
+  /seasons:
+    get:
+      operationId: getSeasons
+      tags: [seasons]
+      summary: List all seasons
+      responses:
+        "200":
+          description: List of seasons
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: "#/components/schemas/Season"
+    post:
+      operationId: createSeason
+      tags: [seasons]
+      summary: Create a season
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/SeasonInput"
+      responses:
+        "201":
+          description: Created season
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Season"
+        "400":
+          description: Validation error
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+
   /teams:
     get:
       operationId: getTeams
       tags: [teams]
       summary: List all teams
-      description: Returns all NFL teams with their bidder info, filterable by conference/division
       parameters:
         - name: conference
           in: query
@@ -56,7 +92,11 @@ paths:
         - name: bidderId
           in: query
           schema:
-            type: ["integer", "null"]
+            type: ["number", "null"]
+        - name: season
+          in: query
+          schema:
+            type: ["number", "null"]
       responses:
         "200":
           description: List of teams
@@ -168,9 +208,14 @@ paths:
       operationId: getBidders
       tags: [bidders]
       summary: List all bidders with totals
+      parameters:
+        - name: season
+          in: query
+          schema:
+            type: ["number", "null"]
       responses:
         "200":
-          description: List of bidders with their stats
+          description: List of bidders
           content:
             application/json:
               schema:
@@ -251,11 +296,232 @@ paths:
               schema:
                 $ref: "#/components/schemas/ErrorResponse"
 
+  /results:
+    get:
+      operationId: getResults
+      tags: [results]
+      summary: Calcutta Returns by team for a season
+      parameters:
+        - name: season
+          in: query
+          required: true
+          schema:
+            type: number
+        - name: conference
+          in: query
+          schema:
+            type: string
+            enum: [AFC, NFC]
+        - name: search
+          in: query
+          schema:
+            type: string
+      responses:
+        "200":
+          description: List of team results
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: "#/components/schemas/TeamResultRow"
+
+  /results/by-owner:
+    get:
+      operationId: getResultsByOwner
+      tags: [results]
+      summary: Calcutta Returns aggregated by owner for a season
+      parameters:
+        - name: season
+          in: query
+          required: true
+          schema:
+            type: number
+      responses:
+        "200":
+          description: Owner-level result summaries
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: "#/components/schemas/OwnerResultRow"
+
+  /results/upsert:
+    post:
+      operationId: upsertTeamResult
+      tags: [results]
+      summary: Create or update a team result record
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/TeamResultInput"
+      responses:
+        "200":
+          description: Upserted team result
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/TeamResultRow"
+        "400":
+          description: Validation error
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+
+  /trades:
+    get:
+      operationId: getTrades
+      tags: [trades]
+      summary: List trades for a season
+      parameters:
+        - name: season
+          in: query
+          required: true
+          schema:
+            type: number
+      responses:
+        "200":
+          description: List of trades
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: "#/components/schemas/TradeRow"
+    post:
+      operationId: createTrade
+      tags: [trades]
+      summary: Record a trade
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/TradeInput"
+      responses:
+        "201":
+          description: Created trade
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/TradeRow"
+        "400":
+          description: Validation error
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+
+  /trades/{id}:
+    patch:
+      operationId: updateTrade
+      tags: [trades]
+      summary: Update a trade record
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: number
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/TradeUpdate"
+      responses:
+        "200":
+          description: Updated trade
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/TradeRow"
+        "404":
+          description: Not found
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+    delete:
+      operationId: deleteTrade
+      tags: [trades]
+      summary: Delete a trade record
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: number
+      responses:
+        "204":
+          description: Deleted
+        "404":
+          description: Not found
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+
+  /mtm:
+    get:
+      operationId: getMtmSnapshots
+      tags: [mtm]
+      summary: Get weekly MTM snapshots for a season
+      parameters:
+        - name: season
+          in: query
+          required: true
+          schema:
+            type: number
+        - name: teamId
+          in: query
+          schema:
+            type: ["number", "null"]
+      responses:
+        "200":
+          description: MTM snapshots
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/MtmData"
+    post:
+      operationId: upsertMtmSnapshot
+      tags: [mtm]
+      summary: Add or update a weekly MTM snapshot
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/MtmSnapshotInput"
+      responses:
+        "200":
+          description: Upserted snapshot
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/MtmSnapshot"
+        "400":
+          description: Validation error
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+
   /summary:
     get:
       operationId: getAuctionSummary
       tags: [summary]
-      summary: Get overall auction summary and standings
+      summary: Overall auction summary
+      parameters:
+        - name: season
+          in: query
+          schema:
+            type: ["number", "null"]
       responses:
         "200":
           description: Auction summary
@@ -271,16 +537,42 @@ components:
       properties:
         status:
           type: string
-      required:
-        - status
+      required: [status]
 
     ErrorResponse:
       type: object
       properties:
         error:
           type: string
-      required:
-        - error
+      required: [error]
+
+    Season:
+      type: object
+      properties:
+        id:
+          type: number
+        year:
+          type: number
+        isActive:
+          type: boolean
+        isComplete:
+          type: boolean
+        label:
+          type: string
+      required: [id, year, isActive, isComplete, label]
+
+    SeasonInput:
+      type: object
+      properties:
+        year:
+          type: number
+        isActive:
+          type: boolean
+        isComplete:
+          type: boolean
+        label:
+          type: string
+      required: [year, label]
 
     Bidder:
       type: object
@@ -289,9 +581,7 @@ components:
           type: number
         name:
           type: string
-      required:
-        - id
-        - name
+      required: [id, name]
 
     BidderSummary:
       type: object
@@ -308,12 +598,7 @@ components:
           type: array
           items:
             $ref: "#/components/schemas/TeamRef"
-      required:
-        - id
-        - name
-        - teamCount
-        - totalPaid
-        - teams
+      required: [id, name, teamCount, totalPaid, teams]
 
     TeamRef:
       type: object
@@ -330,14 +615,7 @@ components:
           type: number
         ownershipShare:
           type: number
-          description: Fraction of team owned (1.0 = sole owner, 0.5 = 50/50 split)
-      required:
-        - id
-        - name
-        - conference
-        - division
-        - bidAmount
-        - ownershipShare
+      required: [id, name, conference, division, bidAmount, ownershipShare]
 
     BidderInput:
       type: object
@@ -345,8 +623,7 @@ components:
         name:
           type: string
           minLength: 1
-      required:
-        - name
+      required: [name]
 
     BidderUpdate:
       type: object
@@ -374,13 +651,7 @@ components:
           type: array
           items:
             $ref: "#/components/schemas/TeamOwner"
-      required:
-        - id
-        - name
-        - conference
-        - division
-        - bidAmount
-        - owners
+      required: [id, name, conference, division, bidAmount, owners]
 
     TeamOwner:
       type: object
@@ -391,11 +662,7 @@ components:
           type: string
         ownershipShare:
           type: number
-          description: Fraction owned (1.0 = sole, 0.5 = half)
-      required:
-        - bidderId
-        - bidderName
-        - ownershipShare
+      required: [bidderId, bidderName, ownershipShare]
 
     TeamInput:
       type: object
@@ -412,17 +679,14 @@ components:
         bidAmount:
           type: number
           minimum: 0
+        season:
+          type: number
         owners:
           type: array
           items:
             $ref: "#/components/schemas/OwnerInput"
           minItems: 1
-      required:
-        - name
-        - conference
-        - division
-        - bidAmount
-        - owners
+      required: [name, conference, division, bidAmount, owners]
 
     TeamUpdate:
       type: object
@@ -439,6 +703,8 @@ components:
         bidAmount:
           type: number
           minimum: 0
+        season:
+          type: number
         owners:
           type: array
           items:
@@ -452,11 +718,331 @@ components:
           type: number
         ownershipShare:
           type: number
-          description: Fraction owned (must sum to 1.0 across all owners)
+      required: [bidderId, ownershipShare]
+
+    # Results (Calcutta Returns format)
+    TeamResultRow:
+      type: object
+      properties:
+        teamId:
+          type: number
+        teamName:
+          type: string
+        conference:
+          type: string
+        division:
+          type: string
+        owners:
+          type: array
+          items:
+            $ref: "#/components/schemas/TeamOwner"
+        cost:
+          type: number
+        wins:
+          type: number
+        ptDiff:
+          type: number
+        startingPoints:
+          type: number
+        draftOrder:
+          type: ["number", "null"]
+        playoffBerth:
+          type: boolean
+        divRound:
+          type: boolean
+        confRound:
+          type: boolean
+        sbBerth:
+          type: boolean
+        winSuperBowl:
+          type: boolean
+        realizedReturn:
+          type: number
+        realizedMultiple:
+          type: number
+        netReturn:
+          type: number
+        netPctReturn:
+          type: number
+        markToMarket:
+          type: number
+      required:
+        - teamId
+        - teamName
+        - conference
+        - division
+        - owners
+        - cost
+        - wins
+        - ptDiff
+        - startingPoints
+        - playoffBerth
+        - divRound
+        - confRound
+        - sbBerth
+        - winSuperBowl
+        - realizedReturn
+        - realizedMultiple
+        - netReturn
+        - netPctReturn
+        - markToMarket
+
+    OwnerResultRow:
+      type: object
+      properties:
+        bidderId:
+          type: number
+        bidderName:
+          type: string
+        teamCount:
+          type: number
+        totalCost:
+          type: number
+        totalRealizedReturn:
+          type: number
+        totalNetReturn:
+          type: number
+        netPctReturn:
+          type: number
+        totalMtm:
+          type: number
+        teams:
+          type: array
+          items:
+            $ref: "#/components/schemas/TeamResultRow"
       required:
         - bidderId
-        - ownershipShare
+        - bidderName
+        - teamCount
+        - totalCost
+        - totalRealizedReturn
+        - totalNetReturn
+        - netPctReturn
+        - totalMtm
+        - teams
 
+    TeamResultInput:
+      type: object
+      properties:
+        teamId:
+          type: number
+        seasonYear:
+          type: number
+        wins:
+          type: number
+        ptDiff:
+          type: number
+        startingPoints:
+          type: number
+        draftOrder:
+          type: ["number", "null"]
+        playoffBerth:
+          type: boolean
+        divRound:
+          type: boolean
+        confRound:
+          type: boolean
+        sbBerth:
+          type: boolean
+        winSuperBowl:
+          type: boolean
+        realizedReturn:
+          type: number
+        realizedMultiple:
+          type: number
+        netReturn:
+          type: number
+        netPctReturn:
+          type: number
+        markToMarket:
+          type: number
+      required: [teamId, seasonYear]
+
+    # Trades
+    TradeRow:
+      type: object
+      properties:
+        id:
+          type: number
+        seasonYear:
+          type: number
+        teamId:
+          type: number
+        teamName:
+          type: string
+        fromBidderId:
+          type: number
+        fromBidderName:
+          type: string
+        toBidderId:
+          type: number
+        toBidderName:
+          type: string
+        price:
+          type: number
+        tradeDate:
+          type: string
+        notes:
+          type: ["string", "null"]
+      required:
+        - id
+        - seasonYear
+        - teamId
+        - teamName
+        - fromBidderId
+        - fromBidderName
+        - toBidderId
+        - toBidderName
+        - price
+        - tradeDate
+
+    TradeInput:
+      type: object
+      properties:
+        seasonYear:
+          type: number
+        teamId:
+          type: number
+        fromBidderId:
+          type: number
+        toBidderId:
+          type: number
+        price:
+          type: number
+        tradeDate:
+          type: string
+        notes:
+          type: string
+      required: [seasonYear, teamId, fromBidderId, toBidderId, price, tradeDate]
+
+    TradeUpdate:
+      type: object
+      properties:
+        price:
+          type: number
+        tradeDate:
+          type: string
+        notes:
+          type: string
+
+    # MTM
+    MtmSnapshot:
+      type: object
+      properties:
+        id:
+          type: number
+        teamId:
+          type: number
+        seasonId:
+          type: number
+        weekNum:
+          type: number
+        snapshotDate:
+          type: ["string", "null"]
+        mtmValue:
+          type: number
+      required: [id, teamId, seasonId, weekNum, mtmValue]
+
+    MtmWeekData:
+      type: object
+      properties:
+        weekNum:
+          type: number
+        snapshotDate:
+          type: ["string", "null"]
+        ownerTotals:
+          type: array
+          items:
+            $ref: "#/components/schemas/MtmOwnerWeek"
+        teamValues:
+          type: array
+          items:
+            $ref: "#/components/schemas/MtmTeamWeek"
+      required: [weekNum, ownerTotals, teamValues]
+
+    MtmOwnerWeek:
+      type: object
+      properties:
+        bidderName:
+          type: string
+        mtmTotal:
+          type: number
+      required: [bidderName, mtmTotal]
+
+    MtmTeamWeek:
+      type: object
+      properties:
+        teamId:
+          type: number
+        teamName:
+          type: string
+        ownerName:
+          type: string
+        mtmValue:
+          type: number
+      required: [teamId, teamName, ownerName, mtmValue]
+
+    MtmData:
+      type: object
+      properties:
+        weeks:
+          type: array
+          items:
+            $ref: "#/components/schemas/MtmWeekData"
+        teams:
+          type: array
+          items:
+            $ref: "#/components/schemas/MtmTeamSeries"
+        owners:
+          type: array
+          items:
+            $ref: "#/components/schemas/MtmOwnerSeries"
+      required: [weeks, teams, owners]
+
+    MtmTeamSeries:
+      type: object
+      properties:
+        teamId:
+          type: number
+        teamName:
+          type: string
+        conference:
+          type: string
+        ownerName:
+          type: string
+        weeklyValues:
+          type: array
+          items:
+            type: number
+      required: [teamId, teamName, conference, ownerName, weeklyValues]
+
+    MtmOwnerSeries:
+      type: object
+      properties:
+        bidderName:
+          type: string
+        weeklyTotals:
+          type: array
+          items:
+            type: number
+      required: [bidderName, weeklyTotals]
+
+    MtmSnapshotInput:
+      type: object
+      properties:
+        teamId:
+          type: number
+        seasonYear:
+          type: number
+        weekNum:
+          type: number
+        snapshotDate:
+          type: string
+        mtmValue:
+          type: number
+      required: [teamId, seasonYear, weekNum, mtmValue]
+
+    # Summary
     AuctionSummary:
       type: object
       properties:
@@ -497,12 +1083,7 @@ components:
           type: number
         percentOfPot:
           type: number
-      required:
-        - bidderId
-        - bidderName
-        - totalPaid
-        - teamCount
-        - percentOfPot
+      required: [bidderId, bidderName, totalPaid, teamCount, percentOfPot]
 
     ConferenceBreakdown:
       type: object
@@ -515,8 +1096,4 @@ components:
           type: number
         avgBid:
           type: number
-      required:
-        - conference
-        - totalSpent
-        - teamCount
-        - avgBid
+      required: [conference, totalSpent, teamCount, avgBid]

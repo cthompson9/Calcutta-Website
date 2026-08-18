@@ -6,11 +6,10 @@
  * OpenAPI spec version: 0.1.0
  */
 
-export interface TeamRef {
-  id: number;
-  name: string;
+export interface MtmTeamSeries {
+  teamId: number;
+  teamName: string;
   conference: string;
-  division: string;
-  bidAmount: number;
-  ownershipShare: number;
+  ownerName: string;
+  weeklyValues: number[];
 }

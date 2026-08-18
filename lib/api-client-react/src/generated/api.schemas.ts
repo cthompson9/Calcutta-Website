@@ -13,6 +13,21 @@ export interface ErrorResponse {
   error: string;
 }
 
+export interface Season {
+  id: number;
+  year: number;
+  isActive: boolean;
+  isComplete: boolean;
+  label: string;
+}
+
+export interface SeasonInput {
+  year: number;
+  isActive?: boolean;
+  isComplete?: boolean;
+  label: string;
+}
+
 export interface Bidder {
   id: number;
   name: string;
@@ -24,7 +39,6 @@ export interface TeamRef {
   conference: string;
   division: string;
   bidAmount: number;
-  /** Fraction of team owned (1.0 = sole owner, 0.5 = 50/50 split) */
   ownershipShare: number;
 }
 
@@ -67,7 +81,6 @@ export const TeamDivision = {
 export interface TeamOwner {
   bidderId: number;
   bidderName: string;
-  /** Fraction owned (1.0 = sole, 0.5 = half) */
   ownershipShare: number;
 }
 
@@ -100,7 +113,6 @@ export const TeamInputDivision = {
 
 export interface OwnerInput {
   bidderId: number;
-  /** Fraction owned (must sum to 1.0 across all owners) */
   ownershipShare: number;
 }
 
@@ -111,6 +123,7 @@ export interface TeamInput {
   division: TeamInputDivision;
   /** @minimum 0 */
   bidAmount: number;
+  season?: number;
   /** @minItems 1 */
   owners: OwnerInput[];
 }
@@ -140,8 +153,153 @@ export interface TeamUpdate {
   division?: TeamUpdateDivision;
   /** @minimum 0 */
   bidAmount?: number;
+  season?: number;
   /** @minItems 1 */
   owners?: OwnerInput[];
+}
+
+export interface TeamResultRow {
+  teamId: number;
+  teamName: string;
+  conference: string;
+  division: string;
+  owners: TeamOwner[];
+  cost: number;
+  wins: number;
+  ptDiff: number;
+  startingPoints: number;
+  /** @nullable */
+  draftOrder?: number | null;
+  playoffBerth: boolean;
+  divRound: boolean;
+  confRound: boolean;
+  sbBerth: boolean;
+  winSuperBowl: boolean;
+  realizedReturn: number;
+  realizedMultiple: number;
+  netReturn: number;
+  netPctReturn: number;
+  markToMarket: number;
+}
+
+export interface OwnerResultRow {
+  bidderId: number;
+  bidderName: string;
+  teamCount: number;
+  totalCost: number;
+  totalRealizedReturn: number;
+  totalNetReturn: number;
+  netPctReturn: number;
+  totalMtm: number;
+  teams: TeamResultRow[];
+}
+
+export interface TeamResultInput {
+  teamId: number;
+  seasonYear: number;
+  wins?: number;
+  ptDiff?: number;
+  startingPoints?: number;
+  /** @nullable */
+  draftOrder?: number | null;
+  playoffBerth?: boolean;
+  divRound?: boolean;
+  confRound?: boolean;
+  sbBerth?: boolean;
+  winSuperBowl?: boolean;
+  realizedReturn?: number;
+  realizedMultiple?: number;
+  netReturn?: number;
+  netPctReturn?: number;
+  markToMarket?: number;
+}
+
+export interface TradeRow {
+  id: number;
+  seasonYear: number;
+  teamId: number;
+  teamName: string;
+  fromBidderId: number;
+  fromBidderName: string;
+  toBidderId: number;
+  toBidderName: string;
+  price: number;
+  tradeDate: string;
+  /** @nullable */
+  notes?: string | null;
+}
+
+export interface TradeInput {
+  seasonYear: number;
+  teamId: number;
+  fromBidderId: number;
+  toBidderId: number;
+  price: number;
+  tradeDate: string;
+  notes?: string;
+}
+
+export interface TradeUpdate {
+  price?: number;
+  tradeDate?: string;
+  notes?: string;
+}
+
+export interface MtmSnapshot {
+  id: number;
+  teamId: number;
+  seasonId: number;
+  weekNum: number;
+  /** @nullable */
+  snapshotDate?: string | null;
+  mtmValue: number;
+}
+
+export interface MtmOwnerWeek {
+  bidderName: string;
+  mtmTotal: number;
+}
+
+export interface MtmTeamWeek {
+  teamId: number;
+  teamName: string;
+  ownerName: string;
+  mtmValue: number;
+}
+
+export interface MtmWeekData {
+  weekNum: number;
+  /** @nullable */
+  snapshotDate?: string | null;
+  ownerTotals: MtmOwnerWeek[];
+  teamValues: MtmTeamWeek[];
+}
+
+export interface MtmTeamSeries {
+  teamId: number;
+  teamName: string;
+  conference: string;
+  ownerName: string;
+  weeklyValues: number[];
+}
+
+export interface MtmOwnerSeries {
+  bidderName: string;
+  weeklyTotals: number[];
+}
+
+export interface MtmData {
+  weeks: MtmWeekData[];
+  teams: MtmTeamSeries[];
+  owners: MtmOwnerSeries[];
+}
+
+export interface MtmSnapshotInput {
+  teamId: number;
+  seasonYear: number;
+  weekNum: number;
+  snapshotDate?: string;
+  mtmValue: number;
 }
 
 export interface BidderStanding {
@@ -176,6 +334,10 @@ search?: string;
  * @nullable
  */
 bidderId?: number | null;
+/**
+ * @nullable
+ */
+season?: number | null;
 };
 
 export type GetTeamsConference = typeof GetTeamsConference[keyof typeof GetTeamsConference];
@@ -195,4 +357,48 @@ export const GetTeamsDivision = {
   South: 'South',
   West: 'West',
 } as const;
+
+export type GetBiddersParams = {
+/**
+ * @nullable
+ */
+season?: number | null;
+};
+
+export type GetResultsParams = {
+season: number;
+conference?: GetResultsConference;
+search?: string;
+};
+
+export type GetResultsConference = typeof GetResultsConference[keyof typeof GetResultsConference];
+
+
+export const GetResultsConference = {
+  AFC: 'AFC',
+  NFC: 'NFC',
+} as const;
+
+export type GetResultsByOwnerParams = {
+season: number;
+};
+
+export type GetTradesParams = {
+season: number;
+};
+
+export type GetMtmSnapshotsParams = {
+season: number;
+/**
+ * @nullable
+ */
+teamId?: number | null;
+};
+
+export type GetAuctionSummaryParams = {
+/**
+ * @nullable
+ */
+season?: number | null;
+};
 

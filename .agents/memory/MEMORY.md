@@ -1,0 +1,3 @@
+- [Schema design](schema-design.md) — seasons/team_results/trades/mtm_snapshots added; team_bidders.season_id is nullable (backfill via seed2025.ts).
+- [Seed approach](seed-approach.md) — 2025 season results seeded via lib/db/src/seed2025.ts using `node --import tsx/esm/index.mjs`; 2025=id1, 2026=id2.
+- [MCP endpoints](mcp-endpoints.md) — 15 GET endpoints at /api/mcp/* returning { value } for LLM tool use; require `and` imported from drizzle-orm.

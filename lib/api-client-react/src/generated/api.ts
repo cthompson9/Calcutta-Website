@@ -26,11 +26,28 @@ import type {
   BidderSummary,
   BidderUpdate,
   ErrorResponse,
+  GetAuctionSummaryParams,
+  GetBiddersParams,
+  GetMtmSnapshotsParams,
+  GetResultsByOwnerParams,
+  GetResultsParams,
   GetTeamsParams,
+  GetTradesParams,
   HealthStatus,
+  MtmData,
+  MtmSnapshot,
+  MtmSnapshotInput,
+  OwnerResultRow,
+  Season,
+  SeasonInput,
   Team,
   TeamInput,
-  TeamUpdate
+  TeamResultInput,
+  TeamResultRow,
+  TeamUpdate,
+  TradeInput,
+  TradeRow,
+  TradeUpdate
 } from './api.schemas';
 
 import { customFetch } from '../custom-fetch';
@@ -69,7 +86,6 @@ export const getHealthCheckUrl = () => {
 }
 
 /**
- * Returns server health status
  * @summary Health check
  */
 export const healthCheck = async ( options?: Parameters<typeof customFetch>[1]): Promise<HealthStatus> => {
@@ -138,6 +154,154 @@ export function useHealthCheck<TData = Awaited<ReturnType<typeof healthCheck>>, 
 
 
 
+export const getGetSeasonsUrl = () => {
+
+
+
+
+  return `/api/seasons`
+}
+
+/**
+ * @summary List all seasons
+ */
+export const getSeasons = async ( options?: Parameters<typeof customFetch>[1]): Promise<Season[]> => {
+
+  return customFetch<Season[]>(getGetSeasonsUrl(),
+  {
+    ...options,
+    method: 'GET'
+
+
+  }
+);}
+
+
+
+
+
+export const getGetSeasonsQueryKey = () => {
+    return [
+    `/api/seasons`
+    ] as const;
+    }
+
+
+export const getGetSeasonsQueryOptions = <TData = Awaited<ReturnType<typeof getSeasons>>, TError = ErrorType<unknown>>( options?: { query?:UseQueryOptions<Awaited<ReturnType<typeof getSeasons>>, TError, TData>, request?: SecondParameter<typeof customFetch>}
+) => {
+
+const {query: queryOptions, request: requestOptions} = options ?? {};
+
+  const queryKey =  queryOptions?.queryKey ?? getGetSeasonsQueryKey();
+
+
+
+    const queryFn: QueryFunction<Awaited<ReturnType<typeof getSeasons>>> = ({ signal }) => getSeasons({ signal, ...requestOptions });
+
+
+
+
+
+   return  { queryKey, queryFn, ...queryOptions} as UseQueryOptions<Awaited<ReturnType<typeof getSeasons>>, TError, TData> & { queryKey: QueryKey }
+}
+
+export type GetSeasonsQueryResult = NonNullable<Awaited<ReturnType<typeof getSeasons>>>
+export type GetSeasonsQueryError = ErrorType<unknown>
+
+
+/**
+ * @summary List all seasons
+ */
+
+export function useGetSeasons<TData = Awaited<ReturnType<typeof getSeasons>>, TError = ErrorType<unknown>>(
+  options?: { query?:UseQueryOptions<Awaited<ReturnType<typeof getSeasons>>, TError, TData>, request?: SecondParameter<typeof customFetch>}
+
+ ):  UseQueryResult<TData, TError> & { queryKey: QueryKey } {
+
+  const queryOptions = getGetSeasonsQueryOptions(options)
+
+  const query = useQuery(queryOptions) as  UseQueryResult<TData, TError> & { queryKey: QueryKey };
+
+  return withQueryKey(query, queryOptions.queryKey);
+}
+
+
+
+
+
+
+
+export const getCreateSeasonUrl = () => {
+
+
+
+
+  return `/api/seasons`
+}
+
+/**
+ * @summary Create a season
+ */
+export const createSeason = async (seasonInput: SeasonInput, options?: Parameters<typeof customFetch>[1]): Promise<Season> => {
+
+  return customFetch<Season>(getCreateSeasonUrl(),
+  {
+    ...options,
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json', ...options?.headers },
+    body: JSON.stringify(seasonInput)
+  }
+);}
+
+
+
+
+
+export const getCreateSeasonMutationOptions = <TError = ErrorType<ErrorResponse>,
+    TContext = unknown>(options?: { mutation?:UseMutationOptions<Awaited<ReturnType<typeof createSeason>>, TError,{data: BodyType<SeasonInput>}, TContext>, request?: SecondParameter<typeof customFetch>}
+): UseMutationOptions<Awaited<ReturnType<typeof createSeason>>, TError,{data: BodyType<SeasonInput>}, TContext> => {
+
+const mutationKey = ['createSeason'];
+const {mutation: mutationOptions, request: requestOptions} = options ?
+      options.mutation && 'mutationKey' in options.mutation && options.mutation.mutationKey ?
+      options
+      : {...options, mutation: {...options.mutation, mutationKey}}
+      : {mutation: { mutationKey, }, request: undefined};
+
+
+
+
+      const mutationFn: MutationFunction<Awaited<ReturnType<typeof createSeason>>, {data: BodyType<SeasonInput>}> = (props) => {
+          const {data} = props ?? {};
+
+          return  createSeason(data,requestOptions)
+        }
+
+
+
+
+
+
+  return  { mutationFn, ...mutationOptions }}
+
+    export type CreateSeasonMutationResult = NonNullable<Awaited<ReturnType<typeof createSeason>>>
+    export type CreateSeasonMutationBody = BodyType<SeasonInput>
+    export type CreateSeasonMutationError = ErrorType<ErrorResponse>
+
+    /**
+ * @summary Create a season
+ */
+export const useCreateSeason = <TError = ErrorType<ErrorResponse>,
+    TContext = unknown>(options?: { mutation?:UseMutationOptions<Awaited<ReturnType<typeof createSeason>>, TError,{data: BodyType<SeasonInput>}, TContext>, request?: SecondParameter<typeof customFetch>}
+ ): UseMutationResult<
+        Awaited<ReturnType<typeof createSeason>>,
+        TError,
+        {data: BodyType<SeasonInput>},
+        TContext
+      > => {
+      return useMutation(getCreateSeasonMutationOptions(options));
+    }
+
 export const getGetTeamsUrl = (params?: GetTeamsParams,) => {
   const normalizedParams = new URLSearchParams();
 
@@ -154,7 +318,6 @@ export const getGetTeamsUrl = (params?: GetTeamsParams,) => {
 }
 
 /**
- * Returns all NFL teams with their bidder info, filterable by conference/division
  * @summary List all teams
  */
 export const getTeams = async (params?: GetTeamsParams, options?: Parameters<typeof customFetch>[1]): Promise<Team[]> => {
@@ -514,20 +677,27 @@ export const useDeleteTeam = <TError = ErrorType<ErrorResponse>,
       return useMutation(getDeleteTeamMutationOptions(options));
     }
 
-export const getGetBiddersUrl = () => {
+export const getGetBiddersUrl = (params?: GetBiddersParams,) => {
+  const normalizedParams = new URLSearchParams();
 
+  Object.entries(params || {}).forEach(([key, value]) => {
 
+    if (value !== undefined) {
+      normalizedParams.append(key, value === null ? 'null' : String(value))
+    }
+  });
 
+  const stringifiedParams = normalizedParams.toString();
 
-  return `/api/bidders`
+  return stringifiedParams.length > 0 ? `/api/bidders?${stringifiedParams}` : `/api/bidders`
 }
 
 /**
  * @summary List all bidders with totals
  */
-export const getBidders = async ( options?: Parameters<typeof customFetch>[1]): Promise<BidderSummary[]> => {
+export const getBidders = async (params?: GetBiddersParams, options?: Parameters<typeof customFetch>[1]): Promise<BidderSummary[]> => {
 
-  return customFetch<BidderSummary[]>(getGetBiddersUrl(),
+  return customFetch<BidderSummary[]>(getGetBiddersUrl(params),
   {
     ...options,
     method: 'GET'
@@ -540,23 +710,23 @@ export const getBidders = async ( options?: Parameters<typeof customFetch>[1]): 
 
 
 
-export const getGetBiddersQueryKey = () => {
+export const getGetBiddersQueryKey = (params?: GetBiddersParams,) => {
     return [
-    `/api/bidders`
+    `/api/bidders`, ...(params ? [params] : [])
     ] as const;
     }
 
 
-export const getGetBiddersQueryOptions = <TData = Awaited<ReturnType<typeof getBidders>>, TError = ErrorType<unknown>>( options?: { query?:UseQueryOptions<Awaited<ReturnType<typeof getBidders>>, TError, TData>, request?: SecondParameter<typeof customFetch>}
+export const getGetBiddersQueryOptions = <TData = Awaited<ReturnType<typeof getBidders>>, TError = ErrorType<unknown>>(params?: GetBiddersParams, options?: { query?:UseQueryOptions<Awaited<ReturnType<typeof getBidders>>, TError, TData>, request?: SecondParameter<typeof customFetch>}
 ) => {
 
 const {query: queryOptions, request: requestOptions} = options ?? {};
 
-  const queryKey =  queryOptions?.queryKey ?? getGetBiddersQueryKey();
+  const queryKey =  queryOptions?.queryKey ?? getGetBiddersQueryKey(params);
 
 
 
-    const queryFn: QueryFunction<Awaited<ReturnType<typeof getBidders>>> = ({ signal }) => getBidders({ signal, ...requestOptions });
+    const queryFn: QueryFunction<Awaited<ReturnType<typeof getBidders>>> = ({ signal }) => getBidders(params, { signal, ...requestOptions });
 
 
 
@@ -574,11 +744,11 @@ export type GetBiddersQueryError = ErrorType<unknown>
  */
 
 export function useGetBidders<TData = Awaited<ReturnType<typeof getBidders>>, TError = ErrorType<unknown>>(
-  options?: { query?:UseQueryOptions<Awaited<ReturnType<typeof getBidders>>, TError, TData>, request?: SecondParameter<typeof customFetch>}
+ params?: GetBiddersParams, options?: { query?:UseQueryOptions<Awaited<ReturnType<typeof getBidders>>, TError, TData>, request?: SecondParameter<typeof customFetch>}
 
  ):  UseQueryResult<TData, TError> & { queryKey: QueryKey } {
 
-  const queryOptions = getGetBiddersQueryOptions(options)
+  const queryOptions = getGetBiddersQueryOptions(params,options)
 
   const query = useQuery(queryOptions) as  UseQueryResult<TData, TError> & { queryKey: QueryKey };
 
@@ -805,20 +975,27 @@ export const useDeleteBidder = <TError = ErrorType<ErrorResponse>,
       return useMutation(getDeleteBidderMutationOptions(options));
     }
 
-export const getGetAuctionSummaryUrl = () => {
+export const getGetResultsUrl = (params: GetResultsParams,) => {
+  const normalizedParams = new URLSearchParams();
 
+  Object.entries(params || {}).forEach(([key, value]) => {
 
+    if (value !== undefined) {
+      normalizedParams.append(key, value === null ? 'null' : String(value))
+    }
+  });
 
+  const stringifiedParams = normalizedParams.toString();
 
-  return `/api/summary`
+  return stringifiedParams.length > 0 ? `/api/results?${stringifiedParams}` : `/api/results`
 }
 
 /**
- * @summary Get overall auction summary and standings
+ * @summary Calcutta Returns by team for a season
  */
-export const getAuctionSummary = async ( options?: Parameters<typeof customFetch>[1]): Promise<AuctionSummary> => {
+export const getResults = async (params: GetResultsParams, options?: Parameters<typeof customFetch>[1]): Promise<TeamResultRow[]> => {
 
-  return customFetch<AuctionSummary>(getGetAuctionSummaryUrl(),
+  return customFetch<TeamResultRow[]>(getGetResultsUrl(params),
   {
     ...options,
     method: 'GET'
@@ -831,23 +1008,715 @@ export const getAuctionSummary = async ( options?: Parameters<typeof customFetch
 
 
 
-export const getGetAuctionSummaryQueryKey = () => {
+export const getGetResultsQueryKey = (params?: GetResultsParams,) => {
     return [
-    `/api/summary`
+    `/api/results`, ...(params ? [params] : [])
     ] as const;
     }
 
 
-export const getGetAuctionSummaryQueryOptions = <TData = Awaited<ReturnType<typeof getAuctionSummary>>, TError = ErrorType<unknown>>( options?: { query?:UseQueryOptions<Awaited<ReturnType<typeof getAuctionSummary>>, TError, TData>, request?: SecondParameter<typeof customFetch>}
+export const getGetResultsQueryOptions = <TData = Awaited<ReturnType<typeof getResults>>, TError = ErrorType<unknown>>(params: GetResultsParams, options?: { query?:UseQueryOptions<Awaited<ReturnType<typeof getResults>>, TError, TData>, request?: SecondParameter<typeof customFetch>}
 ) => {
 
 const {query: queryOptions, request: requestOptions} = options ?? {};
 
-  const queryKey =  queryOptions?.queryKey ?? getGetAuctionSummaryQueryKey();
+  const queryKey =  queryOptions?.queryKey ?? getGetResultsQueryKey(params);
 
 
 
-    const queryFn: QueryFunction<Awaited<ReturnType<typeof getAuctionSummary>>> = ({ signal }) => getAuctionSummary({ signal, ...requestOptions });
+    const queryFn: QueryFunction<Awaited<ReturnType<typeof getResults>>> = ({ signal }) => getResults(params, { signal, ...requestOptions });
+
+
+
+
+
+   return  { queryKey, queryFn, ...queryOptions} as UseQueryOptions<Awaited<ReturnType<typeof getResults>>, TError, TData> & { queryKey: QueryKey }
+}
+
+export type GetResultsQueryResult = NonNullable<Awaited<ReturnType<typeof getResults>>>
+export type GetResultsQueryError = ErrorType<unknown>
+
+
+/**
+ * @summary Calcutta Returns by team for a season
+ */
+
+export function useGetResults<TData = Awaited<ReturnType<typeof getResults>>, TError = ErrorType<unknown>>(
+ params: GetResultsParams, options?: { query?:UseQueryOptions<Awaited<ReturnType<typeof getResults>>, TError, TData>, request?: SecondParameter<typeof customFetch>}
+
+ ):  UseQueryResult<TData, TError> & { queryKey: QueryKey } {
+
+  const queryOptions = getGetResultsQueryOptions(params,options)
+
+  const query = useQuery(queryOptions) as  UseQueryResult<TData, TError> & { queryKey: QueryKey };
+
+  return withQueryKey(query, queryOptions.queryKey);
+}
+
+
+
+
+
+
+
+export const getGetResultsByOwnerUrl = (params: GetResultsByOwnerParams,) => {
+  const normalizedParams = new URLSearchParams();
+
+  Object.entries(params || {}).forEach(([key, value]) => {
+
+    if (value !== undefined) {
+      normalizedParams.append(key, value === null ? 'null' : String(value))
+    }
+  });
+
+  const stringifiedParams = normalizedParams.toString();
+
+  return stringifiedParams.length > 0 ? `/api/results/by-owner?${stringifiedParams}` : `/api/results/by-owner`
+}
+
+/**
+ * @summary Calcutta Returns aggregated by owner for a season
+ */
+export const getResultsByOwner = async (params: GetResultsByOwnerParams, options?: Parameters<typeof customFetch>[1]): Promise<OwnerResultRow[]> => {
+
+  return customFetch<OwnerResultRow[]>(getGetResultsByOwnerUrl(params),
+  {
+    ...options,
+    method: 'GET'
+
+
+  }
+);}
+
+
+
+
+
+export const getGetResultsByOwnerQueryKey = (params?: GetResultsByOwnerParams,) => {
+    return [
+    `/api/results/by-owner`, ...(params ? [params] : [])
+    ] as const;
+    }
+
+
+export const getGetResultsByOwnerQueryOptions = <TData = Awaited<ReturnType<typeof getResultsByOwner>>, TError = ErrorType<unknown>>(params: GetResultsByOwnerParams, options?: { query?:UseQueryOptions<Awaited<ReturnType<typeof getResultsByOwner>>, TError, TData>, request?: SecondParameter<typeof customFetch>}
+) => {
+
+const {query: queryOptions, request: requestOptions} = options ?? {};
+
+  const queryKey =  queryOptions?.queryKey ?? getGetResultsByOwnerQueryKey(params);
+
+
+
+    const queryFn: QueryFunction<Awaited<ReturnType<typeof getResultsByOwner>>> = ({ signal }) => getResultsByOwner(params, { signal, ...requestOptions });
+
+
+
+
+
+   return  { queryKey, queryFn, ...queryOptions} as UseQueryOptions<Awaited<ReturnType<typeof getResultsByOwner>>, TError, TData> & { queryKey: QueryKey }
+}
+
+export type GetResultsByOwnerQueryResult = NonNullable<Awaited<ReturnType<typeof getResultsByOwner>>>
+export type GetResultsByOwnerQueryError = ErrorType<unknown>
+
+
+/**
+ * @summary Calcutta Returns aggregated by owner for a season
+ */
+
+export function useGetResultsByOwner<TData = Awaited<ReturnType<typeof getResultsByOwner>>, TError = ErrorType<unknown>>(
+ params: GetResultsByOwnerParams, options?: { query?:UseQueryOptions<Awaited<ReturnType<typeof getResultsByOwner>>, TError, TData>, request?: SecondParameter<typeof customFetch>}
+
+ ):  UseQueryResult<TData, TError> & { queryKey: QueryKey } {
+
+  const queryOptions = getGetResultsByOwnerQueryOptions(params,options)
+
+  const query = useQuery(queryOptions) as  UseQueryResult<TData, TError> & { queryKey: QueryKey };
+
+  return withQueryKey(query, queryOptions.queryKey);
+}
+
+
+
+
+
+
+
+export const getUpsertTeamResultUrl = () => {
+
+
+
+
+  return `/api/results/upsert`
+}
+
+/**
+ * @summary Create or update a team result record
+ */
+export const upsertTeamResult = async (teamResultInput: TeamResultInput, options?: Parameters<typeof customFetch>[1]): Promise<TeamResultRow> => {
+
+  return customFetch<TeamResultRow>(getUpsertTeamResultUrl(),
+  {
+    ...options,
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json', ...options?.headers },
+    body: JSON.stringify(teamResultInput)
+  }
+);}
+
+
+
+
+
+export const getUpsertTeamResultMutationOptions = <TError = ErrorType<ErrorResponse>,
+    TContext = unknown>(options?: { mutation?:UseMutationOptions<Awaited<ReturnType<typeof upsertTeamResult>>, TError,{data: BodyType<TeamResultInput>}, TContext>, request?: SecondParameter<typeof customFetch>}
+): UseMutationOptions<Awaited<ReturnType<typeof upsertTeamResult>>, TError,{data: BodyType<TeamResultInput>}, TContext> => {
+
+const mutationKey = ['upsertTeamResult'];
+const {mutation: mutationOptions, request: requestOptions} = options ?
+      options.mutation && 'mutationKey' in options.mutation && options.mutation.mutationKey ?
+      options
+      : {...options, mutation: {...options.mutation, mutationKey}}
+      : {mutation: { mutationKey, }, request: undefined};
+
+
+
+
+      const mutationFn: MutationFunction<Awaited<ReturnType<typeof upsertTeamResult>>, {data: BodyType<TeamResultInput>}> = (props) => {
+          const {data} = props ?? {};
+
+          return  upsertTeamResult(data,requestOptions)
+        }
+
+
+
+
+
+
+  return  { mutationFn, ...mutationOptions }}
+
+    export type UpsertTeamResultMutationResult = NonNullable<Awaited<ReturnType<typeof upsertTeamResult>>>
+    export type UpsertTeamResultMutationBody = BodyType<TeamResultInput>
+    export type UpsertTeamResultMutationError = ErrorType<ErrorResponse>
+
+    /**
+ * @summary Create or update a team result record
+ */
+export const useUpsertTeamResult = <TError = ErrorType<ErrorResponse>,
+    TContext = unknown>(options?: { mutation?:UseMutationOptions<Awaited<ReturnType<typeof upsertTeamResult>>, TError,{data: BodyType<TeamResultInput>}, TContext>, request?: SecondParameter<typeof customFetch>}
+ ): UseMutationResult<
+        Awaited<ReturnType<typeof upsertTeamResult>>,
+        TError,
+        {data: BodyType<TeamResultInput>},
+        TContext
+      > => {
+      return useMutation(getUpsertTeamResultMutationOptions(options));
+    }
+
+export const getGetTradesUrl = (params: GetTradesParams,) => {
+  const normalizedParams = new URLSearchParams();
+
+  Object.entries(params || {}).forEach(([key, value]) => {
+
+    if (value !== undefined) {
+      normalizedParams.append(key, value === null ? 'null' : String(value))
+    }
+  });
+
+  const stringifiedParams = normalizedParams.toString();
+
+  return stringifiedParams.length > 0 ? `/api/trades?${stringifiedParams}` : `/api/trades`
+}
+
+/**
+ * @summary List trades for a season
+ */
+export const getTrades = async (params: GetTradesParams, options?: Parameters<typeof customFetch>[1]): Promise<TradeRow[]> => {
+
+  return customFetch<TradeRow[]>(getGetTradesUrl(params),
+  {
+    ...options,
+    method: 'GET'
+
+
+  }
+);}
+
+
+
+
+
+export const getGetTradesQueryKey = (params?: GetTradesParams,) => {
+    return [
+    `/api/trades`, ...(params ? [params] : [])
+    ] as const;
+    }
+
+
+export const getGetTradesQueryOptions = <TData = Awaited<ReturnType<typeof getTrades>>, TError = ErrorType<unknown>>(params: GetTradesParams, options?: { query?:UseQueryOptions<Awaited<ReturnType<typeof getTrades>>, TError, TData>, request?: SecondParameter<typeof customFetch>}
+) => {
+
+const {query: queryOptions, request: requestOptions} = options ?? {};
+
+  const queryKey =  queryOptions?.queryKey ?? getGetTradesQueryKey(params);
+
+
+
+    const queryFn: QueryFunction<Awaited<ReturnType<typeof getTrades>>> = ({ signal }) => getTrades(params, { signal, ...requestOptions });
+
+
+
+
+
+   return  { queryKey, queryFn, ...queryOptions} as UseQueryOptions<Awaited<ReturnType<typeof getTrades>>, TError, TData> & { queryKey: QueryKey }
+}
+
+export type GetTradesQueryResult = NonNullable<Awaited<ReturnType<typeof getTrades>>>
+export type GetTradesQueryError = ErrorType<unknown>
+
+
+/**
+ * @summary List trades for a season
+ */
+
+export function useGetTrades<TData = Awaited<ReturnType<typeof getTrades>>, TError = ErrorType<unknown>>(
+ params: GetTradesParams, options?: { query?:UseQueryOptions<Awaited<ReturnType<typeof getTrades>>, TError, TData>, request?: SecondParameter<typeof customFetch>}
+
+ ):  UseQueryResult<TData, TError> & { queryKey: QueryKey } {
+
+  const queryOptions = getGetTradesQueryOptions(params,options)
+
+  const query = useQuery(queryOptions) as  UseQueryResult<TData, TError> & { queryKey: QueryKey };
+
+  return withQueryKey(query, queryOptions.queryKey);
+}
+
+
+
+
+
+
+
+export const getCreateTradeUrl = () => {
+
+
+
+
+  return `/api/trades`
+}
+
+/**
+ * @summary Record a trade
+ */
+export const createTrade = async (tradeInput: TradeInput, options?: Parameters<typeof customFetch>[1]): Promise<TradeRow> => {
+
+  return customFetch<TradeRow>(getCreateTradeUrl(),
+  {
+    ...options,
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json', ...options?.headers },
+    body: JSON.stringify(tradeInput)
+  }
+);}
+
+
+
+
+
+export const getCreateTradeMutationOptions = <TError = ErrorType<ErrorResponse>,
+    TContext = unknown>(options?: { mutation?:UseMutationOptions<Awaited<ReturnType<typeof createTrade>>, TError,{data: BodyType<TradeInput>}, TContext>, request?: SecondParameter<typeof customFetch>}
+): UseMutationOptions<Awaited<ReturnType<typeof createTrade>>, TError,{data: BodyType<TradeInput>}, TContext> => {
+
+const mutationKey = ['createTrade'];
+const {mutation: mutationOptions, request: requestOptions} = options ?
+      options.mutation && 'mutationKey' in options.mutation && options.mutation.mutationKey ?
+      options
+      : {...options, mutation: {...options.mutation, mutationKey}}
+      : {mutation: { mutationKey, }, request: undefined};
+
+
+
+
+      const mutationFn: MutationFunction<Awaited<ReturnType<typeof createTrade>>, {data: BodyType<TradeInput>}> = (props) => {
+          const {data} = props ?? {};
+
+          return  createTrade(data,requestOptions)
+        }
+
+
+
+
+
+
+  return  { mutationFn, ...mutationOptions }}
+
+    export type CreateTradeMutationResult = NonNullable<Awaited<ReturnType<typeof createTrade>>>
+    export type CreateTradeMutationBody = BodyType<TradeInput>
+    export type CreateTradeMutationError = ErrorType<ErrorResponse>
+
+    /**
+ * @summary Record a trade
+ */
+export const useCreateTrade = <TError = ErrorType<ErrorResponse>,
+    TContext = unknown>(options?: { mutation?:UseMutationOptions<Awaited<ReturnType<typeof createTrade>>, TError,{data: BodyType<TradeInput>}, TContext>, request?: SecondParameter<typeof customFetch>}
+ ): UseMutationResult<
+        Awaited<ReturnType<typeof createTrade>>,
+        TError,
+        {data: BodyType<TradeInput>},
+        TContext
+      > => {
+      return useMutation(getCreateTradeMutationOptions(options));
+    }
+
+export const getUpdateTradeUrl = (id: number,) => {
+
+
+
+
+  return `/api/trades/${id}`
+}
+
+/**
+ * @summary Update a trade record
+ */
+export const updateTrade = async (id: number,
+    tradeUpdate: TradeUpdate, options?: Parameters<typeof customFetch>[1]): Promise<TradeRow> => {
+
+  return customFetch<TradeRow>(getUpdateTradeUrl(id),
+  {
+    ...options,
+    method: 'PATCH',
+    headers: { 'Content-Type': 'application/json', ...options?.headers },
+    body: JSON.stringify(tradeUpdate)
+  }
+);}
+
+
+
+
+
+export const getUpdateTradeMutationOptions = <TError = ErrorType<ErrorResponse>,
+    TContext = unknown>(options?: { mutation?:UseMutationOptions<Awaited<ReturnType<typeof updateTrade>>, TError,{id: number;data: BodyType<TradeUpdate>}, TContext>, request?: SecondParameter<typeof customFetch>}
+): UseMutationOptions<Awaited<ReturnType<typeof updateTrade>>, TError,{id: number;data: BodyType<TradeUpdate>}, TContext> => {
+
+const mutationKey = ['updateTrade'];
+const {mutation: mutationOptions, request: requestOptions} = options ?
+      options.mutation && 'mutationKey' in options.mutation && options.mutation.mutationKey ?
+      options
+      : {...options, mutation: {...options.mutation, mutationKey}}
+      : {mutation: { mutationKey, }, request: undefined};
+
+
+
+
+      const mutationFn: MutationFunction<Awaited<ReturnType<typeof updateTrade>>, {id: number;data: BodyType<TradeUpdate>}> = (props) => {
+          const {id,data} = props ?? {};
+
+          return  updateTrade(id,data,requestOptions)
+        }
+
+
+
+
+
+
+  return  { mutationFn, ...mutationOptions }}
+
+    export type UpdateTradeMutationResult = NonNullable<Awaited<ReturnType<typeof updateTrade>>>
+    export type UpdateTradeMutationBody = BodyType<TradeUpdate>
+    export type UpdateTradeMutationError = ErrorType<ErrorResponse>
+
+    /**
+ * @summary Update a trade record
+ */
+export const useUpdateTrade = <TError = ErrorType<ErrorResponse>,
+    TContext = unknown>(options?: { mutation?:UseMutationOptions<Awaited<ReturnType<typeof updateTrade>>, TError,{id: number;data: BodyType<TradeUpdate>}, TContext>, request?: SecondParameter<typeof customFetch>}
+ ): UseMutationResult<
+        Awaited<ReturnType<typeof updateTrade>>,
+        TError,
+        {id: number;data: BodyType<TradeUpdate>},
+        TContext
+      > => {
+      return useMutation(getUpdateTradeMutationOptions(options));
+    }
+
+export const getDeleteTradeUrl = (id: number,) => {
+
+
+
+
+  return `/api/trades/${id}`
+}
+
+/**
+ * @summary Delete a trade record
+ */
+export const deleteTrade = async (id: number, options?: Parameters<typeof customFetch>[1]): Promise<void> => {
+
+  return customFetch<void>(getDeleteTradeUrl(id),
+  {
+    ...options,
+    method: 'DELETE'
+
+
+  }
+);}
+
+
+
+
+
+export const getDeleteTradeMutationOptions = <TError = ErrorType<ErrorResponse>,
+    TContext = unknown>(options?: { mutation?:UseMutationOptions<Awaited<ReturnType<typeof deleteTrade>>, TError,{id: number}, TContext>, request?: SecondParameter<typeof customFetch>}
+): UseMutationOptions<Awaited<ReturnType<typeof deleteTrade>>, TError,{id: number}, TContext> => {
+
+const mutationKey = ['deleteTrade'];
+const {mutation: mutationOptions, request: requestOptions} = options ?
+      options.mutation && 'mutationKey' in options.mutation && options.mutation.mutationKey ?
+      options
+      : {...options, mutation: {...options.mutation, mutationKey}}
+      : {mutation: { mutationKey, }, request: undefined};
+
+
+
+
+      const mutationFn: MutationFunction<Awaited<ReturnType<typeof deleteTrade>>, {id: number}> = (props) => {
+          const {id} = props ?? {};
+
+          return  deleteTrade(id,requestOptions)
+        }
+
+
+
+
+
+
+  return  { mutationFn, ...mutationOptions }}
+
+    export type DeleteTradeMutationResult = NonNullable<Awaited<ReturnType<typeof deleteTrade>>>
+
+    export type DeleteTradeMutationError = ErrorType<ErrorResponse>
+
+    /**
+ * @summary Delete a trade record
+ */
+export const useDeleteTrade = <TError = ErrorType<ErrorResponse>,
+    TContext = unknown>(options?: { mutation?:UseMutationOptions<Awaited<ReturnType<typeof deleteTrade>>, TError,{id: number}, TContext>, request?: SecondParameter<typeof customFetch>}
+ ): UseMutationResult<
+        Awaited<ReturnType<typeof deleteTrade>>,
+        TError,
+        {id: number},
+        TContext
+      > => {
+      return useMutation(getDeleteTradeMutationOptions(options));
+    }
+
+export const getGetMtmSnapshotsUrl = (params: GetMtmSnapshotsParams,) => {
+  const normalizedParams = new URLSearchParams();
+
+  Object.entries(params || {}).forEach(([key, value]) => {
+
+    if (value !== undefined) {
+      normalizedParams.append(key, value === null ? 'null' : String(value))
+    }
+  });
+
+  const stringifiedParams = normalizedParams.toString();
+
+  return stringifiedParams.length > 0 ? `/api/mtm?${stringifiedParams}` : `/api/mtm`
+}
+
+/**
+ * @summary Get weekly MTM snapshots for a season
+ */
+export const getMtmSnapshots = async (params: GetMtmSnapshotsParams, options?: Parameters<typeof customFetch>[1]): Promise<MtmData> => {
+
+  return customFetch<MtmData>(getGetMtmSnapshotsUrl(params),
+  {
+    ...options,
+    method: 'GET'
+
+
+  }
+);}
+
+
+
+
+
+export const getGetMtmSnapshotsQueryKey = (params?: GetMtmSnapshotsParams,) => {
+    return [
+    `/api/mtm`, ...(params ? [params] : [])
+    ] as const;
+    }
+
+
+export const getGetMtmSnapshotsQueryOptions = <TData = Awaited<ReturnType<typeof getMtmSnapshots>>, TError = ErrorType<unknown>>(params: GetMtmSnapshotsParams, options?: { query?:UseQueryOptions<Awaited<ReturnType<typeof getMtmSnapshots>>, TError, TData>, request?: SecondParameter<typeof customFetch>}
+) => {
+
+const {query: queryOptions, request: requestOptions} = options ?? {};
+
+  const queryKey =  queryOptions?.queryKey ?? getGetMtmSnapshotsQueryKey(params);
+
+
+
+    const queryFn: QueryFunction<Awaited<ReturnType<typeof getMtmSnapshots>>> = ({ signal }) => getMtmSnapshots(params, { signal, ...requestOptions });
+
+
+
+
+
+   return  { queryKey, queryFn, ...queryOptions} as UseQueryOptions<Awaited<ReturnType<typeof getMtmSnapshots>>, TError, TData> & { queryKey: QueryKey }
+}
+
+export type GetMtmSnapshotsQueryResult = NonNullable<Awaited<ReturnType<typeof getMtmSnapshots>>>
+export type GetMtmSnapshotsQueryError = ErrorType<unknown>
+
+
+/**
+ * @summary Get weekly MTM snapshots for a season
+ */
+
+export function useGetMtmSnapshots<TData = Awaited<ReturnType<typeof getMtmSnapshots>>, TError = ErrorType<unknown>>(
+ params: GetMtmSnapshotsParams, options?: { query?:UseQueryOptions<Awaited<ReturnType<typeof getMtmSnapshots>>, TError, TData>, request?: SecondParameter<typeof customFetch>}
+
+ ):  UseQueryResult<TData, TError> & { queryKey: QueryKey } {
+
+  const queryOptions = getGetMtmSnapshotsQueryOptions(params,options)
+
+  const query = useQuery(queryOptions) as  UseQueryResult<TData, TError> & { queryKey: QueryKey };
+
+  return withQueryKey(query, queryOptions.queryKey);
+}
+
+
+
+
+
+
+
+export const getUpsertMtmSnapshotUrl = () => {
+
+
+
+
+  return `/api/mtm`
+}
+
+/**
+ * @summary Add or update a weekly MTM snapshot
+ */
+export const upsertMtmSnapshot = async (mtmSnapshotInput: MtmSnapshotInput, options?: Parameters<typeof customFetch>[1]): Promise<MtmSnapshot> => {
+
+  return customFetch<MtmSnapshot>(getUpsertMtmSnapshotUrl(),
+  {
+    ...options,
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json', ...options?.headers },
+    body: JSON.stringify(mtmSnapshotInput)
+  }
+);}
+
+
+
+
+
+export const getUpsertMtmSnapshotMutationOptions = <TError = ErrorType<ErrorResponse>,
+    TContext = unknown>(options?: { mutation?:UseMutationOptions<Awaited<ReturnType<typeof upsertMtmSnapshot>>, TError,{data: BodyType<MtmSnapshotInput>}, TContext>, request?: SecondParameter<typeof customFetch>}
+): UseMutationOptions<Awaited<ReturnType<typeof upsertMtmSnapshot>>, TError,{data: BodyType<MtmSnapshotInput>}, TContext> => {
+
+const mutationKey = ['upsertMtmSnapshot'];
+const {mutation: mutationOptions, request: requestOptions} = options ?
+      options.mutation && 'mutationKey' in options.mutation && options.mutation.mutationKey ?
+      options
+      : {...options, mutation: {...options.mutation, mutationKey}}
+      : {mutation: { mutationKey, }, request: undefined};
+
+
+
+
+      const mutationFn: MutationFunction<Awaited<ReturnType<typeof upsertMtmSnapshot>>, {data: BodyType<MtmSnapshotInput>}> = (props) => {
+          const {data} = props ?? {};
+
+          return  upsertMtmSnapshot(data,requestOptions)
+        }
+
+
+
+
+
+
+  return  { mutationFn, ...mutationOptions }}
+
+    export type UpsertMtmSnapshotMutationResult = NonNullable<Awaited<ReturnType<typeof upsertMtmSnapshot>>>
+    export type UpsertMtmSnapshotMutationBody = BodyType<MtmSnapshotInput>
+    export type UpsertMtmSnapshotMutationError = ErrorType<ErrorResponse>
+
+    /**
+ * @summary Add or update a weekly MTM snapshot
+ */
+export const useUpsertMtmSnapshot = <TError = ErrorType<ErrorResponse>,
+    TContext = unknown>(options?: { mutation?:UseMutationOptions<Awaited<ReturnType<typeof upsertMtmSnapshot>>, TError,{data: BodyType<MtmSnapshotInput>}, TContext>, request?: SecondParameter<typeof customFetch>}
+ ): UseMutationResult<
+        Awaited<ReturnType<typeof upsertMtmSnapshot>>,
+        TError,
+        {data: BodyType<MtmSnapshotInput>},
+        TContext
+      > => {
+      return useMutation(getUpsertMtmSnapshotMutationOptions(options));
+    }
+
+export const getGetAuctionSummaryUrl = (params?: GetAuctionSummaryParams,) => {
+  const normalizedParams = new URLSearchParams();
+
+  Object.entries(params || {}).forEach(([key, value]) => {
+
+    if (value !== undefined) {
+      normalizedParams.append(key, value === null ? 'null' : String(value))
+    }
+  });
+
+  const stringifiedParams = normalizedParams.toString();
+
+  return stringifiedParams.length > 0 ? `/api/summary?${stringifiedParams}` : `/api/summary`
+}
+
+/**
+ * @summary Overall auction summary
+ */
+export const getAuctionSummary = async (params?: GetAuctionSummaryParams, options?: Parameters<typeof customFetch>[1]): Promise<AuctionSummary> => {
+
+  return customFetch<AuctionSummary>(getGetAuctionSummaryUrl(params),
+  {
+    ...options,
+    method: 'GET'
+
+
+  }
+);}
+
+
+
+
+
+export const getGetAuctionSummaryQueryKey = (params?: GetAuctionSummaryParams,) => {
+    return [
+    `/api/summary`, ...(params ? [params] : [])
+    ] as const;
+    }
+
+
+export const getGetAuctionSummaryQueryOptions = <TData = Awaited<ReturnType<typeof getAuctionSummary>>, TError = ErrorType<unknown>>(params?: GetAuctionSummaryParams, options?: { query?:UseQueryOptions<Awaited<ReturnType<typeof getAuctionSummary>>, TError, TData>, request?: SecondParameter<typeof customFetch>}
+) => {
+
+const {query: queryOptions, request: requestOptions} = options ?? {};
+
+  const queryKey =  queryOptions?.queryKey ?? getGetAuctionSummaryQueryKey(params);
+
+
+
+    const queryFn: QueryFunction<Awaited<ReturnType<typeof getAuctionSummary>>> = ({ signal }) => getAuctionSummary(params, { signal, ...requestOptions });
 
 
 
@@ -861,15 +1730,15 @@ export type GetAuctionSummaryQueryError = ErrorType<unknown>
 
 
 /**
- * @summary Get overall auction summary and standings
+ * @summary Overall auction summary
  */
 
 export function useGetAuctionSummary<TData = Awaited<ReturnType<typeof getAuctionSummary>>, TError = ErrorType<unknown>>(
-  options?: { query?:UseQueryOptions<Awaited<ReturnType<typeof getAuctionSummary>>, TError, TData>, request?: SecondParameter<typeof customFetch>}
+ params?: GetAuctionSummaryParams, options?: { query?:UseQueryOptions<Awaited<ReturnType<typeof getAuctionSummary>>, TError, TData>, request?: SecondParameter<typeof customFetch>}
 
  ):  UseQueryResult<TData, TError> & { queryKey: QueryKey } {
 
-  const queryOptions = getGetAuctionSummaryQueryOptions(options)
+  const queryOptions = getGetAuctionSummaryQueryOptions(params,options)
 
   const query = useQuery(queryOptions) as  UseQueryResult<TData, TError> & { queryKey: QueryKey };
 

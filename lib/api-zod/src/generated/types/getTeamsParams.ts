@@ -16,4 +16,8 @@ search?: string;
  * @nullable
  */
 bidderId?: number | null;
+/**
+ * @nullable
+ */
+season?: number | null;
 };

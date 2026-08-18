@@ -9,7 +9,8 @@
   },
   "scripts": {
     "push": "drizzle-kit push --config ./drizzle.config.ts",
-    "push-force": "drizzle-kit push --force --config ./drizzle.config.ts"
+    "push-force": "drizzle-kit push --force --config ./drizzle.config.ts",
+    "seed2025": "node --import tsx/esm src/seed2025.ts"
   },
   "dependencies": {
     "drizzle-orm": "catalog:",

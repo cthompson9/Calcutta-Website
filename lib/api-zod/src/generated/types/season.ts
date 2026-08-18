@@ -6,11 +6,10 @@
  * OpenAPI spec version: 0.1.0
  */
 
-export interface TeamRef {
+export interface Season {
   id: number;
-  name: string;
-  conference: string;
-  division: string;
-  bidAmount: number;
-  ownershipShare: number;
+  year: number;
+  isActive: boolean;
+  isComplete: boolean;
+  label: string;
 }

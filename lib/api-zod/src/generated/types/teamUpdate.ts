@@ -16,6 +16,7 @@ export interface TeamUpdate {
   division?: TeamUpdateDivision;
   /** @minimum 0 */
   bidAmount?: number;
+  season?: number;
   /** @minItems 1 */
   owners?: OwnerInput[];
 }

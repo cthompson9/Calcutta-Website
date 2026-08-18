@@ -9,7 +9,6 @@ import * as zod from 'zod';
 
 
 /**
- * Returns server health status
  * @summary Health check
  */
 export const HealthCheckResponse = zod.object({
@@ -18,14 +17,46 @@ export const HealthCheckResponse = zod.object({
 
 
 /**
- * Returns all NFL teams with their bidder info, filterable by conference/division
+ * @summary List all seasons
+ */
+export const GetSeasonsResponseItem = zod.object({
+  "id": zod.number(),
+  "year": zod.number(),
+  "isActive": zod.boolean(),
+  "isComplete": zod.boolean(),
+  "label": zod.string()
+})
+export const GetSeasonsResponse = zod.array(GetSeasonsResponseItem)
+
+
+/**
+ * @summary Create a season
+ */
+export const CreateSeasonBody = zod.object({
+  "year": zod.number(),
+  "isActive": zod.boolean().optional(),
+  "isComplete": zod.boolean().optional(),
+  "label": zod.string()
+})
+
+export const CreateSeasonResponse = zod.object({
+  "id": zod.number(),
+  "year": zod.number(),
+  "isActive": zod.boolean(),
+  "isComplete": zod.boolean(),
+  "label": zod.string()
+})
+
+
+/**
  * @summary List all teams
  */
 export const GetTeamsQueryParams = zod.object({
   "conference": zod.enum(['AFC', 'NFC']).optional(),
   "division": zod.enum(['East', 'North', 'South', 'West']).optional(),
   "search": zod.coerce.string().optional(),
-  "bidderId": zod.coerce.number().int().nullish()
+  "bidderId": zod.coerce.number().nullish(),
+  "season": zod.coerce.number().nullish()
 })
 
 export const GetTeamsResponseItem = zod.object({
@@ -37,7 +68,7 @@ export const GetTeamsResponseItem = zod.object({
   "owners": zod.array(zod.object({
   "bidderId": zod.number(),
   "bidderName": zod.string(),
-  "ownershipShare": zod.number().describe('Fraction owned (1.0 = sole, 0.5 = half)')
+  "ownershipShare": zod.number()
 }))
 })
 export const GetTeamsResponse = zod.array(GetTeamsResponseItem)
@@ -57,9 +88,10 @@ export const CreateTeamBody = zod.object({
   "conference": zod.enum(['AFC', 'NFC']),
   "division": zod.enum(['East', 'North', 'South', 'West']),
   "bidAmount": zod.number().min(createTeamBodyBidAmountMin),
+  "season": zod.number().optional(),
   "owners": zod.array(zod.object({
   "bidderId": zod.number(),
-  "ownershipShare": zod.number().describe('Fraction owned (must sum to 1.0 across all owners)')
+  "ownershipShare": zod.number()
 })).min(1)
 })
 
@@ -72,7 +104,7 @@ export const CreateTeamResponse = zod.object({
   "owners": zod.array(zod.object({
   "bidderId": zod.number(),
   "bidderName": zod.string(),
-  "ownershipShare": zod.number().describe('Fraction owned (1.0 = sole, 0.5 = half)')
+  "ownershipShare": zod.number()
 }))
 })
 
@@ -93,7 +125,7 @@ export const GetTeamResponse = zod.object({
   "owners": zod.array(zod.object({
   "bidderId": zod.number(),
   "bidderName": zod.string(),
-  "ownershipShare": zod.number().describe('Fraction owned (1.0 = sole, 0.5 = half)')
+  "ownershipShare": zod.number()
 }))
 })
 
@@ -116,9 +148,10 @@ export const UpdateTeamBody = zod.object({
   "conference": zod.enum(['AFC', 'NFC']).optional(),
   "division": zod.enum(['East', 'North', 'South', 'West']).optional(),
   "bidAmount": zod.number().min(updateTeamBodyBidAmountMin).optional(),
+  "season": zod.number().optional(),
   "owners": zod.array(zod.object({
   "bidderId": zod.number(),
-  "ownershipShare": zod.number().describe('Fraction owned (must sum to 1.0 across all owners)')
+  "ownershipShare": zod.number()
 })).min(1).optional()
 })
 
@@ -131,7 +164,7 @@ export const UpdateTeamResponse = zod.object({
   "owners": zod.array(zod.object({
   "bidderId": zod.number(),
   "bidderName": zod.string(),
-  "ownershipShare": zod.number().describe('Fraction owned (1.0 = sole, 0.5 = half)')
+  "ownershipShare": zod.number()
 }))
 })
 
@@ -149,6 +182,10 @@ export const DeleteTeamResponse = zod.void()
 /**
  * @summary List all bidders with totals
  */
+export const GetBiddersQueryParams = zod.object({
+  "season": zod.coerce.number().nullish()
+})
+
 export const GetBiddersResponseItem = zod.object({
   "id": zod.number(),
   "name": zod.string(),
@@ -160,7 +197,7 @@ export const GetBiddersResponseItem = zod.object({
   "conference": zod.string(),
   "division": zod.string(),
   "bidAmount": zod.number(),
-  "ownershipShare": zod.number().describe('Fraction of team owned (1.0 = sole owner, 0.5 = 50\/50 split)')
+  "ownershipShare": zod.number()
 }))
 })
 export const GetBiddersResponse = zod.array(GetBiddersResponseItem)
@@ -213,8 +250,293 @@ export const DeleteBidderResponse = zod.void()
 
 
 /**
- * @summary Get overall auction summary and standings
+ * @summary Calcutta Returns by team for a season
  */
+export const GetResultsQueryParams = zod.object({
+  "season": zod.coerce.number(),
+  "conference": zod.enum(['AFC', 'NFC']).optional(),
+  "search": zod.coerce.string().optional()
+})
+
+export const GetResultsResponseItem = zod.object({
+  "teamId": zod.number(),
+  "teamName": zod.string(),
+  "conference": zod.string(),
+  "division": zod.string(),
+  "owners": zod.array(zod.object({
+  "bidderId": zod.number(),
+  "bidderName": zod.string(),
+  "ownershipShare": zod.number()
+})),
+  "cost": zod.number(),
+  "wins": zod.number(),
+  "ptDiff": zod.number(),
+  "startingPoints": zod.number(),
+  "draftOrder": zod.number().nullish(),
+  "playoffBerth": zod.boolean(),
+  "divRound": zod.boolean(),
+  "confRound": zod.boolean(),
+  "sbBerth": zod.boolean(),
+  "winSuperBowl": zod.boolean(),
+  "realizedReturn": zod.number(),
+  "realizedMultiple": zod.number(),
+  "netReturn": zod.number(),
+  "netPctReturn": zod.number(),
+  "markToMarket": zod.number()
+})
+export const GetResultsResponse = zod.array(GetResultsResponseItem)
+
+
+/**
+ * @summary Calcutta Returns aggregated by owner for a season
+ */
+export const GetResultsByOwnerQueryParams = zod.object({
+  "season": zod.coerce.number()
+})
+
+export const GetResultsByOwnerResponseItem = zod.object({
+  "bidderId": zod.number(),
+  "bidderName": zod.string(),
+  "teamCount": zod.number(),
+  "totalCost": zod.number(),
+  "totalRealizedReturn": zod.number(),
+  "totalNetReturn": zod.number(),
+  "netPctReturn": zod.number(),
+  "totalMtm": zod.number(),
+  "teams": zod.array(zod.object({
+  "teamId": zod.number(),
+  "teamName": zod.string(),
+  "conference": zod.string(),
+  "division": zod.string(),
+  "owners": zod.array(zod.object({
+  "bidderId": zod.number(),
+  "bidderName": zod.string(),
+  "ownershipShare": zod.number()
+})),
+  "cost": zod.number(),
+  "wins": zod.number(),
+  "ptDiff": zod.number(),
+  "startingPoints": zod.number(),
+  "draftOrder": zod.number().nullish(),
+  "playoffBerth": zod.boolean(),
+  "divRound": zod.boolean(),
+  "confRound": zod.boolean(),
+  "sbBerth": zod.boolean(),
+  "winSuperBowl": zod.boolean(),
+  "realizedReturn": zod.number(),
+  "realizedMultiple": zod.number(),
+  "netReturn": zod.number(),
+  "netPctReturn": zod.number(),
+  "markToMarket": zod.number()
+}))
+})
+export const GetResultsByOwnerResponse = zod.array(GetResultsByOwnerResponseItem)
+
+
+/**
+ * @summary Create or update a team result record
+ */
+export const UpsertTeamResultBody = zod.object({
+  "teamId": zod.number(),
+  "seasonYear": zod.number(),
+  "wins": zod.number().optional(),
+  "ptDiff": zod.number().optional(),
+  "startingPoints": zod.number().optional(),
+  "draftOrder": zod.number().nullish(),
+  "playoffBerth": zod.boolean().optional(),
+  "divRound": zod.boolean().optional(),
+  "confRound": zod.boolean().optional(),
+  "sbBerth": zod.boolean().optional(),
+  "winSuperBowl": zod.boolean().optional(),
+  "realizedReturn": zod.number().optional(),
+  "realizedMultiple": zod.number().optional(),
+  "netReturn": zod.number().optional(),
+  "netPctReturn": zod.number().optional(),
+  "markToMarket": zod.number().optional()
+})
+
+export const UpsertTeamResultResponse = zod.object({
+  "teamId": zod.number(),
+  "teamName": zod.string(),
+  "conference": zod.string(),
+  "division": zod.string(),
+  "owners": zod.array(zod.object({
+  "bidderId": zod.number(),
+  "bidderName": zod.string(),
+  "ownershipShare": zod.number()
+})),
+  "cost": zod.number(),
+  "wins": zod.number(),
+  "ptDiff": zod.number(),
+  "startingPoints": zod.number(),
+  "draftOrder": zod.number().nullish(),
+  "playoffBerth": zod.boolean(),
+  "divRound": zod.boolean(),
+  "confRound": zod.boolean(),
+  "sbBerth": zod.boolean(),
+  "winSuperBowl": zod.boolean(),
+  "realizedReturn": zod.number(),
+  "realizedMultiple": zod.number(),
+  "netReturn": zod.number(),
+  "netPctReturn": zod.number(),
+  "markToMarket": zod.number()
+})
+
+
+/**
+ * @summary List trades for a season
+ */
+export const GetTradesQueryParams = zod.object({
+  "season": zod.coerce.number()
+})
+
+export const GetTradesResponseItem = zod.object({
+  "id": zod.number(),
+  "seasonYear": zod.number(),
+  "teamId": zod.number(),
+  "teamName": zod.string(),
+  "fromBidderId": zod.number(),
+  "fromBidderName": zod.string(),
+  "toBidderId": zod.number(),
+  "toBidderName": zod.string(),
+  "price": zod.number(),
+  "tradeDate": zod.string(),
+  "notes": zod.string().nullish()
+})
+export const GetTradesResponse = zod.array(GetTradesResponseItem)
+
+
+/**
+ * @summary Record a trade
+ */
+export const CreateTradeBody = zod.object({
+  "seasonYear": zod.number(),
+  "teamId": zod.number(),
+  "fromBidderId": zod.number(),
+  "toBidderId": zod.number(),
+  "price": zod.number(),
+  "tradeDate": zod.string(),
+  "notes": zod.string().optional()
+})
+
+export const CreateTradeResponse = zod.object({
+  "id": zod.number(),
+  "seasonYear": zod.number(),
+  "teamId": zod.number(),
+  "teamName": zod.string(),
+  "fromBidderId": zod.number(),
+  "fromBidderName": zod.string(),
+  "toBidderId": zod.number(),
+  "toBidderName": zod.string(),
+  "price": zod.number(),
+  "tradeDate": zod.string(),
+  "notes": zod.string().nullish()
+})
+
+
+/**
+ * @summary Update a trade record
+ */
+export const UpdateTradeParams = zod.object({
+  "id": zod.coerce.number()
+})
+
+export const UpdateTradeBody = zod.object({
+  "price": zod.number().optional(),
+  "tradeDate": zod.string().optional(),
+  "notes": zod.string().optional()
+})
+
+export const UpdateTradeResponse = zod.object({
+  "id": zod.number(),
+  "seasonYear": zod.number(),
+  "teamId": zod.number(),
+  "teamName": zod.string(),
+  "fromBidderId": zod.number(),
+  "fromBidderName": zod.string(),
+  "toBidderId": zod.number(),
+  "toBidderName": zod.string(),
+  "price": zod.number(),
+  "tradeDate": zod.string(),
+  "notes": zod.string().nullish()
+})
+
+
+/**
+ * @summary Delete a trade record
+ */
+export const DeleteTradeParams = zod.object({
+  "id": zod.coerce.number()
+})
+
+export const DeleteTradeResponse = zod.void()
+
+
+/**
+ * @summary Get weekly MTM snapshots for a season
+ */
+export const GetMtmSnapshotsQueryParams = zod.object({
+  "season": zod.coerce.number(),
+  "teamId": zod.coerce.number().nullish()
+})
+
+export const GetMtmSnapshotsResponse = zod.object({
+  "weeks": zod.array(zod.object({
+  "weekNum": zod.number(),
+  "snapshotDate": zod.string().nullish(),
+  "ownerTotals": zod.array(zod.object({
+  "bidderName": zod.string(),
+  "mtmTotal": zod.number()
+})),
+  "teamValues": zod.array(zod.object({
+  "teamId": zod.number(),
+  "teamName": zod.string(),
+  "ownerName": zod.string(),
+  "mtmValue": zod.number()
+}))
+})),
+  "teams": zod.array(zod.object({
+  "teamId": zod.number(),
+  "teamName": zod.string(),
+  "conference": zod.string(),
+  "ownerName": zod.string(),
+  "weeklyValues": zod.array(zod.number())
+})),
+  "owners": zod.array(zod.object({
+  "bidderName": zod.string(),
+  "weeklyTotals": zod.array(zod.number())
+}))
+})
+
+
+/**
+ * @summary Add or update a weekly MTM snapshot
+ */
+export const UpsertMtmSnapshotBody = zod.object({
+  "teamId": zod.number(),
+  "seasonYear": zod.number(),
+  "weekNum": zod.number(),
+  "snapshotDate": zod.string().optional(),
+  "mtmValue": zod.number()
+})
+
+export const UpsertMtmSnapshotResponse = zod.object({
+  "id": zod.number(),
+  "teamId": zod.number(),
+  "seasonId": zod.number(),
+  "weekNum": zod.number(),
+  "snapshotDate": zod.string().nullish(),
+  "mtmValue": zod.number()
+})
+
+
+/**
+ * @summary Overall auction summary
+ */
+export const GetAuctionSummaryQueryParams = zod.object({
+  "season": zod.coerce.number().nullish()
+})
+
 export const GetAuctionSummaryResponse = zod.object({
   "potSize": zod.number(),
   "teamsAuctioned": zod.number(),

@@ -6,7 +6,9 @@
  * OpenAPI spec version: 0.1.0
  */
 
-export interface OwnerInput {
-  bidderId: number;
-  ownershipShare: number;
-}
+export type GetBiddersParams = {
+/**
+ * @nullable
+ */
+season?: number | null;
+};

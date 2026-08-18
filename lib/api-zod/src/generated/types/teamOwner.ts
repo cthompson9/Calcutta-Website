@@ -9,6 +9,5 @@
 export interface TeamOwner {
   bidderId: number;
   bidderName: string;
-  /** Fraction owned (1.0 = sole, 0.5 = half) */
   ownershipShare: number;
 }
