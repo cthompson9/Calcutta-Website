@@ -1,6 +1,6 @@
 import { Router, type IRouter } from "express";
 import { eq, and, ilike, sql } from "drizzle-orm";
-import { db, teamsTable, biddersTable, teamBiddersTable } from "@workspace/db";
+import { db, teamsTable, biddersTable, teamBiddersTable, seasonsTable } from "@workspace/db";
 import {
   GetTeamsQueryParams,
   GetTeamParams,
@@ -12,7 +12,17 @@ import {
 
 const router: IRouter = Router();
 
-async function fetchTeamWithOwners(teamId: number) {
+async function getActiveSeasonId(): Promise<number> {
+  const rows = await db
+    .select({ id: seasonsTable.id })
+    .from(seasonsTable)
+    .where(eq(seasonsTable.isActive, true))
+    .limit(1);
+  if (!rows[0]) throw new Error("No active season found");
+  return rows[0].id;
+}
+
+async function fetchTeamWithOwners(teamId: number, seasonId: number) {
   const team = await db
     .select()
     .from(teamsTable)
@@ -28,7 +38,12 @@ async function fetchTeamWithOwners(teamId: number) {
     })
     .from(teamBiddersTable)
     .innerJoin(biddersTable, eq(teamBiddersTable.bidderId, biddersTable.id))
-    .where(eq(teamBiddersTable.teamId, teamId));
+    .where(
+      and(
+        eq(teamBiddersTable.teamId, teamId),
+        eq(teamBiddersTable.seasonId, seasonId),
+      ),
+    );
 
   return {
     ...team[0],
@@ -49,6 +64,8 @@ router.get("/teams", async (req, res): Promise<void> => {
   }
   const { conference, division, search, bidderId } = parsed.data;
 
+  const activeSeasonId = await getActiveSeasonId();
+
   let baseQuery = db
     .selectDistinct({
       id: teamsTable.id,
@@ -66,6 +83,7 @@ router.get("/teams", async (req, res): Promise<void> => {
       and(
         eq(teamBiddersTable.teamId, teamsTable.id),
         eq(teamBiddersTable.bidderId, bidderId),
+        eq(teamBiddersTable.seasonId, activeSeasonId),
       ),
     );
   }
@@ -95,7 +113,12 @@ router.get("/teams", async (req, res): Promise<void> => {
     })
     .from(teamBiddersTable)
     .innerJoin(biddersTable, eq(teamBiddersTable.bidderId, biddersTable.id))
-    .where(sql`${teamBiddersTable.teamId} = ANY(ARRAY[${sql.join(teamIds.map(id => sql`${id}`), sql`, `)}]::int[])`);
+    .where(
+      and(
+        sql`${teamBiddersTable.teamId} = ANY(ARRAY[${sql.join(teamIds.map(id => sql`${id}`), sql`, `)}]::int[])`,
+        eq(teamBiddersTable.seasonId, activeSeasonId),
+      ),
+    );
 
   const ownersByTeam = new Map<number, typeof allOwners>();
   for (const o of allOwners) {
@@ -130,15 +153,17 @@ router.post("/teams", async (req, res): Promise<void> => {
     .values({ name, conference, division, bidAmount: String(bidAmount) })
     .returning();
 
+  const seasonId = await getActiveSeasonId();
   await db.insert(teamBiddersTable).values(
     owners.map((o) => ({
       teamId: team.id,
       bidderId: o.bidderId,
+      seasonId,
       ownershipShare: String(o.ownershipShare),
     })),
   );
 
-  const full = await fetchTeamWithOwners(team.id);
+  const full = await fetchTeamWithOwners(team.id, seasonId);
   res.status(201).json(full);
 });
 
@@ -149,7 +174,8 @@ router.get("/teams/:id", async (req, res): Promise<void> => {
     return;
   }
 
-  const full = await fetchTeamWithOwners(params.data.id);
+  const seasonId = await getActiveSeasonId();
+  const full = await fetchTeamWithOwners(params.data.id, seasonId);
   if (!full) {
     res.status(404).json({ error: "Team not found" });
     return;
@@ -178,18 +204,29 @@ router.patch("/teams/:id", async (req, res): Promise<void> => {
     await db.update(teamsTable).set(updates).where(eq(teamsTable.id, params.data.id));
   }
 
+  const seasonId = await getActiveSeasonId();
+
   if (owners !== undefined) {
-    await db.delete(teamBiddersTable).where(eq(teamBiddersTable.teamId, params.data.id));
+    // Delete only this season's rows — preserves prior-season history
+    await db
+      .delete(teamBiddersTable)
+      .where(
+        and(
+          eq(teamBiddersTable.teamId, params.data.id),
+          eq(teamBiddersTable.seasonId, seasonId),
+        ),
+      );
     await db.insert(teamBiddersTable).values(
       owners.map((o) => ({
         teamId: params.data.id,
         bidderId: o.bidderId,
+        seasonId,
         ownershipShare: String(o.ownershipShare),
       })),
     );
   }
 
-  const full = await fetchTeamWithOwners(params.data.id);
+  const full = await fetchTeamWithOwners(params.data.id, seasonId);
   if (!full) {
     res.status(404).json({ error: "Team not found" });
     return;

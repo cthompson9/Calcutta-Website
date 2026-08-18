@@ -82,13 +82,15 @@ async function getTeamOwners(
   teamId: number,
   seasonId: number | null,
 ): Promise<string[]> {
-  let q = db
+  const conditions = [eq(teamBiddersTable.teamId, teamId)];
+  if (seasonId != null) conditions.push(eq(teamBiddersTable.seasonId, seasonId));
+
+  const owners = await db
     .select({ bidderName: biddersTable.name, ownershipShare: teamBiddersTable.ownershipShare })
     .from(teamBiddersTable)
     .innerJoin(biddersTable, eq(teamBiddersTable.bidderId, biddersTable.id))
-    .where(eq(teamBiddersTable.teamId, teamId));
+    .where(and(...conditions));
 
-  const owners = await q;
   return owners.map((o) => o.bidderName);
 }
 
@@ -212,7 +214,12 @@ async function getOwnerAgg(bidderId: number, seasonId: number | null) {
       ownershipShare: teamBiddersTable.ownershipShare,
     })
     .from(teamBiddersTable)
-    .where(eq(teamBiddersTable.bidderId, bidderId));
+    .where(
+      and(
+        eq(teamBiddersTable.bidderId, bidderId),
+        eq(teamBiddersTable.seasonId, seasonId),
+      ),
+    );
 
   let totalCost = 0;
   let totalReturn = 0;

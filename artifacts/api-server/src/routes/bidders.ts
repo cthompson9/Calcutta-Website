@@ -1,6 +1,6 @@
 import { Router, type IRouter } from "express";
-import { eq, sql } from "drizzle-orm";
-import { db, biddersTable, teamsTable, teamBiddersTable } from "@workspace/db";
+import { eq, sql, and } from "drizzle-orm";
+import { db, biddersTable, teamsTable, teamBiddersTable, seasonsTable } from "@workspace/db";
 import {
   CreateBidderBody,
   UpdateBidderBody,
@@ -10,7 +10,18 @@ import {
 
 const router: IRouter = Router();
 
+async function getActiveSeasonId(): Promise<number> {
+  const rows = await db
+    .select({ id: seasonsTable.id })
+    .from(seasonsTable)
+    .where(eq(seasonsTable.isActive, true))
+    .limit(1);
+  if (!rows[0]) throw new Error("No active season found");
+  return rows[0].id;
+}
+
 router.get("/bidders", async (_req, res): Promise<void> => {
+  const activeSeasonId = await getActiveSeasonId();
   const bidders = await db.select().from(biddersTable).orderBy(biddersTable.name);
 
   const results = await Promise.all(
@@ -26,7 +37,12 @@ router.get("/bidders", async (_req, res): Promise<void> => {
         })
         .from(teamBiddersTable)
         .innerJoin(teamsTable, eq(teamBiddersTable.teamId, teamsTable.id))
-        .where(eq(teamBiddersTable.bidderId, bidder.id))
+        .where(
+          and(
+            eq(teamBiddersTable.bidderId, bidder.id),
+            eq(teamBiddersTable.seasonId, activeSeasonId),
+          ),
+        )
         .orderBy(teamsTable.conference, teamsTable.name);
 
       const totalPaid = ownerships.reduce(

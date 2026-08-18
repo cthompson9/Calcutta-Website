@@ -70,12 +70,12 @@ async function getTeamResult(teamId: number, seasonId: number) {
   return rows[0] ?? null;
 }
 
-async function getTeamOwners(teamId: number): Promise<string[]> {
+async function getTeamOwners(teamId: number, seasonId: number): Promise<string[]> {
   const rows = await db
     .select({ name: biddersTable.name })
     .from(teamBiddersTable)
     .innerJoin(biddersTable, eq(teamBiddersTable.bidderId, biddersTable.id))
-    .where(eq(teamBiddersTable.teamId, teamId));
+    .where(and(eq(teamBiddersTable.teamId, teamId), eq(teamBiddersTable.seasonId, seasonId)));
   return rows.map((r) => r.name);
 }
 
@@ -83,7 +83,7 @@ async function getOwnerAgg(bidderId: number, seasonId: number) {
   const ownerships = await db
     .select({ teamId: teamBiddersTable.teamId, ownershipShare: teamBiddersTable.ownershipShare })
     .from(teamBiddersTable)
-    .where(eq(teamBiddersTable.bidderId, bidderId));
+    .where(and(eq(teamBiddersTable.bidderId, bidderId), eq(teamBiddersTable.seasonId, seasonId)));
 
   let totalCost = 0, totalReturn = 0, totalMtm = 0;
   for (const o of ownerships) {
@@ -126,12 +126,15 @@ function buildMcpServer() {
   for (const n of [1, 2, 3, 4, 5] as const) {
     server.tool(
       `get_team_owner${n}`,
-      `Returns the ${["first", "second", "third", "fourth", "fifth"][n - 1]} owner of an NFL team. Returns null if the team has fewer than ${n} owner(s).`,
-      { ...teamInput },
-      async ({ team }) => {
+      `Returns the ${["first", "second", "third", "fourth", "fifth"][n - 1]} owner of an NFL team in a given season. Returns null if the team has fewer than ${n} owner(s).`,
+      { ...teamInput, ...seasonInput },
+      async ({ team, season }) => {
         const t = await findTeam(team);
         if (!t) return text(null);
-        const owners = await getTeamOwners(t.id);
+        const year = season ?? await defaultSeasonYear();
+        const sid = await resolveSeasonId(year);
+        if (!sid) return text(null);
+        const owners = await getTeamOwners(t.id, sid);
         return text(owners[n - 1] ?? null);
       },
     );

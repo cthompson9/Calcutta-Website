@@ -12,15 +12,16 @@ export const teamBiddersTable = pgTable(
     bidderId: integer("bidder_id")
       .notNull()
       .references(() => biddersTable.id, { onDelete: "cascade" }),
-    // nullable so we can push first, then seed seasons and backfill
-    seasonId: integer("season_id").references(() => seasonsTable.id, {
-      onDelete: "cascade",
-    }),
+    seasonId: integer("season_id")
+      .notNull()
+      .references(() => seasonsTable.id, {
+        onDelete: "cascade",
+      }),
     ownershipShare: numeric("ownership_share", { precision: 5, scale: 4 })
       .notNull()
       .default("1.0000"),
   },
-  (t) => [primaryKey({ columns: [t.teamId, t.bidderId] })],
+  (t) => [primaryKey({ columns: [t.teamId, t.bidderId, t.seasonId] })],
 );
 
 export type TeamBidder = typeof teamBiddersTable.$inferSelect;

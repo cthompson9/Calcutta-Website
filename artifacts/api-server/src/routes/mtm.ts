@@ -45,7 +45,7 @@ router.get("/mtm", async (req, res): Promise<void> => {
   const teams = await db.select().from(teamsTable);
   const teamMap = new Map(teams.map((t) => [t.id, t]));
 
-  // Fetch ownerships
+  // Fetch ownerships scoped to this season
   const ownerships = await db
     .select({
       teamId: teamBiddersTable.teamId,
@@ -54,7 +54,8 @@ router.get("/mtm", async (req, res): Promise<void> => {
       ownershipShare: teamBiddersTable.ownershipShare,
     })
     .from(teamBiddersTable)
-    .innerJoin(biddersTable, eq(teamBiddersTable.bidderId, biddersTable.id));
+    .innerJoin(biddersTable, eq(teamBiddersTable.bidderId, biddersTable.id))
+    .where(eq(teamBiddersTable.seasonId, seasonId));
 
   const ownershipMap = new Map<number, { bidderId: number; bidderName: string; ownershipShare: number }[]>();
   for (const o of ownerships) {
