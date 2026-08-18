@@ -1,6 +1,6 @@
-# [Project name]
+# NFL Auction Manager
 
-_Replace the heading above with the project's name, and this line with one sentence describing what this app does for users._
+A full-stack web app for managing an NFL team auction pool — tracks which bidders own which teams, how much each paid, split-ownership arrangements, and live auction standings.
 
 ## Run & Operate
 

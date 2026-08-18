@@ -1,0 +1,28 @@
+kind = "web"
+previewPath = "/"
+title = "NFL Auction Manager"
+description = "A full-stack web app for managing an NFL team auction pool. Tracks which bidders own which teams, how much each paid, split ownership arrangements, and overall auction standings. Includes dashboards for bidder summaries, team browsing with conference/division filters, and full CRUD for teams and bidders."
+version = "1.0.0"
+id = "artifacts/nfl-auction"
+router = "path"
+
+[[services]]
+name = "web"
+paths = [ "/" ]
+localPort = 23545
+
+[services.development]
+run = "pnpm --filter @workspace/nfl-auction run dev"
+
+[services.production]
+build = [ "pnpm", "--filter", "@workspace/nfl-auction", "run", "build" ]
+serve = "static"
+publicDir = "artifacts/nfl-auction/dist/public"
+
+[[services.production.rewrites]]
+from = "/*"
+to = "/index.html"
+
+[services.env]
+PORT = "23545"
+BASE_PATH = "/"

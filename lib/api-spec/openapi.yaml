@@ -3,13 +3,20 @@ info:
   # Do not change the title, if the title changes, the import paths will be broken
   title: Api
   version: 0.1.0
-  description: API specification
+  description: NFL Auction Manager API
 servers:
   - url: /api
     description: Base API path
 tags:
   - name: health
     description: Health operations
+  - name: teams
+    description: NFL team auction entries
+  - name: bidders
+    description: Auction bidder management
+  - name: summary
+    description: Auction summary and standings
+
 paths:
   /healthz:
     get:
@@ -24,6 +31,239 @@ paths:
             application/json:
               schema:
                 $ref: "#/components/schemas/HealthStatus"
+
+  /teams:
+    get:
+      operationId: getTeams
+      tags: [teams]
+      summary: List all teams
+      description: Returns all NFL teams with their bidder info, filterable by conference/division
+      parameters:
+        - name: conference
+          in: query
+          schema:
+            type: string
+            enum: [AFC, NFC]
+        - name: division
+          in: query
+          schema:
+            type: string
+            enum: [East, North, South, West]
+        - name: search
+          in: query
+          schema:
+            type: string
+        - name: bidderId
+          in: query
+          schema:
+            type: ["integer", "null"]
+      responses:
+        "200":
+          description: List of teams
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: "#/components/schemas/Team"
+    post:
+      operationId: createTeam
+      tags: [teams]
+      summary: Create a team entry
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/TeamInput"
+      responses:
+        "201":
+          description: Created team
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Team"
+        "400":
+          description: Validation error
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+
+  /teams/{id}:
+    get:
+      operationId: getTeam
+      tags: [teams]
+      summary: Get a single team
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: number
+      responses:
+        "200":
+          description: Team detail
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Team"
+        "404":
+          description: Not found
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+    patch:
+      operationId: updateTeam
+      tags: [teams]
+      summary: Update a team entry
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: number
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/TeamUpdate"
+      responses:
+        "200":
+          description: Updated team
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Team"
+        "404":
+          description: Not found
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+    delete:
+      operationId: deleteTeam
+      tags: [teams]
+      summary: Delete a team entry
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: number
+      responses:
+        "204":
+          description: Deleted
+        "404":
+          description: Not found
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+
+  /bidders:
+    get:
+      operationId: getBidders
+      tags: [bidders]
+      summary: List all bidders with totals
+      responses:
+        "200":
+          description: List of bidders with their stats
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: "#/components/schemas/BidderSummary"
+    post:
+      operationId: createBidder
+      tags: [bidders]
+      summary: Create a bidder
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/BidderInput"
+      responses:
+        "201":
+          description: Created bidder
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Bidder"
+        "400":
+          description: Validation error
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+
+  /bidders/{id}:
+    patch:
+      operationId: updateBidder
+      tags: [bidders]
+      summary: Update a bidder
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: number
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/BidderUpdate"
+      responses:
+        "200":
+          description: Updated bidder
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Bidder"
+        "404":
+          description: Not found
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+    delete:
+      operationId: deleteBidder
+      tags: [bidders]
+      summary: Delete a bidder
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: number
+      responses:
+        "204":
+          description: Deleted
+        "404":
+          description: Not found
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+
+  /summary:
+    get:
+      operationId: getAuctionSummary
+      tags: [summary]
+      summary: Get overall auction summary and standings
+      responses:
+        "200":
+          description: Auction summary
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/AuctionSummary"
+
 components:
   schemas:
     HealthStatus:
@@ -34,3 +274,249 @@ components:
       required:
         - status
 
+    ErrorResponse:
+      type: object
+      properties:
+        error:
+          type: string
+      required:
+        - error
+
+    Bidder:
+      type: object
+      properties:
+        id:
+          type: number
+        name:
+          type: string
+      required:
+        - id
+        - name
+
+    BidderSummary:
+      type: object
+      properties:
+        id:
+          type: number
+        name:
+          type: string
+        teamCount:
+          type: number
+        totalPaid:
+          type: number
+        teams:
+          type: array
+          items:
+            $ref: "#/components/schemas/TeamRef"
+      required:
+        - id
+        - name
+        - teamCount
+        - totalPaid
+        - teams
+
+    TeamRef:
+      type: object
+      properties:
+        id:
+          type: number
+        name:
+          type: string
+        conference:
+          type: string
+        division:
+          type: string
+        bidAmount:
+          type: number
+        ownershipShare:
+          type: number
+          description: Fraction of team owned (1.0 = sole owner, 0.5 = 50/50 split)
+      required:
+        - id
+        - name
+        - conference
+        - division
+        - bidAmount
+        - ownershipShare
+
+    BidderInput:
+      type: object
+      properties:
+        name:
+          type: string
+          minLength: 1
+      required:
+        - name
+
+    BidderUpdate:
+      type: object
+      properties:
+        name:
+          type: string
+          minLength: 1
+
+    Team:
+      type: object
+      properties:
+        id:
+          type: number
+        name:
+          type: string
+        conference:
+          type: string
+          enum: [AFC, NFC]
+        division:
+          type: string
+          enum: [East, North, South, West]
+        bidAmount:
+          type: number
+        owners:
+          type: array
+          items:
+            $ref: "#/components/schemas/TeamOwner"
+      required:
+        - id
+        - name
+        - conference
+        - division
+        - bidAmount
+        - owners
+
+    TeamOwner:
+      type: object
+      properties:
+        bidderId:
+          type: number
+        bidderName:
+          type: string
+        ownershipShare:
+          type: number
+          description: Fraction owned (1.0 = sole, 0.5 = half)
+      required:
+        - bidderId
+        - bidderName
+        - ownershipShare
+
+    TeamInput:
+      type: object
+      properties:
+        name:
+          type: string
+          minLength: 1
+        conference:
+          type: string
+          enum: [AFC, NFC]
+        division:
+          type: string
+          enum: [East, North, South, West]
+        bidAmount:
+          type: number
+          minimum: 0
+        owners:
+          type: array
+          items:
+            $ref: "#/components/schemas/OwnerInput"
+          minItems: 1
+      required:
+        - name
+        - conference
+        - division
+        - bidAmount
+        - owners
+
+    TeamUpdate:
+      type: object
+      properties:
+        name:
+          type: string
+          minLength: 1
+        conference:
+          type: string
+          enum: [AFC, NFC]
+        division:
+          type: string
+          enum: [East, North, South, West]
+        bidAmount:
+          type: number
+          minimum: 0
+        owners:
+          type: array
+          items:
+            $ref: "#/components/schemas/OwnerInput"
+          minItems: 1
+
+    OwnerInput:
+      type: object
+      properties:
+        bidderId:
+          type: number
+        ownershipShare:
+          type: number
+          description: Fraction owned (must sum to 1.0 across all owners)
+      required:
+        - bidderId
+        - ownershipShare
+
+    AuctionSummary:
+      type: object
+      properties:
+        potSize:
+          type: number
+        teamsAuctioned:
+          type: number
+        nominationsLeft:
+          type: number
+        avgBidPerTeam:
+          type: number
+        standings:
+          type: array
+          items:
+            $ref: "#/components/schemas/BidderStanding"
+        conferenceBreakdown:
+          type: array
+          items:
+            $ref: "#/components/schemas/ConferenceBreakdown"
+      required:
+        - potSize
+        - teamsAuctioned
+        - nominationsLeft
+        - avgBidPerTeam
+        - standings
+        - conferenceBreakdown
+
+    BidderStanding:
+      type: object
+      properties:
+        bidderId:
+          type: number
+        bidderName:
+          type: string
+        totalPaid:
+          type: number
+        teamCount:
+          type: number
+        percentOfPot:
+          type: number
+      required:
+        - bidderId
+        - bidderName
+        - totalPaid
+        - teamCount
+        - percentOfPot
+
+    ConferenceBreakdown:
+      type: object
+      properties:
+        conference:
+          type: string
+        totalSpent:
+          type: number
+        teamCount:
+          type: number
+        avgBid:
+          type: number
+      required:
+        - conference
+        - totalSpent
+        - teamCount
+        - avgBid
