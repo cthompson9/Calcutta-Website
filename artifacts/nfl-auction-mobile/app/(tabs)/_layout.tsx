@@ -16,6 +16,14 @@ function NativeTabLayout() {
         <Icon sf={{ default: 'chart.bar', selected: 'chart.bar.fill' }} />
         <Label>Standings</Label>
       </NativeTabs.Trigger>
+      <NativeTabs.Trigger name="mtm">
+        <Icon sf={{ default: 'chart.line.uptrend.xyaxis', selected: 'chart.line.uptrend.xyaxis' }} />
+        <Label>M2M</Label>
+      </NativeTabs.Trigger>
+      <NativeTabs.Trigger name="auction">
+        <Icon sf={{ default: 'hammer', selected: 'hammer.fill' }} />
+        <Label>Auction</Label>
+      </NativeTabs.Trigger>
       <NativeTabs.Trigger name="trades">
         <Icon sf={{ default: 'arrow.left.arrow.right', selected: 'arrow.left.arrow.right' }} />
         <Label>Trades</Label>
@@ -71,6 +79,30 @@ function ClassicTabLayout() {
               <SymbolView name="chart.bar" tintColor={color} size={24} />
             ) : (
               <Feather name="bar-chart-2" size={22} color={color} />
+            ),
+        }}
+      />
+      <Tabs.Screen
+        name="mtm"
+        options={{
+          title: 'M2M',
+          tabBarIcon: ({ color }) =>
+            isIOS ? (
+              <SymbolView name="chart.line.uptrend.xyaxis" tintColor={color} size={24} />
+            ) : (
+              <Feather name="trending-up" size={22} color={color} />
+            ),
+        }}
+      />
+      <Tabs.Screen
+        name="auction"
+        options={{
+          title: 'Auction',
+          tabBarIcon: ({ color }) =>
+            isIOS ? (
+              <SymbolView name="hammer" tintColor={color} size={24} />
+            ) : (
+              <Feather name="shopping-bag" size={22} color={color} />
             ),
         }}
       />
