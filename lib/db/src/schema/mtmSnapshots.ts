@@ -1,4 +1,14 @@
-import { pgTable, serial, integer, numeric, date, uniqueIndex } from "drizzle-orm/pg-core";
+import {
+  pgTable,
+  serial,
+  integer,
+  numeric,
+  date,
+  jsonb,
+  text,
+  timestamp,
+  uniqueIndex,
+} from "drizzle-orm/pg-core";
 import { teamsTable } from "./teams";
 import { seasonsTable } from "./seasons";
 import { createInsertSchema } from "drizzle-zod";
@@ -19,9 +29,20 @@ export const mtmSnapshotsTable = pgTable(
     // snapshotDate is the upsert key: one row per team per season per date
     snapshotDate: date("snapshot_date", { mode: "string" }).notNull(),
     mtmValue: numeric("mtm_value", { precision: 10, scale: 4 }).notNull().default("0"),
+    snapshotKey: text("snapshot_key"),
+    source: text("source").notNull().default("manual"),
+    capturedAt: timestamp("captured_at", { withTimezone: true }),
+    marketStatus: text("market_status"),
+    bankedPoints: numeric("banked_points", { precision: 12, scale: 6 }),
+    seasonEquityPoints: numeric("season_equity_points", { precision: 12, scale: 6 }),
+    bonusEquityPoints: numeric("bonus_equity_points", { precision: 12, scale: 6 }),
+    totalPoints: numeric("total_points", { precision: 12, scale: 6 }),
+    normalizedShare: numeric("normalized_share", { precision: 14, scale: 12 }),
+    marketData: jsonb("market_data").$type<Record<string, unknown>>(),
   },
   (t) => [
     uniqueIndex("mtm_team_season_date_idx").on(t.teamId, t.seasonId, t.snapshotDate),
+    uniqueIndex("mtm_team_season_key_idx").on(t.teamId, t.seasonId, t.snapshotKey),
   ],
 );
 

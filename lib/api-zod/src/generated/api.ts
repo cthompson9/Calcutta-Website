@@ -523,6 +523,18 @@ export const GetMtmSnapshotsResponse = zod.object({
   "weeks": zod.array(zod.object({
   "snapshotDate": zod.string(),
   "weekNum": zod.number().nullish(),
+  "label": zod.string(),
+  "source": zod.string(),
+  "capturedAt": zod.string().nullish(),
+  "potSize": zod.number(),
+  "rawPointTotal": zod.number(),
+  "normalizedShareTotal": zod.number(),
+  "marketStatusCounts": zod.object({
+  "live": zod.number(),
+  "stale": zod.number(),
+  "incomplete": zod.number(),
+  "manual": zod.number()
+}),
   "ownerTotals": zod.array(zod.object({
   "bidderName": zod.string(),
   "mtmTotal": zod.number()
@@ -531,7 +543,43 @@ export const GetMtmSnapshotsResponse = zod.object({
   "teamId": zod.number(),
   "teamName": zod.string(),
   "ownerName": zod.string(),
-  "mtmValue": zod.number()
+  "mtmValue": zod.number(),
+  "source": zod.string(),
+  "capturedAt": zod.string().nullish(),
+  "marketStatus": zod.enum(['live', 'stale', 'incomplete', 'manual']),
+  "contractSetId": zod.string().nullish(),
+  "marketStatusReasons": zod.array(zod.string()),
+  "bankedPoints": zod.number().nullish(),
+  "seasonEquityPoints": zod.number().nullish(),
+  "bonusEquityPoints": zod.number().nullish(),
+  "totalPoints": zod.number().nullish(),
+  "normalizedShare": zod.number().nullish(),
+  "winTotalLine": zod.number().nullish(),
+  "winTotalOverProbability": zod.number().nullish(),
+  "rawExpectedWins": zod.number().nullish(),
+  "expectedWins": zod.number().nullish(),
+  "playoffProbability": zod.number().nullish(),
+  "divisionalProbability": zod.number().nullish(),
+  "conferenceGameProbability": zod.number().nullish(),
+  "superBowlProbability": zod.number().nullish(),
+  "championshipProbability": zod.number().nullish(),
+  "regularSeasonMethod": zod.string().nullish(),
+  "intermediateRoundMethod": zod.string().nullish(),
+  "marketQuotes": zod.array(zod.object({
+  "ticker": zod.string(),
+  "kind": zod.enum(['win_threshold', 'playoff', 'conference_champion', 'championship']),
+  "line": zod.number().nullable(),
+  "bid": zod.number().nullable(),
+  "ask": zod.number().nullable(),
+  "last": zod.number().nullable(),
+  "probability": zod.number().nullable(),
+  "spread": zod.number().nullable(),
+  "bidDepth": zod.number().nullable(),
+  "askDepth": zod.number().nullable(),
+  "quality": zod.enum(['live', 'stale', 'unavailable']),
+  "updatedAt": zod.string().nullable(),
+  "derived": zod.boolean()
+}))
 }))
 })),
   "teams": zod.array(zod.object({
@@ -565,7 +613,42 @@ export const UpsertMtmSnapshotResponse = zod.object({
   "seasonId": zod.number(),
   "weekNum": zod.number().nullish(),
   "snapshotDate": zod.string(),
-  "mtmValue": zod.number()
+  "mtmValue": zod.number(),
+  "snapshotKey": zod.string().nullish(),
+  "source": zod.string().optional(),
+  "capturedAt": zod.string().nullish(),
+  "marketStatus": zod.union([zod.literal('live'),zod.literal('stale'),zod.literal('incomplete'),zod.literal('manual'),zod.literal(null)]).nullish(),
+  "bankedPoints": zod.number().nullish(),
+  "seasonEquityPoints": zod.number().nullish(),
+  "bonusEquityPoints": zod.number().nullish(),
+  "totalPoints": zod.number().nullish(),
+  "normalizedShare": zod.number().nullish()
+})
+
+
+/**
+ * @summary Capture an admin-authorized Week 0 valuation from public Kalshi market data
+ */
+export const CaptureWeekZeroMtmBody = zod.object({
+  "seasonYear": zod.number(),
+  "snapshotDate": zod.string().optional().describe('Optional Week 0 calendar date as YYYY-MM-DD. The first successful capture fixes this date for idempotent retries.')
+})
+
+export const CaptureWeekZeroMtmResponse = zod.object({
+  "seasonYear": zod.number(),
+  "snapshotDate": zod.string(),
+  "capturedAt": zod.string(),
+  "teamCount": zod.number(),
+  "contractSetId": zod.string(),
+  "potSize": zod.number(),
+  "rawPointTotal": zod.number(),
+  "normalizedShareTotal": zod.number(),
+  "marketStatusCounts": zod.object({
+  "live": zod.number(),
+  "stale": zod.number(),
+  "incomplete": zod.number(),
+  "manual": zod.number()
+})
 })
 
 

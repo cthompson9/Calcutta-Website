@@ -48,7 +48,9 @@ import type {
   TradeInput,
   TradeRow,
   TradeStatusUpdate,
-  TradeUpdate
+  TradeUpdate,
+  WeekZeroCaptureInput,
+  WeekZeroCaptureResult
 } from './api.schemas';
 
 import { customFetch } from '../custom-fetch';
@@ -1738,6 +1740,77 @@ export const useUpsertMtmSnapshot = <TError = ErrorType<ErrorResponse>,
         TContext
       > => {
       return useMutation(getUpsertMtmSnapshotMutationOptions(options));
+    }
+
+export const getCaptureWeekZeroMtmUrl = () => {
+
+
+
+
+  return `/api/mtm/week-zero/capture`
+}
+
+/**
+ * @summary Capture an admin-authorized Week 0 valuation from public Kalshi market data
+ */
+export const captureWeekZeroMtm = async (weekZeroCaptureInput: WeekZeroCaptureInput, options?: Parameters<typeof customFetch>[1]): Promise<WeekZeroCaptureResult> => {
+
+  return customFetch<WeekZeroCaptureResult>(getCaptureWeekZeroMtmUrl(),
+  {
+    ...options,
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json', ...options?.headers },
+    body: JSON.stringify(weekZeroCaptureInput)
+  }
+);}
+
+
+
+
+
+export const getCaptureWeekZeroMtmMutationOptions = <TError = ErrorType<ErrorResponse>,
+    TContext = unknown>(options?: { mutation?:UseMutationOptions<Awaited<ReturnType<typeof captureWeekZeroMtm>>, TError,{data: BodyType<WeekZeroCaptureInput>}, TContext>, request?: SecondParameter<typeof customFetch>}
+): UseMutationOptions<Awaited<ReturnType<typeof captureWeekZeroMtm>>, TError,{data: BodyType<WeekZeroCaptureInput>}, TContext> => {
+
+const mutationKey = ['captureWeekZeroMtm'];
+const {mutation: mutationOptions, request: requestOptions} = options ?
+      options.mutation && 'mutationKey' in options.mutation && options.mutation.mutationKey ?
+      options
+      : {...options, mutation: {...options.mutation, mutationKey}}
+      : {mutation: { mutationKey, }, request: undefined};
+
+
+
+
+      const mutationFn: MutationFunction<Awaited<ReturnType<typeof captureWeekZeroMtm>>, {data: BodyType<WeekZeroCaptureInput>}> = (props) => {
+          const {data} = props ?? {};
+
+          return  captureWeekZeroMtm(data,requestOptions)
+        }
+
+
+
+
+
+
+  return  { mutationFn, ...mutationOptions }}
+
+    export type CaptureWeekZeroMtmMutationResult = NonNullable<Awaited<ReturnType<typeof captureWeekZeroMtm>>>
+    export type CaptureWeekZeroMtmMutationBody = BodyType<WeekZeroCaptureInput>
+    export type CaptureWeekZeroMtmMutationError = ErrorType<ErrorResponse>
+
+    /**
+ * @summary Capture an admin-authorized Week 0 valuation from public Kalshi market data
+ */
+export const useCaptureWeekZeroMtm = <TError = ErrorType<ErrorResponse>,
+    TContext = unknown>(options?: { mutation?:UseMutationOptions<Awaited<ReturnType<typeof captureWeekZeroMtm>>, TError,{data: BodyType<WeekZeroCaptureInput>}, TContext>, request?: SecondParameter<typeof customFetch>}
+ ): UseMutationResult<
+        Awaited<ReturnType<typeof captureWeekZeroMtm>>,
+        TError,
+        {data: BodyType<WeekZeroCaptureInput>},
+        TContext
+      > => {
+      return useMutation(getCaptureWeekZeroMtmMutationOptions(options));
     }
 
 export const getGetAuctionSummaryUrl = (params: GetAuctionSummaryParams,) => {

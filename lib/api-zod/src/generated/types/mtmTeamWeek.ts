@@ -5,10 +5,52 @@
  * NFL Auction Manager API
  * OpenAPI spec version: 0.1.0
  */
+import type { MtmMarketQuote } from './mtmMarketQuote';
+import type { MtmTeamWeekMarketStatus } from './mtmTeamWeekMarketStatus';
 
 export interface MtmTeamWeek {
   teamId: number;
   teamName: string;
   ownerName: string;
   mtmValue: number;
+  source: string;
+  /** @nullable */
+  capturedAt?: string | null;
+  marketStatus: MtmTeamWeekMarketStatus;
+  /** @nullable */
+  contractSetId?: string | null;
+  marketStatusReasons: string[];
+  /** @nullable */
+  bankedPoints?: number | null;
+  /** @nullable */
+  seasonEquityPoints?: number | null;
+  /** @nullable */
+  bonusEquityPoints?: number | null;
+  /** @nullable */
+  totalPoints?: number | null;
+  /** @nullable */
+  normalizedShare?: number | null;
+  /** @nullable */
+  winTotalLine?: number | null;
+  /** @nullable */
+  winTotalOverProbability?: number | null;
+  /** @nullable */
+  rawExpectedWins?: number | null;
+  /** @nullable */
+  expectedWins?: number | null;
+  /** @nullable */
+  playoffProbability?: number | null;
+  /** @nullable */
+  divisionalProbability?: number | null;
+  /** @nullable */
+  conferenceGameProbability?: number | null;
+  /** @nullable */
+  superBowlProbability?: number | null;
+  /** @nullable */
+  championshipProbability?: number | null;
+  /** @nullable */
+  regularSeasonMethod?: string | null;
+  /** @nullable */
+  intermediateRoundMethod?: string | null;
+  marketQuotes: MtmMarketQuote[];
 }

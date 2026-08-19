@@ -5,6 +5,7 @@
  * NFL Auction Manager API
  * OpenAPI spec version: 0.1.0
  */
+import type { MtmSnapshotMarketStatus } from './mtmSnapshotMarketStatus';
 
 export interface MtmSnapshot {
   id: number;
@@ -14,4 +15,21 @@ export interface MtmSnapshot {
   weekNum?: number | null;
   snapshotDate: string;
   mtmValue: number;
+  /** @nullable */
+  snapshotKey?: string | null;
+  source?: string;
+  /** @nullable */
+  capturedAt?: string | null;
+  /** @nullable */
+  marketStatus?: MtmSnapshotMarketStatus;
+  /** @nullable */
+  bankedPoints?: number | null;
+  /** @nullable */
+  seasonEquityPoints?: number | null;
+  /** @nullable */
+  bonusEquityPoints?: number | null;
+  /** @nullable */
+  totalPoints?: number | null;
+  /** @nullable */
+  normalizedShare?: number | null;
 }

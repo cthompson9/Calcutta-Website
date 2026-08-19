@@ -1,10 +1,10 @@
 import { useState } from "react";
-import { useGetMtmSnapshots, useGetTeams } from "@workspace/api-client-react";
-import type { MtmData } from "@workspace/api-client-react";
+import { useGetMtmSnapshots, useGetTeams, useCaptureWeekZeroMtm } from "@workspace/api-client-react";
+import type { MtmData, MtmWeekData, MtmTeamWeekMarketStatus } from "@workspace/api-client-react";
 import { formatCurrency } from "@/lib/utils";
 import { cn } from "@/lib/utils";
 import { useSeason } from "@/hooks/useSeason";
-import { TrendingUp, TrendingDown, Lock, Unlock, Plus, X, ChevronDown, ChevronUp } from "lucide-react";
+import { TrendingUp, TrendingDown, Lock, Unlock, Plus, X, ChevronDown, ChevronUp, Activity, AlertTriangle, ShieldCheck, Zap, Info, ServerOff } from "lucide-react";
 import { toast } from "sonner";
 
 const OWNER_COLORS = [
@@ -63,10 +63,7 @@ export default function MtmTracker() {
     setAdminKey(null);
   }
 
-  const hasData =
-    data &&
-    data.owners.length > 0 &&
-    data.owners.some((o) => o.weeklyTotals.some((v) => v !== 0));
+  const hasData = data && data.weeks.length > 0;
 
   return (
     <div className="p-4 md:p-8 space-y-6 max-w-5xl mx-auto">
@@ -118,7 +115,7 @@ export default function MtmTracker() {
       ) : !hasData ? (
         <EmptyState year={year} isAdmin={!!adminKey} onEnterData={() => setShowEntry(true)} />
       ) : (
-        <MtmContent data={data} />
+        <MtmContent data={data!} />
       )}
     </div>
   );
@@ -215,9 +212,14 @@ function MtmEntryForm({
   ]);
   const [pending, setPending] = useState(false);
 
-  const [bulkMode, setBulkMode] = useState(false);
+  const [bulkMode, setBulkMode] = useState<"rows" | "csv" | "kalshi">("rows");
   const [csvText, setCsvText] = useState("");
   const [csvError, setCsvError] = useState("");
+  const [captureError, setCaptureError] = useState("");
+
+  const captureWeekZero = useCaptureWeekZeroMtm({
+    request: { headers: { Authorization: `Bearer ${adminKey}` } }
+  });
 
   function addRow() {
     setEntries((prev) => [...prev, { teamId: "", mtmValue: "", snapshotDate: "" }]);
@@ -331,6 +333,22 @@ function MtmEntryForm({
     }
   }
 
+  async function handleKalshiCapture() {
+    setCaptureError("");
+    try {
+      const res = await captureWeekZero.mutateAsync({ data: { seasonYear: year } });
+      toast.success(`Captured ${res.teamCount} teams. Total Pot: ${formatCurrency(res.potSize)}`);
+      onSuccess();
+    } catch (error: unknown) {
+      const message =
+        error instanceof Error
+          ? error.message
+          : "Failed to capture Kalshi data";
+      setCaptureError(message);
+      toast.error(message);
+    }
+  }
+
   const validRowCount = entries.filter(
     (r) => r.teamId && r.mtmValue !== "",
   ).length;
@@ -339,26 +357,25 @@ function MtmEntryForm({
     <div className="space-y-4">
       {/* Mode tabs */}
       <div className="flex gap-0 border-b border-border">
-        {(["rows", "csv"] as const).map((m) => (
+        {(["rows", "csv", "kalshi"] as const).map((m) => (
           <button
             key={m}
-            onClick={() => setBulkMode(m === "csv")}
+            onClick={() => setBulkMode(m)}
             className={cn(
               "px-4 py-2 text-xs font-mono font-bold uppercase tracking-widest border-b-2 -mb-px transition-colors",
-              (m === "csv") === bulkMode
+              m === bulkMode
                 ? "border-primary text-primary"
                 : "border-transparent text-muted-foreground hover:text-foreground",
             )}
           >
-            {m === "rows" ? "Row Entry" : "CSV Import"}
+            {m === "rows" ? "Row Entry" : m === "csv" ? "CSV Import" : "Kalshi Capture"}
           </button>
         ))}
       </div>
 
-      {!bulkMode ? (
+      {bulkMode === "rows" ? (
         /* ── Row entry mode ── */
         <form onSubmit={(e) => void handleSingleSubmit(e)} className="space-y-3">
-          {/* Column headers */}
           <div className="grid grid-cols-[1fr_130px_120px_32px] gap-2 items-center">
             <span className="text-xs font-mono font-bold uppercase tracking-widest text-muted-foreground">Team</span>
             <span className="text-xs font-mono font-bold uppercase tracking-widest text-muted-foreground">Date</span>
@@ -368,7 +385,6 @@ function MtmEntryForm({
 
           {entries.map((row, i) => (
             <div key={i} className="grid grid-cols-[1fr_130px_120px_32px] gap-2 items-center">
-              {/* Team */}
               <select
                 value={row.teamId}
                 onChange={(e) => updateRow(i, "teamId", e.target.value)}
@@ -386,7 +402,6 @@ function MtmEntryForm({
                   ))}
               </select>
 
-              {/* Date (defaults to today on submit if blank) */}
               <input
                 type="date"
                 value={row.snapshotDate}
@@ -394,7 +409,6 @@ function MtmEntryForm({
                 className="border border-border bg-background px-2 py-1.5 text-sm font-mono w-full"
               />
 
-              {/* MTM value */}
               <input
                 type="number"
                 step="0.01"
@@ -405,7 +419,6 @@ function MtmEntryForm({
                 required
               />
 
-              {/* Remove */}
               {entries.length > 1 ? (
                 <button
                   type="button"
@@ -439,7 +452,7 @@ function MtmEntryForm({
             </button>
           </div>
         </form>
-      ) : (
+      ) : bulkMode === "csv" ? (
         /* ── CSV import mode ── */
         <div className="space-y-3">
           <p className="text-xs font-mono text-muted-foreground">
@@ -473,6 +486,38 @@ function MtmEntryForm({
             </button>
           </div>
         </div>
+      ) : (
+        /* ── Kalshi Capture mode ── */
+        <div className="space-y-3">
+          <div className="p-4 border border-blue-500/20 bg-blue-500/5 text-sm font-mono flex items-start gap-3">
+            <Zap className="w-5 h-5 text-blue-500 shrink-0 mt-0.5" />
+            <div>
+              <p className="font-bold uppercase tracking-widest text-blue-600 mb-1">Week 0 Kalshi Capture</p>
+              <p className="text-muted-foreground leading-relaxed">
+                Fetches real-time market data from Kalshi to establish a fair value baseline (Week 0) for the {year} season.
+                The first capture fixes the Week 0 date. Capturing again safely refreshes that same snapshot without adding a duplicate week.
+              </p>
+            </div>
+          </div>
+          <div className="flex justify-end">
+            <button
+              type="button"
+              onClick={handleKalshiCapture}
+              disabled={captureWeekZero.isPending}
+              className="bg-blue-600 text-white text-xs font-mono font-bold uppercase tracking-widest px-5 py-2 hover:bg-blue-700 disabled:opacity-50 transition-colors flex items-center gap-2"
+            >
+              {captureWeekZero.isPending ? "Capturing Market Data…" : "Capture Week 0"}
+            </button>
+          </div>
+          {captureError && (
+            <div
+              role="alert"
+              className="border border-destructive/40 bg-destructive/5 px-3 py-2 text-xs font-mono text-destructive"
+            >
+              {captureError}
+            </div>
+          )}
+        </div>
       )}
     </div>
   );
@@ -496,7 +541,7 @@ function EmptyState({
         No M2M data for {year} yet
       </p>
       <p className="text-xs text-muted-foreground mt-2 max-w-sm">
-        Weekly mark-to-market snapshots will appear here once data is entered.
+        Weekly mark-to-market snapshots will appear here once data is entered or captured from the market.
       </p>
       {isAdmin ? (
         <button
@@ -517,12 +562,24 @@ function EmptyState({
 // ── Main chart + table ────────────────────────────────────────────────────────
 
 function MtmContent({ data }: { data: MtmData }) {
-  const [view, setView] = useState<"owner" | "team">("owner");
+  const hasOwners = data.owners.length > 0;
+  const kalshiWeeks = data.weeks.filter(w => w.weekNum === 0 || w.source === 'kalshi' || w.label === 'Week 0');
+  const hasKalshi = kalshiWeeks.length > 0;
 
-  // Use snapshotDate as the x-axis — format as "Sep 15" style labels
+  const defaultView = hasOwners ? "owner" : "team";
+  const [view, setView] = useState<"owner" | "team" | "week0">(defaultView);
+  const activeView =
+    view === "owner" && !hasOwners
+      ? "team"
+      : view === "week0" && !hasKalshi
+        ? defaultView
+        : view;
+
+  // Use the explicit Week 0 label; format later snapshots as "Sep 15".
   const dates = data.weeks.map((w) => w.snapshotDate);
-  const weekLabels = dates.map((d) => {
-    const dt = new Date(d + "T12:00:00"); // noon to avoid TZ edge cases
+  const weekLabels = data.weeks.map((week) => {
+    if (week.weekNum === 0) return week.label;
+    const dt = new Date(week.snapshotDate + "T12:00:00"); // noon to avoid TZ edge cases
     return dt.toLocaleDateString("en-US", { month: "short", day: "numeric" });
   });
 
@@ -535,11 +592,12 @@ function MtmContent({ data }: { data: MtmData }) {
 
   // Determine y-range
   const allVals =
-    view === "owner"
+    activeView === "owner" && hasOwners
       ? data.owners.flatMap((o) => o.weeklyTotals)
       : data.teams.flatMap((t) => t.weeklyValues);
-  const minVal = Math.min(...allVals, 0);
-  const maxVal = Math.max(...allVals, 0);
+
+  const minVal = allVals.length ? Math.min(...allVals, 0) : 0;
+  const maxVal = allVals.length ? Math.max(...allVals, 0) : 100;
   const range = maxVal - minVal || 1;
 
   function xPos(i: number) {
@@ -550,7 +608,7 @@ function MtmContent({ data }: { data: MtmData }) {
   }
 
   const series =
-    view === "owner"
+    activeView === "owner" && hasOwners
       ? data.owners.map((o, i) => ({
           name: o.bidderName,
           values: o.weeklyTotals,
@@ -575,203 +633,505 @@ function MtmContent({ data }: { data: MtmData }) {
   return (
     <div className="space-y-6">
       {/* View toggle */}
-      <div className="flex border-b border-border">
-        {(["owner", "team"] as const).map((v) => (
+      <div className="flex border-b border-border overflow-x-auto">
+        {hasOwners && (
           <button
-            key={v}
-            onClick={() => setView(v)}
+            onClick={() => setView("owner")}
             className={cn(
-              "px-5 py-2.5 text-sm font-mono font-bold uppercase tracking-widest transition-colors border-b-2 -mb-px",
-              view === v
+              "px-5 py-2.5 text-sm font-mono font-bold uppercase tracking-widest transition-colors border-b-2 -mb-px whitespace-nowrap",
+              activeView === "owner"
                 ? "border-primary text-primary"
                 : "border-transparent text-muted-foreground hover:text-foreground",
             )}
           >
-            {v === "owner" ? "By Owner" : "By Team"}
+            By Owner
           </button>
-        ))}
+        )}
+        <button
+          onClick={() => setView("team")}
+          className={cn(
+            "px-5 py-2.5 text-sm font-mono font-bold uppercase tracking-widest transition-colors border-b-2 -mb-px whitespace-nowrap",
+            activeView === "team"
+              ? "border-primary text-primary"
+              : "border-transparent text-muted-foreground hover:text-foreground",
+          )}
+        >
+          By Team
+        </button>
+        {hasKalshi && (
+          <button
+            onClick={() => setView("week0")}
+            className={cn(
+              "px-5 py-2.5 text-sm font-mono font-bold uppercase tracking-widest transition-colors border-b-2 -mb-px whitespace-nowrap flex items-center gap-2",
+              activeView === "week0"
+                ? "border-blue-500 text-blue-600"
+                : "border-transparent text-muted-foreground hover:text-blue-600",
+            )}
+          >
+            <Activity className="w-4 h-4" /> Week 0 Audit
+          </button>
+        )}
       </div>
 
-      {/* SVG Line Chart */}
-      <div className="border border-border bg-card p-4 overflow-x-auto">
-        <svg
-          width="100%"
-          viewBox={`0 0 ${W} ${H}`}
-          preserveAspectRatio="xMinYMin meet"
-          className="font-mono"
-        >
-          {/* Zero line */}
-          <line
-            x1={PAD.left}
-            y1={zeroY}
-            x2={W - PAD.right}
-            y2={zeroY}
-            stroke="currentColor"
-            strokeOpacity={0.15}
-            strokeWidth={1}
-            strokeDasharray="4,4"
-          />
+      {activeView === "week0" && hasKalshi ? (
+        <Week0AuditView week={kalshiWeeks[kalshiWeeks.length - 1]!} />
+      ) : (
+        <>
+          {/* SVG Line Chart */}
+          <div className="border border-border bg-card p-4 overflow-x-auto">
+            <svg
+              width="100%"
+              viewBox={`0 0 ${W} ${H}`}
+              preserveAspectRatio="xMinYMin meet"
+              className="font-mono"
+            >
+              {/* Zero line */}
+              <line
+                x1={PAD.left}
+                y1={zeroY}
+                x2={W - PAD.right}
+                y2={zeroY}
+                stroke="currentColor"
+                strokeOpacity={0.15}
+                strokeWidth={1}
+                strokeDasharray="4,4"
+              />
 
-          {/* Y axis ticks */}
-          {[-2, -1, 0, 1, 2].map((mult) => {
-            const v = (mult / 2) * range + minVal;
-            const y = yPos(v);
-            return (
-              <g key={mult}>
-                <line
-                  x1={PAD.left - 4}
-                  y1={y}
-                  x2={PAD.left}
-                  y2={y}
-                  stroke="currentColor"
-                  strokeOpacity={0.3}
-                />
+              {/* Y axis ticks */}
+              {[-2, -1, 0, 1, 2].map((mult) => {
+                const v = (mult / 2) * range + minVal;
+                const y = yPos(v);
+                return (
+                  <g key={mult}>
+                    <line
+                      x1={PAD.left - 4}
+                      y1={y}
+                      x2={PAD.left}
+                      y2={y}
+                      stroke="currentColor"
+                      strokeOpacity={0.3}
+                    />
+                    <text
+                      x={PAD.left - 8}
+                      y={y + 4}
+                      textAnchor="end"
+                      fontSize={9}
+                      fill="currentColor"
+                      fillOpacity={0.5}
+                    >
+                      {v >= 0 ? "+" : ""}
+                      {(v / 1000).toFixed(1)}k
+                    </text>
+                  </g>
+                );
+              })}
+
+              {/* X axis labels */}
+              {weekLabels.map((label, i) => (
                 <text
-                  x={PAD.left - 8}
-                  y={y + 4}
-                  textAnchor="end"
+                  key={i}
+                  x={xPos(i)}
+                  y={H - 6}
+                  textAnchor="middle"
                   fontSize={9}
                   fill="currentColor"
                   fillOpacity={0.5}
                 >
-                  {v >= 0 ? "+" : ""}
-                  {(v / 1000).toFixed(1)}k
+                  {label}
                 </text>
-              </g>
-            );
-          })}
+              ))}
 
-          {/* X axis labels */}
-          {weekLabels.map((label, i) => (
-            <text
-              key={i}
-              x={xPos(i)}
-              y={H - 6}
-              textAnchor="middle"
-              fontSize={9}
-              fill="currentColor"
-              fillOpacity={0.5}
-            >
-              {label}
-            </text>
-          ))}
+              {/* Series lines */}
+              {series.map((s) => (
+                <path
+                  key={s.name}
+                  d={toPath(s.values)}
+                  fill="none"
+                  stroke={s.color}
+                  strokeWidth={2}
+                  strokeLinejoin="round"
+                />
+              ))}
 
-          {/* Series lines */}
-          {series.map((s) => (
-            <path
-              key={s.name}
-              d={toPath(s.values)}
-              fill="none"
-              stroke={s.color}
-              strokeWidth={2}
-              strokeLinejoin="round"
-            />
-          ))}
+              {/* Series dots at last week */}
+              {series.map((s) => {
+                const lastIdx = s.values.length - 1;
+                const lastVal = s.values[lastIdx] ?? 0;
+                return (
+                  <circle
+                    key={s.name}
+                    cx={xPos(lastIdx)}
+                    cy={yPos(lastVal)}
+                    r={4}
+                    fill={s.color}
+                  />
+                );
+              })}
+            </svg>
 
-          {/* Series dots at last week */}
-          {series.map((s) => {
-            const lastIdx = s.values.length - 1;
-            const lastVal = s.values[lastIdx] ?? 0;
-            return (
-              <circle
-                key={s.name}
-                cx={xPos(lastIdx)}
-                cy={yPos(lastVal)}
-                r={4}
-                fill={s.color}
-              />
-            );
-          })}
-        </svg>
-
-        {/* Legend */}
-        <div className="flex flex-wrap gap-4 mt-4 px-2">
-          {series.map((s) => (
-            <div key={s.name} className="flex items-center gap-1.5">
-              <div className="w-3 h-0.5" style={{ backgroundColor: s.color }} />
-              <span className="text-xs text-muted-foreground font-mono">
-                {view === "owner" ? s.name.split(" ")[0] : s.name}
-              </span>
+            {/* Legend */}
+            <div className="flex flex-wrap gap-4 mt-4 px-2">
+              {series.map((s) => (
+                <div key={s.name} className="flex items-center gap-1.5">
+                  <div className="w-3 h-0.5" style={{ backgroundColor: s.color }} />
+                  <span className="text-xs text-muted-foreground font-mono">
+                    {activeView === "owner" ? s.name.split(" ")[0] : s.name}
+                  </span>
+                </div>
+              ))}
             </div>
-          ))}
+          </div>
+
+          {/* Weekly breakdown table */}
+          {data.weeks.length > 0 && activeView === "owner" && (
+            <div className="border border-border bg-card overflow-x-auto">
+              <div className="px-4 pt-4 pb-2">
+                <h3 className="font-bold text-sm uppercase tracking-tight">
+                  Weekly Breakdown — By Owner
+                </h3>
+              </div>
+              <table className="w-full text-sm">
+                <thead>
+                  <tr className="border-b border-border bg-muted/60">
+                    <th className="px-4 py-2 text-left text-xs font-mono font-bold uppercase tracking-widest text-muted-foreground">
+                      Owner
+                    </th>
+                    {data.weeks.map((w) => (
+                      <th
+                        key={w.snapshotDate}
+                        className="px-3 py-2 text-right text-xs font-mono font-bold uppercase tracking-widest text-muted-foreground"
+                      >
+                        {new Date(w.snapshotDate + "T12:00:00").toLocaleDateString("en-US", { month: "short", day: "numeric" })}
+                      </th>
+                    ))}
+                  </tr>
+                </thead>
+                <tbody>
+                  {data.owners.map((owner, oi) => (
+                    <tr
+                      key={owner.bidderName}
+                      className="border-b border-border last:border-0 hover:bg-muted/20 transition-colors"
+                    >
+                      <td className="px-4 py-3 font-medium text-sm">
+                        <div className="flex items-center gap-2">
+                          <div
+                            className="w-2 h-2 rounded-full shrink-0"
+                            style={{ backgroundColor: OWNER_COLORS[oi % OWNER_COLORS.length] }}
+                          />
+                          {owner.bidderName.split(" ")[0]}
+                        </div>
+                      </td>
+                      {owner.weeklyTotals.map((v, wi) => {
+                        const prev = wi > 0 ? (owner.weeklyTotals[wi - 1] ?? v) : v;
+                        const delta = v - prev;
+                        return (
+                          <td
+                            key={wi}
+                            className={cn(
+                              "px-3 py-3 text-right font-mono text-xs",
+                              v >= 0 ? "text-green-600" : "text-red-600",
+                            )}
+                          >
+                            {v >= 0 ? "+" : ""}
+                            {formatCurrency(v)}
+                            {wi > 0 && delta !== 0 && (
+                              <span
+                                className={cn(
+                                  "ml-1",
+                                  delta > 0 ? "text-green-400" : "text-red-400",
+                                )}
+                              >
+                                {delta > 0 ? (
+                                  <TrendingUp className="inline w-2.5 h-2.5" />
+                                ) : (
+                                  <TrendingDown className="inline w-2.5 h-2.5" />
+                                )}
+                              </span>
+                            )}
+                          </td>
+                        );
+                      })}
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </div>
+          )}
+        </>
+      )}
+    </div>
+  );
+}
+
+// ── Week 0 Audit View ────────────────────────────────────────────────────────
+
+function Week0AuditView({ week }: { week: MtmWeekData }) {
+  const sortedTeams = [...week.teamValues].sort((a, b) => b.mtmValue - a.mtmValue);
+  const methodologyTeam = sortedTeams.find(
+    (team) => team.regularSeasonMethod || team.intermediateRoundMethod,
+  );
+
+  return (
+    <div className="space-y-6">
+      {/* Summary Cards */}
+      <div className="grid grid-cols-1 md:grid-cols-4 gap-4">
+        <div className="border border-border bg-card p-4">
+          <p className="text-xs font-mono font-bold uppercase tracking-widest text-muted-foreground mb-1">Total Market Value</p>
+          <p className="text-2xl font-bold">{formatCurrency(week.potSize)}</p>
+        </div>
+        <div className="border border-border bg-card p-4">
+          <p className="text-xs font-mono font-bold uppercase tracking-widest text-muted-foreground mb-1">Points Accounted</p>
+          <p className="text-2xl font-bold">{week.rawPointTotal.toFixed(1)}</p>
+          <p className="text-[10px] font-mono text-muted-foreground mt-1">
+            Shares {(week.normalizedShareTotal * 100).toFixed(4)}%
+          </p>
+        </div>
+        <div className="border border-border bg-card p-4">
+          <p className="text-xs font-mono font-bold uppercase tracking-widest text-muted-foreground mb-1">Captured</p>
+          <p className="text-lg font-mono pt-1">
+            {week.capturedAt ? new Date(week.capturedAt).toLocaleDateString("en-US", { month: "short", day: "numeric", hour: "numeric", minute: "2-digit" }) : week.snapshotDate}
+          </p>
+          <p className="text-[10px] font-mono text-muted-foreground mt-1 uppercase">
+            Source: {week.source}
+            {methodologyTeam?.contractSetId
+              ? ` · ${methodologyTeam.contractSetId}`
+              : ""}
+          </p>
+        </div>
+        <div className="border border-border bg-card p-4">
+          <p className="text-xs font-mono font-bold uppercase tracking-widest text-muted-foreground mb-1">Market Quality</p>
+          <div className="flex items-center gap-2 text-sm font-mono mt-2">
+            {week.marketStatusCounts.live > 0 && <span className="text-emerald-600 flex items-center gap-1"><ShieldCheck className="w-3.5 h-3.5"/> {week.marketStatusCounts.live}</span>}
+            {week.marketStatusCounts.stale > 0 && <span className="text-amber-600 flex items-center gap-1"><AlertTriangle className="w-3.5 h-3.5"/> {week.marketStatusCounts.stale}</span>}
+            {week.marketStatusCounts.incomplete > 0 && <span className="text-red-600 flex items-center gap-1"><ServerOff className="w-3.5 h-3.5"/> {week.marketStatusCounts.incomplete}</span>}
+            {week.marketStatusCounts.manual > 0 && <span className="text-blue-600 flex items-center gap-1"><Info className="w-3.5 h-3.5"/> {week.marketStatusCounts.manual}</span>}
+          </div>
         </div>
       </div>
 
-      {/* Weekly breakdown table */}
-      {data.weeks.length > 0 && (
-        <div className="border border-border bg-card overflow-x-auto">
-          <div className="px-4 pt-4 pb-2">
-            <h3 className="font-bold text-sm uppercase tracking-tight">
-              Weekly Breakdown — By Owner
-            </h3>
-          </div>
-          <table className="w-full text-sm">
-            <thead>
-              <tr className="border-b border-border bg-muted/60">
-                <th className="px-4 py-2 text-left text-xs font-mono font-bold uppercase tracking-widest text-muted-foreground">
-                  Owner
-                </th>
-                {data.weeks.map((w) => (
-                  <th
-                    key={w.snapshotDate}
-                    className="px-3 py-2 text-right text-xs font-mono font-bold uppercase tracking-widest text-muted-foreground"
-                  >
-                    {new Date(w.snapshotDate + "T12:00:00").toLocaleDateString("en-US", { month: "short", day: "numeric" })}
-                  </th>
-                ))}
-              </tr>
-            </thead>
-            <tbody>
-              {data.owners.map((owner, oi) => (
-                <tr
-                  key={owner.bidderName}
-                  className="border-b border-border last:border-0 hover:bg-muted/20 transition-colors"
-                >
-                  <td className="px-4 py-3 font-medium text-sm">
-                    <div className="flex items-center gap-2">
-                      <div
-                        className="w-2 h-2 rounded-full shrink-0"
-                        style={{ backgroundColor: OWNER_COLORS[oi % OWNER_COLORS.length] }}
-                      />
-                      {owner.bidderName.split(" ")[0]}
-                    </div>
-                  </td>
-                  {owner.weeklyTotals.map((v, wi) => {
-                    const prev = wi > 0 ? (owner.weeklyTotals[wi - 1] ?? v) : v;
-                    const delta = v - prev;
-                    return (
-                      <td
-                        key={wi}
-                        className={cn(
-                          "px-3 py-3 text-right font-mono text-xs",
-                          v >= 0 ? "text-green-600" : "text-red-600",
-                        )}
-                      >
-                        {v >= 0 ? "+" : ""}
-                        {formatCurrency(v)}
-                        {wi > 0 && delta !== 0 && (
-                          <span
-                            className={cn(
-                              "ml-1",
-                              delta > 0 ? "text-green-400" : "text-red-400",
-                            )}
-                          >
-                            {delta > 0 ? (
-                              <TrendingUp className="inline w-2.5 h-2.5" />
-                            ) : (
-                              <TrendingDown className="inline w-2.5 h-2.5" />
-                            )}
-                          </span>
-                        )}
-                      </td>
-                    );
-                  })}
-                </tr>
-              ))}
-            </tbody>
-          </table>
+      {methodologyTeam && (
+        <div className="border border-border bg-muted/30 px-4 py-3 space-y-1.5">
+          <p className="text-xs font-mono font-bold uppercase tracking-widest">
+            Valuation method
+          </p>
+          {methodologyTeam.regularSeasonMethod && (
+            <p className="text-xs text-muted-foreground leading-relaxed">
+              {methodologyTeam.regularSeasonMethod}
+            </p>
+          )}
+          {methodologyTeam.intermediateRoundMethod && (
+            <p className="text-xs text-muted-foreground leading-relaxed">
+              {methodologyTeam.intermediateRoundMethod}
+            </p>
+          )}
         </div>
       )}
+
+      {/* Audit Table */}
+      <div className="border border-border bg-card overflow-x-auto">
+        <table className="w-full min-w-[1280px] text-sm">
+          <thead>
+            <tr className="border-b border-border bg-muted/60">
+              <th className="px-4 py-3 text-left text-xs font-mono font-bold uppercase tracking-widest text-muted-foreground sticky left-0 bg-muted/95 backdrop-blur">
+                Team
+              </th>
+              <th className="px-3 py-3 text-center text-xs font-mono font-bold uppercase tracking-widest text-muted-foreground">
+                Status
+              </th>
+              <th className="px-3 py-3 text-right text-xs font-mono font-bold uppercase tracking-widest text-muted-foreground">
+                Fair Value
+              </th>
+              <th className="px-3 py-3 text-right text-xs font-mono font-bold uppercase tracking-widest text-muted-foreground">
+                Share %
+              </th>
+              <th className="px-3 py-3 text-right text-xs font-mono font-bold uppercase tracking-widest text-muted-foreground">
+                Win Mkt
+              </th>
+              <th className="px-3 py-3 text-right text-xs font-mono font-bold uppercase tracking-widest text-muted-foreground">
+                E Wins
+              </th>
+              <th className="px-3 py-3 text-right text-xs font-mono font-bold uppercase tracking-widest text-muted-foreground">
+                Playoff
+              </th>
+              <th className="px-3 py-3 text-right text-xs font-mono font-bold uppercase tracking-widest text-muted-foreground">
+                Div
+              </th>
+              <th className="px-3 py-3 text-right text-xs font-mono font-bold uppercase tracking-widest text-muted-foreground">
+                Conf
+              </th>
+              <th className="px-3 py-3 text-right text-xs font-mono font-bold uppercase tracking-widest text-muted-foreground">
+                SB
+              </th>
+              <th className="px-3 py-3 text-right text-xs font-mono font-bold uppercase tracking-widest text-muted-foreground">
+                Win
+              </th>
+              <th className="px-3 py-3 text-right text-xs font-mono font-bold uppercase tracking-widest text-muted-foreground">
+                Base
+              </th>
+              <th className="px-3 py-3 text-right text-xs font-mono font-bold uppercase tracking-widest text-muted-foreground">
+                Season Eq
+              </th>
+              <th className="px-3 py-3 text-right text-xs font-mono font-bold uppercase tracking-widest text-muted-foreground">
+                Bonus Eq
+              </th>
+              <th className="px-4 py-3 text-left text-xs font-mono font-bold uppercase tracking-widest text-muted-foreground">
+                Owner
+              </th>
+              <th className="px-4 py-3 text-left text-xs font-mono font-bold uppercase tracking-widest text-muted-foreground">
+                Quotes
+              </th>
+            </tr>
+          </thead>
+          <tbody className="divide-y divide-border">
+            {sortedTeams.map((t) => (
+              <tr key={t.teamId} className="hover:bg-muted/30 transition-colors group">
+                <td className="px-4 py-3 font-medium whitespace-nowrap sticky left-0 bg-card group-hover:bg-muted/30 transition-colors">
+                  {t.teamName}
+                </td>
+                <td className="px-3 py-3 text-center">
+                  <MarketStatusBadge
+                    status={t.marketStatus}
+                    reasons={t.marketStatusReasons}
+                  />
+                  {t.marketStatusReasons.length > 0 && (
+                    <p className="mt-1 max-w-36 text-left font-mono text-[9px] leading-tight text-muted-foreground">
+                      {t.marketStatusReasons.join(" ")}
+                    </p>
+                  )}
+                </td>
+                <td className="px-3 py-3 text-right font-mono font-bold">
+                  {formatCurrency(t.mtmValue)}
+                </td>
+                <td className="px-3 py-3 text-right font-mono text-muted-foreground">
+                  {t.normalizedShare != null ? (t.normalizedShare * 100).toFixed(2) + "%" : "—"}
+                </td>
+                <td className="px-3 py-3 text-right font-mono text-xs whitespace-nowrap">
+                  {t.winTotalLine != null ? (
+                    <>
+                      O {t.winTotalLine.toFixed(1)}
+                      <span className="block text-muted-foreground">
+                        {formatProbability(t.winTotalOverProbability)}
+                      </span>
+                    </>
+                  ) : "—"}
+                </td>
+                <td className="px-3 py-3 text-right font-mono">
+                  {t.expectedWins != null ? t.expectedWins.toFixed(2) : "—"}
+                </td>
+                <td className="px-3 py-3 text-right font-mono text-muted-foreground">
+                  {formatProbability(t.playoffProbability)}
+                </td>
+                <td className="px-3 py-3 text-right font-mono text-muted-foreground">
+                  {formatProbability(t.divisionalProbability)}
+                </td>
+                <td className="px-3 py-3 text-right font-mono text-muted-foreground">
+                  {formatProbability(t.conferenceGameProbability)}
+                </td>
+                <td className="px-3 py-3 text-right font-mono text-muted-foreground">
+                  {formatProbability(t.superBowlProbability)}
+                </td>
+                <td className="px-3 py-3 text-right font-mono text-muted-foreground">
+                  {formatProbability(t.championshipProbability)}
+                </td>
+                <td className="px-3 py-3 text-right font-mono text-muted-foreground">
+                  {t.bankedPoints != null ? t.bankedPoints.toFixed(0) : "—"}
+                </td>
+                <td className="px-3 py-3 text-right font-mono text-muted-foreground">
+                  {t.seasonEquityPoints != null ? t.seasonEquityPoints.toFixed(2) : "—"}
+                </td>
+                <td className="px-3 py-3 text-right font-mono text-muted-foreground">
+                  {t.bonusEquityPoints != null ? t.bonusEquityPoints.toFixed(2) : "—"}
+                </td>
+                <td className="px-4 py-3 text-left text-muted-foreground text-xs whitespace-nowrap">
+                  {t.ownerName || "—"}
+                </td>
+                <td className="px-4 py-3 text-left text-xs">
+                  <details>
+                    <summary className="cursor-pointer font-mono text-primary hover:underline whitespace-nowrap">
+                      {keyMarketQuotes(t).length} contracts
+                    </summary>
+                    <div className="mt-2 min-w-72 space-y-2 font-mono text-[10px]">
+                      {keyMarketQuotes(t).map((quote) => (
+                        <div key={quote.ticker} className="border-l-2 border-border pl-2">
+                          <p className="font-bold">{quote.ticker}</p>
+                          <p className="text-muted-foreground">
+                            bid {formatQuoteValue(quote.bid)} · ask {formatQuoteValue(quote.ask)} ·
+                            depth {formatQuoteValue(quote.bidDepth)}/{formatQuoteValue(quote.askDepth)} · {quote.quality}
+                          </p>
+                        </div>
+                      ))}
+                    </div>
+                  </details>
+                </td>
+              </tr>
+            ))}
+          </tbody>
+        </table>
+      </div>
     </div>
+  );
+}
+
+function formatProbability(value: number | null | undefined) {
+  return value == null ? "—" : `${(value * 100).toFixed(1)}%`;
+}
+
+function formatQuoteValue(value: number | null) {
+  return value == null ? "—" : value.toFixed(2);
+}
+
+function keyMarketQuotes(team: MtmWeekData["teamValues"][number]) {
+  return team.marketQuotes.filter(
+    (quote) =>
+      quote.kind !== "win_threshold" ||
+      (team.winTotalLine != null && quote.line === team.winTotalLine),
+  );
+}
+
+function MarketStatusBadge({
+  status,
+  reasons,
+}: {
+  status: MtmTeamWeekMarketStatus;
+  reasons: string[];
+}) {
+  const config = {
+    live: {
+      label: "Live",
+      title: "Tight spread and sufficient top-of-book depth",
+      className: "border-emerald-600/40 bg-emerald-500/10 text-emerald-700",
+      icon: ShieldCheck,
+    },
+    stale: {
+      label: "Stale",
+      title: "One or more key contracts has a wide spread or low depth",
+      className: "border-amber-600/40 bg-amber-500/10 text-amber-700",
+      icon: AlertTriangle,
+    },
+    incomplete: {
+      label: "Incomplete",
+      title: "One or more required Kalshi contracts is unavailable",
+      className: "border-red-600/40 bg-red-500/10 text-red-700",
+      icon: ServerOff,
+    },
+    manual: {
+      label: "Manual",
+      title: "This value was entered manually",
+      className: "border-blue-600/40 bg-blue-500/10 text-blue-700",
+      icon: Info,
+    },
+  }[status];
+  const Icon = config.icon;
+  return (
+    <span
+      title={reasons.length > 0 ? reasons.join(" ") : config.title}
+      className={cn(
+        "inline-flex items-center gap-1 border px-1.5 py-0.5 font-mono text-[10px] uppercase tracking-wider",
+        config.className,
+      )}
+    >
+      <Icon className="h-3 w-3" />
+      {config.label}
+    </span>
   );
 }

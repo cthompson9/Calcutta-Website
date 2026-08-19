@@ -68,7 +68,6 @@ paths:
             application/json:
               schema:
                 $ref: "#/components/schemas/ErrorResponse"
-
   /teams:
     get:
       operationId: getTeams
@@ -129,7 +128,6 @@ paths:
             application/json:
               schema:
                 $ref: "#/components/schemas/ErrorResponse"
-
   /teams/{id}:
     get:
       operationId: getTeam
@@ -545,6 +543,67 @@ paths:
                 $ref: "#/components/schemas/MtmSnapshot"
         "400":
           description: Validation error
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+        "401":
+          description: Unauthorized — ADMIN_API_KEY required
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+        "409":
+          description: The target team/date is protected Kalshi Week 0 data
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+
+  /mtm/week-zero/capture:
+    post:
+      operationId: captureWeekZeroMtm
+      tags: [mtm]
+      summary: Capture an admin-authorized Week 0 valuation from public Kalshi market data
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/WeekZeroCaptureInput"
+      responses:
+        "200":
+          description: Captured Week 0 valuation diagnostics
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/WeekZeroCaptureResult"
+        "400":
+          description: Validation or incomplete market data error
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+        "401":
+          description: Unauthorized — ADMIN_API_KEY required
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+        "404":
+          description: Season not found
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+        "409":
+          description: The selected Week 0 date is already occupied by manual MTM data
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+        "502":
+          description: Kalshi market data could not be captured
           content:
             application/json:
               schema:
@@ -1013,6 +1072,25 @@ components:
           type: string
         mtmValue:
           type: number
+        snapshotKey:
+          type: ["string", "null"]
+        source:
+          type: string
+        capturedAt:
+          type: ["string", "null"]
+        marketStatus:
+          type: ["string", "null"]
+          enum: [live, stale, incomplete, manual, null]
+        bankedPoints:
+          type: ["number", "null"]
+        seasonEquityPoints:
+          type: ["number", "null"]
+        bonusEquityPoints:
+          type: ["number", "null"]
+        totalPoints:
+          type: ["number", "null"]
+        normalizedShare:
+          type: ["number", "null"]
       required: [id, teamId, seasonId, snapshotDate, mtmValue]
 
     MtmWeekData:
@@ -1022,6 +1100,20 @@ components:
           type: string
         weekNum:
           type: ["number", "null"]
+        label:
+          type: string
+        source:
+          type: string
+        capturedAt:
+          type: ["string", "null"]
+        potSize:
+          type: number
+        rawPointTotal:
+          type: number
+        normalizedShareTotal:
+          type: number
+        marketStatusCounts:
+          $ref: "#/components/schemas/MtmMarketStatusCounts"
         ownerTotals:
           type: array
           items:
@@ -1030,7 +1122,20 @@ components:
           type: array
           items:
             $ref: "#/components/schemas/MtmTeamWeek"
-      required: [snapshotDate, ownerTotals, teamValues]
+      required: [snapshotDate, label, source, potSize, rawPointTotal, normalizedShareTotal, marketStatusCounts, ownerTotals, teamValues]
+
+    MtmMarketStatusCounts:
+      type: object
+      properties:
+        live:
+          type: number
+        stale:
+          type: number
+        incomplete:
+          type: number
+        manual:
+          type: number
+      required: [live, stale, incomplete, manual]
 
     MtmOwnerWeek:
       type: object
@@ -1052,7 +1157,89 @@ components:
           type: string
         mtmValue:
           type: number
-      required: [teamId, teamName, ownerName, mtmValue]
+        source:
+          type: string
+        capturedAt:
+          type: ["string", "null"]
+        marketStatus:
+          type: string
+          enum: [live, stale, incomplete, manual]
+        contractSetId:
+          type: ["string", "null"]
+        marketStatusReasons:
+          type: array
+          items:
+            type: string
+        bankedPoints:
+          type: ["number", "null"]
+        seasonEquityPoints:
+          type: ["number", "null"]
+        bonusEquityPoints:
+          type: ["number", "null"]
+        totalPoints:
+          type: ["number", "null"]
+        normalizedShare:
+          type: ["number", "null"]
+        winTotalLine:
+          type: ["number", "null"]
+        winTotalOverProbability:
+          type: ["number", "null"]
+        rawExpectedWins:
+          type: ["number", "null"]
+        expectedWins:
+          type: ["number", "null"]
+        playoffProbability:
+          type: ["number", "null"]
+        divisionalProbability:
+          type: ["number", "null"]
+        conferenceGameProbability:
+          type: ["number", "null"]
+        superBowlProbability:
+          type: ["number", "null"]
+        championshipProbability:
+          type: ["number", "null"]
+        regularSeasonMethod:
+          type: ["string", "null"]
+        intermediateRoundMethod:
+          type: ["string", "null"]
+        marketQuotes:
+          type: array
+          items:
+            $ref: "#/components/schemas/MtmMarketQuote"
+      required: [teamId, teamName, ownerName, mtmValue, source, marketStatus, marketStatusReasons, marketQuotes]
+
+    MtmMarketQuote:
+      type: object
+      properties:
+        ticker:
+          type: string
+        kind:
+          type: string
+          enum: [win_threshold, playoff, conference_champion, championship]
+        line:
+          type: ["number", "null"]
+        bid:
+          type: ["number", "null"]
+        ask:
+          type: ["number", "null"]
+        last:
+          type: ["number", "null"]
+        probability:
+          type: ["number", "null"]
+        spread:
+          type: ["number", "null"]
+        bidDepth:
+          type: ["number", "null"]
+        askDepth:
+          type: ["number", "null"]
+        quality:
+          type: string
+          enum: [live, stale, unavailable]
+        updatedAt:
+          type: ["string", "null"]
+        derived:
+          type: boolean
+      required: [ticker, kind, line, bid, ask, last, probability, spread, bidDepth, askDepth, quality, updatedAt, derived]
 
     MtmData:
       type: object
@@ -1115,6 +1302,39 @@ components:
         mtmValue:
           type: number
       required: [teamId, seasonYear, mtmValue]
+
+    WeekZeroCaptureInput:
+      type: object
+      properties:
+        seasonYear:
+          type: number
+        snapshotDate:
+          type: string
+          description: Optional Week 0 calendar date as YYYY-MM-DD. The first successful capture fixes this date for idempotent retries.
+      required: [seasonYear]
+
+    WeekZeroCaptureResult:
+      type: object
+      properties:
+        seasonYear:
+          type: number
+        snapshotDate:
+          type: string
+        capturedAt:
+          type: string
+        teamCount:
+          type: number
+        contractSetId:
+          type: string
+        potSize:
+          type: number
+        rawPointTotal:
+          type: number
+        normalizedShareTotal:
+          type: number
+        marketStatusCounts:
+          $ref: "#/components/schemas/MtmMarketStatusCounts"
+      required: [seasonYear, snapshotDate, capturedAt, teamCount, contractSetId, potSize, rawPointTotal, normalizedShareTotal, marketStatusCounts]
 
     # Summary
     AuctionSummary:

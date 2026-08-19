@@ -282,6 +282,19 @@ export interface TradeStatusUpdate {
   status: TradeStatusUpdateStatus;
 }
 
+/**
+ * @nullable
+ */
+export type MtmSnapshotMarketStatus = typeof MtmSnapshotMarketStatus[keyof typeof MtmSnapshotMarketStatus] | null;
+
+
+export const MtmSnapshotMarketStatus = {
+  live: 'live',
+  stale: 'stale',
+  incomplete: 'incomplete',
+  manual: 'manual',
+} as const;
+
 export interface MtmSnapshot {
   id: number;
   teamId: number;
@@ -290,6 +303,30 @@ export interface MtmSnapshot {
   weekNum?: number | null;
   snapshotDate: string;
   mtmValue: number;
+  /** @nullable */
+  snapshotKey?: string | null;
+  source?: string;
+  /** @nullable */
+  capturedAt?: string | null;
+  /** @nullable */
+  marketStatus?: MtmSnapshotMarketStatus;
+  /** @nullable */
+  bankedPoints?: number | null;
+  /** @nullable */
+  seasonEquityPoints?: number | null;
+  /** @nullable */
+  bonusEquityPoints?: number | null;
+  /** @nullable */
+  totalPoints?: number | null;
+  /** @nullable */
+  normalizedShare?: number | null;
+}
+
+export interface MtmMarketStatusCounts {
+  live: number;
+  stale: number;
+  incomplete: number;
+  manual: number;
 }
 
 export interface MtmOwnerWeek {
@@ -297,17 +334,119 @@ export interface MtmOwnerWeek {
   mtmTotal: number;
 }
 
+export type MtmTeamWeekMarketStatus = typeof MtmTeamWeekMarketStatus[keyof typeof MtmTeamWeekMarketStatus];
+
+
+export const MtmTeamWeekMarketStatus = {
+  live: 'live',
+  stale: 'stale',
+  incomplete: 'incomplete',
+  manual: 'manual',
+} as const;
+
+export type MtmMarketQuoteKind = typeof MtmMarketQuoteKind[keyof typeof MtmMarketQuoteKind];
+
+
+export const MtmMarketQuoteKind = {
+  win_threshold: 'win_threshold',
+  playoff: 'playoff',
+  conference_champion: 'conference_champion',
+  championship: 'championship',
+} as const;
+
+export type MtmMarketQuoteQuality = typeof MtmMarketQuoteQuality[keyof typeof MtmMarketQuoteQuality];
+
+
+export const MtmMarketQuoteQuality = {
+  live: 'live',
+  stale: 'stale',
+  unavailable: 'unavailable',
+} as const;
+
+export interface MtmMarketQuote {
+  ticker: string;
+  kind: MtmMarketQuoteKind;
+  /** @nullable */
+  line: number | null;
+  /** @nullable */
+  bid: number | null;
+  /** @nullable */
+  ask: number | null;
+  /** @nullable */
+  last: number | null;
+  /** @nullable */
+  probability: number | null;
+  /** @nullable */
+  spread: number | null;
+  /** @nullable */
+  bidDepth: number | null;
+  /** @nullable */
+  askDepth: number | null;
+  quality: MtmMarketQuoteQuality;
+  /** @nullable */
+  updatedAt: string | null;
+  derived: boolean;
+}
+
 export interface MtmTeamWeek {
   teamId: number;
   teamName: string;
   ownerName: string;
   mtmValue: number;
+  source: string;
+  /** @nullable */
+  capturedAt?: string | null;
+  marketStatus: MtmTeamWeekMarketStatus;
+  /** @nullable */
+  contractSetId?: string | null;
+  marketStatusReasons: string[];
+  /** @nullable */
+  bankedPoints?: number | null;
+  /** @nullable */
+  seasonEquityPoints?: number | null;
+  /** @nullable */
+  bonusEquityPoints?: number | null;
+  /** @nullable */
+  totalPoints?: number | null;
+  /** @nullable */
+  normalizedShare?: number | null;
+  /** @nullable */
+  winTotalLine?: number | null;
+  /** @nullable */
+  winTotalOverProbability?: number | null;
+  /** @nullable */
+  rawExpectedWins?: number | null;
+  /** @nullable */
+  expectedWins?: number | null;
+  /** @nullable */
+  playoffProbability?: number | null;
+  /** @nullable */
+  divisionalProbability?: number | null;
+  /** @nullable */
+  conferenceGameProbability?: number | null;
+  /** @nullable */
+  superBowlProbability?: number | null;
+  /** @nullable */
+  championshipProbability?: number | null;
+  /** @nullable */
+  regularSeasonMethod?: string | null;
+  /** @nullable */
+  intermediateRoundMethod?: string | null;
+  marketQuotes: MtmMarketQuote[];
 }
 
 export interface MtmWeekData {
   snapshotDate: string;
   /** @nullable */
   weekNum?: number | null;
+  label: string;
+  source: string;
+  /** @nullable */
+  capturedAt?: string | null;
+  potSize: number;
+  rawPointTotal: number;
+  normalizedShareTotal: number;
+  marketStatusCounts: MtmMarketStatusCounts;
   ownerTotals: MtmOwnerWeek[];
   teamValues: MtmTeamWeek[];
 }
@@ -339,6 +478,24 @@ export interface MtmSnapshotInput {
   /** Date as YYYY-MM-DD. Defaults to today. Same-day submissions overwrite the previous value. */
   snapshotDate?: string;
   mtmValue: number;
+}
+
+export interface WeekZeroCaptureInput {
+  seasonYear: number;
+  /** Optional Week 0 calendar date as YYYY-MM-DD. The first successful capture fixes this date for idempotent retries. */
+  snapshotDate?: string;
+}
+
+export interface WeekZeroCaptureResult {
+  seasonYear: number;
+  snapshotDate: string;
+  capturedAt: string;
+  teamCount: number;
+  contractSetId: string;
+  potSize: number;
+  rawPointTotal: number;
+  normalizedShareTotal: number;
+  marketStatusCounts: MtmMarketStatusCounts;
 }
 
 export interface BidderStanding {

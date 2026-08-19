@@ -6,21 +6,15 @@
  * OpenAPI spec version: 0.1.0
  */
 import type { MtmMarketStatusCounts } from './mtmMarketStatusCounts';
-import type { MtmOwnerWeek } from './mtmOwnerWeek';
-import type { MtmTeamWeek } from './mtmTeamWeek';
 
-export interface MtmWeekData {
+export interface WeekZeroCaptureResult {
+  seasonYear: number;
   snapshotDate: string;
-  /** @nullable */
-  weekNum?: number | null;
-  label: string;
-  source: string;
-  /** @nullable */
-  capturedAt?: string | null;
+  capturedAt: string;
+  teamCount: number;
+  contractSetId: string;
   potSize: number;
   rawPointTotal: number;
   normalizedShareTotal: number;
   marketStatusCounts: MtmMarketStatusCounts;
-  ownerTotals: MtmOwnerWeek[];
-  teamValues: MtmTeamWeek[];
 }
