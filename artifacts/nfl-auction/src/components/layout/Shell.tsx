@@ -2,6 +2,8 @@ import { Link, useLocation } from "wouter";
 import { LayoutDashboard, Trophy, ArrowLeftRight, TrendingUp } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { ReactNode } from "react";
+import { SeasonToggle } from "@/components/SeasonToggle";
+import { useSeason } from "@/hooks/useSeason";
 
 interface ShellProps {
   children: ReactNode;
@@ -9,6 +11,7 @@ interface ShellProps {
 
 export function Shell({ children }: ShellProps) {
   const [location] = useLocation();
+  const { year } = useSeason();
 
   const navItems = [
     { href: "/", label: "Results", icon: Trophy },
@@ -27,6 +30,15 @@ export function Shell({ children }: ShellProps) {
             <h1 className="font-bold text-lg leading-tight uppercase tracking-tight">NFL Calcutta</h1>
             <p className="text-xs text-muted-foreground font-mono font-bold uppercase tracking-widest">Pool Manager</p>
           </div>
+        </div>
+        <div className="px-3 py-4 border-b border-sidebar-border space-y-2">
+          <div className="flex items-center justify-between px-1">
+            <span className="text-[10px] text-muted-foreground font-mono font-bold uppercase tracking-widest">
+              Global season
+            </span>
+            <span className="text-[10px] text-muted-foreground font-mono">{year}</span>
+          </div>
+          <SeasonToggle />
         </div>
         <nav className="flex-1 py-6 px-3 flex flex-col gap-1">
           {navItems.map((item) => {
@@ -52,6 +64,12 @@ export function Shell({ children }: ShellProps) {
 
       {/* Main Content */}
       <main className="flex-1 pb-16 md:pb-0 min-h-[100dvh] max-w-[100vw]">
+        <div className="md:hidden sticky top-0 z-40 flex items-center justify-between gap-3 border-b border-border bg-background/95 px-4 py-3 backdrop-blur">
+          <span className="shrink-0 text-[10px] text-muted-foreground font-mono font-bold uppercase tracking-widest">
+            Season
+          </span>
+          <SeasonToggle />
+        </div>
         {children}
       </main>
 

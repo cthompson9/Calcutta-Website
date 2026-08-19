@@ -1,0 +1,72 @@
+# In-Season Fair Value (% of Pot) — Methodology & Implementation Instructions
+### Companion to MODEL_REPORT.md (v4.1) · Governs weekly re-cuts and live Kalshi-driven marks
+
+## 1. The identity everything hangs on
+
+Total league points are a constant **11,420** in every season (see MODEL_REPORT §2). After the auction, the pot is also fixed. Therefore, at any moment during the season:
+
+  **fair share_t = ( banked_t + E[remaining_t] ) / 11,420**
+  **fair value_t = fair share_t × pot**
+
+Shares always sum to 1 across the 32 teams (banked differential nets to zero leaguewide; remaining bonus equity sums to the undistributed bonus pool). This is the consistency check every mark file must pass: Σ shares = 1.000 ± rounding.
+
+## 2. Two-layer architecture
+
+| layer | runs | produces | frequency |
+|---|---|---|---|
+| **Model re-cut** (heavy) | simulation environment | banked points + pricing surface (lookup tables) | Tuesdays ~6am ET, after MNF |
+| **Live marking** (light) | Replit, Kalshi API | intraday marks = arithmetic on the surface | continuous |
+
+The Tuesday re-cut is the *official* weekly mark (drives the WoW chart). Live marks are the ticker between re-cuts: Kalshi price moves slide teams *along* the current surface; only the re-cut changes the surface itself (results banked, schedule burned off, seeding scenarios collapsed, flex/Wk-18 windows updated).
+
+## 3. Banked points (exact arithmetic, no model)
+
+For each team, from games played to date:
+  banked = 150 + 10·W + 5·T + D + X2
+where D = cumulative regular-season point differential and X2 = cumulative differential in 2x-window games (a second time — the multiplier's extra leg). 2x status is judged by when the game was actually played. Playoff results add bonus points as earned (50/100/200/400/800, cumulative) and nothing else — playoff differential never counts.
+
+## 4. Weekly re-cut (the surface)
+
+Re-run the v4.1 simulation conditioned on the season to date:
+1. **Re-solve ratings** against current markets: Kalshi full-season win totals (which now embed results) and refreshed SB futures (power-devigged, λ re-fit on the top 8). Results enter through the markets, not by hand — the market is the posterior over team strength; the sim's job is converting strength into rubric points on the remaining schedule.
+2. **Simulate remaining games only** (10K+ paths): remaining wins/differential/2x, full seeding with current standings as the starting state, playoff bracket, bonus equity.
+3. **Emit the pricing surface** per team, indexed on a rating grid r ∈ [team's current rating ± 6, step 0.5]:
+   - E[remaining regular-season points | r]  (wins + diff + 2x on the remaining slate)
+   - P(playoff berth | r), P(divisional | r), P(conf game | r), P(SB | r), P(win | r)
+   Bonus equity(r) = 50·P(berth) + 100·P(div) + 200·P(conf) + 400·P(SB) + 800·P(win).
+4. **Emit the Kalshi inverse map** per team: for the active win-total line L, a table of market P(over) → implied rating (precomputed by running the season-remainder win distribution at each grid rating). This is what lets the live layer translate a price into a rating with zero simulation.
+
+## 5. Live marking procedure (Replit)
+
+Per team, on each refresh:
+1. Pull Kalshi win-total contract for the team's active line → mid-price → P(over).
+2. Look up implied rating from the inverse map (linear interpolation).
+3. Look up E[remaining] and bonus equity at that rating (interpolation on the surface).
+4. mark share = (banked + E[remaining reg pts] + bonus equity)/11,420; mark $ = share × pot.
+5. **Renormalize** all 32 shares to sum to 1 before display (interpolation drift is small but nonzero).
+
+**Staleness rules (mandatory):** use mid-prices only when the book shows minimum depth (e.g., ≥$100 within 5¢ of mid on both sides) and the spread is ≤8¢; otherwise hold the team at its last-Tuesday surface value and badge the mark "stale". Thin mid-week Kalshi books otherwise produce phantom $400 swings off a lone resting order. If a team's playoff contracts trade with depth, they may be blended in as a second strength signal, but win totals are the primary input — one instrument, one inverse map, fewer failure modes.
+
+## 6. Decomposition (display alongside every mark)
+
+- **Banked** — riskless, already earned.
+- **Season equity** — E[remaining wins + differential + 2x].
+- **Bonus equity** — the playoff ladder (the volatile component; this is where WoW swings live).
+Late-season intuition check: an eliminated team's mark converges to banked/11,420 exactly; a clinched 1-seed's bonus equity converges toward the conditional bracket value.
+
+## 7. Owner rollups
+
+owner mark = Σ (ownership fraction × team mark), from a ledger supporting fractional positions and synthetic longs/shorts (a synthetic is ± fraction at a recorded strike; P&L = fraction × (mark − strike)). Realized P&L attribution uses trade timestamps against the mark series.
+
+## 8. Weekly outputs (the data contract)
+
+`marks_weekWW.json`:
+- meta: week, pot, cut timestamp, λ, sources+timestamps
+- per team: banked (with W/T/D/X2 detail), surface (rating grid → E[remaining], round probabilities), inverse map (P_over grid → rating), Tuesday official share/$, decomposition, P(seed 1–7 | current)
+- per owner: positions, official mark, WoW change
+- diagnostics: Σ shares, eliminated/clinched list, games with largest single-game dollar swing next week (per team: Δmark if win vs lose — the "what matters this weekend" view)
+
+## 9. Known approximations
+- Between re-cuts, banked points lag until the next cut unless the live layer also ingests scores (optional; if it does, banked updates are exact and only the surface is week-old).
+- The surface is one-dimensional in own-team rating; opponent strengths are frozen at the cut. Fine for a week's horizon; the Tuesday re-cut repairs any drift.
+- λ is re-fit weekly from SB futures; late-season, futures become the dominant tail signal and win totals fade (lines get short) — the re-cut shifts weight accordingly.

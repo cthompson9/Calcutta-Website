@@ -694,7 +694,7 @@ export const getGetBiddersUrl = (params?: GetBiddersParams,) => {
 }
 
 /**
- * @summary List all bidders with totals
+ * @summary List bidders. With season, returns only season participants (primary owners + approved trade recipients). Without season, returns all bidders (global identity directory).
  */
 export const getBidders = async (params?: GetBiddersParams, options?: Parameters<typeof customFetch>[1]): Promise<BidderSummary[]> => {
 
@@ -741,7 +741,7 @@ export type GetBiddersQueryError = ErrorType<unknown>
 
 
 /**
- * @summary List all bidders with totals
+ * @summary List bidders. With season, returns only season participants (primary owners + approved trade recipients). Without season, returns all bidders (global identity directory).
  */
 
 export function useGetBidders<TData = Awaited<ReturnType<typeof getBidders>>, TError = ErrorType<unknown>>(
@@ -1740,7 +1740,7 @@ export const useUpsertMtmSnapshot = <TError = ErrorType<ErrorResponse>,
       return useMutation(getUpsertMtmSnapshotMutationOptions(options));
     }
 
-export const getGetAuctionSummaryUrl = (params?: GetAuctionSummaryParams,) => {
+export const getGetAuctionSummaryUrl = (params: GetAuctionSummaryParams,) => {
   const normalizedParams = new URLSearchParams();
 
   Object.entries(params || {}).forEach(([key, value]) => {
@@ -1756,9 +1756,9 @@ export const getGetAuctionSummaryUrl = (params?: GetAuctionSummaryParams,) => {
 }
 
 /**
- * @summary Overall auction summary
+ * @summary Overall auction summary for a specific season
  */
-export const getAuctionSummary = async (params?: GetAuctionSummaryParams, options?: Parameters<typeof customFetch>[1]): Promise<AuctionSummary> => {
+export const getAuctionSummary = async (params: GetAuctionSummaryParams, options?: Parameters<typeof customFetch>[1]): Promise<AuctionSummary> => {
 
   return customFetch<AuctionSummary>(getGetAuctionSummaryUrl(params),
   {
@@ -1780,7 +1780,7 @@ export const getGetAuctionSummaryQueryKey = (params?: GetAuctionSummaryParams,) 
     }
 
 
-export const getGetAuctionSummaryQueryOptions = <TData = Awaited<ReturnType<typeof getAuctionSummary>>, TError = ErrorType<unknown>>(params?: GetAuctionSummaryParams, options?: { query?:UseQueryOptions<Awaited<ReturnType<typeof getAuctionSummary>>, TError, TData>, request?: SecondParameter<typeof customFetch>}
+export const getGetAuctionSummaryQueryOptions = <TData = Awaited<ReturnType<typeof getAuctionSummary>>, TError = ErrorType<ErrorResponse>>(params: GetAuctionSummaryParams, options?: { query?:UseQueryOptions<Awaited<ReturnType<typeof getAuctionSummary>>, TError, TData>, request?: SecondParameter<typeof customFetch>}
 ) => {
 
 const {query: queryOptions, request: requestOptions} = options ?? {};
@@ -1799,15 +1799,15 @@ const {query: queryOptions, request: requestOptions} = options ?? {};
 }
 
 export type GetAuctionSummaryQueryResult = NonNullable<Awaited<ReturnType<typeof getAuctionSummary>>>
-export type GetAuctionSummaryQueryError = ErrorType<unknown>
+export type GetAuctionSummaryQueryError = ErrorType<ErrorResponse>
 
 
 /**
- * @summary Overall auction summary
+ * @summary Overall auction summary for a specific season
  */
 
-export function useGetAuctionSummary<TData = Awaited<ReturnType<typeof getAuctionSummary>>, TError = ErrorType<unknown>>(
- params?: GetAuctionSummaryParams, options?: { query?:UseQueryOptions<Awaited<ReturnType<typeof getAuctionSummary>>, TError, TData>, request?: SecondParameter<typeof customFetch>}
+export function useGetAuctionSummary<TData = Awaited<ReturnType<typeof getAuctionSummary>>, TError = ErrorType<ErrorResponse>>(
+ params: GetAuctionSummaryParams, options?: { query?:UseQueryOptions<Awaited<ReturnType<typeof getAuctionSummary>>, TError, TData>, request?: SecondParameter<typeof customFetch>}
 
  ):  UseQueryResult<TData, TError> & { queryKey: QueryKey } {
 

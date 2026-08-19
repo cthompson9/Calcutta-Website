@@ -8,6 +8,7 @@
 
 export type GetBiddersParams = {
 /**
+ * When supplied, filter to bidders with a season presence (team_bidders owners + approved trade toBidders). Without season, returns all bidders for global identity directory use.
  * @nullable
  */
 season?: number | null;

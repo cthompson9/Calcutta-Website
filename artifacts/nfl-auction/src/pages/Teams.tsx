@@ -22,8 +22,10 @@ import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter } from "
 import { Label } from "@/components/ui/label";
 import { Checkbox } from "@/components/ui/checkbox";
 import { useToast } from "@/hooks/use-toast";
+import { useSeason } from "@/hooks/useSeason";
 
 export default function Teams() {
+  const { year } = useSeason();
   const [search, setSearch] = useState("");
   const [confFilter, setConfFilter] = useState<"ALL" | "AFC" | "NFC">("ALL");
   const [divFilter, setDivFilter] = useState<"ALL" | "East" | "North" | "South" | "West">("ALL");
@@ -34,7 +36,7 @@ export default function Teams() {
   const [editingTeam, setEditingTeam] = useState<Team | null>(null);
   const [isCreateOpen, setIsCreateOpen] = useState(false);
 
-  const { data: teams, isLoading } = useGetTeams();
+  const { data: teams, isLoading } = useGetTeams({ season: year });
   const { data: bidders } = useGetBidders();
 
   const handleSort = (col: keyof Team | "owners") => {
@@ -76,7 +78,9 @@ export default function Teams() {
       <header className="flex flex-col md:flex-row md:items-end justify-between gap-4">
         <div>
           <h1 className="text-3xl md:text-5xl font-extrabold uppercase tracking-tighter mb-2">Teams</h1>
-          <p className="text-muted-foreground font-mono text-sm uppercase tracking-widest">Browse & manage auction roster</p>
+          <p className="text-muted-foreground font-mono text-sm uppercase tracking-widest">
+            Browse & manage {year} auction roster
+          </p>
         </div>
         <Button onClick={() => setIsCreateOpen(true)} className="uppercase font-bold tracking-wider font-mono">
           <Plus className="w-4 h-4 mr-2" /> Add Team
@@ -189,7 +193,8 @@ export default function Teams() {
       <TeamDialog 
         open={isCreateOpen} 
         onOpenChange={setIsCreateOpen} 
-        bidders={bidders || []} 
+        bidders={bidders || []}
+        seasonYear={year}
       />
       {editingTeam && (
         <TeamDialog 
@@ -197,13 +202,26 @@ export default function Teams() {
           open={!!editingTeam} 
           onOpenChange={(o) => !o && setEditingTeam(null)} 
           bidders={bidders || []}
+          seasonYear={year}
         />
       )}
     </div>
   );
 }
 
-function TeamDialog({ team, open, onOpenChange, bidders }: { team?: Team, open: boolean, onOpenChange: (o: boolean) => void, bidders: any[] }) {
+function TeamDialog({
+  team,
+  open,
+  onOpenChange,
+  bidders,
+  seasonYear,
+}: {
+  team?: Team;
+  open: boolean;
+  onOpenChange: (o: boolean) => void;
+  bidders: any[];
+  seasonYear: number;
+}) {
   const isEdit = !!team;
   const queryClient = useQueryClient();
   const { toast } = useToast();
@@ -244,6 +262,7 @@ function TeamDialog({ team, open, onOpenChange, bidders }: { team?: Team, open: 
       conference,
       division,
       bidAmount: Number(bidAmount) || 0,
+      season: seasonYear,
       owners: owners.filter(o => o.bidderId).map(o => ({
         bidderId: Number(o.bidderId),
         ownershipShare: Number(o.share)

@@ -207,12 +207,13 @@ paths:
     get:
       operationId: getBidders
       tags: [bidders]
-      summary: List all bidders with totals
+      summary: List bidders. With season, returns only season participants (primary owners + approved trade recipients). Without season, returns all bidders (global identity directory).
       parameters:
         - name: season
           in: query
           schema:
             type: ["number", "null"]
+          description: When supplied, filter to bidders with a season presence (team_bidders owners + approved trade toBidders). Without season, returns all bidders for global identity directory use.
       responses:
         "200":
           description: List of bidders
@@ -553,12 +554,14 @@ paths:
     get:
       operationId: getAuctionSummary
       tags: [summary]
-      summary: Overall auction summary
+      summary: Overall auction summary for a specific season
       parameters:
         - name: season
           in: query
+          required: true
           schema:
-            type: ["number", "null"]
+            type: number
+          description: Season year (YYYY). Required. Returns empty/zero data if the season has no auction rows.
       responses:
         "200":
           description: Auction summary
@@ -566,6 +569,12 @@ paths:
             application/json:
               schema:
                 $ref: "#/components/schemas/AuctionSummary"
+        "400":
+          description: Validation error
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
 
 components:
   schemas:
@@ -804,7 +813,7 @@ components:
         markToMarket:
           type: number
         seed:
-          type: ["integer", "null"]
+          type: ["number", "null"]
           description: "Playoff seed within conference (1–7). Null if team missed playoffs or seed not yet set."
       required:
         - teamId

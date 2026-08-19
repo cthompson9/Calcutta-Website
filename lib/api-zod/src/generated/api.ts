@@ -180,10 +180,10 @@ export const DeleteTeamResponse = zod.void()
 
 
 /**
- * @summary List all bidders with totals
+ * @summary List bidders. With season, returns only season participants (primary owners + approved trade recipients). Without season, returns all bidders (global identity directory).
  */
 export const GetBiddersQueryParams = zod.object({
-  "season": zod.coerce.number().nullish()
+  "season": zod.coerce.number().nullish().describe('When supplied, filter to bidders with a season presence (team_bidders owners + approved trade toBidders). Without season, returns all bidders for global identity directory use.')
 })
 
 export const GetBiddersResponseItem = zod.object({
@@ -282,7 +282,8 @@ export const GetResultsResponseItem = zod.object({
   "realizedMultiple": zod.number(),
   "netReturn": zod.number(),
   "netPctReturn": zod.number(),
-  "markToMarket": zod.number()
+  "markToMarket": zod.number(),
+  "seed": zod.number().nullish().describe('Playoff seed within conference (1–7). Null if team missed playoffs or seed not yet set.')
 })
 export const GetResultsResponse = zod.array(GetResultsResponseItem)
 
@@ -327,7 +328,8 @@ export const GetResultsByOwnerResponseItem = zod.object({
   "realizedMultiple": zod.number(),
   "netReturn": zod.number(),
   "netPctReturn": zod.number(),
-  "markToMarket": zod.number()
+  "markToMarket": zod.number(),
+  "seed": zod.number().nullish().describe('Playoff seed within conference (1–7). Null if team missed playoffs or seed not yet set.')
 }))
 })
 export const GetResultsByOwnerResponse = zod.array(GetResultsByOwnerResponseItem)
@@ -379,7 +381,8 @@ export const UpsertTeamResultResponse = zod.object({
   "realizedMultiple": zod.number(),
   "netReturn": zod.number(),
   "netPctReturn": zod.number(),
-  "markToMarket": zod.number()
+  "markToMarket": zod.number(),
+  "seed": zod.number().nullish().describe('Playoff seed within conference (1–7). Null if team missed playoffs or seed not yet set.')
 })
 
 
@@ -567,10 +570,10 @@ export const UpsertMtmSnapshotResponse = zod.object({
 
 
 /**
- * @summary Overall auction summary
+ * @summary Overall auction summary for a specific season
  */
 export const GetAuctionSummaryQueryParams = zod.object({
-  "season": zod.coerce.number().nullish()
+  "season": zod.coerce.number().describe('Season year (YYYY). Required. Returns empty\/zero data if the season has no auction rows.')
 })
 
 export const GetAuctionSummaryResponse = zod.object({

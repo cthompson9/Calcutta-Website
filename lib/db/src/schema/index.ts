@@ -3,5 +3,6 @@ export * from "./teams";
 export * from "./seasons";
 export * from "./teamBidders";
 export * from "./teamResults";
+export * from "./teamSeasonAuctions";
 export * from "./trades";
 export * from "./mtmSnapshots";

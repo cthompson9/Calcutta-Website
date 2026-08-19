@@ -9,14 +9,13 @@ import type {
 } from "@workspace/api-client-react";
 import { formatCurrency } from "@/lib/utils";
 import { cn } from "@/lib/utils";
-import { SeasonToggle } from "@/components/SeasonToggle";
 import { useSeason } from "@/hooks/useSeason";
 import { ChevronDown, ChevronRight, Trophy, Star } from "lucide-react";
 
 type TabId = "byTeam" | "byOwner";
 
 export default function Results() {
-  const { year, setYear } = useSeason();
+  const { year, selectedSeason } = useSeason();
   const [tab, setTab] = useState<TabId>("byOwner");
   const [expandedOwner, setExpandedOwner] = useState<number | null>(null);
 
@@ -24,21 +23,24 @@ export default function Results() {
   const { data: ownerResults, isLoading: loadingOwners } = useGetResultsByOwner({ season: year });
 
   const isLoading = loadingTeams || loadingOwners;
-  const isComplete = year === 2025;
+  const isComplete = selectedSeason?.isComplete ?? false;
 
   return (
     <div className="p-4 md:p-8 space-y-6 max-w-[1400px] mx-auto">
       {/* Header */}
-      <header className="flex flex-col md:flex-row md:items-end justify-between gap-4">
+      <header>
         <div>
           <h1 className="text-3xl md:text-5xl font-extrabold uppercase tracking-tighter mb-1">
             Calcutta Returns
           </h1>
           <p className="text-muted-foreground font-mono text-sm uppercase tracking-widest">
-            {isComplete ? "Final results · 2025 season" : "Upcoming season · 2026"}
+            {isComplete
+              ? `Final results · ${year} season`
+              : selectedSeason?.isActive
+                ? `Live season · ${year}`
+                : `Season · ${year}`}
           </p>
         </div>
-        <SeasonToggle year={year} onChange={setYear} />
       </header>
 
       {/* Tabs */}

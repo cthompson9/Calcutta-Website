@@ -9,7 +9,6 @@ import {
 import type { TradeRow } from "@workspace/api-client-react";
 import { formatCurrency } from "@/lib/utils";
 import { cn } from "@/lib/utils";
-import { SeasonToggle } from "@/components/SeasonToggle";
 import { useSeason } from "@/hooks/useSeason";
 import { ArrowRight, Plus, Trash2, X, Lock, Unlock, Check, Ban } from "lucide-react";
 
@@ -158,14 +157,16 @@ function TradeCard({
 
 function TradeForm({
   teams,
-  bidders,
+  fromBidders,
+  toBidders,
   seasonYear,
   onCreate,
   onClose,
   creating,
 }: {
   teams: any[];
-  bidders: any[];
+  fromBidders: any[];
+  toBidders: any[];
   seasonYear: number;
   onCreate: (data: any) => void;
   onClose: () => void;
@@ -181,6 +182,15 @@ function TradeForm({
   const [notes, setNotes]     = useState("");
 
   const selectedTeam = teams.find((t: any) => String(t.id) === teamId);
+  const eligibleFromBidders = selectedTeam
+    ? fromBidders.filter((bidder: any) =>
+        bidder.teams?.some(
+          (team: any) =>
+            String(team.id) === teamId &&
+            Number(team.ownershipShare ?? 0) > 0,
+        ),
+      )
+    : fromBidders;
 
   // Auto-fill price when team, percentage, or useDraftCost changes
   useEffect(() => {
@@ -217,7 +227,12 @@ function TradeForm({
           <Field label="Team">
             <select
               value={teamId}
-              onChange={(e) => { setTeamId(e.target.value); setUseDraftCost(false); setPrice(""); }}
+              onChange={(e) => {
+                setTeamId(e.target.value);
+                setFromId("");
+                setUseDraftCost(false);
+                setPrice("");
+              }}
               className="w-full border border-border bg-background px-3 py-2 text-sm"
             >
               <option value="">Select team…</option>
@@ -230,14 +245,14 @@ function TradeForm({
           <Field label="From Owner">
             <select value={fromId} onChange={(e) => setFromId(e.target.value)} className="w-full border border-border bg-background px-3 py-2 text-sm">
               <option value="">Select owner…</option>
-              {bidders.map((b: any) => <option key={b.id} value={b.id}>{b.name}</option>)}
+              {eligibleFromBidders.map((b: any) => <option key={b.id} value={b.id}>{b.name}</option>)}
             </select>
           </Field>
 
           <Field label="To Owner">
             <select value={toId} onChange={(e) => setToId(e.target.value)} className="w-full border border-border bg-background px-3 py-2 text-sm">
               <option value="">Select owner…</option>
-              {bidders.map((b: any) => <option key={b.id} value={b.id}>{b.name}</option>)}
+              {toBidders.map((b: any) => <option key={b.id} value={b.id}>{b.name}</option>)}
             </select>
           </Field>
 
@@ -425,15 +440,16 @@ function Field({ label, children }: { label: string; children: React.ReactNode }
 // ── Page ──────────────────────────────────────────────────────────────────────
 
 export default function Trades() {
-  const { year, setYear } = useSeason();
+  const { year } = useSeason();
   const [showForm, setShowForm]     = useState(false);
   const [adminKey, setAdminKey]     = useState<string | null>(
     () => sessionStorage.getItem("nfl_admin_key"),
   );
 
   const { data: trades, isLoading, refetch } = useGetTrades({ season: year });
-  const { data: teams }   = useGetTeams({});
-  const { data: bidders } = useGetBidders({});
+  const { data: teams } = useGetTeams({ season: year });
+  const { data: seasonBidders } = useGetBidders({ season: year });
+  const { data: bidderDirectory } = useGetBidders({});
   const { mutate: createTrade, isPending: creating } = useCreateTrade();
   const { mutate: deleteTrade } = useDeleteTrade();
 
@@ -466,7 +482,6 @@ export default function Trades() {
           </p>
         </div>
         <div className="flex items-center gap-3 flex-wrap">
-          <SeasonToggle year={year} onChange={setYear} />
           <AdminPanel adminKey={adminKey} onSetKey={saveAdminKey} onClearKey={clearAdminKey} />
           <button
             onClick={() => setShowForm(true)}
@@ -483,10 +498,11 @@ export default function Trades() {
         </div>
       )}
 
-      {showForm && teams && bidders && (
+      {showForm && teams && seasonBidders && bidderDirectory && (
         <TradeForm
           teams={teams}
-          bidders={bidders}
+          fromBidders={seasonBidders}
+          toBidders={bidderDirectory}
           seasonYear={year}
           onCreate={(data) =>
             createTrade({ data }, {

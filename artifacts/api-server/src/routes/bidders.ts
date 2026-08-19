@@ -1,71 +1,154 @@
 import { Router, type IRouter } from "express";
-import { eq, sql, and } from "drizzle-orm";
-import { db, biddersTable, teamsTable, teamBiddersTable, seasonsTable } from "@workspace/db";
+import { eq, and, inArray, sql } from "drizzle-orm";
 import {
+  db,
+  biddersTable,
+  teamsTable,
+  teamSeasonAuctionsTable,
+  seasonsTable,
+} from "@workspace/db";
+import {
+  GetBiddersQueryParams,
   CreateBidderBody,
   UpdateBidderBody,
   UpdateBidderParams,
   DeleteBidderParams,
 } from "@workspace/api-zod";
+import { loadSeasonOwnership } from "../lib/seasonOwnership";
 
 const router: IRouter = Router();
 
-async function getActiveSeasonId(): Promise<number> {
+async function resolveSeasonId(year: number): Promise<number | null> {
   const rows = await db
     .select({ id: seasonsTable.id })
     .from(seasonsTable)
-    .where(eq(seasonsTable.isActive, true))
+    .where(eq(seasonsTable.year, year))
     .limit(1);
-  if (!rows[0]) throw new Error("No active season found");
-  return rows[0].id;
+  return rows[0]?.id ?? null;
 }
 
-router.get("/bidders", async (_req, res): Promise<void> => {
-  const activeSeasonId = await getActiveSeasonId();
-  const bidders = await db.select().from(biddersTable).orderBy(biddersTable.name);
+router.get("/bidders", async (req, res): Promise<void> => {
+  const parsed = GetBiddersQueryParams.safeParse(req.query);
+  if (!parsed.success) {
+    res.status(400).json({ error: parsed.error.message });
+    return;
+  }
+  const { season: seasonYear } = parsed.data;
 
-  const results = await Promise.all(
-    bidders.map(async (bidder) => {
-      const ownerships = await db
-        .select({
-          teamId: teamsTable.id,
-          teamName: teamsTable.name,
-          conference: teamsTable.conference,
-          division: teamsTable.division,
-          bidAmount: teamsTable.bidAmount,
-          ownershipShare: teamBiddersTable.ownershipShare,
-        })
-        .from(teamBiddersTable)
-        .innerJoin(teamsTable, eq(teamBiddersTable.teamId, teamsTable.id))
-        .where(
-          and(
-            eq(teamBiddersTable.bidderId, bidder.id),
-            eq(teamBiddersTable.seasonId, activeSeasonId),
-          ),
-        )
-        .orderBy(teamsTable.conference, teamsTable.name);
+  if (seasonYear != null) {
+    // ── Season-filtered: only return season participants ───────────────────
+    const seasonId = await resolveSeasonId(seasonYear);
+    if (!seasonId) {
+      res.json([]);
+      return;
+    }
 
-      const totalPaid = ownerships.reduce(
-        (sum, o) => sum + parseFloat(o.bidAmount) * parseFloat(o.ownershipShare),
-        0,
+    const ownership = await loadSeasonOwnership(seasonId);
+
+    if (ownership.participantIds.size === 0) {
+      res.json([]);
+      return;
+    }
+
+    // Fetch all team info needed for the response
+    const allTeams = await db.select().from(teamsTable);
+    const teamInfoMap = new Map(allTeams.map((t) => [t.id, t]));
+
+    // Fetch all season auction prices
+    const auctionRows = await db
+      .select({
+        teamId: teamSeasonAuctionsTable.teamId,
+        bidAmount: teamSeasonAuctionsTable.bidAmount,
+      })
+      .from(teamSeasonAuctionsTable)
+      .where(eq(teamSeasonAuctionsTable.seasonId, seasonId));
+    const auctionPriceMap = new Map(auctionRows.map((a) => [a.teamId, parseFloat(a.bidAmount)]));
+
+    // Fetch bidder name rows for all participants
+    const participantIdArr = Array.from(ownership.participantIds);
+    const bidderRows = await db
+      .select()
+      .from(biddersTable)
+      .where(inArray(biddersTable.id, participantIdArr))
+      .orderBy(biddersTable.name);
+
+    const results = bidderRows.map((bidder) => {
+      const teamMap = ownership.byBidder.get(bidder.id);
+
+      // Compute total paid: original cost + trade buys - trade sells (economic cost)
+      let totalPaid = 0;
+      const teamsList: Array<{
+        id: number;
+        name: string;
+        conference: string;
+        division: string;
+        bidAmount: number;
+        ownershipShare: number;
+      }> = [];
+
+      if (teamMap) {
+        for (const [teamId, entry] of teamMap) {
+          const auctionPrice = auctionPriceMap.get(teamId) ?? 0;
+          const originalCost = auctionPrice * entry.originalShare;
+          totalPaid += originalCost + entry.tradePaid - entry.tradeReceived;
+
+          // Include team in list if they have current effective ownership
+          if (entry.effectiveShare > 0.00005) {
+            const teamInfo = teamInfoMap.get(teamId);
+            if (teamInfo) {
+              teamsList.push({
+                id: teamId,
+                name: teamInfo.name,
+                conference: teamInfo.conference,
+                division: teamInfo.division,
+                bidAmount: auctionPrice,
+                ownershipShare: entry.effectiveShare,
+              });
+            }
+          }
+        }
+      }
+
+      // Sort teams by conference then name
+      teamsList.sort((a, b) =>
+        a.conference.localeCompare(b.conference) || a.name.localeCompare(b.name),
       );
+
+      // teamCount = sum of effective fractional shares
+      const teamCount = teamsList.reduce((sum, t) => sum + t.ownershipShare, 0);
 
       return {
         id: bidder.id,
         name: bidder.name,
-        teamCount: ownerships.length,
+        teamCount: Math.round(teamCount * 10) / 10,
         totalPaid: Math.round(totalPaid * 100) / 100,
-        teams: ownerships.map((o) => ({
-          id: o.teamId,
-          name: o.teamName,
-          conference: o.conference,
-          division: o.division,
-          bidAmount: parseFloat(o.bidAmount),
-          ownershipShare: parseFloat(o.ownershipShare),
-        })),
+        teams: teamsList,
       };
-    }),
-  );
+    });
+
+    res.json(results);
+    return;
+  }
+
+  // ── No season: global identity directory ─────────────────────────────────
+  // Return ALL bidders with zero/empty financial fields.
+  // Used for selecting new secondary buyers before a season is underway.
+  const bidders = await db.select().from(biddersTable).orderBy(biddersTable.name);
+
+  const results = bidders.map((bidder) => ({
+    id: bidder.id,
+    name: bidder.name,
+    teamCount: 0,
+    totalPaid: 0,
+    teams: [] as Array<{
+      id: number;
+      name: string;
+      conference: string;
+      division: string;
+      bidAmount: number;
+      ownershipShare: number;
+    }>,
+  }));
 
   res.json(results);
 });

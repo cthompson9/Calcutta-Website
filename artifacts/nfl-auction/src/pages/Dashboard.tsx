@@ -1,9 +1,11 @@
-import { useGetAuctionSummary, useGetBidders } from "@workspace/api-client-react";
+import { useGetAuctionSummary } from "@workspace/api-client-react";
 import { formatCurrency, formatPercentage } from "@/lib/utils";
 import { Trophy, TrendingUp, DollarSign, Activity } from "lucide-react";
+import { useSeason } from "@/hooks/useSeason";
 
 export default function Dashboard() {
-  const { data: summary, isLoading: loadingSummary } = useGetAuctionSummary();
+  const { year } = useSeason();
+  const { data: summary, isLoading: loadingSummary } = useGetAuctionSummary({ season: year });
 
   if (loadingSummary) {
     return (
@@ -22,8 +24,10 @@ export default function Dashboard() {
   return (
     <div className="p-4 md:p-8 space-y-8 max-w-7xl mx-auto">
       <header>
-        <h1 className="text-3xl md:text-5xl font-extrabold uppercase tracking-tighter mb-2">Live Board</h1>
-        <p className="text-muted-foreground font-mono text-sm uppercase tracking-widest">Real-time auction standings & stats</p>
+        <h1 className="text-3xl md:text-5xl font-extrabold uppercase tracking-tighter mb-2">Auction Board</h1>
+        <p className="text-muted-foreground font-mono text-sm uppercase tracking-widest">
+          {year} auction standings & stats
+        </p>
       </header>
 
       {/* Headline Stats */}
@@ -122,6 +126,13 @@ export default function Dashboard() {
                 </div>
               );
             })}
+            {summary.conferenceBreakdown.length === 0 && (
+              <div className="border border-dashed border-border px-5 py-12 text-center">
+                <p className="text-xs font-mono font-bold uppercase tracking-widest text-muted-foreground">
+                  No conference auction data for {year}
+                </p>
+              </div>
+            )}
           </div>
         </div>
       </div>

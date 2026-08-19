@@ -1,14 +1,19 @@
 /**
- * Seeds 2025 season data: seasons table, team_results, and backfills team_bidders.season_id.
+ * Seeds 2025 season data: seasons table, team_season_auctions, team_results, and backfills team_bidders.season_id.
  * Run: pnpm --filter @workspace/db run seed2025
+ * Idempotent: safe to run multiple times.
  */
 import { db } from "./index";
-import { seasonsTable, teamResultsTable, teamBiddersTable, teamsTable } from "./schema";
-import { eq, sql } from "drizzle-orm";
+import {
+  seasonsTable,
+  teamResultsTable,
+  teamBiddersTable,
+  teamsTable,
+  teamSeasonAuctionsTable,
+} from "./schema";
+import { eq, sql, and } from "drizzle-orm";
 
 async function main() {
-  console.log("Seeding seasons...");
-
   // Upsert 2025 (completed) and 2026 (active)
   const [s2025] = await db
     .insert(seasonsTable)
@@ -20,21 +25,32 @@ async function main() {
     .values({ year: 2026, isActive: true, isComplete: false, label: "2026 Season" })
     .onConflictDoUpdate({ target: seasonsTable.year, set: { isActive: true, label: "2026 Season" } })
     .returning();
-  console.log(`  Season 2025 id=${s2025.id}, Season 2026 id=${s2026.id}`);
 
-  // Backfill existing team_bidders to season 2025
+  // Backfill existing team_bidders to season 2025 (only rows with NULL seasonId — legacy rows)
   await db
     .update(teamBiddersTable)
     .set({ seasonId: s2025.id })
     .where(sql`${teamBiddersTable.seasonId} IS NULL`);
-  console.log("  Backfilled team_bidders.season_id → 2025");
 
   // Build team name → id map
-  const allTeams = await db.select({ id: teamsTable.id, name: teamsTable.name }).from(teamsTable);
-  const teamMap = new Map(allTeams.map((t) => [t.name, t.id]));
+  const allTeams = await db.select({ id: teamsTable.id, name: teamsTable.name, bidAmount: teamsTable.bidAmount }).from(teamsTable);
+  const teamMap = new Map(allTeams.map((t) => [t.name, t]));
+
+  // ── Backfill 2025 season auction prices from teams.bidAmount (idempotent) ──
+  // Only insert rows that don't already exist so existing manual overrides are preserved.
+  for (const team of allTeams) {
+    await db
+      .insert(teamSeasonAuctionsTable)
+      .values({
+        teamId: team.id,
+        seasonId: s2025.id,
+        bidAmount: team.bidAmount,
+      })
+      .onConflictDoNothing();
+  }
 
   // 2025 results data (from Calcutta Returns sheet)
-  // Columns: teamName, wins, ptDiff, playoffBerth, divRound, confRound, sbBerth, winSuperBowl, realizedReturn, markToMarket
+  // Columns: teamName, wins, ptDiff, startingPoints, draftOrder, playoff flags, realizedReturn, markToMarket
   const results2025: Array<{
     teamName: string;
     wins: number;
@@ -91,31 +107,24 @@ async function main() {
     { teamName: "Arizona Cardinals",       wins: 3,    ptDiff: -126, startingPoints: 150, draftOrder: 32, playoffBerth: false, divRound: false, confRound: false, sbBerth: false, winSuperBowl: false, realizedReturn: 228.388792,   markToMarket: -1071.611208 },
   ];
 
-  // Payout amounts
-  const PLAYOFF_BERTH = 50;
-  const DIV_ROUND = 100;
-  const CONF_ROUND = 200;
-  const SB_BERTH = 400;
-  const WIN_SB = 800;
-
-  console.log(`Seeding ${results2025.length} team results for 2025...`);
   for (const r of results2025) {
-    const teamId = teamMap.get(r.teamName);
-    if (!teamId) {
-      console.warn(`  ⚠ Team not found: ${r.teamName}`);
+    const team = teamMap.get(r.teamName);
+    if (!team) {
       continue;
     }
 
-    // Get the effective cost for this team
-    const teamRow = await db.select().from(teamsTable).where(eq(teamsTable.id, teamId)).limit(1);
-    const cost = parseFloat(teamRow[0]?.bidAmount ?? "0");
-
-    const payouts =
-      (r.playoffBerth ? PLAYOFF_BERTH : 0) +
-      (r.divRound ? DIV_ROUND : 0) +
-      (r.confRound ? CONF_ROUND : 0) +
-      (r.sbBerth ? SB_BERTH : 0) +
-      (r.winSuperBowl ? WIN_SB : 0);
+    // Get the 2025 season auction price (from teamSeasonAuctions, not teams.bidAmount)
+    const auctionRow = await db
+      .select({ bidAmount: teamSeasonAuctionsTable.bidAmount })
+      .from(teamSeasonAuctionsTable)
+      .where(
+        and(
+          eq(teamSeasonAuctionsTable.teamId, team.id),
+          eq(teamSeasonAuctionsTable.seasonId, s2025.id),
+        ),
+      )
+      .limit(1);
+    const cost = parseFloat(auctionRow[0]?.bidAmount ?? "0");
 
     const realizedReturn = r.realizedReturn;
     const realizedMultiple = cost > 0 ? realizedReturn / cost : 0;
@@ -125,7 +134,7 @@ async function main() {
     await db
       .insert(teamResultsTable)
       .values({
-        teamId,
+        teamId: team.id,
         seasonId: s2025.id,
         wins: r.wins.toString(),
         ptDiff: r.ptDiff,
@@ -161,10 +170,8 @@ async function main() {
           markToMarket: r.markToMarket.toFixed(6),
         },
       });
-    console.log(`  ✓ ${r.teamName}`);
   }
 
-  console.log("Done!");
   process.exit(0);
 }
 

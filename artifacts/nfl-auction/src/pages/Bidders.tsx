@@ -16,9 +16,11 @@ import { Search, Plus, Trash2, Edit2, ChevronDown, ChevronRight, User } from "lu
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter } from "@/components/ui/dialog";
 import { Label } from "@/components/ui/label";
 import { useToast } from "@/hooks/use-toast";
+import { useSeason } from "@/hooks/useSeason";
 
 export default function Bidders() {
-  const { data: bidders, isLoading } = useGetBidders();
+  const { year } = useSeason();
+  const { data: bidders, isLoading } = useGetBidders({ season: year });
   const [search, setSearch] = useState("");
   
   const [isCreateOpen, setIsCreateOpen] = useState(false);
@@ -44,7 +46,9 @@ export default function Bidders() {
       <header className="flex flex-col md:flex-row md:items-end justify-between gap-4">
         <div>
           <h1 className="text-3xl md:text-5xl font-extrabold uppercase tracking-tighter mb-2">Bidders</h1>
-          <p className="text-muted-foreground font-mono text-sm uppercase tracking-widest">Manage participants and review portfolios</p>
+          <p className="text-muted-foreground font-mono text-sm uppercase tracking-widest">
+            Review {year} participants and portfolios
+          </p>
         </div>
         <Button onClick={() => setIsCreateOpen(true)} className="uppercase font-bold tracking-wider font-mono rounded-none">
           <Plus className="w-4 h-4 mr-2" /> Add Bidder
@@ -146,19 +150,31 @@ export default function Bidders() {
       <BidderDialog 
         open={isCreateOpen} 
         onOpenChange={setIsCreateOpen} 
+        seasonYear={year}
       />
       {editingBidder && (
         <BidderDialog 
           bidder={editingBidder} 
           open={!!editingBidder} 
           onOpenChange={(o) => !o && setEditingBidder(null)} 
+          seasonYear={year}
         />
       )}
     </div>
   );
 }
 
-function BidderDialog({ bidder, open, onOpenChange }: { bidder?: BidderSummary, open: boolean, onOpenChange: (o: boolean) => void }) {
+function BidderDialog({
+  bidder,
+  open,
+  onOpenChange,
+  seasonYear,
+}: {
+  bidder?: BidderSummary;
+  open: boolean;
+  onOpenChange: (o: boolean) => void;
+  seasonYear: number;
+}) {
   const isEdit = !!bidder;
   const queryClient = useQueryClient();
   const { toast } = useToast();

@@ -1,6 +1,6 @@
 ---
 name: Schema design
-description: NFl auction DB schema decisions, new tables added in the Calcutta Returns build.
+description: NFL auction season boundaries for prices, primary ownership, results, trades, and M2M data.
 ---
 
 ## New tables added
@@ -9,13 +9,14 @@ description: NFl auction DB schema decisions, new tables added in the Calcutta R
 - `team_results`: composite PK (team_id, season_id); stores wins, pt_diff, playoff flags, realized_return, mark_to_market
 - `trades`: season_id, team_id, from_bidder_id, to_bidder_id, price, trade_date
 - `mtm_snapshots`: unique(team_id, season_id, week_num); week 0 = pre-season
+- `team_season_auctions`: unique(team_id, season_id); authoritative auction price for that season
 
-## team_bidders change
+## Season ownership and price boundaries
 
-- Added `season_id` (nullable FK to seasons) — kept nullable so existing data could be backfilled
-- Composite PK is now (team_id, bidder_id) — season_id NOT in PK, just a filter column
-- Backfilled via UPDATE ... WHERE season_id IS NULL
+Primary ownership is keyed by team, bidder, and season. Approved trades overlay those primary shares to produce current ownership; pending or rejected trades do not.
 
-**Why:** Existing 36 rows were 2025 auction data. Making season_id NOT NULL at push time would require a default, which drizzle-kit refuses in non-TTY. Nullable + backfill via seed is the safe path.
+Auction price reads and writes use the season auction record. The legacy global team price is only a one-time 2025 backfill source and must never be a runtime fallback.
 
-**How to apply:** Future seasons add new team_bidders rows with the correct season_id. Query by season_id to filter ownership per year.
+**Why:** Reusing global prices or active-season owners silently leaks 2025 economics into a new, empty season and makes cross-season comparisons incorrect.
+
+**How to apply:** Require an explicit season for financial views, return empty/zero data when that season has no auction rows, and keep the unfiltered bidder endpoint only as the global identity directory for selecting new buyers.

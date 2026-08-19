@@ -180,6 +180,11 @@ export interface TeamResultRow {
   netReturn: number;
   netPctReturn: number;
   markToMarket: number;
+  /**
+     * Playoff seed within conference (1–7). Null if team missed playoffs or seed not yet set.
+     * @nullable
+     */
+  seed?: number | null;
 }
 
 export interface OwnerResultRow {
@@ -394,6 +399,7 @@ export const GetTeamsDivision = {
 
 export type GetBiddersParams = {
 /**
+ * When supplied, filter to bidders with a season presence (team_bidders owners + approved trade toBidders). Without season, returns all bidders for global identity directory use.
  * @nullable
  */
 season?: number | null;
@@ -431,8 +437,8 @@ teamId?: number | null;
 
 export type GetAuctionSummaryParams = {
 /**
- * @nullable
+ * Season year (YYYY). Required. Returns empty/zero data if the season has no auction rows.
  */
-season?: number | null;
+season: number;
 };
 

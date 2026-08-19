@@ -5,6 +5,7 @@ import {
   teamsTable,
   biddersTable,
   tradesTable,
+  teamSeasonAuctionsTable,
   seasonsTable,
 } from "@workspace/db";
 import {
@@ -15,8 +16,71 @@ import {
   UpdateTradeParams,
 } from "@workspace/api-zod";
 import { z } from "zod";
+import { loadSeasonOwnership } from "../lib/seasonOwnership";
 
 const router: IRouter = Router();
+
+// Small tolerance for floating-point share comparisons.
+const SHARE_EPSILON = 0.00005;
+
+// ── Ownership-integrity validation ────────────────────────────────────────────
+
+/**
+ * Validate a proposed trade against current season state and effective ownership.
+ * Returns a human-readable error string when invalid, or null when valid.
+ *
+ * Checks:
+ *  - seller and buyer must differ
+ *  - team must be auctioned in the given season (team_season_auctions row exists)
+ *  - seller must currently hold effective ownership in the team
+ *  - percentage must not exceed the seller's current effective share
+ */
+async function validateTradeOwnership(args: {
+  seasonId: number;
+  teamId: number;
+  fromBidderId: number;
+  toBidderId: number;
+  percentage: number;
+}): Promise<string | null> {
+  const { seasonId, teamId, fromBidderId, toBidderId, percentage } = args;
+
+  if (fromBidderId === toBidderId) {
+    return "Seller and buyer must be different owners.";
+  }
+
+  // Team must be auctioned in this season
+  const auctionRow = await db
+    .select({ teamId: teamSeasonAuctionsTable.teamId })
+    .from(teamSeasonAuctionsTable)
+    .where(
+      and(
+        eq(teamSeasonAuctionsTable.teamId, teamId),
+        eq(teamSeasonAuctionsTable.seasonId, seasonId),
+      ),
+    )
+    .limit(1);
+  if (!auctionRow[0]) {
+    return "Team is not auctioned in this season and cannot be traded.";
+  }
+
+  // Seller must hold current effective ownership
+  const ownership = await loadSeasonOwnership(seasonId);
+  const sellerEntry = ownership.byBidder.get(fromBidderId)?.get(teamId);
+  const sellerShare = sellerEntry ? Math.max(0, sellerEntry.effectiveShare) : 0;
+
+  if (sellerShare <= SHARE_EPSILON) {
+    return "Seller has no current ownership stake in this team.";
+  }
+
+  // Percentage traded (0–100) must not exceed the seller's current share (0–1)
+  const tradeShare = percentage / 100;
+  if (tradeShare > sellerShare + SHARE_EPSILON) {
+    const sellerPct = Math.round(sellerShare * 10000) / 100;
+    return `Trade percentage (${percentage}%) exceeds seller's current ownership (${sellerPct}%).`;
+  }
+
+  return null;
+}
 
 // ── Auth helpers ────────────────────────────────────────────────────────────
 
@@ -172,15 +236,33 @@ router.post("/trades", async (req, res): Promise<void> => {
     return;
   }
 
-  // If no price provided, default to team.bidAmount × percentage / 100
+  // Ownership-integrity validation before creating the trade
+  const validationError = await validateTradeOwnership({
+    seasonId,
+    teamId: data.teamId,
+    fromBidderId: data.fromBidderId,
+    toBidderId: data.toBidderId,
+    percentage: data.percentage ?? 100,
+  });
+  if (validationError) {
+    res.status(400).json({ error: validationError });
+    return;
+  }
+
+  // If no price provided, default to the season auction price × percentage / 100
   let price = data.price;
   if (price === undefined || price === null) {
-    const team = await db
-      .select({ bidAmount: teamsTable.bidAmount })
-      .from(teamsTable)
-      .where(eq(teamsTable.id, data.teamId))
+    const auctionRow = await db
+      .select({ bidAmount: teamSeasonAuctionsTable.bidAmount })
+      .from(teamSeasonAuctionsTable)
+      .where(
+        and(
+          eq(teamSeasonAuctionsTable.teamId, data.teamId),
+          eq(teamSeasonAuctionsTable.seasonId, seasonId),
+        ),
+      )
       .limit(1);
-    const bidAmt = parseFloat(team[0]?.bidAmount ?? "0");
+    const bidAmt = parseFloat(auctionRow[0]?.bidAmount ?? "0");
     const pct = (data.percentage ?? 100) / 100;
     price = Math.round(bidAmt * pct * 100) / 100;
   }
@@ -273,6 +355,49 @@ router.patch("/trades/:id/status", async (req: Request, res: Response): Promise<
     .limit(1);
   if (!existing[0]) {
     res.status(404).json({ error: "Trade not found" });
+    return;
+  }
+  const trade = existing[0];
+
+  if (body.data.status === "approved" && trade.status === "approved") {
+    const enriched = await enrichTrade(id);
+    res.json(enriched);
+    return;
+  }
+
+  // Revalidate ownership immediately before an approval. Rejections skip this.
+  // loadSeasonOwnership reflects all currently-approved trades, so this catches
+  // sellers who no longer hold enough share due to intervening approvals.
+  if (body.data.status === "approved") {
+    const validationError = await validateTradeOwnership({
+      seasonId: trade.seasonId,
+      teamId: trade.teamId,
+      fromBidderId: trade.fromBidderId,
+      toBidderId: trade.toBidderId,
+      percentage: parseFloat(trade.percentage),
+    });
+    if (validationError) {
+      res.status(400).json({ error: `Cannot approve trade: ${validationError}` });
+      return;
+    }
+
+    // Keep the final existence check and status update atomic.
+    await db.transaction(async (tx) => {
+      const fresh = await tx
+        .select()
+        .from(tradesTable)
+        .where(eq(tradesTable.id, id))
+        .limit(1);
+      if (!fresh[0]) throw new Error("Trade not found");
+      // Only transition from a non-approved state; idempotent if already approved.
+      await tx
+        .update(tradesTable)
+        .set({ status: "approved" })
+        .where(eq(tradesTable.id, id));
+    });
+
+    const enriched = await enrichTrade(id);
+    res.json(enriched);
     return;
   }
 

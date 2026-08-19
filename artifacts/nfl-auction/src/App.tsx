@@ -18,6 +18,7 @@ import Bidders from '@/pages/Bidders';
 import Results from '@/pages/Results';
 import Trades from '@/pages/Trades';
 import MtmTracker from '@/pages/MtmTracker';
+import { SeasonProvider } from '@/hooks/useSeason';
 
 const queryClient = new QueryClient();
 
@@ -48,9 +49,11 @@ function App() {
   return (
     <QueryClientProvider client={queryClient}>
       <TooltipProvider>
-        <WouterRouter base={import.meta.env.BASE_URL.replace(/\/$/, '')}>
-          <Router />
-        </WouterRouter>
+        <SeasonProvider>
+          <WouterRouter base={import.meta.env.BASE_URL.replace(/\/$/, '')}>
+            <Router />
+          </WouterRouter>
+        </SeasonProvider>
         <Toaster />
       </TooltipProvider>
     </QueryClientProvider>

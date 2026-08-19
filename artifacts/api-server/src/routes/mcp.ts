@@ -17,16 +17,17 @@
  *   GET /mcp/get_owner_return
  *   GET /mcp/get_owner_mtm
  */
-import { Router, type IRouter, type Request, type Response } from "express";
+import { Router, type IRouter, type Response } from "express";
 import { ilike, eq, and } from "drizzle-orm";
 import {
   db,
   teamsTable,
   biddersTable,
-  teamBiddersTable,
   teamResultsTable,
+  teamSeasonAuctionsTable,
   seasonsTable,
 } from "@workspace/db";
+import { loadSeasonOwnership } from "../lib/seasonOwnership";
 
 const router: IRouter = Router();
 
@@ -42,7 +43,6 @@ async function resolveSeasonId(year: number): Promise<number | null> {
 // Resolve season from query (default to most recent complete season)
 async function getSeason(seasonParam?: string): Promise<number> {
   if (seasonParam) return parseInt(seasonParam, 10);
-  // Return most recent complete season year
   const rows = await db
     .select({ year: seasonsTable.year })
     .from(seasonsTable)
@@ -77,21 +77,10 @@ function val(res: Response, v: string | number | null) {
   res.json({ value: v });
 }
 
-// Team owner helpers
-async function getTeamOwners(
-  teamId: number,
-  seasonId: number | null,
-): Promise<string[]> {
-  const conditions = [eq(teamBiddersTable.teamId, teamId)];
-  if (seasonId != null) conditions.push(eq(teamBiddersTable.seasonId, seasonId));
-
-  const owners = await db
-    .select({ bidderName: biddersTable.name, ownershipShare: teamBiddersTable.ownershipShare })
-    .from(teamBiddersTable)
-    .innerJoin(biddersTable, eq(teamBiddersTable.bidderId, biddersTable.id))
-    .where(and(...conditions));
-
-  return owners.map((o) => o.bidderName);
+// Effective current owners for a team (post-trades)
+async function getTeamOwners(teamId: number, seasonId: number): Promise<string[]> {
+  const ownership = await loadSeasonOwnership(seasonId);
+  return (ownership.currentOwnersByTeam.get(teamId) ?? []).map((o) => o.bidderName);
 }
 
 async function getTeamResult(teamId: number, seasonId: number | null) {
@@ -117,7 +106,7 @@ for (const n of [1, 2, 3, 4, 5]) {
     const season = await getSeason(req.query.season as string | undefined);
     const seasonId = await resolveSeasonId(season);
     const team = await findTeam(teamName);
-    if (!team) { val(res, null); return; }
+    if (!team || !seasonId) { val(res, null); return; }
     const owners = await getTeamOwners(team.id, seasonId);
     val(res, owners[n - 1] ?? null);
   });
@@ -127,9 +116,16 @@ for (const n of [1, 2, 3, 4, 5]) {
 router.get("/mcp/get_team_cost", async (req, res): Promise<void> => {
   const teamName = req.query.team as string;
   if (!teamName) { val(res, null); return; }
+  const season = await getSeason(req.query.season as string | undefined);
+  const seasonId = await resolveSeasonId(season);
   const team = await findTeam(teamName);
-  if (!team) { val(res, null); return; }
-  val(res, parseFloat(team.bidAmount));
+  if (!team || !seasonId) { val(res, null); return; }
+  const auctionRows = await db
+    .select({ bidAmount: teamSeasonAuctionsTable.bidAmount })
+    .from(teamSeasonAuctionsTable)
+    .where(and(eq(teamSeasonAuctionsTable.teamId, team.id), eq(teamSeasonAuctionsTable.seasonId, seasonId)))
+    .limit(1);
+  val(res, auctionRows[0] ? parseFloat(auctionRows[0].bidAmount) : null);
 });
 
 // GET /mcp/get_team_points — starting points (always 150 for this pool)
@@ -204,40 +200,37 @@ router.get("/mcp/get_team_draftorder", async (req, res): Promise<void> => {
   val(res, result?.draftOrder ?? null);
 });
 
-// Owner endpoints
-async function getOwnerAgg(bidderId: number, seasonId: number | null) {
-  if (!seasonId) return null;
-
-  const ownerships = await db
-    .select({
-      teamId: teamBiddersTable.teamId,
-      ownershipShare: teamBiddersTable.ownershipShare,
-    })
-    .from(teamBiddersTable)
-    .where(
-      and(
-        eq(teamBiddersTable.bidderId, bidderId),
-        eq(teamBiddersTable.seasonId, seasonId),
-      ),
-    );
+// Owner endpoints — uses effective ownership (post-trade) via shared helper
+async function getOwnerAgg(bidderId: number, seasonId: number) {
+  const ownership = await loadSeasonOwnership(seasonId);
+  const teamMap = ownership.byBidder.get(bidderId);
+  if (!teamMap) return { totalCost: 0, totalReturn: 0, totalMtm: 0 };
 
   let totalCost = 0;
   let totalReturn = 0;
   let totalMtm = 0;
 
-  for (const o of ownerships) {
-    const share = parseFloat(o.ownershipShare);
-    const teamRows = await db.select().from(teamsTable).where(eq(teamsTable.id, o.teamId)).limit(1);
-    if (teamRows[0]) totalCost += parseFloat(teamRows[0].bidAmount) * share;
-
-    const resultRows = await db
-      .select()
-      .from(teamResultsTable)
-      .where(and(eq(teamResultsTable.teamId, o.teamId), eq(teamResultsTable.seasonId, seasonId)))
+  for (const [teamId, entry] of teamMap) {
+    // Use season auction price; missing → 0
+    const auctionRows = await db
+      .select({ bidAmount: teamSeasonAuctionsTable.bidAmount })
+      .from(teamSeasonAuctionsTable)
+      .where(and(eq(teamSeasonAuctionsTable.teamId, teamId), eq(teamSeasonAuctionsTable.seasonId, seasonId)))
       .limit(1);
-    if (resultRows[0]) {
-      totalReturn += parseFloat(resultRows[0].realizedReturn) * share;
-      totalMtm += parseFloat(resultRows[0].markToMarket) * share;
+    const auctionPrice = auctionRows[0] ? parseFloat(auctionRows[0].bidAmount) : 0;
+    totalCost += auctionPrice * entry.originalShare + entry.tradePaid - entry.tradeReceived;
+
+    const effectiveShare = Math.max(0, entry.effectiveShare);
+    if (effectiveShare > 0.00005) {
+      const resultRows = await db
+        .select()
+        .from(teamResultsTable)
+        .where(and(eq(teamResultsTable.teamId, teamId), eq(teamResultsTable.seasonId, seasonId)))
+        .limit(1);
+      if (resultRows[0]) {
+        totalReturn += parseFloat(resultRows[0].realizedReturn) * effectiveShare;
+        totalMtm += parseFloat(resultRows[0].markToMarket) * effectiveShare;
+      }
     }
   }
 
@@ -251,9 +244,9 @@ router.get("/mcp/get_owner_cost", async (req, res): Promise<void> => {
   const season = await getSeason(req.query.season as string | undefined);
   const seasonId = await resolveSeasonId(season);
   const bidder = await findBidder(ownerName);
-  if (!bidder) { val(res, null); return; }
+  if (!bidder || !seasonId) { val(res, null); return; }
   const agg = await getOwnerAgg(bidder.id, seasonId);
-  val(res, agg ? Math.round(agg.totalCost * 100) / 100 : null);
+  val(res, Math.round(agg.totalCost * 100) / 100);
 });
 
 // GET /mcp/get_owner_return
@@ -263,9 +256,9 @@ router.get("/mcp/get_owner_return", async (req, res): Promise<void> => {
   const season = await getSeason(req.query.season as string | undefined);
   const seasonId = await resolveSeasonId(season);
   const bidder = await findBidder(ownerName);
-  if (!bidder) { val(res, null); return; }
+  if (!bidder || !seasonId) { val(res, null); return; }
   const agg = await getOwnerAgg(bidder.id, seasonId);
-  val(res, agg ? Math.round(agg.totalReturn * 100) / 100 : null);
+  val(res, Math.round(agg.totalReturn * 100) / 100);
 });
 
 // GET /mcp/get_owner_mtm
@@ -275,9 +268,9 @@ router.get("/mcp/get_owner_mtm", async (req, res): Promise<void> => {
   const season = await getSeason(req.query.season as string | undefined);
   const seasonId = await resolveSeasonId(season);
   const bidder = await findBidder(ownerName);
-  if (!bidder) { val(res, null); return; }
+  if (!bidder || !seasonId) { val(res, null); return; }
   const agg = await getOwnerAgg(bidder.id, seasonId);
-  val(res, agg ? Math.round(agg.totalMtm * 100) / 100 : null);
+  val(res, Math.round(agg.totalMtm * 100) / 100);
 });
 
 export default router;

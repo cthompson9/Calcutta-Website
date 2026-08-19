@@ -8,7 +8,7 @@
 
 export type GetAuctionSummaryParams = {
 /**
- * @nullable
+ * Season year (YYYY). Required. Returns empty/zero data if the season has no auction rows.
  */
-season?: number | null;
+season: number;
 };

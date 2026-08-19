@@ -13,14 +13,15 @@ import {
   db,
   teamsTable,
   biddersTable,
-  teamBiddersTable,
   teamResultsTable,
+  teamSeasonAuctionsTable,
   seasonsTable,
   tradesTable,
   mtmSnapshotsTable,
 } from "@workspace/db";
 import type { Router, IRouter, Request, Response } from "express";
 import { Router as ExpressRouter } from "express";
+import { loadSeasonOwnership } from "./lib/seasonOwnership";
 
 // ─── DB helpers ─────────────────────────────────────────────────────────────
 
@@ -70,32 +71,40 @@ async function getTeamResult(teamId: number, seasonId: number) {
   return rows[0] ?? null;
 }
 
+/** Returns effective current owner names for a team in a season (post-trades). */
 async function getTeamOwners(teamId: number, seasonId: number): Promise<string[]> {
-  const rows = await db
-    .select({ name: biddersTable.name })
-    .from(teamBiddersTable)
-    .innerJoin(biddersTable, eq(teamBiddersTable.bidderId, biddersTable.id))
-    .where(and(eq(teamBiddersTable.teamId, teamId), eq(teamBiddersTable.seasonId, seasonId)));
-  return rows.map((r) => r.name);
+  const ownership = await loadSeasonOwnership(seasonId);
+  return (ownership.currentOwnersByTeam.get(teamId) ?? []).map((o) => o.bidderName);
 }
 
+/** Aggregate cost/return/mtm for a bidder using effective ownership (post-trades). */
 async function getOwnerAgg(bidderId: number, seasonId: number) {
-  const ownerships = await db
-    .select({ teamId: teamBiddersTable.teamId, ownershipShare: teamBiddersTable.ownershipShare })
-    .from(teamBiddersTable)
-    .where(and(eq(teamBiddersTable.bidderId, bidderId), eq(teamBiddersTable.seasonId, seasonId)));
+  const ownership = await loadSeasonOwnership(seasonId);
+  const teamMap = ownership.byBidder.get(bidderId);
+  if (!teamMap) return { totalCost: 0, totalReturn: 0, totalMtm: 0 };
 
   let totalCost = 0, totalReturn = 0, totalMtm = 0;
-  for (const o of ownerships) {
-    const share = parseFloat(o.ownershipShare);
-    const teamRows = await db.select().from(teamsTable).where(eq(teamsTable.id, o.teamId)).limit(1);
-    if (teamRows[0]) totalCost += parseFloat(teamRows[0].bidAmount) * share;
-    const resultRows = await db.select().from(teamResultsTable)
-      .where(and(eq(teamResultsTable.teamId, o.teamId), eq(teamResultsTable.seasonId, seasonId)))
+  for (const [teamId, entry] of teamMap) {
+    // Use season auction price; missing row → 0
+    const auctionRows = await db
+      .select({ bidAmount: teamSeasonAuctionsTable.bidAmount })
+      .from(teamSeasonAuctionsTable)
+      .where(and(eq(teamSeasonAuctionsTable.teamId, teamId), eq(teamSeasonAuctionsTable.seasonId, seasonId)))
       .limit(1);
-    if (resultRows[0]) {
-      totalReturn += parseFloat(resultRows[0].realizedReturn) * share;
-      totalMtm += parseFloat(resultRows[0].markToMarket) * share;
+    const auctionPrice = auctionRows[0] ? parseFloat(auctionRows[0].bidAmount) : 0;
+    totalCost += auctionPrice * entry.originalShare + entry.tradePaid - entry.tradeReceived;
+
+    const effectiveShare = Math.max(0, entry.effectiveShare);
+    if (effectiveShare > 0.00005) {
+      const resultRows = await db
+        .select()
+        .from(teamResultsTable)
+        .where(and(eq(teamResultsTable.teamId, teamId), eq(teamResultsTable.seasonId, seasonId)))
+        .limit(1);
+      if (resultRows[0]) {
+        totalReturn += parseFloat(resultRows[0].realizedReturn) * effectiveShare;
+        totalMtm += parseFloat(resultRows[0].markToMarket) * effectiveShare;
+      }
     }
   }
   return { totalCost, totalReturn, totalMtm };
@@ -144,11 +153,20 @@ function buildMcpServer() {
 
   server.tool(
     "get_team_cost",
-    "Returns the auction bid price paid for the team (in dollars).",
-    { ...teamInput },
-    async ({ team }) => {
+    "Returns the auction bid price paid for the team in a given season (in dollars).",
+    { ...teamInput, ...seasonInput },
+    async ({ team, season }) => {
       const t = await findTeam(team);
-      return text(t ? parseFloat(t.bidAmount) : null);
+      if (!t) return text(null);
+      const year = season ?? await defaultSeasonYear();
+      const sid = await resolveSeasonId(year);
+      if (!sid) return text(null);
+      const rows = await db
+        .select({ bidAmount: teamSeasonAuctionsTable.bidAmount })
+        .from(teamSeasonAuctionsTable)
+        .where(and(eq(teamSeasonAuctionsTable.teamId, t.id), eq(teamSeasonAuctionsTable.seasonId, sid)))
+        .limit(1);
+      return text(rows[0] ? parseFloat(rows[0].bidAmount) : null);
     },
   );
 
@@ -324,10 +342,21 @@ function buildMcpServer() {
       const sid = await resolveSeasonId(year);
       if (!sid) return text(`Season ${year} not found`);
 
+      // Use season auction price for default trade price; missing row → 0, never teams.bidAmount
+      let auctionBidAmount = 0;
+      if (price === undefined) {
+        const auctionRows = await db
+          .select({ bidAmount: teamSeasonAuctionsTable.bidAmount })
+          .from(teamSeasonAuctionsTable)
+          .where(and(eq(teamSeasonAuctionsTable.teamId, t.id), eq(teamSeasonAuctionsTable.seasonId, sid)))
+          .limit(1);
+        auctionBidAmount = auctionRows[0] ? parseFloat(auctionRows[0].bidAmount) : 0;
+      }
+
       const effectivePrice =
         price !== undefined
           ? price
-          : Math.round(parseFloat(t.bidAmount) * (percentage / 100) * 100) / 100;
+          : Math.round(auctionBidAmount * (percentage / 100) * 100) / 100;
 
       const today = tradeDate ?? new Date().toISOString().slice(0, 10);
 

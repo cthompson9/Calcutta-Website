@@ -3,7 +3,6 @@ import { useGetMtmSnapshots, useGetTeams } from "@workspace/api-client-react";
 import type { MtmData } from "@workspace/api-client-react";
 import { formatCurrency } from "@/lib/utils";
 import { cn } from "@/lib/utils";
-import { SeasonToggle } from "@/components/SeasonToggle";
 import { useSeason } from "@/hooks/useSeason";
 import { TrendingUp, TrendingDown, Lock, Unlock, Plus, X, ChevronDown, ChevronUp } from "lucide-react";
 import { toast } from "sonner";
@@ -47,7 +46,7 @@ async function upsertMtmSnapshot(
 // ── Page ──────────────────────────────────────────────────────────────────────
 
 export default function MtmTracker() {
-  const { year, setYear } = useSeason();
+  const { year } = useSeason();
   const { data, isLoading, refetch } = useGetMtmSnapshots({ season: year });
   const [adminKey, setAdminKey] = useState<string | null>(
     () => sessionStorage.getItem("nfl_admin_key"),
@@ -80,7 +79,6 @@ export default function MtmTracker() {
         </div>
         <div className="flex items-center gap-3">
           <AdminPanel adminKey={adminKey} onSetKey={saveAdminKey} onClearKey={clearAdminKey} />
-          <SeasonToggle year={year} onChange={setYear} />
         </div>
       </header>
 
@@ -210,7 +208,7 @@ function MtmEntryForm({
   adminKey: string;
   onSuccess: () => void;
 }) {
-  const { data: teams } = useGetTeams({});
+  const { data: teams } = useGetTeams({ season: year });
 
   const [entries, setEntries] = useState<EntryRow[]>([
     { teamId: "", mtmValue: "", snapshotDate: "" },

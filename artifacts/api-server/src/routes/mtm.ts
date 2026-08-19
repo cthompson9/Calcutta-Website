@@ -1,7 +1,8 @@
 import { Router, type IRouter, type Request } from "express";
 import { eq, asc } from "drizzle-orm";
-import { db, teamsTable, biddersTable, teamBiddersTable, mtmSnapshotsTable, seasonsTable } from "@workspace/db";
+import { db, teamsTable, mtmSnapshotsTable, seasonsTable } from "@workspace/db";
 import { GetMtmSnapshotsQueryParams, UpsertMtmSnapshotBody } from "@workspace/api-zod";
+import { loadSeasonOwnership } from "../lib/seasonOwnership";
 
 function isAdminRequest(req: Request): boolean {
   const adminKey = process.env["ADMIN_API_KEY"];
@@ -45,23 +46,8 @@ router.get("/mtm", async (req, res): Promise<void> => {
   const teams = await db.select().from(teamsTable);
   const teamMap = new Map(teams.map((t) => [t.id, t]));
 
-  // Fetch ownerships scoped to this season
-  const ownerships = await db
-    .select({
-      teamId: teamBiddersTable.teamId,
-      bidderId: biddersTable.id,
-      bidderName: biddersTable.name,
-      ownershipShare: teamBiddersTable.ownershipShare,
-    })
-    .from(teamBiddersTable)
-    .innerJoin(biddersTable, eq(teamBiddersTable.bidderId, biddersTable.id))
-    .where(eq(teamBiddersTable.seasonId, seasonId));
-
-  const ownershipMap = new Map<number, { bidderId: number; bidderName: string; ownershipShare: number }[]>();
-  for (const o of ownerships) {
-    if (!ownershipMap.has(o.teamId)) ownershipMap.set(o.teamId, []);
-    ownershipMap.get(o.teamId)!.push({ ...o, ownershipShare: parseFloat(o.ownershipShare) });
-  }
+  // Effective ownership (applies approved trades)
+  const ownership = await loadSeasonOwnership(seasonId);
 
   // Get unique dates sorted chronologically
   const dates = [...new Set(snapshotsRaw.map((s) => s.snapshotDate))].sort();
@@ -76,25 +62,47 @@ router.get("/mtm", async (req, res): Promise<void> => {
   const teamSeries = teams
     .filter((t) => teamSnapshotMap.has(t.id))
     .map((t) => {
-      const owners = ownershipMap.get(t.id) ?? [];
-      const primaryOwner = owners.length === 1 ? owners[0].bidderName : owners.map((o) => o.bidderName).join(" / ");
+      // Use effective current owners
+      const currentOwners = ownership.currentOwnersByTeam.get(t.id) ?? [];
+      const ownerName =
+        currentOwners.length === 0
+          ? "Unknown"
+          : currentOwners.length === 1
+            ? currentOwners[0].bidderName
+            : currentOwners.map((o) => o.bidderName).join(" / ");
       return {
         teamId: t.id,
         teamName: t.name,
         conference: t.conference,
-        ownerName: primaryOwner,
+        ownerName,
         weeklyValues: dates.map((d) => teamSnapshotMap.get(t.id)?.get(d) ?? 0),
       };
     });
 
-  // Build owner series
-  const ownerNames = [...new Set(ownerships.map((o) => o.bidderName))].sort();
+  // Build owner series using effective ownership (participants who have > 0 share somewhere)
+  // Collect all owner names from currentOwnersByTeam entries for teams that have snapshots
+  const ownerNamesSet = new Set<string>();
+  for (const [teamId] of teamSnapshotMap) {
+    const currentOwners = ownership.currentOwnersByTeam.get(teamId) ?? [];
+    for (const o of currentOwners) ownerNamesSet.add(o.bidderName);
+  }
+  const ownerNames = Array.from(ownerNamesSet).sort();
+
+  // Build a name → bidderId map for efficient lookup
+  const nameToBidderId = new Map<string, number>();
+  for (const [bidderId, name] of ownership.bidderNames) {
+    nameToBidderId.set(name, bidderId);
+  }
+
   const ownerSeries = ownerNames.map((ownerName) => {
+    const bidderId = nameToBidderId.get(ownerName);
     const weeklyTotals = dates.map((d) => {
       let total = 0;
       for (const t of teams) {
-        const owners = ownershipMap.get(t.id) ?? [];
-        const ownerEntry = owners.find((o) => o.bidderName === ownerName);
+        const currentOwners = ownership.currentOwnersByTeam.get(t.id) ?? [];
+        const ownerEntry = bidderId != null
+          ? currentOwners.find((o) => o.bidderId === bidderId)
+          : currentOwners.find((o) => o.bidderName === ownerName);
         if (!ownerEntry) continue;
         const mtmVal = teamSnapshotMap.get(t.id)?.get(d) ?? 0;
         total += mtmVal * ownerEntry.ownershipShare;
@@ -107,14 +115,16 @@ router.get("/mtm", async (req, res): Promise<void> => {
   // Build per-date week data
   const weeks = dates.map((date) => {
     const snapsForDate = snapshotsRaw.filter((s) => s.snapshotDate === date);
-    // weekNum from the first snapshot for this date (may be null)
     const weekNum = snapsForDate[0]?.weekNum ?? null;
 
     const ownerTotals = ownerNames.map((ownerName) => {
+      const bidderId = nameToBidderId.get(ownerName);
       let total = 0;
       for (const s of snapsForDate) {
-        const owners = ownershipMap.get(s.teamId) ?? [];
-        const ownerEntry = owners.find((o) => o.bidderName === ownerName);
+        const currentOwners = ownership.currentOwnersByTeam.get(s.teamId) ?? [];
+        const ownerEntry = bidderId != null
+          ? currentOwners.find((o) => o.bidderId === bidderId)
+          : currentOwners.find((o) => o.bidderName === ownerName);
         if (!ownerEntry) continue;
         total += parseFloat(s.mtmValue) * ownerEntry.ownershipShare;
       }
@@ -123,8 +133,13 @@ router.get("/mtm", async (req, res): Promise<void> => {
 
     const teamValues = snapsForDate.map((s) => {
       const t = teamMap.get(s.teamId);
-      const owners = ownershipMap.get(s.teamId) ?? [];
-      const primaryOwner = owners.length === 1 ? owners[0].bidderName : owners.map((o) => o.bidderName).join(" / ");
+      const currentOwners = ownership.currentOwnersByTeam.get(s.teamId) ?? [];
+      const primaryOwner =
+        currentOwners.length === 0
+          ? "Unknown"
+          : currentOwners.length === 1
+            ? currentOwners[0].bidderName
+            : currentOwners.map((o) => o.bidderName).join(" / ");
       return {
         teamId: s.teamId,
         teamName: t?.name ?? "Unknown",
@@ -141,7 +156,9 @@ router.get("/mtm", async (req, res): Promise<void> => {
 
 router.post("/mtm", async (req, res): Promise<void> => {
   if (!isAdminRequest(req)) {
-    res.status(401).json({ error: "Unauthorized. This endpoint requires the ADMIN_API_KEY bearer token." });
+    res.status(401).json({
+      error: "Unauthorized. This endpoint requires the ADMIN_API_KEY bearer token.",
+    });
     return;
   }
 
@@ -170,7 +187,11 @@ router.post("/mtm", async (req, res): Promise<void> => {
       mtmValue: data.mtmValue.toString(),
     })
     .onConflictDoUpdate({
-      target: [mtmSnapshotsTable.teamId, mtmSnapshotsTable.seasonId, mtmSnapshotsTable.snapshotDate],
+      target: [
+        mtmSnapshotsTable.teamId,
+        mtmSnapshotsTable.seasonId,
+        mtmSnapshotsTable.snapshotDate,
+      ],
       set: {
         weekNum: data.weekNum ?? null,
         mtmValue: data.mtmValue.toString(),
