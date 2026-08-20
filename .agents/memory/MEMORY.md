@@ -4,3 +4,4 @@
 - [Trade workflow](trade-workflow.md) — trades always created as pending; ADMIN_API_KEY bearer token required on PATCH /api/trades/:id/status; effective ownership in by-owner results applies approved trades only.
 - [Mobile admin key handling](mobile-admin-key.md) — never persist the admin bearer key in AsyncStorage; SecureStore on native, memory-only on web.
 - [Week 0 market valuation](week-zero-market-valuation.md) — Kalshi Week 0 marks are audited, quality-gated season snapshots with a fixed first-capture date.
+- [Ownership write integrity](ownership-write-integrity.md) — primary split changes and trade lifecycle edits must serialize per season and preserve exact four-decimal ownership totals.

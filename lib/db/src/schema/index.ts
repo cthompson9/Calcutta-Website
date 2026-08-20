@@ -6,3 +6,4 @@ export * from "./teamResults";
 export * from "./teamSeasonAuctions";
 export * from "./trades";
 export * from "./mtmSnapshots";
+export * from "./ownershipAdjustments";

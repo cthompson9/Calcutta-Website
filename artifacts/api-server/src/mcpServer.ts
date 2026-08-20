@@ -8,7 +8,7 @@
 import { McpServer } from "@modelcontextprotocol/sdk/server/mcp.js";
 import { StreamableHTTPServerTransport } from "@modelcontextprotocol/sdk/server/streamableHttp.js";
 import { z } from "zod";
-import { ilike, eq, and } from "drizzle-orm";
+import { ilike, eq, and, sql } from "drizzle-orm";
 import {
   db,
   teamsTable,
@@ -18,10 +18,16 @@ import {
   seasonsTable,
   tradesTable,
   mtmSnapshotsTable,
+  teamBiddersTable,
+  ownershipAdjustmentsTable,
 } from "@workspace/db";
 import type { Router, IRouter, Request, Response } from "express";
 import { Router as ExpressRouter } from "express";
 import { loadSeasonOwnership } from "./lib/seasonOwnership";
+import {
+  OWNERSHIP_SEASON_LOCK_NAMESPACE,
+  validatePrimaryOwnership,
+} from "./lib/ownershipShares";
 
 // ─── DB helpers ─────────────────────────────────────────────────────────────
 
@@ -60,6 +66,63 @@ async function findBidder(name: string) {
     .where(ilike(biddersTable.name, `%${name}%`))
     .limit(1);
   return rows[0] ?? null;
+}
+
+type NamedRecord = { id: number; name: string };
+
+function normalizeName(value: string): string {
+  return value.trim().toLocaleLowerCase("en-US");
+}
+
+function resolveUniqueName<T extends NamedRecord>(
+  rows: T[],
+  requestedName: string,
+  label: string,
+): T | { error: string } {
+  const exact = rows.filter((row) => normalizeName(row.name) === normalizeName(requestedName));
+  if (exact.length === 1) return exact[0];
+  if (exact.length > 1) return { error: `${label} "${requestedName}" is ambiguous.` };
+
+  const partial = rows.filter((row) =>
+    normalizeName(row.name).includes(normalizeName(requestedName)) ||
+    normalizeName(requestedName).includes(normalizeName(row.name)),
+  );
+  if (partial.length === 1) return partial[0];
+  if (partial.length === 0) return { error: `${label} "${requestedName}" not found.` };
+  return { error: `${label} "${requestedName}" is ambiguous. Use the full registered name.` };
+}
+
+async function resolveWritableSeasonYear(): Promise<number> {
+  const rows = await db
+    .select({ year: seasonsTable.year })
+    .from(seasonsTable)
+    .where(eq(seasonsTable.isActive, true))
+    .limit(1);
+  return rows[0]?.year ?? await defaultSeasonYear();
+}
+
+async function validateMcpTradeApproval(trade: {
+  seasonId: number;
+  teamId: number;
+  fromBidderId: number;
+  toBidderId: number;
+  percentage: string;
+}): Promise<string | null> {
+  if (trade.fromBidderId === trade.toBidderId) {
+    return "Seller and buyer must be different owners.";
+  }
+
+  const ownership = await loadSeasonOwnership(trade.seasonId);
+  const sellerEntry = ownership.byBidder.get(trade.fromBidderId)?.get(trade.teamId);
+  const sellerShare = Math.max(0, sellerEntry?.effectiveShare ?? 0);
+  const tradeShare = parseFloat(trade.percentage) / 100;
+  if (sellerShare <= 0.00005) {
+    return "Seller has no current ownership stake in this team.";
+  }
+  if (tradeShare > sellerShare + 0.00005) {
+    return "Trade percentage exceeds the seller's current ownership.";
+  }
+  return null;
 }
 
 async function getTeamResult(teamId: number, seasonId: number) {
@@ -307,6 +370,117 @@ function buildMcpServer() {
     },
   );
 
+  // ── Primary ownership adjustment ─────────────────────────────────────────
+
+  server.tool(
+    "set_team_primary_ownership",
+    "Replace a team's complete original auction ownership split for a season. Use this only to correct the original auction record, not to record a later sale; approved trades must use create_trade. Requires ADMIN_API_KEY. Shares are decimal fractions that must add to 1 exactly (for example, 0.5 and 0.5).",
+    {
+      team: z.string().describe("Full or partial team name, e.g. 'Buffalo Bills' or 'Bills'"),
+      owners: z.array(z.object({
+        owner: z.string().describe("Registered bidder name, e.g. 'Zachary Long'"),
+        share: z.number().positive().max(1).describe("Ownership fraction, e.g. 0.5 for 50%"),
+      })).min(1).describe("Complete replacement ownership split; all shares must total 1."),
+      season: z.number().optional().describe("Season year. Defaults to the active season."),
+      note: z.string().max(500).optional().describe("Optional correction rationale kept in the audit record."),
+      adminKey: z.string().describe("Admin API key — only the pool admin can correct primary ownership."),
+    },
+    async ({ team, owners, season, note, adminKey }) => {
+      const expectedKey = process.env["ADMIN_API_KEY"];
+      if (!expectedKey || adminKey !== expectedKey) {
+        return text("Error: Invalid admin key. Only the pool admin can correct primary ownership.");
+      }
+
+      const [teams, bidders] = await Promise.all([
+        db.select({ id: teamsTable.id, name: teamsTable.name }).from(teamsTable),
+        db.select({ id: biddersTable.id, name: biddersTable.name }).from(biddersTable),
+      ]);
+      const teamMatch = resolveUniqueName(teams, team, "Team");
+      if ("error" in teamMatch) return text(`Error: ${teamMatch.error}`);
+
+      const resolvedOwners: Array<{ bidderId: number; bidderName: string; share: number }> = [];
+      for (const owner of owners) {
+        const bidderMatch = resolveUniqueName(bidders, owner.owner, "Bidder");
+        if ("error" in bidderMatch) return text(`Error: ${bidderMatch.error}`);
+        resolvedOwners.push({
+          bidderId: bidderMatch.id,
+          bidderName: bidderMatch.name,
+          share: owner.share,
+        });
+      }
+
+      const split = validatePrimaryOwnership(
+        resolvedOwners.map((owner) => ({ bidderId: owner.bidderId, share: owner.share })),
+      );
+      if (!split.ok) return text(`Error: ${split.error}`);
+
+      const year = season ?? await resolveWritableSeasonYear();
+      const seasonId = await resolveSeasonId(year);
+      if (!seasonId) return text(`Error: Season ${year} not found.`);
+
+      const writeOutcome = await db.transaction(async (tx) => {
+        await tx.execute(
+          sql`select pg_advisory_xact_lock(${OWNERSHIP_SEASON_LOCK_NAMESPACE}, ${seasonId})`,
+        );
+        const [auctionRow, approvedTrade] = await Promise.all([
+          tx
+            .select({ teamId: teamSeasonAuctionsTable.teamId })
+            .from(teamSeasonAuctionsTable)
+            .where(and(eq(teamSeasonAuctionsTable.teamId, teamMatch.id), eq(teamSeasonAuctionsTable.seasonId, seasonId)))
+            .limit(1),
+          tx
+            .select({ id: tradesTable.id })
+            .from(tradesTable)
+            .where(and(
+              eq(tradesTable.teamId, teamMatch.id),
+              eq(tradesTable.seasonId, seasonId),
+              eq(tradesTable.status, "approved"),
+            ))
+            .limit(1),
+        ]);
+        if (!auctionRow[0]) return "not_auctioned" as const;
+        if (approvedTrade[0]) return "approved_trade" as const;
+
+        await tx
+          .delete(teamBiddersTable)
+          .where(and(eq(teamBiddersTable.teamId, teamMatch.id), eq(teamBiddersTable.seasonId, seasonId)));
+        await tx.insert(teamBiddersTable).values(
+          resolvedOwners.map((owner) => ({
+            teamId: teamMatch.id,
+            bidderId: owner.bidderId,
+            seasonId,
+            ownershipShare: String(split.owners.find((entry) => entry.bidderId === owner.bidderId)!.share),
+          })),
+        );
+        await tx.insert(ownershipAdjustmentsTable).values({
+          teamId: teamMatch.id,
+          seasonId,
+          source: "mcp_primary_ownership",
+          note: note ?? "Manual primary ownership correction through MCP",
+          owners: {
+            owners: resolvedOwners.map((owner) => ({
+              bidderId: owner.bidderId,
+              bidderName: owner.bidderName,
+              ownershipShare: split.owners.find((entry) => entry.bidderId === owner.bidderId)!.share,
+            })),
+          },
+        });
+        return "updated" as const;
+      });
+      if (writeOutcome === "not_auctioned") {
+        return text(`Error: ${teamMatch.name} is not auctioned in ${year}.`);
+      }
+      if (writeOutcome === "approved_trade") {
+        return text("Error: This team has approved trades. Preserve that history with a trade correction instead of replacing its primary split.");
+      }
+
+      const formattedOwners = resolvedOwners
+        .map((owner) => `${owner.bidderName} ${Math.round(owner.share * 10000) / 100}%`)
+        .join(" / ");
+      return text(`Primary ownership corrected: ${teamMatch.name} · ${year} → ${formattedOwners}. This correction is recorded separately from trades.`);
+    },
+  );
+
   // ── Trade tools ───────────────────────────────────────────────────────────
 
   server.tool(
@@ -423,18 +597,37 @@ function buildMcpServer() {
         return text("Error: Invalid admin key. Only the pool admin can approve or reject trades.");
       }
 
-      const rows = await db
-        .select({ id: tradesTable.id, status: tradesTable.status })
-        .from(tradesTable)
-        .where(eq(tradesTable.id, tradeId))
-        .limit(1);
+      const outcome = await db.transaction(async (tx) => {
+        const initial = await tx
+          .select({ seasonId: tradesTable.seasonId })
+          .from(tradesTable)
+          .where(eq(tradesTable.id, tradeId))
+          .limit(1);
+        if (!initial[0]) return { kind: "not_found" as const };
 
-      if (!rows[0]) return text(`Trade #${tradeId} not found`);
+        await tx.execute(
+          sql`select pg_advisory_xact_lock(${OWNERSHIP_SEASON_LOCK_NAMESPACE}, ${initial[0].seasonId})`,
+        );
+        const fresh = await tx
+          .select()
+          .from(tradesTable)
+          .where(eq(tradesTable.id, tradeId))
+          .limit(1);
+        if (!fresh[0]) return { kind: "not_found" as const };
 
-      await db
-        .update(tradesTable)
-        .set({ status })
-        .where(eq(tradesTable.id, tradeId));
+        if (status === "approved" && fresh[0].status !== "approved") {
+          const validationError = await validateMcpTradeApproval(fresh[0]);
+          if (validationError) return { kind: "invalid" as const, error: validationError };
+        }
+
+        await tx
+          .update(tradesTable)
+          .set({ status })
+          .where(eq(tradesTable.id, tradeId));
+        return { kind: "updated" as const };
+      });
+      if (outcome.kind === "not_found") return text(`Trade #${tradeId} not found`);
+      if (outcome.kind === "invalid") return text(`Error: Cannot approve trade: ${outcome.error}`);
 
       return text(
         `Trade #${tradeId} has been ${status.toUpperCase()}. ${status === "approved" ? "It now affects owner standings and returns." : "It has been rejected and will not affect results."}`,

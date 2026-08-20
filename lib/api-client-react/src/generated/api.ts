@@ -20,6 +20,8 @@ import type {
 } from '@tanstack/react-query';
 
 import type {
+  AuctionImportInput,
+  AuctionImportResult,
   AuctionSummary,
   Bidder,
   BidderInput,
@@ -1381,7 +1383,7 @@ export const getUpdateTradeUrl = (id: number,) => {
 }
 
 /**
- * @summary Update a trade record (price, date, notes, percentage)
+ * @summary Update a pending trade record (price, date, notes; percentage edits require ADMIN_API_KEY)
  */
 export const updateTrade = async (id: number,
     tradeUpdate: TradeUpdate, options?: Parameters<typeof customFetch>[1]): Promise<TradeRow> => {
@@ -1431,7 +1433,7 @@ const {mutation: mutationOptions, request: requestOptions} = options ?
     export type UpdateTradeMutationError = ErrorType<ErrorResponse>
 
     /**
- * @summary Update a trade record (price, date, notes, percentage)
+ * @summary Update a pending trade record (price, date, notes; percentage edits require ADMIN_API_KEY)
  */
 export const useUpdateTrade = <TError = ErrorType<ErrorResponse>,
     TContext = unknown>(options?: { mutation?:UseMutationOptions<Awaited<ReturnType<typeof updateTrade>>, TError,{id: number;data: BodyType<TradeUpdate>}, TContext>, request?: SecondParameter<typeof customFetch>}
@@ -1453,7 +1455,7 @@ export const getDeleteTradeUrl = (id: number,) => {
 }
 
 /**
- * @summary Delete a trade record
+ * @summary Delete a pending or rejected trade record
  */
 export const deleteTrade = async (id: number, options?: Parameters<typeof customFetch>[1]): Promise<void> => {
 
@@ -1502,7 +1504,7 @@ const {mutation: mutationOptions, request: requestOptions} = options ?
     export type DeleteTradeMutationError = ErrorType<ErrorResponse>
 
     /**
- * @summary Delete a trade record
+ * @summary Delete a pending or rejected trade record
  */
 export const useDeleteTrade = <TError = ErrorType<ErrorResponse>,
     TContext = unknown>(options?: { mutation?:UseMutationOptions<Awaited<ReturnType<typeof deleteTrade>>, TError,{id: number}, TContext>, request?: SecondParameter<typeof customFetch>}
@@ -1896,4 +1898,76 @@ export function useGetAuctionSummary<TData = Awaited<ReturnType<typeof getAuctio
 
 
 
+
+export const getImportAuctionDataUrl = () => {
+
+
+
+
+  return `/api/auction/import`
+}
+
+/**
+ * Requires the ADMIN_API_KEY bearer token. The source URL and optional source authorization stay server-side.
+ * @summary Import a complete season auction export from the configured AuctionPro source
+ */
+export const importAuctionData = async (auctionImportInput: AuctionImportInput, options?: Parameters<typeof customFetch>[1]): Promise<AuctionImportResult> => {
+
+  return customFetch<AuctionImportResult>(getImportAuctionDataUrl(),
+  {
+    ...options,
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json', ...options?.headers },
+    body: JSON.stringify(auctionImportInput)
+  }
+);}
+
+
+
+
+
+export const getImportAuctionDataMutationOptions = <TError = ErrorType<ErrorResponse>,
+    TContext = unknown>(options?: { mutation?:UseMutationOptions<Awaited<ReturnType<typeof importAuctionData>>, TError,{data: BodyType<AuctionImportInput>}, TContext>, request?: SecondParameter<typeof customFetch>}
+): UseMutationOptions<Awaited<ReturnType<typeof importAuctionData>>, TError,{data: BodyType<AuctionImportInput>}, TContext> => {
+
+const mutationKey = ['importAuctionData'];
+const {mutation: mutationOptions, request: requestOptions} = options ?
+      options.mutation && 'mutationKey' in options.mutation && options.mutation.mutationKey ?
+      options
+      : {...options, mutation: {...options.mutation, mutationKey}}
+      : {mutation: { mutationKey, }, request: undefined};
+
+
+
+
+      const mutationFn: MutationFunction<Awaited<ReturnType<typeof importAuctionData>>, {data: BodyType<AuctionImportInput>}> = (props) => {
+          const {data} = props ?? {};
+
+          return  importAuctionData(data,requestOptions)
+        }
+
+
+
+
+
+
+  return  { mutationFn, ...mutationOptions }}
+
+    export type ImportAuctionDataMutationResult = NonNullable<Awaited<ReturnType<typeof importAuctionData>>>
+    export type ImportAuctionDataMutationBody = BodyType<AuctionImportInput>
+    export type ImportAuctionDataMutationError = ErrorType<ErrorResponse>
+
+    /**
+ * @summary Import a complete season auction export from the configured AuctionPro source
+ */
+export const useImportAuctionData = <TError = ErrorType<ErrorResponse>,
+    TContext = unknown>(options?: { mutation?:UseMutationOptions<Awaited<ReturnType<typeof importAuctionData>>, TError,{data: BodyType<AuctionImportInput>}, TContext>, request?: SecondParameter<typeof customFetch>}
+ ): UseMutationResult<
+        Awaited<ReturnType<typeof importAuctionData>>,
+        TError,
+        {data: BodyType<AuctionImportInput>},
+        TContext
+      > => {
+      return useMutation(getImportAuctionDataMutationOptions(options));
+    }
 

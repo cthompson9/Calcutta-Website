@@ -6,6 +6,8 @@
  * OpenAPI spec version: 0.1.0
  */
 
+export * from './auctionImportInput';
+export * from './auctionImportResult';
 export * from './auctionSummary';
 export * from './bidder';
 export * from './bidderInput';

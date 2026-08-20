@@ -522,6 +522,18 @@ export interface AuctionSummary {
   conferenceBreakdown: ConferenceBreakdown[];
 }
 
+export interface AuctionImportInput {
+  /** Season year to replace from the configured complete AuctionPro export. */
+  seasonYear: number;
+}
+
+export interface AuctionImportResult {
+  seasonYear: number;
+  importedTeams: number;
+  importedOwners: number;
+  source: string;
+}
+
 export type GetTeamsParams = {
 conference?: GetTeamsConference;
 division?: GetTeamsDivision;

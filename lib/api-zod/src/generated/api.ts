@@ -443,7 +443,7 @@ export const CreateTradeResponse = zod.object({
 
 
 /**
- * @summary Update a trade record (price, date, notes, percentage)
+ * @summary Update a pending trade record (price, date, notes; percentage edits require ADMIN_API_KEY)
  */
 export const UpdateTradeParams = zod.object({
   "id": zod.coerce.number()
@@ -474,7 +474,7 @@ export const UpdateTradeResponse = zod.object({
 
 
 /**
- * @summary Delete a trade record
+ * @summary Delete a pending or rejected trade record
  */
 export const DeleteTradeParams = zod.object({
   "id": zod.coerce.number()
@@ -677,6 +677,22 @@ export const GetAuctionSummaryResponse = zod.object({
   "teamCount": zod.number(),
   "avgBid": zod.number()
 }))
+})
+
+
+/**
+ * Requires the ADMIN_API_KEY bearer token. The source URL and optional source authorization stay server-side.
+ * @summary Import a complete season auction export from the configured AuctionPro source
+ */
+export const ImportAuctionDataBody = zod.object({
+  "seasonYear": zod.number().describe('Season year to replace from the configured complete AuctionPro export.')
+})
+
+export const ImportAuctionDataResponse = zod.object({
+  "seasonYear": zod.number(),
+  "importedTeams": zod.number(),
+  "importedOwners": zod.number(),
+  "source": zod.string()
 })
 
 

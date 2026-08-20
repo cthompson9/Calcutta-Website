@@ -8,6 +8,7 @@ import resultsRouter from "./results";
 import tradesRouter from "./trades";
 import mtmRouter from "./mtm";
 import mcpRouter from "./mcp";
+import auctionImportRouter from "./auctionImport";
 
 const router = Router();
 
@@ -20,5 +21,6 @@ router.use(resultsRouter);
 router.use(tradesRouter);
 router.use(mtmRouter);
 router.use(mcpRouter);
+router.use(auctionImportRouter);
 
 export default router;

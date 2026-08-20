@@ -1,15 +1,16 @@
-import React from 'react';
+import React, { useState } from 'react';
 import {
-  FlatList,
   Platform,
+  Pressable,
   RefreshControl,
   ScrollView,
   StyleSheet,
   Text,
+  TextInput,
   View,
 } from 'react-native';
 import { Feather } from '@expo/vector-icons';
-import { useGetAuctionSummary } from '@workspace/api-client-react';
+import { importAuctionData, useGetAuctionSummary } from '@workspace/api-client-react';
 import { useColors } from '@/hooks/useColors';
 import { useApp } from '@/context/AppContext';
 import {
@@ -186,10 +187,40 @@ function ConferenceCard({
 
 export default function AuctionScreen() {
   const colors = useColors();
-  const { season } = useApp();
+  const { season, adminKey, setAdminKey } = useApp();
   const query = useGetAuctionSummary({ season });
+  const [adminKeyDraft, setAdminKeyDraft] = useState(adminKey ?? '');
+  const [importMessage, setImportMessage] = useState<string | null>(null);
+  const [importError, setImportError] = useState<string | null>(null);
+  const [isImporting, setIsImporting] = useState(false);
 
   const listBottomPad = Platform.OS === 'web' ? 84 + 16 : 100;
+
+  const importAuction = async () => {
+    setImportMessage(null);
+    setImportError(null);
+    const key = adminKeyDraft.trim() || adminKey?.trim() || '';
+    if (!key) {
+      setImportError('Enter the admin key before starting an import.');
+      return;
+    }
+    if (key !== adminKey) setAdminKey(key);
+    setIsImporting(true);
+    try {
+      const result = await importAuctionData(
+        { seasonYear: season },
+        { headers: { Authorization: `Bearer ${key}` } },
+      );
+      setImportMessage(
+        `Imported ${result.importedTeams} teams and ${result.importedOwners} ownership entries for ${result.seasonYear}.`,
+      );
+      await query.refetch();
+    } catch (error) {
+      setImportError(error instanceof Error ? error.message : 'AuctionPro import failed.');
+    } finally {
+      setIsImporting(false);
+    }
+  };
 
   if (query.isLoading) return (
     <View style={{ flex: 1, backgroundColor: colors.background }}>
@@ -215,6 +246,77 @@ export default function AuctionScreen() {
         subtitle={`${season} Auction Board`}
         right={<SeasonToggle />}
       />
+
+      <View style={[styles.importPanel, { borderColor: colors.border, backgroundColor: colors.card }]}>
+        <View style={styles.importHeading}>
+          <View style={{ flex: 1 }}>
+            <Text style={[styles.importTitle, { color: colors.foreground }]}>AuctionPro Import</Text>
+            <Text style={[styles.importHint, { color: colors.mutedForeground }]}>
+              Replace this season’s complete auction data from the configured export.
+            </Text>
+          </View>
+          <Feather name="download-cloud" size={19} color={colors.mutedForeground} />
+        </View>
+        {!adminKey ? (
+          <TextInput
+            value={adminKeyDraft}
+            onChangeText={setAdminKeyDraft}
+            placeholder="Admin key"
+            placeholderTextColor={colors.mutedForeground}
+            secureTextEntry
+            autoCapitalize="none"
+            autoCorrect={false}
+            style={[
+              styles.keyInput,
+              { color: colors.foreground, borderColor: colors.input, backgroundColor: colors.background },
+            ]}
+          />
+        ) : (
+          <View style={styles.keyLoadedRow}>
+            <Text style={[styles.keyLoadedText, { color: colors.success }]}>Admin key ready</Text>
+            <Pressable
+              onPress={() => {
+                setAdminKey(null);
+                setAdminKeyDraft('');
+              }}
+              hitSlop={8}
+            >
+              <Text style={[styles.clearKeyText, { color: colors.mutedForeground }]}>Clear</Text>
+            </Pressable>
+          </View>
+        )}
+        <Pressable
+          testID="auctionpro-import-button"
+          disabled={isImporting}
+          onPress={importAuction}
+          style={({ pressed }) => [
+            styles.importButton,
+            {
+              backgroundColor: colors.primary,
+              opacity: pressed || isImporting ? 0.7 : 1,
+            },
+          ]}
+        >
+          <Feather
+            name={isImporting ? 'clock' : 'download'}
+            size={15}
+            color={colors.primaryForeground}
+          />
+          <Text style={[styles.importButtonText, { color: colors.primaryForeground }]}>
+            {isImporting ? 'Importing…' : `Import ${season} Auction`}
+          </Text>
+        </Pressable>
+        {importMessage ? (
+          <Text testID="auctionpro-import-success" style={[styles.importMessage, { color: colors.success }]}>
+            {importMessage}
+          </Text>
+        ) : null}
+        {importError ? (
+          <Text testID="auctionpro-import-error" style={[styles.importMessage, { color: colors.destructive }]}>
+            {importError}
+          </Text>
+        ) : null}
+      </View>
 
       {!hasData ? (
         <EmptyState
@@ -284,6 +386,66 @@ export default function AuctionScreen() {
 }
 
 const styles = StyleSheet.create({
+  importPanel: {
+    marginHorizontal: 16,
+    marginTop: 12,
+    borderWidth: 1,
+    padding: 12,
+    gap: 10,
+  },
+  importHeading: {
+    flexDirection: 'row',
+    alignItems: 'flex-start',
+    gap: 10,
+  },
+  importTitle: {
+    fontSize: 13,
+    fontFamily: 'Inter_700Bold',
+    letterSpacing: 0.4,
+  },
+  importHint: {
+    fontSize: 11,
+    fontFamily: 'Inter_400Regular',
+    lineHeight: 16,
+    marginTop: 2,
+  },
+  keyInput: {
+    borderWidth: 1,
+    paddingHorizontal: 10,
+    paddingVertical: 9,
+    fontSize: 13,
+    fontFamily: 'Inter_400Regular',
+  },
+  keyLoadedRow: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+  },
+  keyLoadedText: {
+    fontSize: 12,
+    fontFamily: 'Inter_600SemiBold',
+  },
+  clearKeyText: {
+    fontSize: 12,
+    fontFamily: 'Inter_600SemiBold',
+  },
+  importButton: {
+    minHeight: 40,
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+    gap: 8,
+    paddingHorizontal: 14,
+  },
+  importButtonText: {
+    fontSize: 13,
+    fontFamily: 'Inter_700Bold',
+  },
+  importMessage: {
+    fontSize: 12,
+    fontFamily: 'Inter_500Medium',
+    lineHeight: 17,
+  },
   scroll: {
     paddingHorizontal: 16,
     paddingTop: 12,

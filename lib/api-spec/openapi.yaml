@@ -16,6 +16,7 @@ tags:
   - name: trades
   - name: mtm
   - name: summary
+  - name: auction
 
 paths:
   /healthz:
@@ -419,7 +420,7 @@ paths:
     patch:
       operationId: updateTrade
       tags: [trades]
-      summary: Update a trade record (price, date, notes, percentage)
+      summary: Update a pending trade record (price, date, notes; percentage edits require ADMIN_API_KEY)
       parameters:
         - name: id
           in: path
@@ -445,10 +446,22 @@ paths:
             application/json:
               schema:
                 $ref: "#/components/schemas/ErrorResponse"
+        "401":
+          description: ADMIN_API_KEY bearer token required when changing ownership percentage
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+        "409":
+          description: Approved trades are immutable
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
     delete:
       operationId: deleteTrade
       tags: [trades]
-      summary: Delete a trade record
+      summary: Delete a pending or rejected trade record
       parameters:
         - name: id
           in: path
@@ -460,6 +473,12 @@ paths:
           description: Deleted
         "404":
           description: Not found
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+        "409":
+          description: Approved trades cannot be deleted
           content:
             application/json:
               schema:
@@ -630,6 +649,56 @@ paths:
                 $ref: "#/components/schemas/AuctionSummary"
         "400":
           description: Validation error
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+
+  /auction/import:
+    post:
+      operationId: importAuctionData
+      tags: [auction]
+      summary: Import a complete season auction export from the configured AuctionPro source
+      description: Requires the ADMIN_API_KEY bearer token. The source URL and optional source authorization stay server-side.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/AuctionImportInput"
+      responses:
+        "200":
+          description: Imported selected season auction data
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/AuctionImportResult"
+        "401":
+          description: Unauthorized — ADMIN_API_KEY required
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+        "404":
+          description: Season not found
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+        "409":
+          description: Existing approved trades make it unsafe to replace primary ownership
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+        "422":
+          description: Source export is malformed, incomplete, or cannot be resolved safely
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+        "502":
+          description: Configured AuctionPro source is unavailable
           content:
             application/json:
               schema:
@@ -1391,3 +1460,24 @@ components:
         avgBid:
           type: number
       required: [conference, totalSpent, teamCount, avgBid]
+
+    AuctionImportInput:
+      type: object
+      properties:
+        seasonYear:
+          type: number
+          description: Season year to replace from the configured complete AuctionPro export.
+      required: [seasonYear]
+
+    AuctionImportResult:
+      type: object
+      properties:
+        seasonYear:
+          type: number
+        importedTeams:
+          type: number
+        importedOwners:
+          type: number
+        source:
+          type: string
+      required: [seasonYear, importedTeams, importedOwners, source]
