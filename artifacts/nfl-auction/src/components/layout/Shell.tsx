@@ -34,7 +34,7 @@ export function Shell({ children }: ShellProps) {
         <div className="px-3 py-4 border-b border-sidebar-border space-y-2">
           <div className="flex items-center justify-between px-1">
             <span className="text-[10px] text-muted-foreground font-mono font-bold uppercase tracking-widest">
-              Global season
+              Season
             </span>
             <span className="text-[10px] text-muted-foreground font-mono">{year}</span>
           </div>

@@ -10,7 +10,7 @@ import type {
 import { formatCurrency } from "@/lib/utils";
 import { cn } from "@/lib/utils";
 import { useSeason } from "@/hooks/useSeason";
-import { ChevronDown, ChevronRight, Trophy, Star } from "lucide-react";
+import { ChevronDown, Trophy, Star } from "lucide-react";
 
 type TabId = "byTeam" | "byOwner";
 
@@ -127,7 +127,9 @@ function ByOwnerView({
           <div key={row.bidderId} className="border border-border bg-card overflow-hidden">
             {/* Owner row */}
             <button
+              type="button"
               onClick={() => setExpandedOwner(isExpanded ? null : row.bidderId)}
+              aria-expanded={isExpanded}
               className={cn(
                 "w-full grid grid-cols-6 md:grid-cols-12 items-center px-4 py-4 hover:bg-muted/40 transition-colors text-left",
                 isWinner && "bg-yellow-50 dark:bg-yellow-900/10"
@@ -162,7 +164,9 @@ function ByOwnerView({
                 </>
               )}
               <div className="col-span-1 flex justify-end text-muted-foreground">
-                {isExpanded ? <ChevronDown className="w-4 h-4" /> : <ChevronRight className="w-4 h-4" />}
+                <span className="inline-flex h-6 w-6 items-center justify-center border border-border bg-background transition-colors group-hover:border-foreground/40">
+                  <ChevronDown className={cn("h-3.5 w-3.5 transition-transform", !isExpanded && "-rotate-90")} />
+                </span>
               </div>
             </button>
 
@@ -373,10 +377,9 @@ function ByTeamView({ rows, isComplete }: { rows: TeamResultRow[]; isComplete: b
   if (!rows.length) return <Empty />;
 
   // Prefer API-stored seeds; fall back to client-computed when all null.
-  const hasApiSeeds = rows.some((r) => r.seed != null);
-  const computedSeeds = hasApiSeeds ? new Map<number, number | null>() : computeSeeds(rows);
+  const computedSeeds = computeSeeds(rows);
   const getSeed = (row: TeamResultRow): number | null =>
-    row.seed != null ? row.seed : (computedSeeds.get(row.teamId) ?? null);
+    row.seed ?? (computedSeeds.get(row.teamId) ?? null);
 
   function handleSort(key: BTSortKey) {
     if (sortKey === key) setSortAsc((v) => !v);
@@ -467,9 +470,9 @@ function ByTeamView({ rows, isComplete }: { rows: TeamResultRow[]; isComplete: b
   // ══════════════════════════════════════════════════════════════════════════
   // OWNER MODE — one row per owner-team (expanded)
   // ══════════════════════════════════════════════════════════════════════════
-  const expandedSeeds = hasApiSeeds
-    ? new Map(baseFiltered.map((r) => [r.teamId, r.seed ?? null]))
-    : computedSeeds;
+  const expandedSeeds = new Map(
+    baseFiltered.map((r) => [r.teamId, r.seed ?? computedSeeds.get(r.teamId) ?? null]),
+  );
   const expanded = expandTeams(baseFiltered, expandedSeeds);
 
   const ownerSorted = [...expanded].sort((a, b) => {

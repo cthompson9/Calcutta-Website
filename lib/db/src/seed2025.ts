@@ -57,6 +57,7 @@ async function main() {
     ptDiff: number;
     startingPoints: number;
     draftOrder?: number;
+    seed?: number;
     playoffBerth: boolean;
     divRound: boolean;
     confRound: boolean;
@@ -98,7 +99,7 @@ async function main() {
     // NFC South
     { teamName: "New Orleans Saints",      wins: 6,    ptDiff: -77,  startingPoints: 150, draftOrder: 25, playoffBerth: false, divRound: false, confRound: false, sbBerth: false, winSuperBowl: false, realizedReturn: 562.513135,   markToMarket: 92.513135    },
     { teamName: "Atlanta Falcons",         wins: 8,    ptDiff: -34,  startingPoints: 150, draftOrder: 26, playoffBerth: false, divRound: false, confRound: false, sbBerth: false, winSuperBowl: false, realizedReturn: 828.966725,   markToMarket: -181.033275  },
-    { teamName: "Carolina Panthers",       wins: 8,    ptDiff: -82,  startingPoints: 150, draftOrder: 27, playoffBerth: true,  divRound: false, confRound: false, sbBerth: false, winSuperBowl: false, realizedReturn: 837.425569,   markToMarket: -32.574431   },
+    { teamName: "Carolina Panthers",       wins: 8,    ptDiff: -82,  startingPoints: 150, draftOrder: 27, seed: 4, playoffBerth: true,  divRound: false, confRound: false, sbBerth: false, winSuperBowl: false, realizedReturn: 837.425569,   markToMarket: -32.574431   },
     { teamName: "Tampa Bay Buccaneers",    wins: 8,    ptDiff: -71,  startingPoints: 150, draftOrder: 28, playoffBerth: false, divRound: false, confRound: false, sbBerth: false, winSuperBowl: false, realizedReturn: 672.478109,   markToMarket: -1167.521891 },
     // NFC West
     { teamName: "San Francisco 49ers",     wins: 12,   ptDiff: 105,  startingPoints: 150, draftOrder: 29, playoffBerth: true,  divRound: true,  confRound: false, sbBerth: false, winSuperBowl: false, realizedReturn: 2220.446585,  markToMarket: 220.446585   },
@@ -140,6 +141,7 @@ async function main() {
         ptDiff: r.ptDiff,
         startingPoints: r.startingPoints.toString(),
         draftOrder: r.draftOrder,
+        ...(r.seed !== undefined ? { seed: r.seed } : {}),
         playoffBerth: r.playoffBerth,
         divRound: r.divRound,
         confRound: r.confRound,
@@ -158,6 +160,7 @@ async function main() {
           ptDiff: r.ptDiff,
           startingPoints: r.startingPoints.toString(),
           draftOrder: r.draftOrder,
+          ...(r.seed !== undefined ? { seed: r.seed } : {}),
           playoffBerth: r.playoffBerth,
           divRound: r.divRound,
           confRound: r.confRound,
