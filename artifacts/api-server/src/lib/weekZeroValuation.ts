@@ -31,6 +31,17 @@ const KALSHI_SEASON_CONTRACTS: Record<number, KalshiSeasonContracts> = {
     nfcChampionEvent: "KXNFLNFCCHAMP-27",
     championshipEvent: "KXSB-27",
   },
+  // Year 9999 reuses the 2026-27 contract set for integration test isolation.
+  // Tests create a disposable season with year=9999 so they never touch production
+  // season records.  The fetch mock intercepts these URLs at test time.
+  9999: {
+    contractSetId: "nfl-2026-27-v1",
+    winsEventPrefix: "KXNFLWINS-27",
+    playoffEvent: "KXNFLPLAYOFF-27",
+    afcChampionEvent: "KXNFLAFCCHAMP-27",
+    nfcChampionEvent: "KXNFLNFCCHAMP-27",
+    championshipEvent: "KXSB-27",
+  },
 };
 
 export function getKalshiSeasonContracts(
