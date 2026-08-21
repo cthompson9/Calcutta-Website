@@ -6,3 +6,4 @@
 - [Week 0 market valuation](week-zero-market-valuation.md) — Kalshi Week 0 marks are audited, quality-gated season snapshots with a fixed first-capture date.
 - [Ownership write integrity](ownership-write-integrity.md) — primary split changes and trade lifecycle edits must serialize per season and preserve exact four-decimal ownership totals.
 - [Auction results history](auction-results-history.md) — auction result rows preserve the original winner and nomination order, not post-trade ownership.
+- [Short position semantics](short-position-semantics.md) — approved trades may create signed shorts; only positive stakes are current owners while position reports remain signed.

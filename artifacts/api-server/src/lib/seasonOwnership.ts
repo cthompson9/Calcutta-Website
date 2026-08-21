@@ -49,7 +49,9 @@ export interface SeasonOwnership {
 
   /**
    * Set of bidder IDs that are season participants:
-   * primary team_bidders owners ∪ APPROVED trade toBidders.
+   * primary team_bidders owners ∪ both parties to APPROVED trades.
+   *
+   * A seller may be a participant solely through a short position.
    */
   participantIds: Set<number>;
 
@@ -144,19 +146,18 @@ export async function loadSeasonOwnership(seasonId: number): Promise<SeasonOwner
   // 4. Collect participant IDs and fetch names
   const participantIds = new Set<number>();
   for (const row of primaryRows) participantIds.add(row.bidderId);
-  for (const trade of approvedTrades) participantIds.add(trade.toBidderId);
+  for (const trade of approvedTrades) {
+    participantIds.add(trade.fromBidderId);
+    participantIds.add(trade.toBidderId);
+  }
 
   const bidderNames = new Map<number, string>();
   if (participantIds.size > 0) {
-    // Collect all bidder IDs referenced in byBidder (includes fromBidders with residual interest)
-    const allReferencedIds = new Set(participantIds);
-    for (const trade of approvedTrades) allReferencedIds.add(trade.fromBidderId);
-
     const bidderRows = await db
       .select({ id: biddersTable.id, name: biddersTable.name })
       .from(biddersTable);
     for (const b of bidderRows) {
-      if (allReferencedIds.has(b.id)) bidderNames.set(b.id, b.name);
+      if (participantIds.has(b.id)) bidderNames.set(b.id, b.name);
     }
   }
 

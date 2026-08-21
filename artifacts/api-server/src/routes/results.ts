@@ -118,8 +118,8 @@ function buildOwnerTeamResult(
 ) {
   const { bidderId, bidderName, effectiveShare, ownerCost } = args;
 
-  // owners array reflects THIS owner's effective share so a fully-sold owner
-  // shows 0% rather than the whole-team 100%.
+  // This reflects THIS owner's signed effective share. A negative percentage is
+  // a short position, not a current-team owner label.
   const owners = [
     { bidderId, bidderName, ownershipShare: effectiveShare },
   ];
@@ -364,7 +364,9 @@ router.get("/results/by-owner", async (req, res): Promise<void> => {
       if (!team) continue;
       const result = resultsMap.get(teamId) ?? null;
 
-      const effectiveShare = Math.max(0, entry.effectiveShare);
+      // Owner-result reporting preserves the signed ledger position. A short
+      // seller receives the inverse of a long holder's team-level outcome.
+      const effectiveShare = entry.effectiveShare;
 
       // Cost basis: season auction price × original share + trade buys - trade sells
       const seasonAuctionPrice = auctionPriceMap.get(teamId) ?? 0;
@@ -398,7 +400,7 @@ router.get("/results/by-owner", async (req, res): Promise<void> => {
   }
 
   const ownerRows = Array.from(ownerAggMap.values())
-    .filter((o) => o.teamCount > 0.00005 || o.totalCost !== 0)
+    .filter((o) => Math.abs(o.teamCount) > 0.00005 || o.totalCost !== 0)
     .map((o) => ({
       ...o,
       teamCount: Math.round(o.teamCount * 10) / 10,

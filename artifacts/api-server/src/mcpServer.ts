@@ -92,6 +92,41 @@ function resolveUniqueName<T extends NamedRecord>(
   return { error: `${label} "${requestedName}" is ambiguous. Use the full registered name.` };
 }
 
+/**
+ * Resolve a bidder using the same unambiguous matching behavior as the other
+ * MCP tools. A name with no matching identity becomes a new bidder so someone
+ * can enter the pool through a trade instead of an auction result.
+ */
+export async function resolveOrCreateBidder(
+  requestedName: string,
+): Promise<{ bidder: NamedRecord; created: boolean } | { error: string }> {
+  const name = requestedName.trim().replace(/\s+/g, " ");
+  if (!name) return { error: "Owner name cannot be empty." };
+
+  const bidders = await db
+    .select({ id: biddersTable.id, name: biddersTable.name })
+    .from(biddersTable);
+  const existing = resolveUniqueName(bidders, name, "Owner");
+  if (!("error" in existing)) return { bidder: existing, created: false };
+  if (!existing.error.endsWith("not found.")) return existing;
+
+  const [created] = await db
+    .insert(biddersTable)
+    .values({ name })
+    .onConflictDoNothing({ target: biddersTable.name })
+    .returning({ id: biddersTable.id, name: biddersTable.name });
+  if (created) return { bidder: created, created: true };
+
+  // A duplicate-name request may have won the race immediately before this
+  // insert. Re-resolve instead of surfacing a misleading failure.
+  const afterConflict = await db
+    .select({ id: biddersTable.id, name: biddersTable.name })
+    .from(biddersTable);
+  const resolved = resolveUniqueName(afterConflict, name, "Owner");
+  if ("error" in resolved) return resolved;
+  return { bidder: resolved, created: false };
+}
+
 async function resolveWritableSeasonYear(): Promise<number> {
   const rows = await db
     .select({ year: seasonsTable.year })
@@ -112,16 +147,25 @@ async function validateMcpTradeApproval(trade: {
     return "Seller and buyer must be different owners.";
   }
 
-  const ownership = await loadSeasonOwnership(trade.seasonId);
-  const sellerEntry = ownership.byBidder.get(trade.fromBidderId)?.get(trade.teamId);
-  const sellerShare = Math.max(0, sellerEntry?.effectiveShare ?? 0);
-  const tradeShare = parseFloat(trade.percentage) / 100;
-  if (sellerShare <= 0.00005) {
-    return "Seller has no current ownership stake in this team.";
+  const percentage = Number(trade.percentage);
+  if (!Number.isFinite(percentage) || percentage < 1 || percentage > 100) {
+    return "Trade percentage must be between 1% and 100%.";
   }
-  if (tradeShare > sellerShare + 0.00005) {
-    return "Trade percentage exceeds the seller's current ownership.";
+
+  const auctionRow = await db
+    .select({ teamId: teamSeasonAuctionsTable.teamId })
+    .from(teamSeasonAuctionsTable)
+    .where(and(
+      eq(teamSeasonAuctionsTable.teamId, trade.teamId),
+      eq(teamSeasonAuctionsTable.seasonId, trade.seasonId),
+    ))
+    .limit(1);
+  if (!auctionRow[0]) {
+    return "Team is not auctioned in this season and cannot be traded.";
   }
+
+  // Do not cap a sale to a seller's long stake: approved trades are a signed
+  // ledger and may intentionally open or increase a short position.
   return null;
 }
 
@@ -157,8 +201,9 @@ async function getOwnerAgg(bidderId: number, seasonId: number) {
     const auctionPrice = auctionRows[0] ? parseFloat(auctionRows[0].bidAmount) : 0;
     totalCost += auctionPrice * entry.originalShare + entry.tradePaid - entry.tradeReceived;
 
-    const effectiveShare = Math.max(0, entry.effectiveShare);
-    if (effectiveShare > 0.00005) {
+    // Short positions use the same signed economic treatment as owner results.
+    const effectiveShare = entry.effectiveShare;
+    if (Math.abs(effectiveShare) > 0.00005) {
       const resultRows = await db
         .select()
         .from(teamResultsTable)
@@ -485,11 +530,11 @@ function buildMcpServer() {
 
   server.tool(
     "create_trade",
-    "Submit a trade between two owners for a team. Always creates with status PENDING — admin must approve before it affects standings. Returns the trade ID and confirmation.",
+    "Submit a trade between two owners for a team. New owner names are created automatically. Sales may create a short position. Every trade starts PENDING and requires admin approval before it affects standings.",
     {
       team:        z.string().describe("Full or partial team name, e.g. 'Seattle Seahawks'"),
-      fromOwner:   z.string().describe("Name of owner selling the stake"),
-      toOwner:     z.string().describe("Name of owner buying the stake"),
+      fromOwner:   z.string().describe("Name of owner selling the stake; a new name is registered automatically."),
+      toOwner:     z.string().describe("Name of owner buying the stake; a new name is registered automatically."),
       percentage:  z.number().min(1).max(100).optional().describe("Percentage of team traded (1–100). Default 100."),
       price:       z.number().optional().describe("Trade price in dollars. If omitted, defaults to team's draft cost × percentage / 100."),
       tradeDate:   z.string().optional().describe("Trade date as YYYY-MM-DD. Defaults to today."),
@@ -500,11 +545,16 @@ function buildMcpServer() {
       const t = await findTeam(team);
       if (!t) return text(`Team not found: ${team}`);
 
-      const from = await findBidder(fromOwner);
-      if (!from) return text(`Owner not found: ${fromOwner}`);
+      if (normalizeName(fromOwner) === normalizeName(toOwner)) {
+        return text("Error: Seller and buyer must be different owners.");
+      }
 
-      const to = await findBidder(toOwner);
-      if (!to) return text(`Owner not found: ${toOwner}`);
+      const fromResult = await resolveOrCreateBidder(fromOwner);
+      if ("error" in fromResult) return text(`Error: ${fromResult.error}`);
+      const toResult = await resolveOrCreateBidder(toOwner);
+      if ("error" in toResult) return text(`Error: ${toResult.error}`);
+      const from = fromResult.bidder;
+      const to = toResult.bidder;
 
       const activeSeasonRows = await db
         .select({ id: seasonsTable.id, year: seasonsTable.year })
@@ -515,6 +565,15 @@ function buildMcpServer() {
       const year = season ?? defaultYear;
       const sid = await resolveSeasonId(year);
       if (!sid) return text(`Season ${year} not found`);
+
+      const validationError = await validateMcpTradeApproval({
+        seasonId: sid,
+        teamId: t.id,
+        fromBidderId: from.id,
+        toBidderId: to.id,
+        percentage: percentage.toString(),
+      });
+      if (validationError) return text(`Error: ${validationError}`);
 
       // Use season auction price for default trade price; missing row → 0, never teams.bidAmount
       let auctionBidAmount = 0;

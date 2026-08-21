@@ -16,13 +16,12 @@ import {
   UpdateTradeParams,
 } from "@workspace/api-zod";
 import { z } from "zod";
-import { loadSeasonOwnership } from "../lib/seasonOwnership";
 import { OWNERSHIP_SEASON_LOCK_NAMESPACE } from "../lib/ownershipShares";
 
 const router: IRouter = Router();
 
-// Small tolerance for floating-point share comparisons.
-const SHARE_EPSILON = 0.00005;
+const MIN_TRADE_PERCENTAGE = 1;
+const MAX_TRADE_PERCENTAGE = 100;
 
 // ── Ownership-integrity validation ────────────────────────────────────────────
 
@@ -33,8 +32,10 @@ const SHARE_EPSILON = 0.00005;
  * Checks:
  *  - seller and buyer must differ
  *  - team must be auctioned in the given season (team_season_auctions row exists)
- *  - seller must currently hold effective ownership in the team
- *  - percentage must not exceed the seller's current effective share
+ *
+ * Trades deliberately allow a seller to have no long ownership (or to sell more
+ * than their current stake). Once approved, those sales create a signed short
+ * position in the season ownership ledger.
  */
 async function validateTradeOwnership(args: {
   seasonId: number;
@@ -47,6 +48,14 @@ async function validateTradeOwnership(args: {
 
   if (fromBidderId === toBidderId) {
     return "Seller and buyer must be different owners.";
+  }
+
+  if (
+    !Number.isFinite(percentage) ||
+    percentage < MIN_TRADE_PERCENTAGE ||
+    percentage > MAX_TRADE_PERCENTAGE
+  ) {
+    return `Trade percentage must be between ${MIN_TRADE_PERCENTAGE}% and ${MAX_TRADE_PERCENTAGE}%.`;
   }
 
   // Team must be auctioned in this season
@@ -62,22 +71,6 @@ async function validateTradeOwnership(args: {
     .limit(1);
   if (!auctionRow[0]) {
     return "Team is not auctioned in this season and cannot be traded.";
-  }
-
-  // Seller must hold current effective ownership
-  const ownership = await loadSeasonOwnership(seasonId);
-  const sellerEntry = ownership.byBidder.get(fromBidderId)?.get(teamId);
-  const sellerShare = sellerEntry ? Math.max(0, sellerEntry.effectiveShare) : 0;
-
-  if (sellerShare <= SHARE_EPSILON) {
-    return "Seller has no current ownership stake in this team.";
-  }
-
-  // Percentage traded (0–100) must not exceed the seller's current share (0–1)
-  const tradeShare = percentage / 100;
-  if (tradeShare > sellerShare + SHARE_EPSILON) {
-    const sellerPct = Math.round(sellerShare * 10000) / 100;
-    return `Trade percentage (${percentage}%) exceeds seller's current ownership (${sellerPct}%).`;
   }
 
   return null;
@@ -427,7 +420,7 @@ router.patch("/trades/:id/status", async (req: Request, res: Response): Promise<
         teamId: fresh[0].teamId,
         fromBidderId: fresh[0].fromBidderId,
         toBidderId: fresh[0].toBidderId,
-        percentage: parseFloat(fresh[0].percentage),
+        percentage: Number(fresh[0].percentage),
       });
       if (validationError) return { kind: "invalid" as const, error: validationError };
 

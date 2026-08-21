@@ -220,8 +220,10 @@ async function getOwnerAgg(bidderId: number, seasonId: number) {
     const auctionPrice = auctionRows[0] ? parseFloat(auctionRows[0].bidAmount) : 0;
     totalCost += auctionPrice * entry.originalShare + entry.tradePaid - entry.tradeReceived;
 
-    const effectiveShare = Math.max(0, entry.effectiveShare);
-    if (effectiveShare > 0.00005) {
+    // Keep owner financial reporting signed so approved short positions receive
+    // the inverse of a long holder's return and mark-to-market result.
+    const effectiveShare = entry.effectiveShare;
+    if (Math.abs(effectiveShare) > 0.00005) {
       const resultRows = await db
         .select()
         .from(teamResultsTable)
