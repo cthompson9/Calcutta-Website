@@ -6,6 +6,7 @@ import {
   ownershipAdjustmentsTable,
   seasonsTable,
   teamBiddersTable,
+  teamResultsTable,
   teamSeasonAuctionsTable,
   teamsTable,
   tradesTable,
@@ -19,6 +20,11 @@ import {
   fetchAuctionProPayload,
   type AuctionProTeam,
 } from "../lib/auctionProImport";
+import {
+  DraftOrderImportError,
+  fetchDraftOrderPayload,
+  teamNameFromAbbrev,
+} from "../lib/draftOrderImport";
 import {
   OWNERSHIP_SEASON_LOCK_NAMESPACE,
   validatePrimaryOwnership,
@@ -231,6 +237,194 @@ router.post("/auction/import", async (req, res): Promise<void> => {
     }
     req.log.error({ err: error }, "AuctionPro import failed");
     res.status(502).json({ error: "AuctionPro import failed unexpectedly." });
+  }
+});
+
+// ── POST /auction/import/draft-order ─────────────────────────────────────────
+// Fetches the public AuctionPro live draft-order endpoint and atomically
+// replaces the season's auction prices, single-owner ownership, and draft
+// order in team_results. Requires ADMIN_API_KEY. Blocked if approved trades
+// already exist for any of the 32 teams.
+
+router.post("/auction/import/draft-order", async (req, res): Promise<void> => {
+  if (!isAdminRequest(req)) {
+    res.status(401).json({ error: "ADMIN_API_KEY bearer token is required." });
+    return;
+  }
+
+  const parsed = ImportAuctionDataBody.safeParse(req.body);
+  if (!parsed.success) {
+    res.status(400).json({ error: parsed.error.message });
+    return;
+  }
+
+  const seasonRows = await db
+    .select({ id: seasonsTable.id })
+    .from(seasonsTable)
+    .where(eq(seasonsTable.year, parsed.data.seasonYear))
+    .limit(1);
+  if (!seasonRows[0]) {
+    res.status(404).json({ error: `Season ${parsed.data.seasonYear} not found.` });
+    return;
+  }
+
+  try {
+    const rawEntries = await fetchDraftOrderPayload();
+
+    const [teams, bidders] = await Promise.all([
+      db.select({ id: teamsTable.id, name: teamsTable.name }).from(teamsTable),
+      db.select({ id: biddersTable.id, name: biddersTable.name }).from(biddersTable),
+    ]);
+
+    type ResolvedDraftEntry = {
+      teamId: number;
+      teamName: string;
+      bidderId: number;
+      bidderName: string;
+      bidAmount: number;
+      draftOrder: number | null;
+    };
+
+    const resolved: ResolvedDraftEntry[] = [];
+    const seenTeamIds = new Set<number>();
+
+    for (const entry of rawEntries) {
+      const fullName = teamNameFromAbbrev(entry.team);
+      if (!fullName) {
+        throw new DraftOrderImportError(`Unknown team abbreviation "${entry.team}".`, 422);
+      }
+
+      const teamMatch = resolveUniqueByName(teams, fullName, "Team");
+      if ("error" in teamMatch) throw new DraftOrderImportError(teamMatch.error, 422);
+
+      if (seenTeamIds.has(teamMatch.id)) {
+        throw new DraftOrderImportError(
+          `Multiple draft-order entries resolve to team "${teamMatch.name}".`,
+          422,
+        );
+      }
+      seenTeamIds.add(teamMatch.id);
+
+      const bidderMatch = resolveUniqueByName(bidders, entry.owner, "Bidder");
+      if ("error" in bidderMatch) throw new DraftOrderImportError(bidderMatch.error, 422);
+
+      resolved.push({
+        teamId: teamMatch.id,
+        teamName: teamMatch.name,
+        bidderId: bidderMatch.id,
+        bidderName: bidderMatch.name,
+        bidAmount: entry.value,
+        draftOrder: entry.draftOrder,
+      });
+    }
+
+    const teamIds = resolved.map((r) => r.teamId);
+
+    await db.transaction(async (tx) => {
+      await tx.execute(
+        sql`select pg_advisory_xact_lock(${OWNERSHIP_SEASON_LOCK_NAMESPACE}, ${seasonRows[0]!.id})`,
+      );
+
+      const approvedTrades = await tx
+        .select({ teamId: tradesTable.teamId })
+        .from(tradesTable)
+        .where(
+          and(
+            eq(tradesTable.seasonId, seasonRows[0]!.id),
+            eq(tradesTable.status, "approved"),
+            inArray(tradesTable.teamId, teamIds),
+          ),
+        )
+        .limit(1);
+      if (approvedTrades[0]) throw new ApprovedTradeConflictError();
+
+      // Replace auction prices and primary ownership
+      await tx
+        .delete(teamBiddersTable)
+        .where(
+          and(
+            eq(teamBiddersTable.seasonId, seasonRows[0]!.id),
+            inArray(teamBiddersTable.teamId, teamIds),
+          ),
+        );
+      await tx
+        .delete(teamSeasonAuctionsTable)
+        .where(
+          and(
+            eq(teamSeasonAuctionsTable.seasonId, seasonRows[0]!.id),
+            inArray(teamSeasonAuctionsTable.teamId, teamIds),
+          ),
+        );
+
+      await tx.insert(teamSeasonAuctionsTable).values(
+        resolved.map((r) => ({
+          teamId: r.teamId,
+          seasonId: seasonRows[0]!.id,
+          bidAmount: String(r.bidAmount),
+        })),
+      );
+
+      await tx.insert(teamBiddersTable).values(
+        resolved.map((r) => ({
+          teamId: r.teamId,
+          bidderId: r.bidderId,
+          seasonId: seasonRows[0]!.id,
+          ownershipShare: "1",
+        })),
+      );
+
+      // Upsert draftOrder only — preserves wins, playoff flags, etc.
+      for (const r of resolved) {
+        await tx
+          .insert(teamResultsTable)
+          .values({
+            teamId: r.teamId,
+            seasonId: seasonRows[0]!.id,
+            draftOrder: r.draftOrder,
+          })
+          .onConflictDoUpdate({
+            target: [teamResultsTable.teamId, teamResultsTable.seasonId],
+            set: { draftOrder: r.draftOrder },
+          });
+      }
+
+      // Audit log
+      await tx.insert(ownershipAdjustmentsTable).values(
+        resolved.map((r) => ({
+          seasonId: seasonRows[0]!.id,
+          teamId: r.teamId,
+          source: "draft_order_import",
+          note: "AuctionPro live draft-order import",
+          owners: {
+            bidAmount: r.bidAmount,
+            draftOrder: r.draftOrder,
+            owners: [
+              { bidderId: r.bidderId, bidderName: r.bidderName, ownershipShare: 1 },
+            ],
+          },
+        })),
+      );
+    });
+
+    const result = ImportAuctionDataResponse.parse({
+      seasonYear: parsed.data.seasonYear,
+      importedTeams: resolved.length,
+      importedOwners: resolved.length,
+      source: "AuctionPro live draft-order",
+    });
+    res.json(result);
+  } catch (error) {
+    if (error instanceof ApprovedTradeConflictError) {
+      res.status(409).json({ error: error.message });
+      return;
+    }
+    if (error instanceof DraftOrderImportError) {
+      req.log.warn({ statusCode: error.statusCode }, "Draft-order import rejected");
+      res.status(error.statusCode).json({ error: error.message });
+      return;
+    }
+    req.log.error({ err: error }, "Draft-order import failed");
+    res.status(502).json({ error: "Draft-order import failed unexpectedly." });
   }
 });
 

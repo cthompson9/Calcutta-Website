@@ -10,7 +10,7 @@ import {
   View,
 } from 'react-native';
 import { Feather } from '@expo/vector-icons';
-import { importAuctionData, useGetAuctionSummary } from '@workspace/api-client-react';
+import { importAuctionData, importDraftOrder, useGetAuctionSummary } from '@workspace/api-client-react';
 import { useColors } from '@/hooks/useColors';
 import { useApp } from '@/context/AppContext';
 import {
@@ -190,11 +190,44 @@ export default function AuctionScreen() {
   const { season, adminKey, setAdminKey } = useApp();
   const query = useGetAuctionSummary({ season });
   const [adminKeyDraft, setAdminKeyDraft] = useState(adminKey ?? '');
+
+  // AuctionPro (URL-fetch) import state
   const [importMessage, setImportMessage] = useState<string | null>(null);
   const [importError, setImportError] = useState<string | null>(null);
   const [isImporting, setIsImporting] = useState(false);
 
+  // Draft-order import state
+  const [draftImportMessage, setDraftImportMessage] = useState<string | null>(null);
+  const [draftImportError, setDraftImportError] = useState<string | null>(null);
+  const [isDraftImporting, setIsDraftImporting] = useState(false);
+
   const listBottomPad = Platform.OS === 'web' ? 84 + 16 : 100;
+
+  const importDraftOrderData = async () => {
+    setDraftImportMessage(null);
+    setDraftImportError(null);
+    const key = adminKeyDraft.trim() || adminKey?.trim() || '';
+    if (!key) {
+      setDraftImportError('Enter the admin key before importing.');
+      return;
+    }
+    if (key !== adminKey) setAdminKey(key);
+    setIsDraftImporting(true);
+    try {
+      const result = await importDraftOrder(
+        { seasonYear: season },
+        { headers: { Authorization: `Bearer ${key}` } },
+      );
+      setDraftImportMessage(
+        `Imported ${result.importedTeams} teams with draft order for ${result.seasonYear}.`,
+      );
+      await query.refetch();
+    } catch (error) {
+      setDraftImportError(error instanceof Error ? error.message : 'Draft-order import failed.');
+    } finally {
+      setIsDraftImporting(false);
+    }
+  };
 
   const importAuction = async () => {
     setImportMessage(null);
@@ -314,6 +347,50 @@ export default function AuctionScreen() {
         {importError ? (
           <Text testID="auctionpro-import-error" style={[styles.importMessage, { color: colors.destructive }]}>
             {importError}
+          </Text>
+        ) : null}
+      </View>
+
+      {/* Draft-order import panel */}
+      <View style={[styles.importPanel, { borderColor: colors.border, backgroundColor: colors.card }]}>
+        <View style={styles.importHeading}>
+          <View style={{ flex: 1 }}>
+            <Text style={[styles.importTitle, { color: colors.foreground }]}>Draft-Order Import</Text>
+            <Text style={[styles.importHint, { color: colors.mutedForeground }]}>
+              Pull live auction prices, ownership, and draft order from AuctionPro.
+            </Text>
+          </View>
+          <Feather name="list" size={19} color={colors.mutedForeground} />
+        </View>
+        <Pressable
+          testID="draft-order-import-button"
+          disabled={isDraftImporting}
+          onPress={importDraftOrderData}
+          style={({ pressed }) => [
+            styles.importButton,
+            {
+              backgroundColor: colors.primary,
+              opacity: pressed || isDraftImporting ? 0.7 : 1,
+            },
+          ]}
+        >
+          <Feather
+            name={isDraftImporting ? 'clock' : 'activity'}
+            size={15}
+            color={colors.primaryForeground}
+          />
+          <Text style={[styles.importButtonText, { color: colors.primaryForeground }]}>
+            {isDraftImporting ? 'Importing…' : `Import ${season} Draft Order`}
+          </Text>
+        </Pressable>
+        {draftImportMessage ? (
+          <Text testID="draft-order-import-success" style={[styles.importMessage, { color: colors.success }]}>
+            {draftImportMessage}
+          </Text>
+        ) : null}
+        {draftImportError ? (
+          <Text testID="draft-order-import-error" style={[styles.importMessage, { color: colors.destructive }]}>
+            {draftImportError}
           </Text>
         ) : null}
       </View>

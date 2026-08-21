@@ -1971,3 +1971,75 @@ export const useImportAuctionData = <TError = ErrorType<ErrorResponse>,
       return useMutation(getImportAuctionDataMutationOptions(options));
     }
 
+export const getImportDraftOrderUrl = () => {
+
+
+
+
+  return `/api/auction/import/draft-order`
+}
+
+/**
+ * Fetches the public AuctionPro draft-order endpoint and atomically replaces the season's auction prices, single-owner primary ownership, and draft order in team results. Requires the ADMIN_API_KEY bearer token. Blocked if any of the 32 teams already have approved trades for the target season.
+ * @summary Import auction prices, ownership, and draft order from the AuctionPro live endpoint
+ */
+export const importDraftOrder = async (auctionImportInput: AuctionImportInput, options?: Parameters<typeof customFetch>[1]): Promise<AuctionImportResult> => {
+
+  return customFetch<AuctionImportResult>(getImportDraftOrderUrl(),
+  {
+    ...options,
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json', ...options?.headers },
+    body: JSON.stringify(auctionImportInput)
+  }
+);}
+
+
+
+
+
+export const getImportDraftOrderMutationOptions = <TError = ErrorType<ErrorResponse>,
+    TContext = unknown>(options?: { mutation?:UseMutationOptions<Awaited<ReturnType<typeof importDraftOrder>>, TError,{data: BodyType<AuctionImportInput>}, TContext>, request?: SecondParameter<typeof customFetch>}
+): UseMutationOptions<Awaited<ReturnType<typeof importDraftOrder>>, TError,{data: BodyType<AuctionImportInput>}, TContext> => {
+
+const mutationKey = ['importDraftOrder'];
+const {mutation: mutationOptions, request: requestOptions} = options ?
+      options.mutation && 'mutationKey' in options.mutation && options.mutation.mutationKey ?
+      options
+      : {...options, mutation: {...options.mutation, mutationKey}}
+      : {mutation: { mutationKey, }, request: undefined};
+
+
+
+
+      const mutationFn: MutationFunction<Awaited<ReturnType<typeof importDraftOrder>>, {data: BodyType<AuctionImportInput>}> = (props) => {
+          const {data} = props ?? {};
+
+          return  importDraftOrder(data,requestOptions)
+        }
+
+
+
+
+
+
+  return  { mutationFn, ...mutationOptions }}
+
+    export type ImportDraftOrderMutationResult = NonNullable<Awaited<ReturnType<typeof importDraftOrder>>>
+    export type ImportDraftOrderMutationBody = BodyType<AuctionImportInput>
+    export type ImportDraftOrderMutationError = ErrorType<ErrorResponse>
+
+    /**
+ * @summary Import auction prices, ownership, and draft order from the AuctionPro live endpoint
+ */
+export const useImportDraftOrder = <TError = ErrorType<ErrorResponse>,
+    TContext = unknown>(options?: { mutation?:UseMutationOptions<Awaited<ReturnType<typeof importDraftOrder>>, TError,{data: BodyType<AuctionImportInput>}, TContext>, request?: SecondParameter<typeof customFetch>}
+ ): UseMutationResult<
+        Awaited<ReturnType<typeof importDraftOrder>>,
+        TError,
+        {data: BodyType<AuctionImportInput>},
+        TContext
+      > => {
+      return useMutation(getImportDraftOrderMutationOptions(options));
+    }
+

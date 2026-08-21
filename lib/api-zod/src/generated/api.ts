@@ -696,3 +696,19 @@ export const ImportAuctionDataResponse = zod.object({
 })
 
 
+/**
+ * Fetches the public AuctionPro draft-order endpoint and atomically replaces the season's auction prices, single-owner primary ownership, and draft order in team results. Requires the ADMIN_API_KEY bearer token. Blocked if any of the 32 teams already have approved trades for the target season.
+ * @summary Import auction prices, ownership, and draft order from the AuctionPro live endpoint
+ */
+export const ImportDraftOrderBody = zod.object({
+  "seasonYear": zod.number().describe('Season year to replace from the configured complete AuctionPro export.')
+})
+
+export const ImportDraftOrderResponse = zod.object({
+  "seasonYear": zod.number(),
+  "importedTeams": zod.number(),
+  "importedOwners": zod.number(),
+  "source": zod.string()
+})
+
+

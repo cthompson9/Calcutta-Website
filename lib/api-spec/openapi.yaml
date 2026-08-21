@@ -704,6 +704,60 @@ paths:
               schema:
                 $ref: "#/components/schemas/ErrorResponse"
 
+  /auction/import/draft-order:
+    post:
+      operationId: importDraftOrder
+      tags: [auction]
+      summary: Import auction prices, ownership, and draft order from the AuctionPro live endpoint
+      description: >
+        Fetches the public AuctionPro draft-order endpoint and atomically replaces the
+        season's auction prices, single-owner primary ownership, and draft order in
+        team results. Requires the ADMIN_API_KEY bearer token. Blocked if any of the
+        32 teams already have approved trades for the target season.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/AuctionImportInput"
+      responses:
+        "200":
+          description: Successfully imported draft-order data
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/AuctionImportResult"
+        "401":
+          description: Unauthorized — ADMIN_API_KEY required
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+        "404":
+          description: Season not found
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+        "409":
+          description: Existing approved trades make it unsafe to replace primary ownership
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+        "422":
+          description: Source export is malformed, incomplete, or cannot be resolved safely
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+        "502":
+          description: AuctionPro draft-order endpoint is unavailable or returned a non-JSON response
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+
 components:
   schemas:
     HealthStatus:
