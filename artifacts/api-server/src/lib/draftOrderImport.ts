@@ -158,14 +158,17 @@ export async function fetchDraftOrderPayload(): Promise<DraftOrderEntry[]> {
 
   let response: Response;
   try {
+    // redirect: "follow" so that Replit deployment-protection redirects land on
+    // the login page (detected below as non-JSON) rather than throwing a TypeError
+    // that surfaces as a misleading "cannot reach" 502.
     response = await fetch(url, {
       headers,
-      redirect: "error",
+      redirect: "follow",
       signal: AbortSignal.timeout(15_000),
     });
   } catch {
     throw new DraftOrderImportError(
-      "Could not reach the AuctionPro draft-order endpoint. Check network access and the source URL.",
+      "Could not reach the AuctionPro draft-order endpoint. Check that the URL is correct and the server is running.",
     );
   }
 
