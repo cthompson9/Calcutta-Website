@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useState, type ReactNode } from "react";
 import {
   useGetAuctionSummary,
   importDraftOrder,
@@ -196,9 +196,13 @@ export default function Dashboard() {
          <StatCard
            title="Most Expensive"
            value={summary.mostExpensiveTeam
-             ? `${summary.mostExpensiveTeam.name} · ${formatCurrency(summary.mostExpensiveTeam.bidAmount)}`
+              ? <>
+                  <span className="truncate">{summary.mostExpensiveTeam.name}</span>
+                  <span className="shrink-0"> · {formatCurrency(summary.mostExpensiveTeam.bidAmount)}</span>
+                </>
              : "—"}
            icon={ReceiptText}
+            valueClassName="flex min-w-0 items-baseline text-base md:text-lg"
          />
       </div>
 
@@ -320,14 +324,28 @@ export default function Dashboard() {
   );
 }
 
-function StatCard({ title, value, icon: Icon, className }: { title: string; value: string; icon: any; className?: string }) {
+function StatCard({
+  title,
+  value,
+  icon: Icon,
+  className,
+  valueClassName,
+}: {
+  title: string;
+  value: ReactNode;
+  icon: any;
+  className?: string;
+  valueClassName?: string;
+}) {
   return (
     <div className={`p-6 flex flex-col gap-2 ${className}`}>
       <div className="flex items-center justify-between text-muted-foreground">
         <span className="text-xs font-mono font-bold uppercase tracking-widest">{title}</span>
         <Icon className="w-4 h-4 opacity-50" />
       </div>
-      <div className="text-3xl md:text-4xl font-mono font-black tracking-tight">{value}</div>
+      <div className={`text-3xl md:text-4xl font-mono font-black tracking-tight ${valueClassName ?? ""}`}>
+        {value}
+      </div>
     </div>
   );
 }
