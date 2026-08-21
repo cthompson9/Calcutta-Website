@@ -4,8 +4,8 @@ import {
   importDraftOrder,
   getGetAuctionSummaryQueryKey,
 } from "@workspace/api-client-react";
-import { formatCurrency, formatPercentage } from "@/lib/utils";
-import { Trophy, TrendingUp, DollarSign, Activity, Download, Lock, Unlock, Loader2 } from "lucide-react";
+import { formatCurrency } from "@/lib/utils";
+import { DollarSign, Activity, Download, Lock, Unlock, Loader2, ReceiptText } from "lucide-react";
 import { useSeason } from "@/hooks/useSeason";
 import { useQueryClient } from "@tanstack/react-query";
 import {
@@ -154,9 +154,9 @@ export default function Dashboard() {
     <div className="p-4 md:p-8 space-y-8 max-w-7xl mx-auto">
       <header className="flex flex-col md:flex-row md:items-end justify-between gap-4">
         <div>
-          <h1 className="text-3xl md:text-5xl font-extrabold uppercase tracking-tighter mb-2">Auction Board</h1>
+          <h1 className="text-3xl md:text-5xl font-extrabold uppercase tracking-tighter mb-2">Auction Results</h1>
           <p className="text-muted-foreground font-mono text-sm uppercase tracking-widest">
-            {year} auction standings & stats
+            {year} auction results
           </p>
         </div>
 
@@ -190,58 +190,46 @@ export default function Dashboard() {
       )}
 
       {/* Headline Stats */}
-      <div className="grid grid-cols-2 md:grid-cols-4 gap-0 border border-border bg-card">
-        <StatCard title="Total Pot" value={formatCurrency(summary.potSize)} icon={Trophy} className="border-b md:border-b-0 md:border-r" />
-        <StatCard title="Avg Bid / Team" value={formatCurrency(summary.avgBidPerTeam)} icon={DollarSign} className="border-b md:border-b-0 md:border-r border-l" />
-        <StatCard title="Teams Auctioned" value={`${summary.teamsAuctioned}/32`} icon={Activity} className="border-r md:border-r border-t md:border-t-0" />
-        <StatCard title="Nominations Left" value={summary.nominationsLeft.toString()} icon={TrendingUp} className="border-t md:border-t-0" />
+        <div className="grid grid-cols-1 md:grid-cols-3 gap-0 border border-border bg-card">
+         <StatCard title="Total Pot" value={formatCurrency(summary.potSize)} icon={DollarSign} className="border-b md:border-b-0 md:border-r" />
+         <StatCard title="Avg Bid / Team" value={formatCurrency(summary.avgBidPerTeam)} icon={Activity} className="border-b md:border-b-0 md:border-r" />
+         <StatCard
+           title="Most Expensive"
+           value={summary.mostExpensiveTeam
+             ? `${summary.mostExpensiveTeam.name} · ${formatCurrency(summary.mostExpensiveTeam.bidAmount)}`
+             : "—"}
+           icon={ReceiptText}
+         />
       </div>
 
       <div className="grid md:grid-cols-3 gap-8 items-start">
-        {/* Leaderboard */}
+         {/* Auction results */}
         <div className="md:col-span-2 space-y-4">
-          <h2 className="text-xl font-bold uppercase tracking-tight flex items-center gap-2">
-            <div className="w-3 h-3 bg-primary" /> Standings
-          </h2>
           <div className="border border-border bg-card overflow-hidden">
-            <div className="grid grid-cols-12 bg-muted text-muted-foreground text-xs font-mono font-bold uppercase tracking-widest px-4 py-3 border-b border-border">
-              <div className="col-span-1 text-center">Rk</div>
-              <div className="col-span-4">Bidder</div>
-              <div className="col-span-3 text-right">Total Paid</div>
-              <div className="col-span-2 text-center">Teams</div>
-              <div className="col-span-2 text-right">% Pot</div>
+             <div className="grid grid-cols-12 bg-muted text-muted-foreground text-xs font-mono font-bold uppercase tracking-widest px-4 py-3 border-b border-border">
+               <div className="col-span-2 text-center">Order</div>
+               <div className="col-span-4">Team</div>
+               <div className="col-span-3">Winner</div>
+               <div className="col-span-3 text-right">Bid</div>
             </div>
-            {summary.standings.map((standing, index) => {
-              const isLeader = index === 0 && standing.totalPaid > 0;
-              return (
-                <div
-                  key={standing.bidderId}
-                  className={`grid grid-cols-12 items-center px-4 py-4 border-b border-border last:border-0 hover:bg-muted/50 transition-colors ${
-                    isLeader ? "bg-gold/10" : ""
-                  }`}
-                >
-                  <div className="col-span-1 text-center font-mono font-bold">
-                    {index + 1}
-                  </div>
-                  <div className="col-span-4 font-bold truncate pr-2 flex items-center gap-2">
-                    {isLeader && <Trophy className="w-4 h-4 text-gold shrink-0" />}
-                    {standing.bidderName}
-                  </div>
-                  <div className="col-span-3 text-right font-mono font-bold text-lg">
-                    {formatCurrency(standing.totalPaid)}
-                  </div>
-                  <div className="col-span-2 text-center font-mono text-muted-foreground">
-                    {standing.teamCount}
-                  </div>
-                  <div className="col-span-2 text-right font-mono text-sm">
-                    {formatPercentage(standing.percentOfPot)}
-                  </div>
-                </div>
-              );
-            })}
-            {summary.standings.length === 0 && (
+             {summary.auctionResults.map((result) => (
+               <div
+                 key={result.teamId}
+                 className="grid grid-cols-12 items-center px-4 py-4 border-b border-border last:border-0 hover:bg-muted/50 transition-colors"
+               >
+                 <div className="col-span-2 text-center font-mono font-bold">
+                   {result.draftOrder ?? "—"}
+                 </div>
+                 <div className="col-span-4 font-bold truncate pr-2">{result.teamName}</div>
+                 <div className="col-span-3 font-medium truncate pr-2">{result.winnerName}</div>
+                 <div className="col-span-3 text-right font-mono font-bold text-lg">
+                   {formatCurrency(result.bidAmount)}
+                 </div>
+               </div>
+             ))}
+             {summary.auctionResults.length === 0 && (
               <div className="p-8 text-center text-muted-foreground">
-                No active bidders yet.
+                 No auction results for {year} yet.
               </div>
             )}
           </div>

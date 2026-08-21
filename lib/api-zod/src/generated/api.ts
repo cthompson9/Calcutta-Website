@@ -662,14 +662,17 @@ export const GetAuctionSummaryQueryParams = zod.object({
 export const GetAuctionSummaryResponse = zod.object({
   "potSize": zod.number(),
   "teamsAuctioned": zod.number(),
-  "nominationsLeft": zod.number(),
   "avgBidPerTeam": zod.number(),
-  "standings": zod.array(zod.object({
-  "bidderId": zod.number(),
-  "bidderName": zod.string(),
-  "totalPaid": zod.number(),
-  "teamCount": zod.number(),
-  "percentOfPot": zod.number()
+  "mostExpensiveTeam": zod.object({
+  "name": zod.string(),
+  "bidAmount": zod.number()
+}).nullable(),
+  "auctionResults": zod.array(zod.object({
+  "teamId": zod.number(),
+  "teamName": zod.string(),
+  "winnerName": zod.string(),
+  "bidAmount": zod.number(),
+  "draftOrder": zod.number().nullable()
 })),
   "conferenceBreakdown": zod.array(zod.object({
   "conference": zod.string(),

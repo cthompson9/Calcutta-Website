@@ -17,7 +17,7 @@ export function Shell({ children }: ShellProps) {
     { href: "/", label: "Results", icon: Trophy },
     { href: "/mtm", label: "M2M Tracker", icon: TrendingUp },
     { href: "/trades", label: "Trades", icon: ArrowLeftRight },
-    { href: "/dashboard", label: "Auction Board", icon: LayoutDashboard },
+    { href: "/dashboard", label: "Auction Results", icon: LayoutDashboard },
   ];
 
   return (

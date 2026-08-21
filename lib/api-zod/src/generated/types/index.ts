@@ -8,10 +8,10 @@
 
 export * from './auctionImportInput';
 export * from './auctionImportResult';
+export * from './auctionResult';
 export * from './auctionSummary';
 export * from './bidder';
 export * from './bidderInput';
-export * from './bidderStanding';
 export * from './bidderSummary';
 export * from './bidderUpdate';
 export * from './conferenceBreakdown';
@@ -27,6 +27,7 @@ export * from './getTeamsDivision';
 export * from './getTeamsParams';
 export * from './getTradesParams';
 export * from './healthStatus';
+export * from './mostExpensiveTeam';
 export * from './mtmData';
 export * from './mtmMarketQuote';
 export * from './mtmMarketQuoteKind';

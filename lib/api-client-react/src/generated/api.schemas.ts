@@ -498,12 +498,17 @@ export interface WeekZeroCaptureResult {
   marketStatusCounts: MtmMarketStatusCounts;
 }
 
-export interface BidderStanding {
-  bidderId: number;
-  bidderName: string;
-  totalPaid: number;
-  teamCount: number;
-  percentOfPot: number;
+export interface MostExpensiveTeam {
+  name: string;
+  bidAmount: number;
+}
+
+export interface AuctionResult {
+  teamId: number;
+  teamName: string;
+  winnerName: string;
+  bidAmount: number;
+  draftOrder: number | null;
 }
 
 export interface ConferenceBreakdown {
@@ -516,9 +521,9 @@ export interface ConferenceBreakdown {
 export interface AuctionSummary {
   potSize: number;
   teamsAuctioned: number;
-  nominationsLeft: number;
   avgBidPerTeam: number;
-  standings: BidderStanding[];
+  mostExpensiveTeam: MostExpensiveTeam | null;
+  auctionResults: AuctionResult[];
   conferenceBreakdown: ConferenceBreakdown[];
 }
 

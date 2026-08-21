@@ -5,14 +5,15 @@
  * NFL Auction Manager API
  * OpenAPI spec version: 0.1.0
  */
-import type { BidderStanding } from './bidderStanding';
+import type { AuctionResult } from './auctionResult';
 import type { ConferenceBreakdown } from './conferenceBreakdown';
+import type { MostExpensiveTeam } from './mostExpensiveTeam';
 
 export interface AuctionSummary {
   potSize: number;
   teamsAuctioned: number;
-  nominationsLeft: number;
   avgBidPerTeam: number;
-  standings: BidderStanding[];
+  mostExpensiveTeam: MostExpensiveTeam | null;
+  auctionResults: AuctionResult[];
   conferenceBreakdown: ConferenceBreakdown[];
 }

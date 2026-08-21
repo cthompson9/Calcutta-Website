@@ -1,6 +1,14 @@
 import { Router, type IRouter } from "express";
-import { eq } from "drizzle-orm";
-import { db, teamsTable, biddersTable, teamSeasonAuctionsTable, seasonsTable } from "@workspace/db";
+import { and, eq } from "drizzle-orm";
+import {
+  db,
+  teamsTable,
+  biddersTable,
+  teamBiddersTable,
+  teamResultsTable,
+  teamSeasonAuctionsTable,
+  seasonsTable,
+} from "@workspace/db";
 import { GetAuctionSummaryQueryParams } from "@workspace/api-zod";
 import { loadSeasonOwnership } from "../lib/seasonOwnership";
 
@@ -26,9 +34,9 @@ router.get("/summary", async (req, res): Promise<void> => {
     res.json({
       potSize: 0,
       teamsAuctioned: 0,
-      nominationsLeft: 32,
       avgBidPerTeam: 0,
-      standings: [],
+      mostExpensiveTeam: null,
+      auctionResults: [],
       conferenceBreakdown: [],
     });
     return;
@@ -41,6 +49,7 @@ router.get("/summary", async (req, res): Promise<void> => {
     .select({
       teamId: teamSeasonAuctionsTable.teamId,
       bidAmount: teamSeasonAuctionsTable.bidAmount,
+      teamName: teamsTable.name,
       conference: teamsTable.conference,
     })
     .from(teamSeasonAuctionsTable)
@@ -66,80 +75,69 @@ router.get("/summary", async (req, res): Promise<void> => {
     avgBid: data.teamCount > 0 ? Math.round((data.totalSpent / data.teamCount) * 100) / 100 : 0,
   }));
 
-  // Season auction price map
-  const auctionPriceMap = new Map(auctionRows.map((a) => [a.teamId, parseFloat(a.bidAmount)]));
+  // These are original auction winners, rather than effective post-trade owners.
+  // Results should remain a historical record of how the auction concluded.
+  const resultRows = await db
+    .select({
+      teamId: teamsTable.id,
+      teamName: teamsTable.name,
+      bidAmount: teamSeasonAuctionsTable.bidAmount,
+      winnerName: biddersTable.name,
+      draftOrder: teamResultsTable.draftOrder,
+    })
+    .from(teamSeasonAuctionsTable)
+    .innerJoin(teamsTable, eq(teamSeasonAuctionsTable.teamId, teamsTable.id))
+    .innerJoin(
+      teamBiddersTable,
+      and(
+        eq(teamBiddersTable.teamId, teamSeasonAuctionsTable.teamId),
+        eq(teamBiddersTable.seasonId, teamSeasonAuctionsTable.seasonId),
+      ),
+    )
+    .innerJoin(biddersTable, eq(teamBiddersTable.bidderId, biddersTable.id))
+    .leftJoin(
+      teamResultsTable,
+      and(
+        eq(teamResultsTable.teamId, teamSeasonAuctionsTable.teamId),
+        eq(teamResultsTable.seasonId, teamSeasonAuctionsTable.seasonId),
+      ),
+    )
+    .where(eq(teamSeasonAuctionsTable.seasonId, seasonId));
 
-  // Load effective ownership (applies approved trades)
-  const ownership = await loadSeasonOwnership(seasonId);
-
-  // Only fetch bidder names for actual season participants
-  const participantBidderIds = Array.from(ownership.participantIds);
-  if (participantBidderIds.length === 0) {
-    res.json({
-      potSize: Math.round(potSize * 100) / 100,
-      teamsAuctioned,
-      nominationsLeft: 32 - teamsAuctioned,
-      avgBidPerTeam: Math.round(avgBidPerTeam * 100) / 100,
-      standings: [],
-      conferenceBreakdown,
-    });
-    return;
-  }
-
-  const bidderRows = await db
-    .select({ id: biddersTable.id, name: biddersTable.name })
-    .from(biddersTable);
-  const bidderNameMap = new Map(bidderRows.map((b) => [b.id, b.name]));
-
-  // Build standings only for season participants using effective ownership
-  type StandingEntry = {
-    bidderId: number;
-    bidderName: string;
-    totalPaid: number;   // original auction cost × originalShare + tradePaid − tradeReceived
-    teamCount: number;   // sum of effectiveShares
-  };
-
-  const standingMap = new Map<number, StandingEntry>();
-  for (const bidderId of ownership.participantIds) {
-    const name = bidderNameMap.get(bidderId) ?? ownership.bidderNames.get(bidderId) ?? "Unknown";
-    standingMap.set(bidderId, { bidderId, bidderName: name, totalPaid: 0, teamCount: 0 });
-  }
-
-  for (const [bidderId, teamMap] of ownership.byBidder) {
-    // Only include participants
-    if (!ownership.participantIds.has(bidderId)) continue;
-    const standing = standingMap.get(bidderId);
-    if (!standing) continue;
-
-    for (const [teamId, entry] of teamMap) {
-      const auctionPrice = auctionPriceMap.get(teamId) ?? 0;
-      // Economic cost: original cost basis + trade buys - trade sells
-      const originalCost = auctionPrice * entry.originalShare;
-      standing.totalPaid += originalCost + entry.tradePaid - entry.tradeReceived;
-      // Team count: effective fractional ownership
-      if (entry.effectiveShare > 0.00005) {
-        standing.teamCount += entry.effectiveShare;
-      }
-    }
-  }
-
-  const standings = Array.from(standingMap.values())
-    .filter((s) => s.teamCount > 0.00005 || s.totalPaid !== 0)
-    .map((s) => ({
-      bidderId: s.bidderId,
-      bidderName: s.bidderName,
-      totalPaid: Math.round(s.totalPaid * 100) / 100,
-      teamCount: Math.round(s.teamCount * 10) / 10,
-      percentOfPot: potSize > 0 ? Math.round((s.totalPaid / potSize) * 10000) / 100 : 0,
+  const auctionResults = resultRows
+    .map((result) => ({
+      teamId: result.teamId,
+      teamName: result.teamName,
+      winnerName: result.winnerName,
+      bidAmount: Math.round(parseFloat(result.bidAmount) * 100) / 100,
+      draftOrder: result.draftOrder,
     }))
-    .sort((a, b) => b.totalPaid - a.totalPaid);
+    .sort(
+      (a, b) =>
+        (a.draftOrder ?? Number.MAX_SAFE_INTEGER) -
+          (b.draftOrder ?? Number.MAX_SAFE_INTEGER) ||
+        a.teamName.localeCompare(b.teamName),
+    );
+
+  const mostExpensive = auctionRows.reduce<typeof auctionRows[number] | null>(
+    (highest, row) =>
+      !highest || parseFloat(row.bidAmount) > parseFloat(highest.bidAmount)
+        ? row
+        : highest,
+    null,
+  );
 
   res.json({
     potSize: Math.round(potSize * 100) / 100,
     teamsAuctioned,
-    nominationsLeft: 32 - teamsAuctioned,
     avgBidPerTeam: Math.round(avgBidPerTeam * 100) / 100,
-    standings,
+    mostExpensiveTeam: mostExpensive
+      ? {
+          name: mostExpensive.teamName,
+          bidAmount: Math.round(parseFloat(mostExpensive.bidAmount) * 100) / 100,
+        }
+      : null,
+    auctionResults,
     conferenceBreakdown,
   });
 });

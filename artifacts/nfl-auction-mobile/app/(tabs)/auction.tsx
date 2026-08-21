@@ -21,7 +21,7 @@ import {
   ScreenHeader,
   SeasonToggle,
 } from '@/components/ui';
-import { fmtMoney, fmtPct } from '@/lib/format';
+import { fmtMoney } from '@/lib/format';
 
 // ── Stat tile ─────────────────────────────────────────────────────────────────
 
@@ -53,83 +53,48 @@ function StatTile({
   );
 }
 
-// ── Standing row ──────────────────────────────────────────────────────────────
+// ── Auction result row ─────────────────────────────────────────────────────────
 
-function StandingRow({
-  standing,
-  rank,
-  potSize,
+function AuctionResultRow({
+  result,
 }: {
-  standing: { bidderId: number; bidderName: string; totalPaid: number; teamCount: number; percentOfPot: number };
-  rank: number;
-  potSize: number;
+  result: {
+    teamId: number;
+    teamName: string;
+    winnerName: string;
+    bidAmount: number;
+    draftOrder: number | null;
+  };
 }) {
   const colors = useColors();
-  const isLeader = rank === 1 && standing.totalPaid > 0;
-  const barWidth = potSize > 0 ? (standing.totalPaid / potSize) * 100 : 0;
 
   return (
     <View
       style={[
-        styles.standingRow,
+        styles.resultRow,
         {
           borderBottomColor: colors.border,
-          backgroundColor: isLeader ? colors.gold + '18' : 'transparent',
         },
       ]}
     >
-      <View style={styles.standingLeft}>
-        <View style={[styles.rankBox, isLeader && { backgroundColor: colors.gold }]}>
-          <Text
-            style={[
-              styles.rankText,
-              { color: isLeader ? '#171717' : colors.mutedForeground },
-            ]}
-          >
-            {rank}
+      <View style={[styles.orderBox, { backgroundColor: colors.muted }]}>
+        <Text style={[styles.orderText, { color: colors.foreground }]}>
+          {result.draftOrder ?? '—'}
+        </Text>
+      </View>
+      <View style={styles.resultDetails}>
+        <View style={styles.resultNameRow}>
+          <Text style={[styles.resultTeam, { color: colors.foreground }]} numberOfLines={1}>
+            {result.teamName}
+          </Text>
+          <Text style={[styles.resultBid, { color: colors.foreground }]}>
+            {fmtMoney(result.bidAmount)}
           </Text>
         </View>
-        <View style={{ flex: 1 }}>
-          <View style={styles.standingNameRow}>
-            {isLeader && (
-              <Feather name="award" size={13} color={colors.gold} style={{ marginRight: 4 }} />
-            )}
-            <Text
-              style={[styles.standingName, { color: colors.foreground }]}
-              numberOfLines={1}
-            >
-              {standing.bidderName}
-            </Text>
-          </View>
-          <View style={styles.standingMeta}>
-            <Text style={[styles.standingMetaText, { color: colors.mutedForeground }]}>
-              {standing.teamCount} {standing.teamCount === 1 ? 'team' : 'teams'}
-            </Text>
-            <View
-              style={[
-                styles.bar,
-                { backgroundColor: colors.border },
-              ]}
-            >
-              <View
-                style={[
-                  styles.barFill,
-                  {
-                    backgroundColor: isLeader ? colors.gold : colors.primary,
-                    width: `${barWidth}%` as any,
-                  },
-                ]}
-              />
-            </View>
-            <Text style={[styles.standingMetaText, { color: colors.mutedForeground }]}>
-              {fmtPct(standing.percentOfPot)}
-            </Text>
-          </View>
-        </View>
+        <Text style={[styles.resultWinner, { color: colors.mutedForeground }]} numberOfLines={1}>
+          Winner: {result.winnerName}
+        </Text>
       </View>
-      <Text style={[styles.standingValue, { color: colors.foreground }]}>
-        {fmtMoney(standing.totalPaid)}
-      </Text>
     </View>
   );
 }
@@ -257,14 +222,14 @@ export default function AuctionScreen() {
 
   if (query.isLoading) return (
     <View style={{ flex: 1, backgroundColor: colors.background }}>
-      <ScreenHeader title="Auction" subtitle={`${season} Auction Board`} right={<SeasonToggle />} />
+      <ScreenHeader title="Auction" subtitle={`${season} Auction Results`} right={<SeasonToggle />} />
       <LoadingState />
     </View>
   );
 
   if (query.error) return (
     <View style={{ flex: 1, backgroundColor: colors.background }}>
-      <ScreenHeader title="Auction" subtitle={`${season} Auction Board`} right={<SeasonToggle />} />
+      <ScreenHeader title="Auction" subtitle={`${season} Auction Results`} right={<SeasonToggle />} />
       <ErrorState onRetry={() => query.refetch()} />
     </View>
   );
@@ -276,7 +241,7 @@ export default function AuctionScreen() {
     <View style={{ flex: 1, backgroundColor: colors.background }}>
       <ScreenHeader
         title="Auction"
-        subtitle={`${season} Auction Board`}
+        subtitle={`${season} Auction Results`}
         right={<SeasonToggle />}
       />
 
@@ -414,26 +379,28 @@ export default function AuctionScreen() {
         >
           {/* Stat tiles */}
           <View style={styles.tilesGrid}>
-            <StatTile label="Total Pot" value={fmtMoney(summary!.potSize)} icon="award" />
+            <StatTile label="Total Pot" value={fmtMoney(summary!.potSize)} icon="dollar-sign" />
             <StatTile label="Avg Bid" value={fmtMoney(summary!.avgBidPerTeam)} icon="dollar-sign" />
-            <StatTile label="Auctioned" value={`${summary!.teamsAuctioned}/32`} icon="activity" />
-            <StatTile label="Remaining" value={String(summary!.nominationsLeft)} icon="trending-up" />
+            <StatTile
+              label="Most Expensive"
+              value={summary!.mostExpensiveTeam
+                ? `${summary!.mostExpensiveTeam.name} · ${fmtMoney(summary!.mostExpensiveTeam.bidAmount)}`
+                : '—'}
+              icon="file-text"
+            />
           </View>
 
-          {/* Standings */}
-          <Text style={[styles.sectionTitle, { color: colors.foreground }]}>Standings</Text>
+          <Text style={[styles.sectionTitle, { color: colors.foreground }]}>Auction Results</Text>
           <View style={[styles.table, { borderColor: colors.border, backgroundColor: colors.card }]}>
-            {(summary!.standings).length === 0 ? (
+            {summary!.auctionResults.length === 0 ? (
               <Text style={[styles.emptyText, { color: colors.mutedForeground }]}>
-                No active bidders yet.
+                No auction results for {season} yet.
               </Text>
             ) : (
-              summary!.standings.map((s, i) => (
-                <StandingRow
-                  key={s.bidderId}
-                  standing={s}
-                  rank={i + 1}
-                  potSize={summary!.potSize}
+              summary!.auctionResults.map((result) => (
+                <AuctionResultRow
+                  key={result.teamId}
+                  result={result}
                 />
               ))
             )}
@@ -566,7 +533,7 @@ const styles = StyleSheet.create({
     marginBottom: 20,
     overflow: 'hidden',
   },
-  standingRow: {
+  resultRow: {
     flexDirection: 'row',
     alignItems: 'center',
     paddingHorizontal: 12,
@@ -574,54 +541,38 @@ const styles = StyleSheet.create({
     borderBottomWidth: StyleSheet.hairlineWidth,
     gap: 10,
   },
-  standingLeft: {
-    flex: 1,
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: 10,
-    minWidth: 0,
-  },
-  rankBox: {
+  orderBox: {
     width: 26,
     height: 26,
     alignItems: 'center',
     justifyContent: 'center',
     flexShrink: 0,
   },
-  rankText: {
+  orderText: {
     fontSize: 12,
     fontFamily: 'Inter_700Bold',
   },
-  standingNameRow: {
+  resultDetails: {
+    flex: 1,
+    minWidth: 0,
+  },
+  resultNameRow: {
     flexDirection: 'row',
     alignItems: 'center',
+    justifyContent: 'space-between',
+    gap: 8,
   },
-  standingName: {
+  resultTeam: {
     fontSize: 15,
     fontFamily: 'Inter_600SemiBold',
     flexShrink: 1,
   },
-  standingMeta: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: 6,
-    marginTop: 3,
-  },
-  standingMetaText: {
+  resultWinner: {
     fontSize: 11,
     fontFamily: 'Inter_400Regular',
+    marginTop: 3,
   },
-  bar: {
-    flex: 1,
-    height: 4,
-    borderRadius: 2,
-    overflow: 'hidden',
-  },
-  barFill: {
-    height: 4,
-    borderRadius: 2,
-  },
-  standingValue: {
+  resultBid: {
     fontSize: 15,
     fontFamily: 'Inter_700Bold',
     flexShrink: 0,

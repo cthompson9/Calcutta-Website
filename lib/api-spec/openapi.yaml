@@ -1467,14 +1467,16 @@ components:
           type: number
         teamsAuctioned:
           type: number
-        nominationsLeft:
-          type: number
         avgBidPerTeam:
           type: number
-        standings:
+        mostExpensiveTeam:
+          nullable: true
+          allOf:
+            - $ref: "#/components/schemas/MostExpensiveTeam"
+        auctionResults:
           type: array
           items:
-            $ref: "#/components/schemas/BidderStanding"
+            $ref: "#/components/schemas/AuctionResult"
         conferenceBreakdown:
           type: array
           items:
@@ -1482,25 +1484,35 @@ components:
       required:
         - potSize
         - teamsAuctioned
-        - nominationsLeft
         - avgBidPerTeam
-        - standings
+        - mostExpensiveTeam
+        - auctionResults
         - conferenceBreakdown
 
-    BidderStanding:
+    MostExpensiveTeam:
       type: object
       properties:
-        bidderId:
-          type: number
-        bidderName:
+        name:
           type: string
-        totalPaid:
+        bidAmount:
           type: number
-        teamCount:
+      required: [name, bidAmount]
+
+    AuctionResult:
+      type: object
+      properties:
+        teamId:
           type: number
-        percentOfPot:
+        teamName:
+          type: string
+        winnerName:
+          type: string
+        bidAmount:
           type: number
-      required: [bidderId, bidderName, totalPaid, teamCount, percentOfPot]
+        draftOrder:
+          type: number
+          nullable: true
+      required: [teamId, teamName, winnerName, bidAmount, draftOrder]
 
     ConferenceBreakdown:
       type: object
