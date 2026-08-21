@@ -1,11 +1,140 @@
-import { useGetAuctionSummary } from "@workspace/api-client-react";
+import { useState } from "react";
+import {
+  useGetAuctionSummary,
+  importDraftOrder,
+  getGetAuctionSummaryQueryKey,
+} from "@workspace/api-client-react";
 import { formatCurrency, formatPercentage } from "@/lib/utils";
-import { Trophy, TrendingUp, DollarSign, Activity } from "lucide-react";
+import { Trophy, TrendingUp, DollarSign, Activity, Download, Lock, Unlock, Loader2 } from "lucide-react";
 import { useSeason } from "@/hooks/useSeason";
+import { useQueryClient } from "@tanstack/react-query";
+import {
+  AlertDialog,
+  AlertDialogAction,
+  AlertDialogCancel,
+  AlertDialogContent,
+  AlertDialogDescription,
+  AlertDialogFooter,
+  AlertDialogHeader,
+  AlertDialogTitle,
+} from "@/components/ui/alert-dialog";
+
+// ── Admin key panel (reused from Trades pattern) ──────────────────────────────
+
+function AdminPanel({
+  adminKey,
+  onSetKey,
+  onClearKey,
+}: {
+  adminKey: string | null;
+  onSetKey: (k: string) => void;
+  onClearKey: () => void;
+}) {
+  const [expanded, setExpanded] = useState(false);
+  const [input, setInput] = useState("");
+
+  function handleUnlock() {
+    if (!input.trim()) return;
+    onSetKey(input.trim());
+    setInput("");
+    setExpanded(false);
+  }
+
+  if (adminKey) {
+    return (
+      <button
+        onClick={onClearKey}
+        className="flex items-center gap-1.5 px-3 py-1.5 border border-green-600 text-green-700 text-xs font-mono font-bold uppercase tracking-widest hover:bg-green-50 transition-colors"
+        title="Admin mode active — click to lock"
+      >
+        <Unlock className="w-3 h-3" /> Admin Active
+      </button>
+    );
+  }
+
+  return (
+    <div className="relative">
+      <button
+        onClick={() => setExpanded((v) => !v)}
+        className="flex items-center gap-1.5 px-3 py-1.5 border border-border text-muted-foreground text-xs font-mono font-bold uppercase tracking-widest hover:bg-muted transition-colors"
+        title="Enter admin key to pull draft results"
+      >
+        <Lock className="w-3 h-3" /> Admin
+      </button>
+      {expanded && (
+        <div className="absolute right-0 top-full mt-1 z-50 bg-background border border-border p-3 w-64 space-y-2 shadow-lg">
+          <p className="text-xs font-mono text-muted-foreground">
+            Enter your admin key to enable draft-result imports.
+          </p>
+          <input
+            type="password"
+            value={input}
+            onChange={(e) => setInput(e.target.value)}
+            onKeyDown={(e) => { if (e.key === "Enter") handleUnlock(); }}
+            placeholder="Admin key…"
+            className="w-full border border-border bg-background px-2 py-1.5 text-sm font-mono"
+            autoFocus
+          />
+          <button
+            onClick={handleUnlock}
+            disabled={!input.trim()}
+            className="w-full bg-primary text-primary-foreground text-xs font-mono font-bold uppercase tracking-widest py-1.5 hover:bg-primary/90 disabled:opacity-50 transition-colors"
+          >
+            Unlock
+          </button>
+        </div>
+      )}
+    </div>
+  );
+}
+
+// ── Page ──────────────────────────────────────────────────────────────────────
 
 export default function Dashboard() {
   const { year } = useSeason();
-  const { data: summary, isLoading: loadingSummary } = useGetAuctionSummary({ season: year });
+  const queryClient = useQueryClient();
+  const { data: summary, isLoading: loadingSummary, refetch } = useGetAuctionSummary({ season: year });
+
+  const [adminKey, setAdminKey] = useState<string | null>(
+    () => sessionStorage.getItem("nfl_admin_key"),
+  );
+  const [confirmOpen, setConfirmOpen] = useState(false);
+  const [importing, setImporting] = useState(false);
+  const [importResult, setImportResult] = useState<{ ok: true; msg: string } | { ok: false; msg: string } | null>(null);
+
+  function saveAdminKey(key: string) {
+    sessionStorage.setItem("nfl_admin_key", key);
+    setAdminKey(key);
+  }
+  function clearAdminKey() {
+    sessionStorage.removeItem("nfl_admin_key");
+    setAdminKey(null);
+  }
+
+  async function runImport() {
+    if (!adminKey) return;
+    setImporting(true);
+    setImportResult(null);
+    try {
+      const result = await importDraftOrder(
+        { seasonYear: year },
+        { headers: { Authorization: `Bearer ${adminKey}` } },
+      );
+      setImportResult({
+        ok: true,
+        msg: `Imported ${result.importedTeams} teams for ${result.seasonYear} from ${result.source}.`,
+      });
+      await refetch();
+      queryClient.invalidateQueries({ queryKey: getGetAuctionSummaryQueryKey() });
+    } catch (err) {
+      setImportResult({
+        ok: false,
+        msg: err instanceof Error ? err.message : "Import failed.",
+      });
+    } finally {
+      setImporting(false);
+    }
+  }
 
   if (loadingSummary) {
     return (
@@ -23,12 +152,42 @@ export default function Dashboard() {
 
   return (
     <div className="p-4 md:p-8 space-y-8 max-w-7xl mx-auto">
-      <header>
-        <h1 className="text-3xl md:text-5xl font-extrabold uppercase tracking-tighter mb-2">Auction Board</h1>
-        <p className="text-muted-foreground font-mono text-sm uppercase tracking-widest">
-          {year} auction standings & stats
-        </p>
+      <header className="flex flex-col md:flex-row md:items-end justify-between gap-4">
+        <div>
+          <h1 className="text-3xl md:text-5xl font-extrabold uppercase tracking-tighter mb-2">Auction Board</h1>
+          <p className="text-muted-foreground font-mono text-sm uppercase tracking-widest">
+            {year} auction standings & stats
+          </p>
+        </div>
+
+        {/* Admin controls */}
+        <div className="flex items-center gap-3 flex-wrap">
+          <AdminPanel adminKey={adminKey} onSetKey={saveAdminKey} onClearKey={clearAdminKey} />
+          {adminKey && (
+            <button
+              onClick={() => { setImportResult(null); setConfirmOpen(true); }}
+              disabled={importing}
+              className="flex items-center gap-2 px-4 py-2 bg-primary text-primary-foreground font-mono font-bold uppercase tracking-widest text-xs hover:bg-primary/90 disabled:opacity-60 transition-colors h-9"
+            >
+              {importing
+                ? <><Loader2 className="w-3.5 h-3.5 animate-spin" /> Importing…</>
+                : <><Download className="w-3.5 h-3.5" /> Pull {year} Results</>
+              }
+            </button>
+          )}
+        </div>
       </header>
+
+      {/* Import feedback */}
+      {importResult && (
+        <div className={`border px-4 py-2 text-xs font-mono ${
+          importResult.ok
+            ? "border-green-300 bg-green-50 text-green-800"
+            : "border-destructive/40 bg-destructive/5 text-destructive"
+        }`}>
+          {importResult.ok ? "✓ " : "✗ "}{importResult.msg}
+        </div>
+      )}
 
       {/* Headline Stats */}
       <div className="grid grid-cols-2 md:grid-cols-4 gap-0 border border-border bg-card">
@@ -55,8 +214,8 @@ export default function Dashboard() {
             {summary.standings.map((standing, index) => {
               const isLeader = index === 0 && standing.totalPaid > 0;
               return (
-                <div 
-                  key={standing.bidderId} 
+                <div
+                  key={standing.bidderId}
                   className={`grid grid-cols-12 items-center px-4 py-4 border-b border-border last:border-0 hover:bg-muted/50 transition-colors ${
                     isLeader ? "bg-gold/10" : ""
                   }`}
@@ -97,8 +256,8 @@ export default function Dashboard() {
             {summary.conferenceBreakdown.map((conf) => {
               const isAFC = conf.conference === "AFC";
               return (
-                <div 
-                  key={conf.conference} 
+                <div
+                  key={conf.conference}
                   className={`border border-border p-5 relative overflow-hidden bg-card ${
                     isAFC ? "border-t-4 border-t-afc" : "border-t-4 border-t-nfc"
                   }`}
@@ -112,7 +271,7 @@ export default function Dashboard() {
                       <div className="text-xl font-mono font-bold">{formatCurrency(conf.totalSpent)}</div>
                     </div>
                   </div>
-                  
+
                   <div className="grid grid-cols-2 gap-4 border-t border-border pt-4 mt-2">
                     <div>
                       <div className="text-[10px] font-mono font-bold text-muted-foreground uppercase tracking-widest">Teams</div>
@@ -136,11 +295,44 @@ export default function Dashboard() {
           </div>
         </div>
       </div>
+
+      {/* Confirmation dialog */}
+      <AlertDialog open={confirmOpen} onOpenChange={setConfirmOpen}>
+        <AlertDialogContent className="rounded-none border-border max-w-md">
+          <AlertDialogHeader>
+            <AlertDialogTitle className="font-mono uppercase tracking-widest">
+              Overwrite {year} Auction Data?
+            </AlertDialogTitle>
+            <AlertDialogDescription className="font-mono text-sm space-y-2 pt-1">
+              <span className="block">
+                This will pull live results from AuctionPro and <strong>permanently replace</strong> all
+                {" "}{year} auction data — all 32 teams, prices, and primary ownership.
+              </span>
+              {year >= new Date().getFullYear() && (
+                <span className="block text-destructive font-semibold">
+                  ⚠ {year} is the live season. This cannot be undone.
+                </span>
+              )}
+            </AlertDialogDescription>
+          </AlertDialogHeader>
+          <AlertDialogFooter className="gap-2">
+            <AlertDialogCancel className="rounded-none font-mono uppercase tracking-widest">
+              Cancel
+            </AlertDialogCancel>
+            <AlertDialogAction
+              className="rounded-none font-mono uppercase tracking-widest bg-destructive text-destructive-foreground hover:bg-destructive/90"
+              onClick={runImport}
+            >
+              Yes, Pull Results
+            </AlertDialogAction>
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
     </div>
   );
 }
 
-function StatCard({ title, value, icon: Icon, className }: { title: string, value: string, icon: any, className?: string }) {
+function StatCard({ title, value, icon: Icon, className }: { title: string; value: string; icon: any; className?: string }) {
   return (
     <div className={`p-6 flex flex-col gap-2 ${className}`}>
       <div className="flex items-center justify-between text-muted-foreground">
