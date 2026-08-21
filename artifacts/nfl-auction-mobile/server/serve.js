@@ -134,6 +134,13 @@ const server = http.createServer((req, res) => {
     pathname = pathname.slice(basePath.length) || '/';
   }
 
+  // Health check endpoint used by the deployment system (ensurePreviewReachable).
+  if (pathname === '/status') {
+    res.writeHead(200, { 'content-type': 'application/json' });
+    res.end(JSON.stringify({ ok: true }));
+    return;
+  }
+
   if (pathname === '/' || pathname === '/manifest') {
     const platform = req.headers['expo-platform'];
     if (platform === 'ios' || platform === 'android') {
