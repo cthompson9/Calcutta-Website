@@ -87,6 +87,20 @@ export default function Bidders() {
                     </div>
                     <div>
                       <h3 className="font-bold text-lg leading-none mb-1">{bidder.name}</h3>
+                      <div className="flex items-center gap-2 mb-1">
+                        <span className="text-[10px] font-mono uppercase tracking-widest text-muted-foreground">
+                          Consortium
+                        </span>
+                        <span
+                          className={
+                            bidder.consortium
+                              ? "text-xs font-mono font-bold uppercase tracking-wide bg-accent text-accent-foreground px-1.5 py-0.5 border border-border"
+                              : "text-xs font-mono text-muted-foreground uppercase tracking-wide"
+                          }
+                        >
+                          {bidder.consortium ?? "Unassigned"}
+                        </span>
+                      </div>
                       <div className="text-xs font-mono text-muted-foreground uppercase tracking-widest">
                         {bidder.teamCount} Teams
                       </div>

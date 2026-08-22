@@ -202,6 +202,11 @@ export interface TeamResultRow {
 export interface OwnerResultRow {
   bidderId: number;
   bidderName: string;
+  /**
+     * Consortium assigned to this bidder, if any.
+     * @nullable
+     */
+  consortium: string | null;
   teamCount: number;
   totalCost: number;
   totalRealizedReturn: number;
@@ -632,4 +637,3 @@ export type GetAuctionSummaryParams = {
  */
 season: number;
 };
-

@@ -124,6 +124,15 @@ function OwnerCard({
             <Text style={[styles.ownerName, { color: colors.foreground }]}>
               {owner.bidderName}
             </Text>
+            <Text
+              style={[
+                styles.ownerConsortium,
+                { color: owner.consortium ? colors.foreground : colors.mutedForeground },
+              ]}
+              numberOfLines={1}
+            >
+              {owner.consortium ? `Consortium · ${owner.consortium}` : 'Unassigned'}
+            </Text>
             <Text style={[styles.ownerMeta, { color: colors.mutedForeground }]}>
               {owner.teamCount} {owner.teamCount === 1 ? 'team' : 'teams'} ·{' '}
               {fmtMoney(owner.totalCost)} invested
@@ -441,6 +450,11 @@ const styles = StyleSheet.create({
   ownerName: {
     fontSize: 16,
     fontFamily: 'Inter_600SemiBold',
+  },
+  ownerConsortium: {
+    fontSize: 11,
+    fontFamily: 'Inter_500Medium',
+    marginTop: 3,
   },
   ownerMeta: {
     fontSize: 12,

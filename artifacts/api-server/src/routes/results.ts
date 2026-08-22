@@ -9,6 +9,7 @@ import {
   teamSeasonAuctionsTable,
   seasonsTable,
   tradesTable,
+  consortiaTable,
   explicitRecordFromStoredValues,
 } from "@workspace/db";
 import {
@@ -323,7 +324,14 @@ router.get("/results/by-owner", async (req, res): Promise<void> => {
   }
 
   const allTeams = await db.select().from(teamsTable);
-  const allBidders = await db.select().from(biddersTable);
+  const allBidders = await db
+    .select({
+      id: biddersTable.id,
+      name: biddersTable.name,
+      consortium: consortiaTable.name,
+    })
+    .from(biddersTable)
+    .leftJoin(consortiaTable, eq(biddersTable.consortiumId, consortiaTable.id));
 
   const resultsMap = new Map<number, typeof teamResultsTable.$inferSelect>();
   const seasonResults = await db
@@ -349,11 +357,15 @@ router.get("/results/by-owner", async (req, res): Promise<void> => {
 
   const teamMap = new Map(allTeams.map((t) => [t.id, t]));
   const bidderNameMap = new Map(allBidders.map((b) => [b.id, b.name]));
+  const bidderConsortiumMap = new Map(
+    allBidders.map((b) => [b.id, b.consortium]),
+  );
 
   // ── Aggregate per owner ──────────────────────────────────────────────────
   type OwnerAgg = {
     bidderId: number;
     bidderName: string;
+    consortium: string | null;
     teamCount: number;
     totalCost: number;
     totalRealizedReturn: number;
@@ -373,6 +385,7 @@ router.get("/results/by-owner", async (req, res): Promise<void> => {
     ownerAggMap.set(bidderId, {
       bidderId,
       bidderName: name,
+      consortium: bidderConsortiumMap.get(bidderId) ?? null,
       teamCount: 0,
       totalCost: 0,
       totalRealizedReturn: 0,

@@ -10,6 +10,11 @@ import type { TeamResultRow } from './teamResultRow';
 export interface OwnerResultRow {
   bidderId: number;
   bidderName: string;
+  /**
+     * Consortium assigned to this bidder, if any.
+     * @nullable
+     */
+  consortium: string | null;
   teamCount: number;
   totalCost: number;
   totalRealizedReturn: number;

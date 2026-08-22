@@ -1037,6 +1037,9 @@ components:
           type: number
         bidderName:
           type: string
+        consortium:
+          type: ["string", "null"]
+          description: Consortium assigned to this bidder, if any.
         teamCount:
           type: number
         totalCost:
@@ -1056,6 +1059,7 @@ components:
       required:
         - bidderId
         - bidderName
+        - consortium
         - teamCount
         - totalCost
         - totalRealizedReturn

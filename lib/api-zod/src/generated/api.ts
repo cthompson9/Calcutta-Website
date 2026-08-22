@@ -81,8 +81,6 @@ export const GetTeamsResponse = zod.array(GetTeamsResponseItem)
 export const createTeamBodyBidAmountMin = 0;
 
 
-
-
 export const CreateTeamBody = zod.object({
   "name": zod.string().min(1),
   "conference": zod.enum(['AFC', 'NFC']),
@@ -139,8 +137,6 @@ export const UpdateTeamParams = zod.object({
 
 
 export const updateTeamBodyBidAmountMin = 0;
-
-
 
 
 export const UpdateTeamBody = zod.object({
@@ -209,7 +205,6 @@ export const GetBiddersResponse = zod.array(GetBiddersResponseItem)
  */
 
 
-
 export const CreateBidderBody = zod.object({
   "name": zod.string().min(1)
 })
@@ -227,8 +222,6 @@ export const CreateBidderResponse = zod.object({
 export const UpdateBidderParams = zod.object({
   "id": zod.coerce.number()
 })
-
-
 
 
 export const UpdateBidderBody = zod.object({
@@ -303,6 +296,7 @@ export const GetResultsByOwnerQueryParams = zod.object({
 export const GetResultsByOwnerResponseItem = zod.object({
   "bidderId": zod.number(),
   "bidderName": zod.string(),
+  "consortium": zod.string().nullable().describe('Consortium assigned to this bidder, if any.'),
   "teamCount": zod.number(),
   "totalCost": zod.number(),
   "totalRealizedReturn": zod.number(),
@@ -350,7 +344,6 @@ export const upsertTeamResultBodyWinsMin = 0;
 export const upsertTeamResultBodyLossesMin = 0;
 
 export const upsertTeamResultBodyTiesMin = 0;
-
 
 
 export const UpsertTeamResultBody = zod.object({
@@ -732,5 +725,4 @@ export const ImportDraftOrderResponse = zod.object({
   "importedOwners": zod.number(),
   "source": zod.string()
 })
-
 
