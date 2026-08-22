@@ -171,11 +171,14 @@ function ByOwnerView({
               </div>
               <div className="col-span-2 md:col-span-3 min-w-0 font-bold">
                 <ConsortiumLabel
-                  label={ownerLabelById(
-                    row.bidderId,
-                    row.bidderName,
-                    consortiumByBidderId,
-                  )}
+                  label={
+                    row.consortium ??
+                    ownerLabelById(
+                      row.bidderId,
+                      row.bidderName,
+                      consortiumByBidderId,
+                    )
+                  }
                 />
               </div>
               <div className="col-span-1 text-center text-muted-foreground font-mono">
