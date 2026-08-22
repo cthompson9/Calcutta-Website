@@ -10,6 +10,11 @@ import type { TeamRef } from './teamRef';
 export interface BidderSummary {
   id: number;
   name: string;
+  /**
+     * Consortium assigned to this bidder, if any.
+     * @nullable
+     */
+  consortium: string | null;
   teamCount: number;
   totalPaid: number;
   teams: TeamRef[];

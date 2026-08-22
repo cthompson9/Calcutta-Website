@@ -9,4 +9,9 @@
 export interface Bidder {
   id: number;
   name: string;
+  /**
+     * Consortium assigned to this bidder, if any.
+     * @nullable
+     */
+  consortium: string | null;
 }

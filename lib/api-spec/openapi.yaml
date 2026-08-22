@@ -809,7 +809,10 @@ components:
           type: number
         name:
           type: string
-      required: [id, name]
+        consortium:
+          type: ["string", "null"]
+          description: Consortium assigned to this bidder, if any.
+      required: [id, name, consortium]
 
     BidderSummary:
       type: object
@@ -818,6 +821,9 @@ components:
           type: number
         name:
           type: string
+        consortium:
+          type: ["string", "null"]
+          description: Consortium assigned to this bidder, if any.
         teamCount:
           type: number
         totalPaid:
@@ -826,7 +832,7 @@ components:
           type: array
           items:
             $ref: "#/components/schemas/TeamRef"
-      required: [id, name, teamCount, totalPaid, teams]
+      required: [id, name, consortium, teamCount, totalPaid, teams]
 
     TeamRef:
       type: object

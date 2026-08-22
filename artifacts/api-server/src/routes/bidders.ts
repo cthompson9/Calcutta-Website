@@ -6,6 +6,7 @@ import {
   teamsTable,
   teamSeasonAuctionsTable,
   seasonsTable,
+  consortiaTable,
 } from "@workspace/db";
 import {
   GetBiddersQueryParams,
@@ -25,6 +26,20 @@ async function resolveSeasonId(year: number): Promise<number | null> {
     .where(eq(seasonsTable.year, year))
     .limit(1);
   return rows[0]?.id ?? null;
+}
+
+async function getBidderResponse(id: number) {
+  const rows = await db
+    .select({
+      id: biddersTable.id,
+      name: biddersTable.name,
+      consortium: consortiaTable.name,
+    })
+    .from(biddersTable)
+    .leftJoin(consortiaTable, eq(biddersTable.consortiumId, consortiaTable.id))
+    .where(eq(biddersTable.id, id))
+    .limit(1);
+  return rows[0] ?? null;
 }
 
 router.get("/bidders", async (req, res): Promise<void> => {
@@ -67,8 +82,13 @@ router.get("/bidders", async (req, res): Promise<void> => {
     // Fetch bidder name rows for all participants
     const participantIdArr = Array.from(ownership.participantIds);
     const bidderRows = await db
-      .select()
+      .select({
+        id: biddersTable.id,
+        name: biddersTable.name,
+        consortium: consortiaTable.name,
+      })
       .from(biddersTable)
+      .leftJoin(consortiaTable, eq(biddersTable.consortiumId, consortiaTable.id))
       .where(inArray(biddersTable.id, participantIdArr))
       .orderBy(biddersTable.name);
 
@@ -120,6 +140,7 @@ router.get("/bidders", async (req, res): Promise<void> => {
       return {
         id: bidder.id,
         name: bidder.name,
+        consortium: bidder.consortium,
         teamCount: Math.round(teamCount * 10) / 10,
         totalPaid: Math.round(totalPaid * 100) / 100,
         teams: teamsList,
@@ -133,11 +154,20 @@ router.get("/bidders", async (req, res): Promise<void> => {
   // ── No season: global identity directory ─────────────────────────────────
   // Return ALL bidders with zero/empty financial fields.
   // Used for selecting new secondary buyers before a season is underway.
-  const bidders = await db.select().from(biddersTable).orderBy(biddersTable.name);
+  const bidders = await db
+    .select({
+      id: biddersTable.id,
+      name: biddersTable.name,
+      consortium: consortiaTable.name,
+    })
+    .from(biddersTable)
+    .leftJoin(consortiaTable, eq(biddersTable.consortiumId, consortiaTable.id))
+    .orderBy(biddersTable.name);
 
   const results = bidders.map((bidder) => ({
     id: bidder.id,
     name: bidder.name,
+    consortium: bidder.consortium,
     teamCount: 0,
     totalPaid: 0,
     teams: [] as Array<{
@@ -165,7 +195,7 @@ router.post("/bidders", async (req, res): Promise<void> => {
     .values({ name: parsed.data.name })
     .returning();
 
-  res.status(201).json(bidder);
+  res.status(201).json(await getBidderResponse(bidder.id));
 });
 
 router.patch("/bidders/:id", async (req, res): Promise<void> => {
@@ -192,7 +222,7 @@ router.patch("/bidders/:id", async (req, res): Promise<void> => {
     return;
   }
 
-  res.json(bidder);
+  res.json(await getBidderResponse(bidder.id));
 });
 
 router.delete("/bidders/:id", async (req, res): Promise<void> => {

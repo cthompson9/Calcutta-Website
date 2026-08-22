@@ -8,3 +8,4 @@
 - [Auction results history](auction-results-history.md) — auction result rows preserve the original winner and nomination order, not post-trade ownership.
 - [Short position semantics](short-position-semantics.md) — approved trades may create signed shorts; only positive stakes are current owners while position reports remain signed.
 - [New York timezone](new-york-timezone.md) — pool calendar defaults and visible timestamps use America/New_York, never UTC or a viewer’s local timezone.
+- [Consortium identity](consortium-identity.md) — consortium names are shared global identities; capitalization and repeated spaces never create a different group.

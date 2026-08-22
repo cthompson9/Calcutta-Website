@@ -31,6 +31,11 @@ export interface SeasonInput {
 export interface Bidder {
   id: number;
   name: string;
+  /**
+     * Consortium assigned to this bidder, if any.
+     * @nullable
+     */
+  consortium: string | null;
 }
 
 export interface TeamRef {
@@ -45,6 +50,11 @@ export interface TeamRef {
 export interface BidderSummary {
   id: number;
   name: string;
+  /**
+     * Consortium assigned to this bidder, if any.
+     * @nullable
+     */
+  consortium: string | null;
   teamCount: number;
   totalPaid: number;
   teams: TeamRef[];

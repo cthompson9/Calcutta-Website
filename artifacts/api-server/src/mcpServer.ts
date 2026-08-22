@@ -20,6 +20,7 @@ import {
   mtmSnapshotsTable,
   teamBiddersTable,
   ownershipAdjustmentsTable,
+  consortiaTable,
 } from "@workspace/db";
 import type { Router, IRouter, Request, Response } from "express";
 import { Router as ExpressRouter } from "express";
@@ -413,6 +414,101 @@ function buildMcpServer() {
       if (!sid) return text(null);
       const agg = await getOwnerAgg(b.id, sid);
       return text(Math.round(agg.totalMtm * 100) / 100);
+    },
+  );
+
+  // ── Bidder consortium tools ───────────────────────────────────────────────
+
+  server.tool(
+    "get_bidder_consortium",
+    "Returns the consortium assigned to a bidder, or null when the bidder has not been assigned to one.",
+    {
+      bidder: z.string().describe("Full or partial bidder name, e.g. 'Zachary Long'"),
+    },
+    async ({ bidder }) => {
+      const rows = await db
+        .select({
+          id: biddersTable.id,
+          name: biddersTable.name,
+          consortium: consortiaTable.name,
+        })
+        .from(biddersTable)
+        .leftJoin(consortiaTable, eq(biddersTable.consortiumId, consortiaTable.id));
+      const match = resolveUniqueName(rows, bidder, "Bidder");
+      if ("error" in match) return text(`Error: ${match.error}`);
+      return text(match.consortium);
+    },
+  );
+
+  server.tool(
+    "set_bidder_consortium",
+    "Assign or clear a bidder's consortium. Provide null or an empty string to clear the assignment. Consortium names are reused case-insensitively. Requires ADMIN_API_KEY.",
+    {
+      bidder: z.string().describe("Full or partial bidder name, e.g. 'Zachary Long'"),
+      consortium: z.string().max(200).nullable().describe("Consortium name to assign, or null/empty to clear the assignment"),
+      adminKey: z.string().describe("Admin API key — only the pool admin knows this"),
+    },
+    async ({ bidder, consortium, adminKey }) => {
+      const expectedKey = process.env["ADMIN_API_KEY"];
+      if (!expectedKey || adminKey !== expectedKey) {
+        return text("Error: Invalid admin key. Only the pool admin can set bidder consortiums.");
+      }
+
+      const bidders = await db
+        .select({ id: biddersTable.id, name: biddersTable.name })
+        .from(biddersTable);
+      const bidderMatch = resolveUniqueName(bidders, bidder, "Bidder");
+      if ("error" in bidderMatch) return text(`Error: ${bidderMatch.error}`);
+
+      const normalizedConsortium = consortium?.trim().replace(/\s+/g, " ") ?? "";
+      let consortiumId: number | null = null;
+      let consortiumName: string | null = null;
+
+      if (normalizedConsortium) {
+        const existing = await db
+          .select({ id: consortiaTable.id, name: consortiaTable.name })
+          .from(consortiaTable)
+          .where(sql`lower(${consortiaTable.name}) = lower(${normalizedConsortium})`)
+          .limit(1);
+
+        if (existing[0]) {
+          consortiumId = existing[0].id;
+          consortiumName = existing[0].name;
+        } else {
+          const [created] = await db
+            .insert(consortiaTable)
+            .values({ name: normalizedConsortium })
+            .onConflictDoNothing()
+            .returning({ id: consortiaTable.id, name: consortiaTable.name });
+
+          if (created) {
+            consortiumId = created.id;
+            consortiumName = created.name;
+          } else {
+            const afterConflict = await db
+              .select({ id: consortiaTable.id, name: consortiaTable.name })
+              .from(consortiaTable)
+              .where(sql`lower(${consortiaTable.name}) = lower(${normalizedConsortium})`)
+              .limit(1);
+            if (!afterConflict[0]) {
+              return text(`Error: Could not create consortium "${normalizedConsortium}".`);
+            }
+            consortiumId = afterConflict[0].id;
+            consortiumName = afterConflict[0].name;
+          }
+        }
+      }
+
+      await db
+        .update(biddersTable)
+        .set({ consortiumId })
+        .where(eq(biddersTable.id, bidderMatch.id));
+
+      return text(
+        consortiumName
+          ? `Consortium set: ${bidderMatch.name} → ${consortiumName}.`
+          : `Consortium cleared: ${bidderMatch.name}.`,
+      );
     },
   );
 

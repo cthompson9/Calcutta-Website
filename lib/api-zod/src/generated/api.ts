@@ -189,6 +189,7 @@ export const GetBiddersQueryParams = zod.object({
 export const GetBiddersResponseItem = zod.object({
   "id": zod.number(),
   "name": zod.string(),
+  "consortium": zod.string().nullable().describe('Consortium assigned to this bidder, if any.'),
   "teamCount": zod.number(),
   "totalPaid": zod.number(),
   "teams": zod.array(zod.object({
@@ -215,7 +216,8 @@ export const CreateBidderBody = zod.object({
 
 export const CreateBidderResponse = zod.object({
   "id": zod.number(),
-  "name": zod.string()
+  "name": zod.string(),
+  "consortium": zod.string().nullable().describe('Consortium assigned to this bidder, if any.')
 })
 
 
@@ -235,7 +237,8 @@ export const UpdateBidderBody = zod.object({
 
 export const UpdateBidderResponse = zod.object({
   "id": zod.number(),
-  "name": zod.string()
+  "name": zod.string(),
+  "consortium": zod.string().nullable().describe('Consortium assigned to this bidder, if any.')
 })
 
 

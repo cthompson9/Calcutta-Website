@@ -1,3 +1,4 @@
+export * from "./consortia";
 export * from "./bidders";
 export * from "./teams";
 export * from "./seasons";
