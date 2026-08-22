@@ -898,6 +898,31 @@ components:
           type: number
       required: [bidderId, bidderName, ownershipShare]
 
+    OwnershipSegment:
+      type: object
+      description: An original auction stake or one signed leg of an approved trade.
+      properties:
+        bidderId:
+          type: number
+        bidderName:
+          type: string
+        ownershipShare:
+          type: number
+          description: Signed fractional share. For example, 2 is 200% and -2 is a 200% sale.
+        source:
+          type: string
+          enum: [primary, trade]
+        tradeDirection:
+          type: string
+          enum: [acquired, sold]
+        tradeId:
+          type: number
+        counterpartyBidderId:
+          type: number
+        counterpartyBidderName:
+          type: string
+      required: [bidderId, bidderName, ownershipShare, source]
+
     TeamInput:
       type: object
       properties:
@@ -970,6 +995,10 @@ components:
           type: array
           items:
             $ref: "#/components/schemas/TeamOwner"
+        ownershipSegments:
+          type: array
+          items:
+            $ref: "#/components/schemas/OwnershipSegment"
         cost:
           type: number
         wins:
@@ -1013,6 +1042,7 @@ components:
         - conference
         - division
         - owners
+        - ownershipSegments
         - cost
         - wins
         - losses

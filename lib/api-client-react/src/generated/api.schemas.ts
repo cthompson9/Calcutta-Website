@@ -103,6 +103,37 @@ export interface Team {
   owners: TeamOwner[];
 }
 
+export type OwnershipSegmentSource = typeof OwnershipSegmentSource[keyof typeof OwnershipSegmentSource];
+
+
+export const OwnershipSegmentSource = {
+  primary: 'primary',
+  trade: 'trade',
+} as const;
+
+export type OwnershipSegmentTradeDirection = typeof OwnershipSegmentTradeDirection[keyof typeof OwnershipSegmentTradeDirection];
+
+
+export const OwnershipSegmentTradeDirection = {
+  acquired: 'acquired',
+  sold: 'sold',
+} as const;
+
+/**
+ * An original auction stake or one signed leg of an approved trade.
+ */
+export interface OwnershipSegment {
+  bidderId: number;
+  bidderName: string;
+  /** Signed fractional share. For example, 2 is 200% and -2 is a 200% sale. */
+  ownershipShare: number;
+  source: OwnershipSegmentSource;
+  tradeDirection?: OwnershipSegmentTradeDirection;
+  tradeId?: number;
+  counterpartyBidderId?: number;
+  counterpartyBidderName?: string;
+}
+
 export type TeamInputConference = typeof TeamInputConference[keyof typeof TeamInputConference];
 
 
@@ -174,6 +205,7 @@ export interface TeamResultRow {
   conference: string;
   division: string;
   owners: TeamOwner[];
+  ownershipSegments: OwnershipSegment[];
   cost: number;
   wins: number;
   losses: number;

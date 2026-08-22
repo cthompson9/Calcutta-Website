@@ -17,7 +17,10 @@ import {
   GetResultsByOwnerQueryParams,
   UpsertTeamResultBody,
 } from "@workspace/api-zod";
-import { loadSeasonOwnership } from "../lib/seasonOwnership";
+import {
+  loadSeasonOwnership,
+  type OwnershipSegment,
+} from "../lib/seasonOwnership";
 
 const router: IRouter = Router();
 
@@ -52,6 +55,7 @@ function buildTeamResult(
   team: typeof teamsTable.$inferSelect,
   result: typeof teamResultsTable.$inferSelect | null,
   owners: { bidderId: number; bidderName: string; ownershipShare: number }[],
+  ownershipSegments: OwnershipSegment[],
   cost: number,
 ) {
   const base = {
@@ -64,6 +68,7 @@ function buildTeamResult(
       bidderName: o.bidderName,
       ownershipShare: o.ownershipShare,
     })),
+    ownershipSegments,
     cost,
   };
 
@@ -128,9 +133,16 @@ function buildOwnerTeamResult(
     bidderName: string;
     effectiveShare: number;
     ownerCost: number;
+    ownershipSegments: OwnershipSegment[];
   },
 ) {
-  const { bidderId, bidderName, effectiveShare, ownerCost } = args;
+  const {
+    bidderId,
+    bidderName,
+    effectiveShare,
+    ownerCost,
+    ownershipSegments,
+  } = args;
 
   // This reflects THIS owner's signed effective share. A negative percentage is
   // a short position, not a current-team owner label.
@@ -143,6 +155,7 @@ function buildOwnerTeamResult(
     conference: team.conference,
     division: team.division,
     owners,
+    ownershipSegments,
     cost: Math.round(ownerCost * 100) / 100,
   };
 
@@ -294,10 +307,12 @@ router.get("/results", async (req, res): Promise<void> => {
     .map((t) => {
       const cost = auctionPriceMap.get(t.id) ?? 0;
       const currentOwners = ownership.currentOwnersByTeam.get(t.id) ?? [];
+      const ownershipSegments = ownership.ownershipSegmentsByTeam.get(t.id) ?? [];
       return buildTeamResult(
         t,
         resultsMap.get(t.id) ?? null,
         currentOwners,
+        ownershipSegments,
         cost,
       );
     });
@@ -447,6 +462,9 @@ router.get("/results/by-owner", async (req, res): Promise<void> => {
             bidderName: agg.bidderName,
             effectiveShare,
             ownerCost,
+            ownershipSegments: (
+              ownership.ownershipSegmentsByTeam.get(teamId) ?? []
+            ).filter((segment) => segment.bidderId === bidderId),
           }),
         );
       }
@@ -574,8 +592,12 @@ router.post("/results/upsert", async (req, res): Promise<void> => {
 
   const ownership = await loadSeasonOwnership(seasonId);
   const currentOwners = ownership.currentOwnersByTeam.get(data.teamId) ?? [];
+  const ownershipSegments =
+    ownership.ownershipSegmentsByTeam.get(data.teamId) ?? [];
 
-  res.json(buildTeamResult(team, row, currentOwners, cost));
+  res.json(
+    buildTeamResult(team, row, currentOwners, ownershipSegments, cost),
+  );
 });
 
 export default router;

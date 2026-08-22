@@ -5,6 +5,7 @@ import {
   useGetBidders,
 } from "@workspace/api-client-react";
 import type {
+  OwnershipSegment,
   TeamResultRow,
   OwnerResultRow,
 } from "@workspace/api-client-react";
@@ -303,6 +304,81 @@ function formatRecord(wins: number, losses: number, ties: number): string {
   return ties > 0 ? `${wins}-${losses}-${ties}` : `${wins}-${losses}`;
 }
 
+function formatOwnershipPercent(share: number, showPlus = false): string {
+  const percentage = Math.round(share * 10_000) / 100;
+  const sign = showPlus && percentage > 0 ? "+" : "";
+  return `${sign}${percentage}%`;
+}
+
+function OwnershipBreakdown({
+  segments,
+  owners,
+  consortiumByBidderId,
+}: {
+  segments: OwnershipSegment[];
+  owners: Array<{
+    bidderId: number;
+    bidderName: string;
+    ownershipShare: number;
+  }>;
+  consortiumByBidderId: Map<number, string>;
+}) {
+  const displaySegments: OwnershipSegment[] =
+    segments.length > 0
+      ? segments
+      : owners.map((owner) => ({ ...owner, source: "primary" }));
+
+  return (
+    <div className="space-y-1 whitespace-normal">
+      {displaySegments.map((segment, index) => {
+        const owner = ownerLabelById(
+          segment.bidderId,
+          segment.bidderName,
+          consortiumByBidderId,
+        );
+        const counterparty = segment.counterpartyBidderId
+          ? ownerLabelById(
+              segment.counterpartyBidderId,
+              segment.counterpartyBidderName ?? "Unknown",
+              consortiumByBidderId,
+            )
+          : null;
+        const isTrade = segment.source === "trade";
+        const isAcquisition = segment.tradeDirection === "acquired";
+        const sourceLabel = !isTrade
+          ? "Primary"
+          : isAcquisition
+            ? `Trade in${counterparty ? ` from ${counterparty}` : ""}`
+            : `Trade out${counterparty ? ` to ${counterparty}` : ""}`;
+
+        return (
+          <div
+            key={`${segment.source}-${segment.tradeId ?? "primary"}-${segment.bidderId}-${index}`}
+            className={cn(
+              "grid grid-cols-[minmax(0,1fr)_auto] items-start gap-x-2 border px-2 py-1 text-[11px] font-mono leading-tight",
+              !isTrade && "border-border bg-muted/50 text-muted-foreground",
+              isTrade &&
+                isAcquisition &&
+                "border-sky-200 bg-sky-50 text-sky-900 dark:border-sky-900 dark:bg-sky-950/40 dark:text-sky-100",
+              isTrade &&
+                !isAcquisition &&
+                "border-rose-200 bg-rose-50 text-rose-900 dark:border-rose-900 dark:bg-rose-950/40 dark:text-rose-100",
+            )}
+          >
+            <ConsortiumLabel
+              className="min-w-0"
+              label={`${sourceLabel} · ${owner}`}
+            />
+            <span className="shrink-0 font-bold">
+              {formatOwnershipPercent(segment.ownershipShare, isTrade)}
+            </span>
+          </div>
+        );
+      })}
+    </div>
+  );
+}
+
 function TeamSubRow({
   team,
   isComplete,
@@ -316,25 +392,29 @@ function TeamSubRow({
 }) {
   const hasSB = team.sbBerth;
   const wonSB = team.winSuperBowl;
-  const ownerEntry = team.owners.find((o) => o.bidderId === ownerId);
-  const pct = ownerEntry ? Math.round(ownerEntry.ownershipShare * 100) : 100;
+  const ownerSegments = team.ownershipSegments.filter(
+    (segment) => segment.bidderId === ownerId,
+  );
+  const ownerEntries = team.owners.filter((owner) => owner.bidderId === ownerId);
 
   return (
     <div className="grid grid-cols-6 md:grid-cols-12 items-center px-6 py-3 border-b border-border last:border-0 hover:bg-muted/20 transition-colors">
-      <div className="col-span-3 md:col-span-3 flex items-center gap-2 min-w-0">
-        {wonSB && <Star className="w-3 h-3 text-yellow-500 shrink-0" />}
-        {hasSB && !wonSB && (
-          <span className="text-[10px] text-muted-foreground shrink-0">SB</span>
-        )}
-        <span className="font-medium text-sm truncate">{team.teamName}</span>
-        <span className="hidden md:inline text-[10px] text-muted-foreground font-mono shrink-0">
-          {team.conference}
-        </span>
-        {pct < 100 && (
-          <span className="shrink-0 text-[10px] font-mono bg-muted px-1 py-0.5 text-muted-foreground">
-            {pct}%
+      <div className="col-span-3 md:col-span-3 min-w-0">
+        <div className="flex items-center gap-2">
+          {wonSB && <Star className="w-3 h-3 text-yellow-500 shrink-0" />}
+          {hasSB && !wonSB && (
+            <span className="text-[10px] text-muted-foreground shrink-0">SB</span>
+          )}
+          <span className="font-medium text-sm">{team.teamName}</span>
+          <span className="hidden md:inline text-[10px] text-muted-foreground font-mono shrink-0">
+            {team.conference}
           </span>
-        )}
+        </div>
+        <OwnershipBreakdown
+          segments={ownerSegments}
+          owners={ownerEntries}
+          consortiumByBidderId={consortiumByBidderId}
+        />
       </div>
       {isComplete ? (
         <>
@@ -409,6 +489,12 @@ type ExpandedTeamRow = {
   bidderId: number;
   ownerName: string;
   pct: number; // 1–100
+  ownershipSegments: OwnershipSegment[];
+  owners: Array<{
+    bidderId: number;
+    bidderName: string;
+    ownershipShare: number;
+  }>;
   // NFL stats (team-level, not scaled)
   wins: number;
   losses: number;
@@ -504,6 +590,10 @@ function expandTeams(
           consortiumByBidderId,
         ),
         pct: Math.round(s * 100),
+        ownershipSegments: team.ownershipSegments.filter(
+          (segment) => segment.bidderId === owner.bidderId,
+        ),
+        owners: [owner],
         wins: team.wins,
         losses: team.losses,
         ties: team.ties,
@@ -631,6 +721,26 @@ function ByTeamView({
               )
                 .toLowerCase()
                 .includes(q),
+          ) ||
+          r.ownershipSegments.some(
+            (segment) =>
+              segment.bidderName.toLowerCase().includes(q) ||
+              ownerLabelById(
+                segment.bidderId,
+                segment.bidderName,
+                consortiumByBidderId,
+              )
+                .toLowerCase()
+                .includes(q) ||
+              (segment.counterpartyBidderName ?? "").toLowerCase().includes(q) ||
+              (segment.counterpartyBidderId
+                ? ownerLabelById(
+                    segment.counterpartyBidderId,
+                    segment.counterpartyBidderName ?? "Unknown",
+                    consortiumByBidderId,
+                  ).toLowerCase()
+                : ""
+              ).includes(q),
           ),
       )
     : rows;
@@ -866,8 +976,12 @@ function ByTeamView({
                     <td className="px-3 py-2.5 text-center">
                       <SeedCell seed={row.seed} />
                     </td>
-                     <td className="px-3 py-2.5 text-sm min-w-0">
-                       <ConsortiumLabel label={row.ownerName} />
+                    <td className="px-3 py-2.5 text-sm min-w-[220px]">
+                      <OwnershipBreakdown
+                        segments={row.ownershipSegments}
+                        owners={row.owners}
+                        consortiumByBidderId={consortiumByBidderId}
+                      />
                     </td>
                     <td className="px-3 py-2.5 text-center font-mono text-xs text-muted-foreground">
                       {row.pct}%
@@ -914,16 +1028,6 @@ function ByTeamView({
                 ))
               : teamSorted.map((row) => {
                   const seed = getSeed(row);
-                  const ownerLabel = row.owners
-                    .map((o) => {
-                      const label = ownerLabelById(
-                        o.bidderId,
-                        o.bidderName,
-                        consortiumByBidderId,
-                      );
-                      return `${label}${o.ownershipShare < 1 ? ` (${Math.round(o.ownershipShare * 100)}%)` : ""}`;
-                    })
-                    .join(" / ");
                   return (
                     <tr
                       key={row.teamId}
@@ -955,8 +1059,12 @@ function ByTeamView({
                       <td className="px-3 py-2.5 text-center">
                         <SeedCell seed={seed} />
                       </td>
-                       <td className="px-3 py-2.5 text-sm text-muted-foreground min-w-0">
-                         <ConsortiumLabel label={ownerLabel} />
+                      <td className="px-3 py-2.5 text-sm min-w-[260px]">
+                        <OwnershipBreakdown
+                          segments={row.ownershipSegments}
+                          owners={row.owners}
+                          consortiumByBidderId={consortiumByBidderId}
+                        />
                       </td>
                       <td className="px-3 py-2.5 text-center font-mono text-xs">
                         {formatRecord(row.wins, row.losses, row.ties)}

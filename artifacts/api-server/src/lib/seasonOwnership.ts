@@ -25,6 +25,22 @@ export interface OwnerEntry {
 /** Per-team map of bidderId → OwnerEntry. */
 export type TeamOwnerMap = Map<number, OwnerEntry>;
 
+/**
+ * One auditable ownership component shown in Results.
+ * Primary entries represent the original auction stake. Approved trades emit a
+ * signed entry for both the seller and buyer so a position's origin stays clear.
+ */
+export interface OwnershipSegment {
+  bidderId: number;
+  bidderName: string;
+  ownershipShare: number;
+  source: "primary" | "trade";
+  tradeDirection?: "acquired" | "sold";
+  tradeId?: number;
+  counterpartyBidderId?: number;
+  counterpartyBidderName?: string;
+}
+
 /** Bidder as they appear in the resolved ownership data. */
 export interface BidderInfo {
   id: number;
@@ -59,6 +75,13 @@ export interface SeasonOwnership {
    * Map of bidderId → name for all participants.
    */
   bidderNames: Map<number, string>;
+
+  /**
+   * teamId → original auction stakes and approved trade legs.
+   * This is display-only history; `byBidder` remains the source of effective
+   * ownership and financial calculations.
+   */
+  ownershipSegmentsByTeam: Map<number, OwnershipSegment[]>;
 }
 
 // ── Internal helper ───────────────────────────────────────────────────────────
@@ -107,6 +130,7 @@ export async function loadSeasonOwnership(seasonId: number): Promise<SeasonOwner
   // 2. Approved trades
   const approvedTrades = await db
     .select({
+      id: tradesTable.id,
       teamId: tradesTable.teamId,
       fromBidderId: tradesTable.fromBidderId,
       toBidderId: tradesTable.toBidderId,
@@ -161,7 +185,60 @@ export async function loadSeasonOwnership(seasonId: number): Promise<SeasonOwner
     }
   }
 
-  // 5. Build currentOwnersByTeam: teams → bidders with effectiveShare > 0
+  // 5. Build source-specific ownership history for Results. This intentionally
+  // does not alter effective ownership: every approved trade has both a signed
+  // seller leg and a signed buyer leg.
+  const ownershipSegmentsByTeam = new Map<number, OwnershipSegment[]>();
+  const addOwnershipSegment = (teamId: number, segment: OwnershipSegment) => {
+    if (!ownershipSegmentsByTeam.has(teamId))
+      ownershipSegmentsByTeam.set(teamId, []);
+    ownershipSegmentsByTeam.get(teamId)!.push(segment);
+  };
+
+  for (const row of primaryRows) {
+    addOwnershipSegment(row.teamId, {
+      bidderId: row.bidderId,
+      bidderName: bidderNames.get(row.bidderId) ?? "Unknown",
+      ownershipShare: parseFloat(row.ownershipShare),
+      source: "primary",
+    });
+  }
+
+  for (const trade of approvedTrades) {
+    const ownershipShare = parseFloat(trade.percentage) / 100;
+    const fromBidderName = bidderNames.get(trade.fromBidderId) ?? "Unknown";
+    const toBidderName = bidderNames.get(trade.toBidderId) ?? "Unknown";
+
+    addOwnershipSegment(trade.teamId, {
+      bidderId: trade.fromBidderId,
+      bidderName: fromBidderName,
+      ownershipShare: -ownershipShare,
+      source: "trade",
+      tradeDirection: "sold",
+      tradeId: trade.id,
+      counterpartyBidderId: trade.toBidderId,
+      counterpartyBidderName: toBidderName,
+    });
+    addOwnershipSegment(trade.teamId, {
+      bidderId: trade.toBidderId,
+      bidderName: toBidderName,
+      ownershipShare,
+      source: "trade",
+      tradeDirection: "acquired",
+      tradeId: trade.id,
+      counterpartyBidderId: trade.fromBidderId,
+      counterpartyBidderName: fromBidderName,
+    });
+  }
+
+  for (const segments of ownershipSegmentsByTeam.values()) {
+    segments.sort((a, b) => {
+      if (a.source !== b.source) return a.source === "primary" ? -1 : 1;
+      return (a.tradeId ?? 0) - (b.tradeId ?? 0);
+    });
+  }
+
+  // 6. Build currentOwnersByTeam: teams → bidders with effectiveShare > 0
   const currentOwnersByTeam = new Map<
     number,
     Array<{ bidderId: number; bidderName: string; ownershipShare: number }>
@@ -184,5 +261,11 @@ export async function loadSeasonOwnership(seasonId: number): Promise<SeasonOwner
     owners.sort((a, b) => b.ownershipShare - a.ownershipShare);
   }
 
-  return { byBidder, currentOwnersByTeam, participantIds, bidderNames };
+  return {
+    byBidder,
+    currentOwnersByTeam,
+    participantIds,
+    bidderNames,
+    ownershipSegmentsByTeam,
+  };
 }

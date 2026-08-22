@@ -18,6 +18,7 @@ let db;
 let biddersTable;
 let seasonsTable;
 let teamsTable;
+let teamBiddersTable;
 let teamSeasonAuctionsTable;
 let tradesTable;
 let app;
@@ -30,6 +31,7 @@ if (canRun) {
     biddersTable,
     seasonsTable,
     teamsTable,
+    teamBiddersTable,
     teamSeasonAuctionsTable,
     tradesTable,
   } = await import("@workspace/db"));
@@ -233,6 +235,77 @@ describe("short trades and new trade participants", { skip: !canRun }, () => {
       offsetOwnerResults.find((owner) => owner.bidderId === newBuyer.id).teamCount,
       0.75,
       "long position counts retain two decimal places",
+    );
+  });
+
+  test("keeps primary shares separate from trade-derived positions in results", async () => {
+    const [tradeSeller] = await db
+      .insert(biddersTable)
+      .values({ name: `Trade Seller ${seasonYear}` })
+      .returning();
+    const [primaryBuyer] = await db
+      .insert(biddersTable)
+      .values({ name: `Primary Buyer ${seasonYear}` })
+      .returning();
+    createdBidderIds.push(tradeSeller.id, primaryBuyer.id);
+
+    await db.insert(teamBiddersTable).values({
+      seasonId,
+      teamId,
+      bidderId: primaryBuyer.id,
+      ownershipShare: "0.5000",
+    });
+
+    await createAndApproveTrade({
+      fromBidderId: tradeSeller.id,
+      toBidderId: primaryBuyer.id,
+      percentage: 100,
+      price: 100,
+    });
+    await createAndApproveTrade({
+      fromBidderId: tradeSeller.id,
+      toBidderId: primaryBuyer.id,
+      percentage: 100,
+      price: 100,
+    });
+
+    const resultsResponse = await fetch(`${baseUrl}/api/results?season=${seasonYear}`);
+    assert.equal(resultsResponse.status, 200);
+    const teamResult = (await resultsResponse.json()).find(
+      (row) => row.teamId === teamId,
+    );
+    assert.ok(teamResult, "the team appears because the trade buyer has a long position");
+
+    const primarySegment = teamResult.ownershipSegments.find(
+      (segment) =>
+        segment.source === "primary" && segment.bidderId === primaryBuyer.id,
+    );
+    assert.deepEqual(primarySegment, {
+      bidderId: primaryBuyer.id,
+      bidderName: primaryBuyer.name,
+      ownershipShare: 0.5,
+      source: "primary",
+    });
+
+    const acquiredSegments = teamResult.ownershipSegments.filter(
+      (segment) =>
+        segment.source === "trade" &&
+        segment.tradeDirection === "acquired" &&
+        segment.bidderId === primaryBuyer.id &&
+        segment.counterpartyBidderId === tradeSeller.id,
+    );
+    assert.equal(acquiredSegments.length, 2);
+    assert.equal(
+      acquiredSegments.reduce((total, segment) => total + segment.ownershipShare, 0),
+      2,
+      "two approved trades are reported as a 200% trade-derived acquisition",
+    );
+
+    assert.equal(
+      teamResult.owners.find((owner) => owner.bidderId === primaryBuyer.id)
+        .ownershipShare,
+      2.5,
+      "the existing current-owner response remains the effective total",
     );
   });
 });

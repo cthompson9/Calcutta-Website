@@ -81,6 +81,8 @@ export const GetTeamsResponse = zod.array(GetTeamsResponseItem)
 export const createTeamBodyBidAmountMin = 0;
 
 
+
+
 export const CreateTeamBody = zod.object({
   "name": zod.string().min(1),
   "conference": zod.enum(['AFC', 'NFC']),
@@ -137,6 +139,8 @@ export const UpdateTeamParams = zod.object({
 
 
 export const updateTeamBodyBidAmountMin = 0;
+
+
 
 
 export const UpdateTeamBody = zod.object({
@@ -205,6 +209,7 @@ export const GetBiddersResponse = zod.array(GetBiddersResponseItem)
  */
 
 
+
 export const CreateBidderBody = zod.object({
   "name": zod.string().min(1)
 })
@@ -222,6 +227,8 @@ export const CreateBidderResponse = zod.object({
 export const UpdateBidderParams = zod.object({
   "id": zod.coerce.number()
 })
+
+
 
 
 export const UpdateBidderBody = zod.object({
@@ -264,6 +271,16 @@ export const GetResultsResponseItem = zod.object({
   "bidderName": zod.string(),
   "ownershipShare": zod.number()
 })),
+  "ownershipSegments": zod.array(zod.object({
+  "bidderId": zod.number(),
+  "bidderName": zod.string(),
+  "ownershipShare": zod.number().describe('Signed fractional share. For example, 2 is 200% and -2 is a 200% sale.'),
+  "source": zod.enum(['primary', 'trade']),
+  "tradeDirection": zod.enum(['acquired', 'sold']).optional(),
+  "tradeId": zod.number().optional(),
+  "counterpartyBidderId": zod.number().optional(),
+  "counterpartyBidderName": zod.string().optional()
+}).describe('An original auction stake or one signed leg of an approved trade.')),
   "cost": zod.number(),
   "wins": zod.number(),
   "losses": zod.number(),
@@ -313,6 +330,16 @@ export const GetResultsByOwnerResponseItem = zod.object({
   "bidderName": zod.string(),
   "ownershipShare": zod.number()
 })),
+  "ownershipSegments": zod.array(zod.object({
+  "bidderId": zod.number(),
+  "bidderName": zod.string(),
+  "ownershipShare": zod.number().describe('Signed fractional share. For example, 2 is 200% and -2 is a 200% sale.'),
+  "source": zod.enum(['primary', 'trade']),
+  "tradeDirection": zod.enum(['acquired', 'sold']).optional(),
+  "tradeId": zod.number().optional(),
+  "counterpartyBidderId": zod.number().optional(),
+  "counterpartyBidderName": zod.string().optional()
+}).describe('An original auction stake or one signed leg of an approved trade.')),
   "cost": zod.number(),
   "wins": zod.number(),
   "losses": zod.number(),
@@ -346,6 +373,7 @@ export const upsertTeamResultBodyLossesMin = 0;
 export const upsertTeamResultBodyTiesMin = 0;
 
 
+
 export const UpsertTeamResultBody = zod.object({
   "teamId": zod.number(),
   "seasonYear": zod.number(),
@@ -377,6 +405,16 @@ export const UpsertTeamResultResponse = zod.object({
   "bidderName": zod.string(),
   "ownershipShare": zod.number()
 })),
+  "ownershipSegments": zod.array(zod.object({
+  "bidderId": zod.number(),
+  "bidderName": zod.string(),
+  "ownershipShare": zod.number().describe('Signed fractional share. For example, 2 is 200% and -2 is a 200% sale.'),
+  "source": zod.enum(['primary', 'trade']),
+  "tradeDirection": zod.enum(['acquired', 'sold']).optional(),
+  "tradeId": zod.number().optional(),
+  "counterpartyBidderId": zod.number().optional(),
+  "counterpartyBidderName": zod.string().optional()
+}).describe('An original auction stake or one signed leg of an approved trade.')),
   "cost": zod.number(),
   "wins": zod.number(),
   "losses": zod.number(),

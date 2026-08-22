@@ -5,6 +5,7 @@
  * NFL Auction Manager API
  * OpenAPI spec version: 0.1.0
  */
+import type { OwnershipSegment } from './ownershipSegment';
 import type { TeamOwner } from './teamOwner';
 
 export interface TeamResultRow {
@@ -13,6 +14,7 @@ export interface TeamResultRow {
   conference: string;
   division: string;
   owners: TeamOwner[];
+  ownershipSegments: OwnershipSegment[];
   cost: number;
   wins: number;
   losses: number;
