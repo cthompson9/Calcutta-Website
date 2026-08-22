@@ -34,7 +34,6 @@ export default function Results() {
   const [expandedOwner, setExpandedOwner] = useState<number | null>(null);
   const [period, setPeriod] = useState<number | undefined>(undefined);
   const [basis, setBasis] = useState<"realized" | "mtm">("mtm");
-  const [membershipView, setMembershipView] = useState<"historical" | "current">("historical");
   const [compareSeasons, setCompareSeasons] = useState<number[]>([]);
   const [compareGroupBy, setCompareGroupBy] = useState<"bidder" | "consortium">("consortium");
 
@@ -59,8 +58,8 @@ export default function Results() {
     { query: { enabled: tab === "byTeam", queryKey: getGetResultsQueryKey({ season: year, period, basis }) } }
   );
   const { data: ownerResults, isLoading: loadingOwners } = useGetResultsByOwner(
-    { season: year, period, basis, membershipView },
-    { query: { enabled: tab === "byOwner", queryKey: getGetResultsByOwnerQueryKey({ season: year, period, basis, membershipView }) } }
+    { season: year, period, basis },
+    { query: { enabled: tab === "byOwner", queryKey: getGetResultsByOwnerQueryKey({ season: year, period, basis }) } }
   );
 
   const compareParams = {
@@ -68,7 +67,6 @@ export default function Results() {
     period,
     basis,
     groupBy: compareGroupBy,
-    membershipView,
   };
   const { data: compareResults, isLoading: loadingCompare } = useGetResultsCompare(
     compareParams,
@@ -136,24 +134,6 @@ export default function Results() {
             </button>
           ))}
         </div>
-        {(tab === "byOwner" || tab === "compare") && (
-          <div className="flex rounded-md border border-input p-0.5">
-            {(["historical", "current"] as const).map((value) => (
-              <button
-                key={value}
-                onClick={() => setMembershipView(value)}
-                className={cn(
-                  "rounded px-3 py-1.5 text-xs font-mono font-bold uppercase tracking-widest transition-colors",
-                  membershipView === value
-                    ? "bg-primary text-primary-foreground"
-                    : "text-muted-foreground hover:text-foreground",
-                )}
-              >
-                {value === "historical" ? "Season roster" : "Current roster"}
-              </button>
-            ))}
-          </div>
-        )}
         {tab === "compare" && (
           <div className="flex rounded-md border border-input p-0.5">
             {(["consortium", "bidder"] as const).map((value) => (

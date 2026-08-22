@@ -24,6 +24,65 @@ change path and will surface destructive or rename operations for confirmation.
 - A changed import is blocked after approved trades exist; use correcting
   trades instead of replacing historical primary ownership.
 
+## Selective production backloads
+
+When production data is needed for development or staging validation, keep the
+production database read-only and copy only the approved season slice. Take a
+recoverable target backup or checkpoint first, preserve every other development
+season, and map shared teams, bidders, and consortiums by their stable names
+rather than database IDs.
+
+- Record the source fingerprint, imported row counts, and caller in
+  `import_runs` so the backload can be audited and retried safely.
+- Import auction ownership, trades, results, MTM history, and ownership audits
+  in a single target transaction; do not overwrite other seasons.
+- Rebuild derived Calcutta entries and signed positions locally from the
+  imported auction and approved-trade ledger, then verify every auctioned team
+  has a signed ownership total of exactly 100%.
+- Production may be on an older schema. Do not fabricate absent data such as
+  period snapshots or payout rules; record those source gaps and use the
+  supported local derivation only for data that can be reproduced from the
+  imported records.
+- Treat imported bidder and consortium data as production participant data and
+  restrict staging access accordingly.
+
+Run the 2026 backload with a protected snapshot file that is not committed to
+the repository:
+
+```sh
+pnpm --filter @workspace/db run backload-production-2026 -- /secure/path/production-2026.json
+```
+
+The command is idempotent for an identical source fingerprint. A changed source
+is refused once the target season has approved trades.
+
+### Verified 2026 development backload
+
+On 2026-08-22, the authorized 2026 production snapshot was loaded into the
+writable development database with source SHA-256:
+
+`e658dd202735cdefeb5973a12d76e4c37c99f24b834698be562e8e9ae7cc91e7`
+
+The transaction recorded an `import_runs` provenance row and validated the
+following source-aligned counts:
+
+| Record type | Count |
+| --- | ---: |
+| Teams and auctions | 32 |
+| Primary ownership rows | 48 |
+| Referenced bidders | 13 |
+| Trades | 45 |
+| Team results | 32 |
+| MTM snapshots | 32 |
+| Ownership audit records | 82 |
+
+The source did not contain Calcuttas, Calcutta entries, normalized positions,
+dated consortium memberships, payout rules, or period snapshots. The
+development backload created the canonical 2026 Calcutta and 32 entries, then
+rebuilt 120 normalized positions from the 48 primary ownership rows and 36
+approved trades. All 32 teams reconciled to 100% signed ownership. The 2025
+development season remained at 32 auctioned teams, 7 owners, and no trades.
+
 ## Routine health checks
 
 - Review API errors for database pool timeouts or idle-client errors.

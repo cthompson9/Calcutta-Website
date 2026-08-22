@@ -523,11 +523,10 @@ export default function StandingsScreen() {
   const [mode, setMode] = useState<ViewMode>('owner');
   const [period, setPeriod] = useState<number | undefined>(undefined);
   const [basis, setBasis] = useState<'realized' | 'mtm'>('mtm');
-  const [membershipView, setMembershipView] = useState<'historical' | 'current'>('historical');
   const [comparisonGroupBy, setComparisonGroupBy] = useState<'bidder' | 'consortium'>('bidder');
   const [comparisonYears, setComparisonYears] = useState<number[]>([]);
 
-  const ownerQuery = useGetResultsByOwner({ season, period, basis, membershipView });
+  const ownerQuery = useGetResultsByOwner({ season, period, basis });
   const teamQuery = useGetResults({ season, period, basis });
   const mtmQuery = useGetMtmSnapshots({ season });
   const seasonsQuery = useGetSeasons();
@@ -546,14 +545,12 @@ export default function StandingsScreen() {
       period,
       basis,
       groupBy: comparisonGroupBy,
-      membershipView,
     },
     { query: { enabled: comparisonYears.length >= 2, queryKey: getGetResultsCompareQueryKey({
       seasons: comparisonYears.join(','),
       period,
       basis,
       groupBy: comparisonGroupBy,
-      membershipView,
     }) } },
   );
 
@@ -612,30 +609,6 @@ export default function StandingsScreen() {
             </Pressable>
           ))}
         </View>
-        {(mode === 'owner' || mode === 'compare') && (
-          <View style={styles.periodChipRow}>
-            {([
-              { label: 'SEASON ROSTER', value: 'historical' },
-              { label: 'CURRENT ROSTER', value: 'current' },
-            ] as const).map((option) => (
-              <Pressable
-                key={option.value}
-                onPress={() => setMembershipView(option.value)}
-                style={[
-                  styles.snapshotChip,
-                  {
-                    borderColor: membershipView === option.value ? colors.primary : colors.border,
-                    backgroundColor: membershipView === option.value ? colors.primary : 'transparent',
-                  },
-                ]}
-              >
-                <Text style={{ color: membershipView === option.value ? colors.primaryForeground : colors.mutedForeground, fontSize: 11, fontFamily: 'Inter_600SemiBold' }}>
-                  {option.label}
-                </Text>
-              </Pressable>
-            ))}
-          </View>
-        )}
         {mode === 'compare' ? (
           <>
             <View style={styles.periodChipRow}>
