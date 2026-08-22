@@ -314,6 +314,7 @@ function OwnershipBreakdown({
   segments,
   owners,
   consortiumByBidderId,
+  showOwner = true,
 }: {
   segments: OwnershipSegment[];
   owners: Array<{
@@ -322,6 +323,7 @@ function OwnershipBreakdown({
     ownershipShare: number;
   }>;
   consortiumByBidderId: Map<number, string>;
+  showOwner?: boolean;
 }) {
   const displaySegments: OwnershipSegment[] =
     segments.length > 0
@@ -367,7 +369,7 @@ function OwnershipBreakdown({
           >
             <ConsortiumLabel
               className="min-w-0"
-              label={`${sourceLabel} · ${owner}`}
+              label={showOwner ? `${sourceLabel} · ${owner}` : sourceLabel}
             />
             <span className="shrink-0 font-bold">
               {formatOwnershipPercent(segment.ownershipShare, isTrade)}
@@ -414,6 +416,7 @@ function TeamSubRow({
           segments={ownerSegments}
           owners={ownerEntries}
           consortiumByBidderId={consortiumByBidderId}
+          showOwner={false}
         />
       </div>
       {isComplete ? (
