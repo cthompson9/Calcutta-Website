@@ -1,4 +1,13 @@
-import { pgTable, serial, integer, boolean, numeric, primaryKey } from "drizzle-orm/pg-core";
+import { sql } from "drizzle-orm";
+import {
+  pgTable,
+  serial,
+  integer,
+  boolean,
+  numeric,
+  primaryKey,
+  check,
+} from "drizzle-orm/pg-core";
 import { teamsTable } from "./teams";
 import { seasonsTable } from "./seasons";
 
@@ -15,8 +24,12 @@ export const teamResultsTable = pgTable(
 
     // Season performance stats
     wins: numeric("wins", { precision: 4, scale: 1 }).notNull().default("0"),
+    losses: integer("losses").notNull().default(0),
+    ties: integer("ties").notNull().default(0),
     ptDiff: integer("pt_diff").notNull().default(0),
-    startingPoints: numeric("starting_points", { precision: 8, scale: 4 }).notNull().default("150"),
+    startingPoints: numeric("starting_points", { precision: 8, scale: 4 })
+      .notNull()
+      .default("150"),
     draftOrder: integer("draft_order"),
 
     // Playoff results (boolean flags stored as booleans)
@@ -30,13 +43,29 @@ export const teamResultsTable = pgTable(
     seed: integer("seed"),
 
     // Financial results
-    realizedReturn: numeric("realized_return", { precision: 10, scale: 4 }).notNull().default("0"),
-    realizedMultiple: numeric("realized_multiple", { precision: 10, scale: 7 }).notNull().default("0"),
-    netReturn: numeric("net_return", { precision: 10, scale: 4 }).notNull().default("0"),
-    netPctReturn: numeric("net_pct_return", { precision: 10, scale: 7 }).notNull().default("0"),
-    markToMarket: numeric("mark_to_market", { precision: 10, scale: 4 }).notNull().default("0"),
+    realizedReturn: numeric("realized_return", { precision: 10, scale: 4 })
+      .notNull()
+      .default("0"),
+    realizedMultiple: numeric("realized_multiple", { precision: 10, scale: 7 })
+      .notNull()
+      .default("0"),
+    netReturn: numeric("net_return", { precision: 10, scale: 4 })
+      .notNull()
+      .default("0"),
+    netPctReturn: numeric("net_pct_return", { precision: 10, scale: 7 })
+      .notNull()
+      .default("0"),
+    markToMarket: numeric("mark_to_market", { precision: 10, scale: 4 })
+      .notNull()
+      .default("0"),
   },
-  (t) => [primaryKey({ columns: [t.teamId, t.seasonId] })],
+  (t) => [
+    primaryKey({ columns: [t.teamId, t.seasonId] }),
+    check(
+      "team_results_record_total_at_most_17",
+      sql`${t.wins} + ${t.losses} + ${t.ties} <= 17`,
+    ),
+  ],
 );
 
 export type TeamResult = typeof teamResultsTable.$inferSelect;

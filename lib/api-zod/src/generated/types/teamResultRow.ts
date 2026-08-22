@@ -15,6 +15,8 @@ export interface TeamResultRow {
   owners: TeamOwner[];
   cost: number;
   wins: number;
+  losses: number;
+  ties: number;
   ptDiff: number;
   startingPoints: number;
   /** @nullable */

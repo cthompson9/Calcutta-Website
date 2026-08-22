@@ -270,6 +270,8 @@ export const GetResultsResponseItem = zod.object({
 })),
   "cost": zod.number(),
   "wins": zod.number(),
+  "losses": zod.number(),
+  "ties": zod.number(),
   "ptDiff": zod.number(),
   "startingPoints": zod.number(),
   "draftOrder": zod.number().nullish(),
@@ -316,6 +318,8 @@ export const GetResultsByOwnerResponseItem = zod.object({
 })),
   "cost": zod.number(),
   "wins": zod.number(),
+  "losses": zod.number(),
+  "ties": zod.number(),
   "ptDiff": zod.number(),
   "startingPoints": zod.number(),
   "draftOrder": zod.number().nullish(),
@@ -338,10 +342,20 @@ export const GetResultsByOwnerResponse = zod.array(GetResultsByOwnerResponseItem
 /**
  * @summary Create or update a team result record
  */
+export const upsertTeamResultBodyWinsMin = 0;
+
+export const upsertTeamResultBodyLossesMin = 0;
+
+export const upsertTeamResultBodyTiesMin = 0;
+
+
+
 export const UpsertTeamResultBody = zod.object({
   "teamId": zod.number(),
   "seasonYear": zod.number(),
-  "wins": zod.number().optional(),
+  "wins": zod.number().min(upsertTeamResultBodyWinsMin).optional(),
+  "losses": zod.number().min(upsertTeamResultBodyLossesMin).optional(),
+  "ties": zod.number().min(upsertTeamResultBodyTiesMin).optional(),
   "ptDiff": zod.number().optional(),
   "startingPoints": zod.number().optional(),
   "draftOrder": zod.number().nullish(),
@@ -369,6 +383,8 @@ export const UpsertTeamResultResponse = zod.object({
 })),
   "cost": zod.number(),
   "wins": zod.number(),
+  "losses": zod.number(),
+  "ties": zod.number(),
   "ptDiff": zod.number(),
   "startingPoints": zod.number(),
   "draftOrder": zod.number().nullish(),

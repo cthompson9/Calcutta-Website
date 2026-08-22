@@ -9,7 +9,12 @@
 export interface TeamResultInput {
   teamId: number;
   seasonYear: number;
+  /** @minimum 0 */
   wins?: number;
+  /** @minimum 0 */
+  losses?: number;
+  /** @minimum 0 */
+  ties?: number;
   ptDiff?: number;
   startingPoints?: number;
   /** @nullable */

@@ -968,6 +968,10 @@ components:
           type: number
         wins:
           type: number
+        losses:
+          type: number
+        ties:
+          type: number
         ptDiff:
           type: number
         startingPoints:
@@ -1005,6 +1009,8 @@ components:
         - owners
         - cost
         - wins
+        - losses
+        - ties
         - ptDiff
         - startingPoints
         - playoffBerth
@@ -1061,6 +1067,13 @@ components:
           type: number
         wins:
           type: number
+          minimum: 0
+        losses:
+          type: number
+          minimum: 0
+        ties:
+          type: number
+          minimum: 0
         ptDiff:
           type: number
         startingPoints:
@@ -1245,7 +1258,18 @@ components:
           type: array
           items:
             $ref: "#/components/schemas/MtmTeamWeek"
-      required: [snapshotDate, label, source, potSize, rawPointTotal, normalizedShareTotal, marketStatusCounts, ownerTotals, teamValues]
+      required:
+        [
+          snapshotDate,
+          label,
+          source,
+          potSize,
+          rawPointTotal,
+          normalizedShareTotal,
+          marketStatusCounts,
+          ownerTotals,
+          teamValues,
+        ]
 
     MtmMarketStatusCounts:
       type: object
@@ -1329,7 +1353,17 @@ components:
           type: array
           items:
             $ref: "#/components/schemas/MtmMarketQuote"
-      required: [teamId, teamName, ownerName, mtmValue, source, marketStatus, marketStatusReasons, marketQuotes]
+      required:
+        [
+          teamId,
+          teamName,
+          ownerName,
+          mtmValue,
+          source,
+          marketStatus,
+          marketStatusReasons,
+          marketQuotes,
+        ]
 
     MtmMarketQuote:
       type: object
@@ -1362,7 +1396,22 @@ components:
           type: ["string", "null"]
         derived:
           type: boolean
-      required: [ticker, kind, line, bid, ask, last, probability, spread, bidDepth, askDepth, quality, updatedAt, derived]
+      required:
+        [
+          ticker,
+          kind,
+          line,
+          bid,
+          ask,
+          last,
+          probability,
+          spread,
+          bidDepth,
+          askDepth,
+          quality,
+          updatedAt,
+          derived,
+        ]
 
     MtmData:
       type: object
@@ -1457,7 +1506,18 @@ components:
           type: number
         marketStatusCounts:
           $ref: "#/components/schemas/MtmMarketStatusCounts"
-      required: [seasonYear, snapshotDate, capturedAt, teamCount, contractSetId, potSize, rawPointTotal, normalizedShareTotal, marketStatusCounts]
+      required:
+        [
+          seasonYear,
+          snapshotDate,
+          capturedAt,
+          teamCount,
+          contractSetId,
+          potSize,
+          rawPointTotal,
+          normalizedShareTotal,
+          marketStatusCounts,
+        ]
 
     # Summary
     AuctionSummary:

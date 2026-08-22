@@ -9,6 +9,7 @@ import {
   teamSeasonAuctionsTable,
   seasonsTable,
   tradesTable,
+  explicitRecordFromStoredValues,
 } from "@workspace/db";
 import {
   GetResultsQueryParams,
@@ -28,7 +29,10 @@ async function resolveSeasonId(year: number): Promise<number | null> {
   return rows[0]?.id ?? null;
 }
 
-async function getSeasonCost(teamId: number, seasonId: number): Promise<number> {
+async function getSeasonCost(
+  teamId: number,
+  seasonId: number,
+): Promise<number> {
   const rows = await db
     .select({ bidAmount: teamSeasonAuctionsTable.bidAmount })
     .from(teamSeasonAuctionsTable)
@@ -66,6 +70,8 @@ function buildTeamResult(
     return {
       ...base,
       wins: 0,
+      losses: 0,
+      ties: 0,
       ptDiff: 0,
       startingPoints: 150,
       draftOrder: null,
@@ -83,9 +89,16 @@ function buildTeamResult(
     };
   }
 
+  const record = explicitRecordFromStoredValues(
+    result.wins,
+    result.losses,
+    result.ties,
+  );
   return {
     ...base,
-    wins: parseFloat(result.wins),
+    wins: record.wins,
+    losses: record.losses,
+    ties: record.ties,
     ptDiff: result.ptDiff,
     startingPoints: parseFloat(result.startingPoints),
     draftOrder: result.draftOrder,
@@ -120,9 +133,7 @@ function buildOwnerTeamResult(
 
   // This reflects THIS owner's signed effective share. A negative percentage is
   // a short position, not a current-team owner label.
-  const owners = [
-    { bidderId, bidderName, ownershipShare: effectiveShare },
-  ];
+  const owners = [{ bidderId, bidderName, ownershipShare: effectiveShare }];
 
   // Owner-specific cost basis is what this bidder paid after trade economics.
   const base = {
@@ -138,6 +149,8 @@ function buildOwnerTeamResult(
     return {
       ...base,
       wins: 0,
+      losses: 0,
+      ties: 0,
       ptDiff: 0,
       startingPoints: 150,
       draftOrder: null,
@@ -161,11 +174,18 @@ function buildOwnerTeamResult(
   const netReturn = realizedReturn - ownerCost;
   const realizedMultiple = ownerCost > 0 ? realizedReturn / ownerCost : 0;
   const netPctReturn = ownerCost > 0 ? netReturn / ownerCost : 0;
+  const record = explicitRecordFromStoredValues(
+    result.wins,
+    result.losses,
+    result.ties,
+  );
 
   return {
     ...base,
     // Preserve team-level NFL stats verbatim
-    wins: parseFloat(result.wins),
+    wins: record.wins,
+    losses: record.losses,
+    ties: record.ties,
     ptDiff: result.ptDiff,
     startingPoints: parseFloat(result.startingPoints),
     draftOrder: result.draftOrder,
@@ -233,8 +253,10 @@ router.get("/results", async (req, res): Promise<void> => {
   }
 
   let teamQuery = db.select().from(teamsTable).$dynamic();
-  if (conference) teamQuery = teamQuery.where(eq(teamsTable.conference, conference));
-  if (search) teamQuery = teamQuery.where(ilike(teamsTable.name, `%${search}%`));
+  if (conference)
+    teamQuery = teamQuery.where(eq(teamsTable.conference, conference));
+  if (search)
+    teamQuery = teamQuery.where(ilike(teamsTable.name, `%${search}%`));
   const allTeams = await teamQuery.orderBy(
     teamsTable.conference,
     teamsTable.division,
@@ -256,18 +278,27 @@ router.get("/results", async (req, res): Promise<void> => {
     })
     .from(teamSeasonAuctionsTable)
     .where(eq(teamSeasonAuctionsTable.seasonId, seasonId));
-  const auctionPriceMap = new Map(auctionRows.map((a) => [a.teamId, parseFloat(a.bidAmount)]));
+  const auctionPriceMap = new Map(
+    auctionRows.map((a) => [a.teamId, parseFloat(a.bidAmount)]),
+  );
 
   // Effective ownership (applies approved trades)
   const ownership = await loadSeasonOwnership(seasonId);
 
   // Only include teams that have bidders or results for this specific season
   const rows = allTeams
-    .filter((t) => ownership.currentOwnersByTeam.has(t.id) || resultsMap.has(t.id))
+    .filter(
+      (t) => ownership.currentOwnersByTeam.has(t.id) || resultsMap.has(t.id),
+    )
     .map((t) => {
       const cost = auctionPriceMap.get(t.id) ?? 0;
       const currentOwners = ownership.currentOwnersByTeam.get(t.id) ?? [];
-      return buildTeamResult(t, resultsMap.get(t.id) ?? null, currentOwners, cost);
+      return buildTeamResult(
+        t,
+        resultsMap.get(t.id) ?? null,
+        currentOwners,
+        cost,
+      );
     });
 
   res.json(rows);
@@ -309,7 +340,9 @@ router.get("/results/by-owner", async (req, res): Promise<void> => {
     })
     .from(teamSeasonAuctionsTable)
     .where(eq(teamSeasonAuctionsTable.seasonId, seasonId));
-  const auctionPriceMap = new Map(auctionRows.map((a) => [a.teamId, parseFloat(a.bidAmount)]));
+  const auctionPriceMap = new Map(
+    auctionRows.map((a) => [a.teamId, parseFloat(a.bidAmount)]),
+  );
 
   // Effective ownership from shared helper
   const ownership = await loadSeasonOwnership(seasonId);
@@ -333,7 +366,10 @@ router.get("/results/by-owner", async (req, res): Promise<void> => {
 
   // Initialize only season participants
   for (const bidderId of ownership.participantIds) {
-    const name = bidderNameMap.get(bidderId) ?? ownership.bidderNames.get(bidderId) ?? "Unknown";
+    const name =
+      bidderNameMap.get(bidderId) ??
+      ownership.bidderNames.get(bidderId) ??
+      "Unknown";
     ownerAggMap.set(bidderId, {
       bidderId,
       bidderName: name,
@@ -371,11 +407,16 @@ router.get("/results/by-owner", async (req, res): Promise<void> => {
       // Cost basis: season auction price × original share + trade buys - trade sells
       const seasonAuctionPrice = auctionPriceMap.get(teamId) ?? 0;
       const originalCostBasis = seasonAuctionPrice * entry.originalShare;
-      const ownerCost = originalCostBasis + entry.tradePaid - entry.tradeReceived;
+      const ownerCost =
+        originalCostBasis + entry.tradePaid - entry.tradeReceived;
 
       // Returns scaled by effective (post-trade) share
-      const realizedReturn = result ? parseFloat(result.realizedReturn) * effectiveShare : 0;
-      const markToMarket = result ? parseFloat(result.markToMarket) * effectiveShare : 0;
+      const realizedReturn = result
+        ? parseFloat(result.realizedReturn) * effectiveShare
+        : 0;
+      const markToMarket = result
+        ? parseFloat(result.markToMarket) * effectiveShare
+        : 0;
       const netReturn = realizedReturn - ownerCost;
 
       agg.teamCount += effectiveShare;
@@ -408,7 +449,9 @@ router.get("/results/by-owner", async (req, res): Promise<void> => {
       totalRealizedReturn: Math.round(o.totalRealizedReturn * 100) / 100,
       totalNetReturn: Math.round(o.totalNetReturn * 100) / 100,
       netPctReturn:
-        o.totalCost > 0 ? Math.round((o.totalNetReturn / o.totalCost) * 10000) / 100 : 0,
+        o.totalCost > 0
+          ? Math.round((o.totalNetReturn / o.totalCost) * 10000) / 100
+          : 0,
       totalMtm: Math.round(o.totalMtm * 100) / 100,
       teams: o.teams.sort((a, b) => a.teamName.localeCompare(b.teamName)),
     }))
@@ -425,6 +468,25 @@ router.post("/results/upsert", async (req, res): Promise<void> => {
     return;
   }
   const data = parsed.data;
+  const wins = data.wins ?? 0;
+  const losses = data.losses ?? 0;
+  const ties = data.ties ?? 0;
+  const recordValues = [wins, losses, ties];
+  if (recordValues.some((value) => !Number.isInteger(value) || value < 0)) {
+    res.status(400).json({
+      error:
+        "wins, losses, and ties must be whole numbers greater than or equal to zero",
+    });
+    return;
+  }
+  if (wins + losses + ties > 17) {
+    res
+      .status(400)
+      .json({
+        error: "wins, losses, and ties cannot total more than 17 games",
+      });
+    return;
+  }
   const seasonId = await resolveSeasonId(data.seasonYear);
   if (!seasonId) {
     res.status(400).json({ error: `Season ${data.seasonYear} not found` });
@@ -446,7 +508,9 @@ router.post("/results/upsert", async (req, res): Promise<void> => {
     .values({
       teamId: data.teamId,
       seasonId,
-      wins: (data.wins ?? 0).toString(),
+      wins: wins.toString(),
+      losses,
+      ties,
       ptDiff: data.ptDiff ?? 0,
       startingPoints: (data.startingPoints ?? 150).toString(),
       draftOrder: data.draftOrder ?? null,
@@ -464,7 +528,9 @@ router.post("/results/upsert", async (req, res): Promise<void> => {
     .onConflictDoUpdate({
       target: [teamResultsTable.teamId, teamResultsTable.seasonId],
       set: {
-        wins: (data.wins ?? 0).toString(),
+        wins: wins.toString(),
+        losses,
+        ties,
         ptDiff: data.ptDiff ?? 0,
         draftOrder: data.draftOrder ?? null,
         playoffBerth: data.playoffBerth ?? false,
