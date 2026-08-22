@@ -395,7 +395,7 @@ paths:
     post:
       operationId: createTrade
       tags: [trades]
-      summary: Record a trade
+      summary: Submit a trade for commissioner review (open submission; always pending)
       requestBody:
         required: true
         content:

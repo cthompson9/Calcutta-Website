@@ -6,7 +6,7 @@ import {
   useCreateTrade,
   useDeleteTrade,
 } from "@workspace/api-client-react";
-import type { TradeRow } from "@workspace/api-client-react";
+import type { TradeInput, TradeRow } from "@workspace/api-client-react";
 import { formatCurrency } from "@/lib/utils";
 import { cn } from "@/lib/utils";
 import { todayInNewYork } from "@/lib/newYorkTime";
@@ -182,14 +182,16 @@ function TradeForm({
   onCreate,
   onClose,
   creating,
+  submitError,
 }: {
   teams: any[];
   fromBidders: any[];
   toBidders: any[];
   seasonYear: number;
-  onCreate: (data: any) => void;
+  onCreate: (data: TradeInput) => void;
   onClose: () => void;
   creating: boolean;
+  submitError?: string;
 }) {
   const [teamId, setTeamId]   = useState("");
   const [fromId, setFromId]   = useState("");
@@ -201,15 +203,9 @@ function TradeForm({
   const [notes, setNotes]     = useState("");
 
   const selectedTeam = teams.find((t: any) => String(t.id) === teamId);
-  const eligibleFromBidders = selectedTeam
-    ? fromBidders.filter((bidder: any) =>
-        bidder.teams?.some(
-          (team: any) =>
-            String(team.id) === teamId &&
-            Number(team.ownershipShare ?? 0) > 0,
-        ),
-      )
-    : fromBidders;
+  // Synthetic trades intentionally allow a seller with no current positive
+  // ownership. The commissioner decides whether the proposed sale is valid.
+  const eligibleFromBidders = fromBidders;
 
   // Auto-fill price when team, percentage, or useDraftCost changes
   useEffect(() => {
@@ -238,7 +234,7 @@ function TradeForm({
     <div className="fixed inset-0 bg-black/40 z-50 flex items-center justify-center p-4">
       <div className="bg-background border border-border w-full max-w-md p-6 space-y-4">
         <div className="flex items-center justify-between">
-          <h2 className="font-mono font-bold uppercase tracking-widest text-sm">Record Trade</h2>
+          <h2 className="font-mono font-bold uppercase tracking-widest text-sm">Submit Trade for Review</h2>
           <button onClick={onClose}><X className="w-4 h-4" /></button>
         </div>
 
@@ -261,9 +257,9 @@ function TradeForm({
             </select>
           </Field>
 
-          <Field label="From Owner">
+          <Field label="Seller / Short Seller">
             <select value={fromId} onChange={(e) => setFromId(e.target.value)} className="w-full border border-border bg-background px-3 py-2 text-sm">
-              <option value="">Select owner…</option>
+              <option value="">Select seller…</option>
               {eligibleFromBidders.map((b: any) => <option key={b.id} value={b.id}>{b.name}</option>)}
             </select>
           </Field>
@@ -346,8 +342,13 @@ function TradeForm({
           </Field>
 
           <p className="text-xs text-amber-700 font-mono bg-amber-50 border border-amber-200 px-3 py-2">
-            ⏳ Trade will be submitted as <strong>PENDING REVIEW</strong>. Admin must approve before it affects results.
+            ⏳ This will be submitted as <strong>PENDING REVIEW</strong>. Any bidder can be selected as the seller, including one with no current stake, for a synthetic or short sale. A commissioner must approve it before it affects results.
           </p>
+          {submitError && (
+            <p role="alert" className="text-xs text-destructive font-mono border border-destructive/30 bg-destructive/5 px-3 py-2">
+              {submitError}
+            </p>
+          )}
         </div>
 
         <div className="flex gap-3 pt-2">
@@ -461,13 +462,13 @@ function Field({ label, children }: { label: string; children: React.ReactNode }
 export default function Trades() {
   const { year } = useSeason();
   const [showForm, setShowForm]     = useState(false);
+  const [submissionError, setSubmissionError] = useState("");
   const [adminKey, setAdminKey]     = useState<string | null>(
     () => sessionStorage.getItem("nfl_admin_key"),
   );
 
   const { data: trades, isLoading, refetch } = useGetTrades({ season: year });
   const { data: teams } = useGetTeams({ season: year });
-  const { data: seasonBidders } = useGetBidders({ season: year });
   const { data: bidderDirectory } = useGetBidders({});
   const consortiumByBidderId = bidderConsortiums(bidderDirectory);
   const { mutate: createTrade, isPending: creating } = useCreateTrade();
@@ -531,10 +532,10 @@ export default function Trades() {
         <div className="flex items-center gap-3 flex-wrap">
           <AdminPanel adminKey={adminKey} onSetKey={saveAdminKey} onClearKey={clearAdminKey} />
           <button
-            onClick={() => setShowForm(true)}
+            onClick={() => { setSubmissionError(""); setShowForm(true); }}
             className="flex items-center gap-2 px-4 py-2 bg-primary text-primary-foreground font-mono font-bold uppercase tracking-widest text-sm hover:bg-primary/90 transition-colors h-9"
           >
-            <Plus className="w-4 h-4" /> Add Trade
+            <Plus className="w-4 h-4" /> Submit Trade
           </button>
         </div>
       </header>
@@ -545,19 +546,35 @@ export default function Trades() {
         </div>
       )}
 
-      {showForm && teams && seasonBidders && bidderDirectory && (
+      {showForm && teams && bidderDirectory && (
         <TradeForm
           teams={teams}
-          fromBidders={seasonBidders}
+          fromBidders={bidderDirectory}
           toBidders={bidderDirectory}
           seasonYear={year}
           onCreate={(data) =>
             createTrade({ data }, {
-              onSuccess: () => { setShowForm(false); refetch(); },
+              onSuccess: () => {
+                setSubmissionError("");
+                setShowForm(false);
+                refetch();
+              },
+              onError: (error) => {
+                const apiError = error as {
+                  data?: { error?: string };
+                  message?: string;
+                };
+                setSubmissionError(
+                  apiError.data?.error ??
+                    apiError.message ??
+                    "Could not submit this trade. Please check the details and try again.",
+                );
+              },
             })
           }
-          onClose={() => setShowForm(false)}
+          onClose={() => { setSubmissionError(""); setShowForm(false); }}
           creating={creating}
+          submitError={submissionError}
         />
       )}
 
@@ -589,7 +606,7 @@ export default function Trades() {
       ) : !allTrades.length ? (
         <div className="border border-dashed border-border flex flex-col items-center justify-center py-24 text-center">
           <p className="text-muted-foreground font-mono text-sm uppercase tracking-widest">No trades recorded for {year}</p>
-          <p className="text-xs text-muted-foreground mt-2">Use Add Trade to log a trade — it will start as Pending Review</p>
+          <p className="text-xs text-muted-foreground mt-2">Use Submit Trade to propose a trade — it will start as Pending Review</p>
         </div>
       ) : !filteredTrades.length ? (
         <div className="border border-dashed border-border flex flex-col items-center justify-center py-24 text-center">

@@ -1312,7 +1312,7 @@ export const getCreateTradeUrl = () => {
 }
 
 /**
- * @summary Record a trade
+ * @summary Submit a trade for commissioner review (open submission; always pending)
  */
 export const createTrade = async (tradeInput: TradeInput, options?: Parameters<typeof customFetch>[1]): Promise<TradeRow> => {
 
@@ -1361,7 +1361,7 @@ const {mutation: mutationOptions, request: requestOptions} = options ?
     export type CreateTradeMutationError = ErrorType<ErrorResponse>
 
     /**
- * @summary Record a trade
+ * @summary Submit a trade for commissioner review (open submission; always pending)
  */
 export const useCreateTrade = <TError = ErrorType<ErrorResponse>,
     TContext = unknown>(options?: { mutation?:UseMutationOptions<Awaited<ReturnType<typeof createTrade>>, TError,{data: BodyType<TradeInput>}, TContext>, request?: SecondParameter<typeof customFetch>}

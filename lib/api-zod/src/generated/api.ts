@@ -462,7 +462,7 @@ export const GetTradesResponse = zod.array(GetTradesResponseItem)
 
 
 /**
- * @summary Record a trade
+ * @summary Submit a trade for commissioner review (open submission; always pending)
  */
 export const CreateTradeBody = zod.object({
   "seasonYear": zod.number(),

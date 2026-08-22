@@ -94,6 +94,29 @@ export default function Results() {
 
 // ─── By Owner ────────────────────────────────────────────────────────────────
 
+/**
+ * Exposure treats long and short team positions as separate risk amounts.
+ * `team.cost` is signed by the trade ledger: long positions are positive and
+ * short positions are negative, so a short cost is subtracted from exposure.
+ */
+function calculateExposure(row: OwnerResultRow): number {
+  const exposure = row.teams.reduce((total, team) => {
+    const position = team.owners.find(
+      (owner) => owner.bidderId === row.bidderId,
+    )?.ownershipShare ?? 0;
+
+    // A fully closed position can retain a cash-only cost basis, but it has no
+    // remaining team exposure.
+    if (Math.abs(position) < 0.00005) return total;
+
+    const longCost = position > 0 ? team.cost : 0;
+    const shortCost = position < 0 ? team.cost : 0;
+    return total + longCost - shortCost;
+  }, 0);
+
+  return Math.round(exposure * 100) / 100;
+}
+
 function ByOwnerView({
   rows,
   isComplete,
@@ -123,7 +146,7 @@ function ByOwnerView({
         <div className="col-span-1 text-center">Teams</div>
         {isComplete ? (
           <>
-            <div className="col-span-2 text-right">Cost</div>
+            <div className="col-span-2 text-right">Exposure</div>
             <div className="col-span-2 text-right">Gross</div>
             <div className="col-span-3 text-right font-bold text-foreground">
               Net
@@ -134,7 +157,7 @@ function ByOwnerView({
             <div className="col-span-3 text-right font-bold text-foreground">
               MTM Return
             </div>
-            <div className="col-span-2 text-right">Cost</div>
+              <div className="col-span-2 text-right">Exposure</div>
             <div className="col-span-1" />
           </>
         )}
@@ -186,9 +209,9 @@ function ByOwnerView({
               </div>
               {isComplete ? (
                 <>
-                  {/* Cost — leftmost */}
+                  {/* Exposure — net long cost minus signed short cost */}
                   <div className="hidden md:block col-span-2 text-right font-mono text-sm text-muted-foreground">
-                    {formatCurrency(row.totalCost)}
+                    {formatCurrency(calculateExposure(row))}
                   </div>
                   {/* Gross return */}
                   <div className="hidden md:block col-span-2 text-right font-mono text-sm text-muted-foreground">
@@ -222,7 +245,7 @@ function ByOwnerView({
                       : "—"}
                   </div>
                   <div className="hidden md:block col-span-2 text-right font-mono text-sm text-muted-foreground">
-                    {formatCurrency(row.totalCost)}
+                    {formatCurrency(calculateExposure(row))}
                   </div>
                 </>
               )}
@@ -243,9 +266,9 @@ function ByOwnerView({
               <div className="md:hidden grid grid-cols-3 text-xs font-mono border-t border-border bg-muted/30 px-4 py-2">
                 <div>
                   <div className="text-muted-foreground uppercase tracking-widest text-[10px]">
-                    Cost
+                      Exposure
                   </div>
-                  <div>{formatCurrency(row.totalCost)}</div>
+                    <div>{formatCurrency(calculateExposure(row))}</div>
                 </div>
                 <div>
                   <div className="text-muted-foreground uppercase tracking-widest text-[10px]">

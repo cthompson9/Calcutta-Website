@@ -145,6 +145,45 @@ describe("short trades and new trade participants", { skip: !canRun }, () => {
     assert.equal(approvalResponse.status, 200, await approvalResponse.text());
   }
 
+  test("allows an unauthenticated synthetic trade submission but keeps it pending", async () => {
+    const response = await fetch(`${baseUrl}/api/trades`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
+        seasonYear,
+        teamId,
+        fromBidderId: shortSeller.id,
+        toBidderId: newBuyer.id,
+        percentage: 100,
+        price: 100,
+        tradeDate: "2030-01-01",
+        notes: "Synthetic purchase submitted for review",
+      }),
+    });
+    const createdTrade = await response.json();
+    assert.equal(response.status, 201, JSON.stringify(createdTrade));
+    assert.equal(createdTrade.status, "pending");
+
+    const ownershipBeforeApproval = await loadSeasonOwnership(seasonId);
+    assert.equal(
+      ownershipBeforeApproval.byBidder.has(shortSeller.id),
+      false,
+      "a pending synthetic sale does not create an ownership position",
+    );
+    assert.equal(
+      ownershipBeforeApproval.byBidder.has(newBuyer.id),
+      false,
+      "a pending synthetic purchase does not create an ownership position",
+    );
+
+    const unauthorizedApproval = await fetch(`${baseUrl}/api/trades/${createdTrade.id}/status`, {
+      method: "PATCH",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ status: "approved" }),
+    });
+    assert.equal(unauthorizedApproval.status, 401);
+  });
+
   test("approves a zero-stake sale, preserves signed ownership, and supports an offsetting buy", async () => {
     for (const percentage of [-1, 0, 101]) {
       const response = await fetch(`${baseUrl}/api/trades`, {
