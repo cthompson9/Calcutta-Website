@@ -220,5 +220,19 @@ describe("short trades and new trade participants", { skip: !canRun }, () => {
     ownership = await loadSeasonOwnership(seasonId);
     assert.equal(ownership.byBidder.get(shortSeller.id).get(teamId).effectiveShare, -0.75);
     assert.equal(ownership.byBidder.get(newBuyer.id).get(teamId).effectiveShare, 0.75);
+
+    const offsetOwnerResultsResponse = await fetch(`${baseUrl}/api/results/by-owner?season=${seasonYear}`);
+    assert.equal(offsetOwnerResultsResponse.status, 200);
+    const offsetOwnerResults = await offsetOwnerResultsResponse.json();
+    assert.equal(
+      offsetOwnerResults.find((owner) => owner.bidderId === shortSeller.id).teamCount,
+      -0.75,
+      "short position counts retain two decimal places",
+    );
+    assert.equal(
+      offsetOwnerResults.find((owner) => owner.bidderId === newBuyer.id).teamCount,
+      0.75,
+      "long position counts retain two decimal places",
+    );
   });
 });

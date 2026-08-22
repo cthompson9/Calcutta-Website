@@ -11,6 +11,7 @@ import {
 } from "@workspace/db";
 import { GetAuctionSummaryQueryParams } from "@workspace/api-zod";
 import { loadSeasonOwnership } from "../lib/seasonOwnership";
+import { buildAuctionResults } from "../lib/auctionResults";
 
 const router: IRouter = Router();
 
@@ -104,20 +105,7 @@ router.get("/summary", async (req, res): Promise<void> => {
     )
     .where(eq(teamSeasonAuctionsTable.seasonId, seasonId));
 
-  const auctionResults = resultRows
-    .map((result) => ({
-      teamId: result.teamId,
-      teamName: result.teamName,
-      winnerName: result.winnerName,
-      bidAmount: Math.round(parseFloat(result.bidAmount) * 100) / 100,
-      draftOrder: result.draftOrder,
-    }))
-    .sort(
-      (a, b) =>
-        (a.draftOrder ?? Number.MAX_SAFE_INTEGER) -
-          (b.draftOrder ?? Number.MAX_SAFE_INTEGER) ||
-        a.teamName.localeCompare(b.teamName),
-    );
+  const auctionResults = buildAuctionResults(resultRows);
 
   const mostExpensive = auctionRows.reduce<typeof auctionRows[number] | null>(
     (highest, row) =>

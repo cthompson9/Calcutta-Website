@@ -25,6 +25,7 @@ export function fmtDate(dateStr: string): string {
   const d = new Date(dateStr);
   if (isNaN(d.getTime())) return dateStr;
   return d.toLocaleDateString('en-US', {
+    timeZone: 'America/New_York',
     month: 'short',
     day: 'numeric',
     year: 'numeric',

@@ -15,6 +15,7 @@ import {
 } from "@workspace/api-zod";
 import { loadSeasonOwnership } from "../lib/seasonOwnership";
 import { captureKalshiWeekZero } from "../lib/kalshiWeekZero";
+import { todayInNewYork } from "../lib/newYorkTime";
 import {
   buildWeekZeroSnapshotRows,
   calculateWeekZeroValuations,
@@ -295,7 +296,7 @@ router.post("/mtm", async (req, res): Promise<void> => {
     return;
   }
 
-  const today = new Date().toISOString().slice(0, 10);
+  const today = todayInNewYork();
   const snapshotDate = data.snapshotDate ?? today;
 
   const manualWrite = await db.transaction(async (tx) => {
@@ -405,7 +406,7 @@ router.post("/mtm/week-zero/capture", async (req, res): Promise<void> => {
 
   const capturedAt = new Date();
   const requestedSnapshotDate =
-    parsed.data.snapshotDate ?? capturedAt.toISOString().slice(0, 10);
+    parsed.data.snapshotDate ?? todayInNewYork(capturedAt);
 
   const auctionRows = await db
     .select({ bidAmount: teamSeasonAuctionsTable.bidAmount })

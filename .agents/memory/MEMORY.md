@@ -7,3 +7,4 @@
 - [Ownership write integrity](ownership-write-integrity.md) — primary split changes and trade lifecycle edits must serialize per season and preserve exact four-decimal ownership totals.
 - [Auction results history](auction-results-history.md) — auction result rows preserve the original winner and nomination order, not post-trade ownership.
 - [Short position semantics](short-position-semantics.md) — approved trades may create signed shorts; only positive stakes are current owners while position reports remain signed.
+- [New York timezone](new-york-timezone.md) — pool calendar defaults and visible timestamps use America/New_York, never UTC or a viewer’s local timezone.

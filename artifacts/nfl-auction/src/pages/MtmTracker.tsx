@@ -580,7 +580,7 @@ function MtmContent({ data }: { data: MtmData }) {
   const weekLabels = data.weeks.map((week) => {
     if (week.weekNum === 0) return week.label;
     const dt = new Date(week.snapshotDate + "T12:00:00"); // noon to avoid TZ edge cases
-    return dt.toLocaleDateString("en-US", { month: "short", day: "numeric" });
+    return dt.toLocaleDateString("en-US", { timeZone: "America/New_York", month: "short", day: "numeric" });
   });
 
   // Chart dimensions
@@ -801,7 +801,7 @@ function MtmContent({ data }: { data: MtmData }) {
                         key={w.snapshotDate}
                         className="px-3 py-2 text-right text-xs font-mono font-bold uppercase tracking-widest text-muted-foreground"
                       >
-                        {new Date(w.snapshotDate + "T12:00:00").toLocaleDateString("en-US", { month: "short", day: "numeric" })}
+                        {new Date(w.snapshotDate + "T12:00:00").toLocaleDateString("en-US", { timeZone: "America/New_York", month: "short", day: "numeric" })}
                       </th>
                     ))}
                   </tr>
@@ -889,7 +889,7 @@ function Week0AuditView({ week }: { week: MtmWeekData }) {
         <div className="border border-border bg-card p-4">
           <p className="text-xs font-mono font-bold uppercase tracking-widest text-muted-foreground mb-1">Captured</p>
           <p className="text-lg font-mono pt-1">
-            {week.capturedAt ? new Date(week.capturedAt).toLocaleDateString("en-US", { month: "short", day: "numeric", hour: "numeric", minute: "2-digit" }) : week.snapshotDate}
+            {week.capturedAt ? new Date(week.capturedAt).toLocaleDateString("en-US", { timeZone: "America/New_York", month: "short", day: "numeric", hour: "numeric", minute: "2-digit" }) : week.snapshotDate}
           </p>
           <p className="text-[10px] font-mono text-muted-foreground mt-1 uppercase">
             Source: {week.source}

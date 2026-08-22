@@ -142,7 +142,7 @@ function ByOwnerView({
                 <span>{idx + 1}</span>
               </div>
               <div className="col-span-2 md:col-span-3 font-bold truncate">{row.bidderName}</div>
-              <div className="col-span-1 text-center text-muted-foreground font-mono">{row.teamCount}</div>
+              <div className="col-span-1 text-center text-muted-foreground font-mono">{row.teamCount.toFixed(2)}</div>
               {isComplete ? (
                 <>
                   {/* Cost — leftmost */}
@@ -506,7 +506,7 @@ function ByTeamView({ rows, isComplete }: { rows: TeamResultRow[]; isComplete: b
           value={search}
           onChange={(e) => setSearch(e.target.value)}
           placeholder="Filter by team, owner, conference, division…"
-          className="flex-1 min-w-48 md:max-w-72 border border-border bg-background px-3 py-1.5 text-sm font-mono placeholder:text-muted-foreground focus:outline-none focus:ring-1 focus:ring-primary"
+          className="w-full min-w-0 md:w-[28rem] md:flex-none border border-border bg-background px-3 py-1.5 text-sm font-mono placeholder:text-muted-foreground focus:outline-none focus:ring-1 focus:ring-primary"
         />
         <button
           onClick={() => setSplitByOwner((v) => !v)}
@@ -532,7 +532,7 @@ function ByTeamView({ rows, isComplete }: { rows: TeamResultRow[]; isComplete: b
               </th>
               <th className="px-3 py-2.5 text-center"><SH label="Conf" k="conf" align="center" /></th>
               <th className="px-3 py-2.5 text-left"><SH label="Div" k="div" align="left" /></th>
-              <th className="px-3 py-2.5 text-center"><SH label="#" k="seed" align="center" /></th>
+              <th className="px-3 py-2.5 text-center"><SH label="Playoff Seed" k="seed" align="center" /></th>
               <th className="px-3 py-2.5 text-left">
                 <SH label={splitByOwner ? "Owner" : "Owner(s)"} k="owner" align="left" />
               </th>

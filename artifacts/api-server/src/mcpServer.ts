@@ -28,6 +28,7 @@ import {
   OWNERSHIP_SEASON_LOCK_NAMESPACE,
   validatePrimaryOwnership,
 } from "./lib/ownershipShares";
+import { currentYearInNewYork, todayInNewYork } from "./lib/newYorkTime";
 
 // ─── DB helpers ─────────────────────────────────────────────────────────────
 
@@ -591,7 +592,7 @@ function buildMcpServer() {
           ? price
           : Math.round(auctionBidAmount * (percentage / 100) * 100) / 100;
 
-      const today = tradeDate ?? new Date().toISOString().slice(0, 10);
+      const today = tradeDate ?? todayInNewYork();
 
       const [inserted] = await db
         .insert(tradesTable)
@@ -775,13 +776,13 @@ function buildMcpServer() {
           .from(seasonsTable)
           .where(eq(seasonsTable.isActive, true))
           .limit(1);
-        year = activeRows[0]?.year ?? new Date().getFullYear();
+        year = activeRows[0]?.year ?? currentYearInNewYork();
       }
 
       const sid = await resolveSeasonId(year);
       if (!sid) return text(`Season ${year} not found`);
 
-      const today = snapshotDate ?? new Date().toISOString().slice(0, 10);
+      const today = snapshotDate ?? todayInNewYork();
 
       const [snap] = await db
         .insert(mtmSnapshotsTable)

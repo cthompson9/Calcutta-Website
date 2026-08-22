@@ -9,6 +9,7 @@ import {
 import type { TradeRow } from "@workspace/api-client-react";
 import { formatCurrency } from "@/lib/utils";
 import { cn } from "@/lib/utils";
+import { todayInNewYork } from "@/lib/newYorkTime";
 import { useSeason } from "@/hooks/useSeason";
 import { ArrowRight, Plus, Trash2, X, Lock, Unlock, Check, Ban } from "lucide-react";
 
@@ -178,7 +179,7 @@ function TradeForm({
   const [percentage, setPct]  = useState("100");
   const [useDraftCost, setUseDraftCost] = useState(false);
   const [price, setPrice]     = useState("");
-  const [date, setDate]       = useState(() => new Date().toISOString().slice(0, 10));
+  const [date, setDate]       = useState(() => todayInNewYork());
   const [notes, setNotes]     = useState("");
 
   const selectedTeam = teams.find((t: any) => String(t.id) === teamId);

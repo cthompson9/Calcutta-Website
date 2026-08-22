@@ -403,7 +403,7 @@ router.get("/results/by-owner", async (req, res): Promise<void> => {
     .filter((o) => Math.abs(o.teamCount) > 0.00005 || o.totalCost !== 0)
     .map((o) => ({
       ...o,
-      teamCount: Math.round(o.teamCount * 10) / 10,
+      teamCount: Math.round(o.teamCount * 100) / 100,
       totalCost: Math.round(o.totalCost * 100) / 100,
       totalRealizedReturn: Math.round(o.totalRealizedReturn * 100) / 100,
       totalNetReturn: Math.round(o.totalNetReturn * 100) / 100,
