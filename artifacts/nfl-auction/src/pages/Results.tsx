@@ -117,6 +117,21 @@ function calculateExposure(row: OwnerResultRow): number {
   return Math.round(exposure * 100) / 100;
 }
 
+function calculateTeamExposure(team: TeamResultRow): number {
+  const position = team.owners[0]?.ownershipShare ?? 0;
+  if (Math.abs(position) < 0.00005) return 0;
+
+  const exposure = position > 0 ? team.cost : -team.cost;
+  return Math.round(exposure * 100) / 100;
+}
+
+const OWNER_SUMMARY_GRID =
+  "grid-cols-[2.5rem_minmax(0,1fr)_4.5rem_7rem_2.5rem] md:grid-cols-[2.5rem_minmax(0,1fr)_4.5rem_8rem_8rem_2.5rem]";
+const OWNER_SUMMARY_COMPLETE_GRID =
+  "grid-cols-[2.5rem_minmax(0,1fr)_4.5rem_7rem_2.5rem] md:grid-cols-[2.5rem_minmax(0,1fr)_4.5rem_8rem_8rem_8rem_2.5rem]";
+const OWNER_TEAM_GRID =
+  "grid-cols-[minmax(0,1fr)_minmax(7rem,auto)] md:grid-cols-[minmax(0,1.2fr)_minmax(0,1fr)_8rem_8rem]";
+
 function ByOwnerView({
   rows,
   isComplete,
@@ -140,27 +155,28 @@ function ByOwnerView({
   return (
     <div className="space-y-3">
       {/* Summary header */}
-      <div className="hidden md:grid grid-cols-12 bg-muted/60 text-muted-foreground text-xs font-mono font-bold uppercase tracking-widest px-4 py-3 border border-border">
-        <div className="col-span-1 text-center">#</div>
-        <div className="col-span-3">Consortium</div>
-        <div className="col-span-1 text-center">Teams</div>
+      <div
+        className={cn(
+          "hidden md:grid bg-muted/60 text-muted-foreground text-xs font-mono font-bold uppercase tracking-widest px-4 py-3 border border-border",
+          isComplete ? OWNER_SUMMARY_COMPLETE_GRID : OWNER_SUMMARY_GRID,
+        )}
+      >
+        <div className="text-left">#</div>
+        <div>Consortium</div>
+        <div className="text-right">Teams</div>
         {isComplete ? (
           <>
-            <div className="col-span-2 text-right">Exposure</div>
-            <div className="col-span-2 text-right">Gross</div>
-            <div className="col-span-3 text-right font-bold text-foreground">
-              Net
-            </div>
+            <div className="text-right">Exposure</div>
+            <div className="text-right">Gross</div>
+            <div className="text-right font-bold text-foreground">Net</div>
           </>
         ) : (
           <>
-            <div className="col-span-3 text-right font-bold text-foreground">
-              MTM Return
-            </div>
-              <div className="col-span-2 text-right">Exposure</div>
-            <div className="col-span-1" />
+            <div className="text-right font-bold text-foreground">MTM Return</div>
+            <div className="text-right">Exposure</div>
           </>
         )}
+        <div />
       </div>
 
       {sorted.map((row, idx) => {
@@ -178,11 +194,13 @@ function ByOwnerView({
               onClick={() => setExpandedOwner(isExpanded ? null : row.bidderId)}
               aria-expanded={isExpanded}
               className={cn(
-                "w-full grid grid-cols-6 md:grid-cols-12 items-center px-4 py-4 hover:bg-muted/40 transition-colors text-left",
+                "w-full grid items-center px-4 py-4 hover:bg-muted/40 transition-colors text-left",
+                isComplete ? OWNER_SUMMARY_COMPLETE_GRID : OWNER_SUMMARY_GRID,
                 isWinner && "bg-yellow-50 dark:bg-yellow-900/10",
               )}
             >
-              <div className="col-span-1 flex items-center gap-1 font-mono font-bold text-lg">
+              <div className="flex items-center gap-1 font-mono font-bold text-lg">
+                <span>{idx + 1}</span>
                 {isLeader && (
                   <img
                     src="/sleigh-monkey.png"
@@ -190,9 +208,8 @@ function ByOwnerView({
                     className="w-6 h-6 object-contain shrink-0"
                   />
                 )}
-                <span>{idx + 1}</span>
               </div>
-              <div className="col-span-2 md:col-span-3 min-w-0 font-bold">
+              <div className="min-w-0 font-bold">
                 <ConsortiumLabel
                   label={
                     row.consortium ??
@@ -204,23 +221,23 @@ function ByOwnerView({
                   }
                 />
               </div>
-              <div className="col-span-1 text-center text-muted-foreground font-mono">
+              <div className="text-right text-muted-foreground font-mono">
                 {row.teamCount.toFixed(2)}
               </div>
               {isComplete ? (
                 <>
                   {/* Exposure — net long cost minus signed short cost */}
-                  <div className="hidden md:block col-span-2 text-right font-mono text-sm text-muted-foreground">
+                  <div className="hidden md:block text-right font-mono text-sm text-muted-foreground">
                     {formatCurrency(calculateExposure(row))}
                   </div>
                   {/* Gross return */}
-                  <div className="hidden md:block col-span-2 text-right font-mono text-sm text-muted-foreground">
+                  <div className="hidden md:block text-right font-mono text-sm text-muted-foreground">
                     {formatCurrency(row.totalRealizedReturn)}
                   </div>
                   {/* Net — primary sort key, highlighted */}
                   <div
                     className={cn(
-                      "col-span-1 md:col-span-3 text-right font-mono font-bold text-sm",
+                      "text-right font-mono font-bold text-sm",
                       row.totalNetReturn >= 0
                         ? "text-green-600"
                         : "text-red-600",
@@ -235,7 +252,7 @@ function ByOwnerView({
                   {/* MTM Return — primary / sort key */}
                   <div
                     className={cn(
-                      "col-span-2 md:col-span-3 text-right font-mono font-bold text-sm",
+                      "text-right font-mono font-bold text-sm",
                       row.totalMtm >= 0 ? "text-green-600" : "text-red-600",
                     )}
                   >
@@ -244,12 +261,12 @@ function ByOwnerView({
                         formatCurrency(row.totalMtm)
                       : "—"}
                   </div>
-                  <div className="hidden md:block col-span-2 text-right font-mono text-sm text-muted-foreground">
+                  <div className="hidden md:block text-right font-mono text-sm text-muted-foreground">
                     {formatCurrency(calculateExposure(row))}
                   </div>
                 </>
               )}
-              <div className="col-span-1 flex justify-end text-muted-foreground">
+              <div className="flex justify-end text-muted-foreground">
                 <span className="inline-flex h-6 w-6 items-center justify-center border border-border bg-background transition-colors group-hover:border-foreground/40">
                   <ChevronDown
                     className={cn(
@@ -297,14 +314,16 @@ function ByOwnerView({
             {/* Expanded team list */}
             {isExpanded && (
               <div className="border-t border-border">
-                <div className="hidden md:grid grid-cols-12 bg-muted/30 text-muted-foreground text-[10px] font-mono font-bold uppercase tracking-widest px-6 py-2 border-b border-border">
-                  <div className="col-span-3">Team</div>
-                  <div className="col-span-2 text-center">Record</div>
-                  <div className="col-span-1 text-center">PD</div>
-                  <div className="col-span-1 text-center">PO</div>
-                  <div className="col-span-1 text-center">SB</div>
-                  <div className="col-span-2 text-right">Return</div>
-                  <div className="col-span-2 text-right">Net P&L</div>
+                <div
+                  className={cn(
+                    "hidden md:grid bg-muted/30 text-muted-foreground text-[10px] font-mono font-bold uppercase tracking-widest px-6 py-2 border-b border-border",
+                    OWNER_TEAM_GRID,
+                  )}
+                >
+                  <div>Team</div>
+                  <div>Type</div>
+                  <div className="text-right">MTM Return</div>
+                  <div className="text-right">Exposure</div>
                 </div>
                 {[...row.teams]
                   .sort((a, b) => b.markToMarket - a.markToMarket)
@@ -312,7 +331,6 @@ function ByOwnerView({
                     <TeamSubRow
                       key={t.teamId}
                       team={t}
-                      isComplete={isComplete}
                       ownerId={row.bidderId}
                       consortiumByBidderId={consortiumByBidderId}
                     />
@@ -341,6 +359,7 @@ function OwnershipBreakdown({
   owners,
   consortiumByBidderId,
   showOwner = true,
+  compact = false,
 }: {
   segments: OwnershipSegment[];
   owners: Array<{
@@ -350,6 +369,7 @@ function OwnershipBreakdown({
   }>;
   consortiumByBidderId: Map<number, string>;
   showOwner?: boolean;
+  compact?: boolean;
 }) {
   const displaySegments: OwnershipSegment[] =
     segments.length > 0
@@ -375,9 +395,11 @@ function OwnershipBreakdown({
         const isAcquisition = segment.tradeDirection === "acquired";
         const sourceLabel = !isTrade
           ? "Primary"
-          : isAcquisition
-            ? `Trade in${counterparty ? ` from ${counterparty}` : ""}`
-            : `Trade out${counterparty ? ` to ${counterparty}` : ""}`;
+          : compact
+            ? "Trade"
+            : isAcquisition
+              ? `Trade in${counterparty ? ` from ${counterparty}` : ""}`
+              : `Trade out${counterparty ? ` to ${counterparty}` : ""}`;
 
         return (
           <div
@@ -409,98 +431,65 @@ function OwnershipBreakdown({
 
 function TeamSubRow({
   team,
-  isComplete,
   ownerId,
   consortiumByBidderId,
 }: {
   team: TeamResultRow;
-  isComplete: boolean;
   ownerId: number;
   consortiumByBidderId: Map<number, string>;
 }) {
-  const hasSB = team.sbBerth;
-  const wonSB = team.winSuperBowl;
   const ownerSegments = team.ownershipSegments.filter(
     (segment) => segment.bidderId === ownerId,
   );
   const ownerEntries = team.owners.filter((owner) => owner.bidderId === ownerId);
 
   return (
-    <div className="grid grid-cols-6 md:grid-cols-12 items-center px-6 py-3 border-b border-border last:border-0 hover:bg-muted/20 transition-colors">
-      <div className="col-span-3 md:col-span-3 min-w-0">
+    <div
+      className={cn(
+        "grid items-center px-6 py-3 border-b border-border last:border-0 hover:bg-muted/20 transition-colors",
+        OWNER_TEAM_GRID,
+      )}
+    >
+      <div className="min-w-0">
         <div className="flex items-center gap-2">
-          {wonSB && <Star className="w-3 h-3 text-yellow-500 shrink-0" />}
-          {hasSB && !wonSB && (
-            <span className="text-[10px] text-muted-foreground shrink-0">SB</span>
-          )}
           <span className="font-medium text-sm">{team.teamName}</span>
           <span className="hidden md:inline text-[10px] text-muted-foreground font-mono shrink-0">
             {team.conference}
           </span>
         </div>
+      </div>
+      <div className="min-w-0 font-mono text-xs">
+        <span className="mr-2 text-[10px] uppercase tracking-widest text-muted-foreground md:hidden">
+          Type
+        </span>
         <OwnershipBreakdown
           segments={ownerSegments}
           owners={ownerEntries}
           consortiumByBidderId={consortiumByBidderId}
           showOwner={false}
+          compact
         />
       </div>
-      {isComplete ? (
-        <>
-          <div className="col-span-1 md:col-span-2 text-center font-mono text-xs">
-            {formatRecord(team.wins, team.losses, team.ties)}
-          </div>
-          <div
-            className={cn(
-              "hidden md:block col-span-1 text-center font-mono text-xs",
-              team.ptDiff >= 0 ? "text-green-600" : "text-red-500",
-            )}
-          >
-            {team.ptDiff >= 0 ? "+" : ""}
-            {team.ptDiff}
-          </div>
-          <div className="hidden md:block col-span-1 text-center text-xs">
-            {team.playoffBerth ? "✓" : "–"}
-          </div>
-          <div className="hidden md:block col-span-1 text-center text-xs">
-            {team.winSuperBowl ? "🏆" : team.sbBerth ? "🔹" : "–"}
-          </div>
-          <div className="hidden md:block col-span-2 text-right font-mono text-sm">
-            {formatCurrency(team.realizedReturn)}
-          </div>
-          <div
-            className={cn(
-              "col-span-2 text-right font-mono font-bold text-sm",
-              team.netReturn >= 0 ? "text-green-600" : "text-red-600",
-            )}
-          >
-            {team.netReturn >= 0 ? "+" : ""}
-            {formatCurrency(team.netReturn)}
-          </div>
-        </>
-      ) : (
-        <>
-          <div className="col-span-1 md:col-span-2 text-center font-mono text-xs">
-            {formatRecord(team.wins, team.losses, team.ties)}
-          </div>
-          <div className="col-span-2 text-right font-mono text-sm text-muted-foreground">
-            {formatCurrency(team.cost)}
-          </div>
-           <div className="col-span-1 min-w-0 text-right font-mono text-xs text-muted-foreground">
-             <ConsortiumLabel
-               label={team.owners
-                 .map((o) =>
-                   ownerLabelById(
-                     o.bidderId,
-                     o.bidderName,
-                     consortiumByBidderId,
-                   ),
-                 )
-                 .join(" / ")}
-             />
-          </div>
-        </>
-      )}
+      <div
+        className={cn(
+          "text-right font-mono text-sm",
+          team.markToMarket >= 0 ? "text-green-600" : "text-red-600",
+        )}
+      >
+        <span className="mr-2 text-[10px] uppercase tracking-widest text-muted-foreground md:hidden">
+          MTM Return
+        </span>
+        {team.markToMarket !== 0
+          ? (team.markToMarket >= 0 ? "+" : "") +
+            formatCurrency(team.markToMarket)
+          : "—"}
+      </div>
+      <div className="text-right font-mono text-sm text-muted-foreground">
+        <span className="mr-2 text-[10px] uppercase tracking-widest md:hidden">
+          Exposure
+        </span>
+        {formatCurrency(calculateTeamExposure(team))}
+      </div>
     </div>
   );
 }
