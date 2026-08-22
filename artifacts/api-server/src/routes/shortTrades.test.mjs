@@ -8,10 +8,11 @@
 import assert from "node:assert/strict";
 import http from "node:http";
 import { after, before, describe, test } from "node:test";
-import { eq, inArray } from "drizzle-orm";
+import { eq, inArray, ne } from "drizzle-orm";
 
 const DATABASE_URL = process.env.DATABASE_URL;
 const ADMIN_KEY = process.env.ADMIN_API_KEY;
+const MCP_KEY = process.env.MCP_API_KEY;
 const canRun = Boolean(DATABASE_URL && ADMIN_KEY);
 
 let db;
@@ -117,13 +118,19 @@ describe("short trades and new trade participants", { skip: !canRun }, () => {
     }
   });
 
-  async function createAndApproveTrade({ fromBidderId, toBidderId, percentage, price }) {
+  async function createAndApproveTrade({
+    fromBidderId,
+    toBidderId,
+    percentage,
+    price,
+    tradeTeamId = teamId,
+  }) {
     const createResponse = await fetch(`${baseUrl}/api/trades`, {
       method: "POST",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({
         seasonYear,
-        teamId,
+        teamId: tradeTeamId,
         fromBidderId,
         toBidderId,
         percentage,
@@ -133,6 +140,9 @@ describe("short trades and new trade participants", { skip: !canRun }, () => {
     });
     const createdTrade = await createResponse.json();
     assert.equal(createResponse.status, 201, JSON.stringify(createdTrade));
+    assert.equal(createdTrade.status, "pending");
+    assert.equal(createdTrade.decisionAt, null);
+    assert.equal(createdTrade.decisionSource, null);
 
     const approvalResponse = await fetch(`${baseUrl}/api/trades/${createdTrade.id}/status`, {
       method: "PATCH",
@@ -140,9 +150,42 @@ describe("short trades and new trade participants", { skip: !canRun }, () => {
         "Content-Type": "application/json",
         Authorization: `Bearer ${ADMIN_KEY}`,
       },
-      body: JSON.stringify({ status: "approved" }),
+      body: JSON.stringify({ status: "approved", confirmed: true }),
     });
-    assert.equal(approvalResponse.status, 200, await approvalResponse.text());
+    const approvalText = await approvalResponse.text();
+    assert.equal(approvalResponse.status, 200, approvalText);
+    const approvedTrade = JSON.parse(approvalText);
+    assert.equal(approvedTrade.status, "approved");
+    assert.equal(approvedTrade.decisionSource, "commissioner_api");
+    assert.ok(
+      Number.isFinite(Date.parse(approvedTrade.decisionAt)),
+      "a newly recorded decision has an audit timestamp",
+    );
+    return { createdTrade, approvedTrade };
+  }
+
+  async function callMcpTool(name, args) {
+    const response = await fetch(`${baseUrl}/api/mcp`, {
+      method: "POST",
+      headers: {
+        Authorization: `Bearer ${MCP_KEY}`,
+        "Content-Type": "application/json",
+        Accept: "application/json, text/event-stream",
+      },
+      body: JSON.stringify({
+        jsonrpc: "2.0",
+        id: `${name}-${Math.random()}`,
+        method: "tools/call",
+        params: { name, arguments: args },
+      }),
+    });
+    const responseText = await response.text();
+    assert.equal(response.status, 200, responseText);
+    const dataLine = responseText
+      .split("\n")
+      .find((line) => line.startsWith("data: "));
+    assert.ok(dataLine, `MCP response did not include an SSE data event: ${responseText}`);
+    return JSON.parse(dataLine.slice("data: ".length));
   }
 
   test("allows an unauthenticated synthetic trade submission but keeps it pending", async () => {
@@ -163,6 +206,8 @@ describe("short trades and new trade participants", { skip: !canRun }, () => {
     const createdTrade = await response.json();
     assert.equal(response.status, 201, JSON.stringify(createdTrade));
     assert.equal(createdTrade.status, "pending");
+    assert.equal(createdTrade.decisionAt, null);
+    assert.equal(createdTrade.decisionSource, null);
 
     const ownershipBeforeApproval = await loadSeasonOwnership(seasonId);
     assert.equal(
@@ -176,12 +221,71 @@ describe("short trades and new trade participants", { skip: !canRun }, () => {
       "a pending synthetic purchase does not create an ownership position",
     );
 
+    const missingConfirmation = await fetch(`${baseUrl}/api/trades/${createdTrade.id}/status`, {
+      method: "PATCH",
+      headers: {
+        "Content-Type": "application/json",
+        Authorization: `Bearer ${ADMIN_KEY}`,
+      },
+      body: JSON.stringify({ status: "approved" }),
+    });
+    assert.equal(missingConfirmation.status, 400, "a decision must be explicitly confirmed");
+
     const unauthorizedApproval = await fetch(`${baseUrl}/api/trades/${createdTrade.id}/status`, {
       method: "PATCH",
       headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ status: "approved" }),
+      body: JSON.stringify({ status: "approved", confirmed: true }),
     });
     assert.equal(unauthorizedApproval.status, 401);
+  });
+
+  test("records one audited decision and rejects later status changes", async () => {
+    const [auditTeam] = await db
+      .select({ id: teamsTable.id })
+      .from(teamsTable)
+      .where(ne(teamsTable.id, teamId))
+      .limit(1);
+    assert.ok(auditTeam, "a second NFL team fixture must exist");
+    assert.notEqual(auditTeam.id, teamId);
+    await db.insert(teamSeasonAuctionsTable).values({
+      seasonId,
+      teamId: auditTeam.id,
+      bidAmount: "1000.00",
+    });
+    const [auditSeller] = await db
+      .insert(biddersTable)
+      .values({ name: `Audit Seller ${seasonYear}` })
+      .returning();
+    const [auditBuyer] = await db
+      .insert(biddersTable)
+      .values({ name: `Audit Buyer ${seasonYear}` })
+      .returning();
+    createdBidderIds.push(auditSeller.id, auditBuyer.id);
+
+    const { createdTrade, approvedTrade } = await createAndApproveTrade({
+      fromBidderId: auditSeller.id,
+      toBidderId: auditBuyer.id,
+      percentage: 10,
+      price: 10,
+      tradeTeamId: auditTeam.id,
+    });
+
+    assert.equal(approvedTrade.id, createdTrade.id);
+    const secondDecision = await fetch(`${baseUrl}/api/trades/${createdTrade.id}/status`, {
+      method: "PATCH",
+      headers: {
+        "Content-Type": "application/json",
+        Authorization: `Bearer ${ADMIN_KEY}`,
+      },
+      body: JSON.stringify({ status: "rejected", confirmed: true }),
+    });
+    assert.equal(secondDecision.status, 409, "a recorded decision cannot be changed");
+
+    const getTradesResponse = await fetch(`${baseUrl}/api/trades?season=${seasonYear}`);
+    const listedTrade = (await getTradesResponse.json()).find((trade) => trade.id === createdTrade.id);
+    assert.equal(listedTrade.status, "approved");
+    assert.equal(listedTrade.decisionSource, "commissioner_api");
+    assert.equal(listedTrade.decisionAt, approvedTrade.decisionAt);
   });
 
   test("approves a zero-stake sale, preserves signed ownership, and supports an offsetting buy", async () => {
@@ -221,7 +325,7 @@ describe("short trades and new trade participants", { skip: !canRun }, () => {
         "Content-Type": "application/json",
         Authorization: `Bearer ${ADMIN_KEY}`,
       },
-      body: JSON.stringify({ status: "approved" }),
+      body: JSON.stringify({ status: "approved", confirmed: true }),
     });
     assert.equal(malformedApproval.status, 400, "approval rejects malformed pending percentages");
 
@@ -346,5 +450,72 @@ describe("short trades and new trade participants", { skip: !canRun }, () => {
       2.5,
       "the existing current-owner response remains the effective total",
     );
+  });
+
+  test("MCP decisions require confirmation and cannot overwrite an audit record", { skip: !MCP_KEY }, async () => {
+    const [mcpSeller] = await db
+      .insert(biddersTable)
+      .values({ name: `MCP Audit Seller ${seasonYear}` })
+      .returning();
+    const [mcpBuyer] = await db
+      .insert(biddersTable)
+      .values({ name: `MCP Audit Buyer ${seasonYear}` })
+      .returning();
+    createdBidderIds.push(mcpSeller.id, mcpBuyer.id);
+
+    const createResponse = await fetch(`${baseUrl}/api/trades`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
+        seasonYear,
+        teamId,
+        fromBidderId: mcpSeller.id,
+        toBidderId: mcpBuyer.id,
+        percentage: 10,
+        price: 10,
+        tradeDate: "2030-01-01",
+      }),
+    });
+    const pendingTrade = await createResponse.json();
+    assert.equal(createResponse.status, 201, JSON.stringify(pendingTrade));
+
+    const missingConfirmation = await callMcpTool("set_trade_status", {
+      tradeId: pendingTrade.id,
+      status: "approved",
+      adminKey: ADMIN_KEY,
+    });
+    assert.match(
+      JSON.stringify(missingConfirmation),
+      /confirmed/i,
+      "MCP rejects a decision without explicit confirmation",
+    );
+
+    const approved = await callMcpTool("set_trade_status", {
+      tradeId: pendingTrade.id,
+      status: "approved",
+      confirmed: true,
+      adminKey: ADMIN_KEY,
+    });
+    assert.match(JSON.stringify(approved), /APPROVED/);
+
+    const repeated = await callMcpTool("set_trade_status", {
+      tradeId: pendingTrade.id,
+      status: "rejected",
+      confirmed: true,
+      adminKey: ADMIN_KEY,
+    });
+    assert.match(JSON.stringify(repeated), /already been decided/i);
+
+    const [storedTrade] = await db
+      .select({
+        status: tradesTable.status,
+        decisionAt: tradesTable.decisionAt,
+        decisionSource: tradesTable.decisionSource,
+      })
+      .from(tradesTable)
+      .where(eq(tradesTable.id, pendingTrade.id));
+    assert.equal(storedTrade.status, "approved");
+    assert.equal(storedTrade.decisionSource, "commissioner_mcp");
+    assert.ok(storedTrade.decisionAt instanceof Date);
   });
 });

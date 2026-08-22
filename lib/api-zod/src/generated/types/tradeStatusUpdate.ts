@@ -9,4 +9,6 @@ import type { TradeStatusUpdateStatus } from './tradeStatusUpdateStatus';
 
 export interface TradeStatusUpdate {
   status: TradeStatusUpdateStatus;
+  /** Must be true to record this irreversible commissioner decision. */
+  confirmed: true;
 }

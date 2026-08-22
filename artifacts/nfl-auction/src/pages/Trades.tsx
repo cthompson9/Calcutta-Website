@@ -45,7 +45,7 @@ async function setTradeStatus(
         "Content-Type": "application/json",
         Authorization: `Bearer ${adminKey}`,
       },
-      body: JSON.stringify({ status }),
+      body: JSON.stringify({ status, confirmed: true }),
     });
     if (res.status === 401) return { ok: false, error: "Invalid admin key" };
     if (!res.ok) return { ok: false, error: await res.text() };
@@ -53,6 +53,28 @@ async function setTradeStatus(
   } catch {
     return { ok: false, error: "Network error" };
   }
+}
+
+function decisionAuditLabel(trade: TradeRow): string | null {
+  if (trade.status === "pending") return null;
+  if (!trade.decisionAt) return "Historical decision · audit details unavailable";
+
+  const channel =
+    trade.decisionSource === "commissioner_mcp"
+      ? "Commissioner MCP"
+      : trade.decisionSource === "commissioner_api"
+        ? "Commissioner app"
+        : "Commissioner channel";
+  const timestamp = new Intl.DateTimeFormat("en-US", {
+    timeZone: "America/New_York",
+    month: "short",
+    day: "numeric",
+    year: "numeric",
+    hour: "numeric",
+    minute: "2-digit",
+    timeZoneName: "short",
+  }).format(new Date(trade.decisionAt));
+  return `Decision recorded ${timestamp} · ${channel}`;
 }
 
 // ── Trade card ───────────────────────────────────────────────────────────────
@@ -75,6 +97,12 @@ function TradeCard({
 
   async function handleStatus(status: "approved" | "rejected") {
     if (!adminKey) return;
+    const decision = status === "approved" ? "approve" : "reject";
+    const confirmed = window.confirm(
+      `${decision[0].toUpperCase()}${decision.slice(1)} ${trade.teamName} (${trade.percentage}% from ${trade.fromBidderName} to ${trade.toBidderName})?\n\nThis decision is permanent. Choose OK to record it.`,
+    );
+    if (!confirmed) return;
+
     setActing(true);
     setAdminError("");
     const result = await setTradeStatus(trade.id, status, adminKey);
@@ -145,6 +173,11 @@ function TradeCard({
 
       {trade.notes && (
         <p className="text-xs text-muted-foreground font-mono border-t border-border pt-2">{trade.notes}</p>
+      )}
+      {decisionAuditLabel(trade) && (
+        <p className="text-[11px] text-muted-foreground font-mono border-t border-border pt-2">
+          {decisionAuditLabel(trade)}
+        </p>
       )}
 
       {/* Admin approve/reject — only for pending trades when admin key is entered */}
@@ -422,7 +455,9 @@ function AdminPanel({
       </button>
       {expanded && (
         <div className="absolute right-0 top-full mt-1 z-50 bg-background border border-border p-3 w-64 space-y-2 shadow-lg">
-          <p className="text-xs font-mono text-muted-foreground">Enter your admin key to approve or reject pending trades.</p>
+          <p className="text-xs font-mono text-muted-foreground">
+            Enter your admin key to approve or reject pending trades. It is kept only until this page reloads.
+          </p>
           <input
             type="password"
             value={input}
@@ -463,9 +498,7 @@ export default function Trades() {
   const { year } = useSeason();
   const [showForm, setShowForm]     = useState(false);
   const [submissionError, setSubmissionError] = useState("");
-  const [adminKey, setAdminKey]     = useState<string | null>(
-    () => sessionStorage.getItem("nfl_admin_key"),
-  );
+  const [adminKey, setAdminKey]     = useState<string | null>(null);
 
   const { data: trades, isLoading, refetch } = useGetTrades({ season: year });
   const { data: teams } = useGetTeams({ season: year });
@@ -475,12 +508,10 @@ export default function Trades() {
   const { mutate: deleteTrade } = useDeleteTrade();
 
   function saveAdminKey(key: string) {
-    sessionStorage.setItem("nfl_admin_key", key);
     setAdminKey(key);
   }
 
   function clearAdminKey() {
-    sessionStorage.removeItem("nfl_admin_key");
     setAdminKey(null);
   }
 
@@ -542,7 +573,7 @@ export default function Trades() {
 
       {adminKey && (
         <div className="border border-green-300 bg-green-50 px-4 py-2 text-xs font-mono text-green-800">
-          🔓 Admin mode active — Approve / Reject buttons are visible on pending trades.
+          🔓 Admin mode active for this page only — every approval or rejection requires confirmation.
         </div>
       )}
 

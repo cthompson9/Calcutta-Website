@@ -53,6 +53,28 @@ function getTodayNY(): string {
   return `${part('year')}-${part('month')}-${part('day')}`;
 }
 
+function decisionAuditLabel(trade: TradeRow): string | null {
+  if (trade.status === 'pending') return null;
+  if (!trade.decisionAt) return 'Historical decision · audit details unavailable';
+
+  const channel =
+    trade.decisionSource === 'commissioner_mcp'
+      ? 'Commissioner MCP'
+      : trade.decisionSource === 'commissioner_api'
+        ? 'Commissioner app'
+        : 'Commissioner channel';
+  const timestamp = new Intl.DateTimeFormat('en-US', {
+    timeZone: 'America/New_York',
+    month: 'short',
+    day: 'numeric',
+    year: 'numeric',
+    hour: 'numeric',
+    minute: '2-digit',
+    timeZoneName: 'short',
+  }).format(new Date(trade.decisionAt));
+  return `Decision recorded ${timestamp} · ${channel}`;
+}
+
 // ── Picker sheet (web-safe select replacement) ────────────────────────────────
 
 function PickerModal<T extends { id: number; label: string }>({
@@ -704,6 +726,11 @@ function TradeCard({
           {trade.notes}
         </Text>
       ) : null}
+      {decisionAuditLabel(trade) ? (
+        <Text style={[styles.tradeMeta, { color: colors.mutedForeground, marginTop: 4 }]}>
+          {decisionAuditLabel(trade)}
+        </Text>
+      ) : null}
 
       {isPending && (
         <View style={[styles.tradeActions, { borderTopColor: colors.border }]}>
@@ -775,16 +802,32 @@ export default function TradesScreen() {
     return out;
   }, [tradesQuery.data]);
 
-  async function decide(trade: TradeRow, status: 'approved' | 'rejected') {
+  function decide(trade: TradeRow, status: 'approved' | 'rejected') {
     if (!adminKey) {
       setKeyModalVisible(true);
       return;
     }
+    const action = status === 'approved' ? 'Approve' : 'Reject';
+    Alert.alert(
+      `${action} this trade?`,
+      `${trade.teamName} · ${trade.percentage}% from ${trade.fromBidderName} to ${trade.toBidderName}\n\nThis decision is permanent.`,
+      [
+        { text: 'Cancel', style: 'cancel' },
+        {
+          text: action,
+          style: status === 'rejected' ? 'destructive' : 'default',
+          onPress: () => { void recordDecision(trade, status); },
+        },
+      ],
+    );
+  }
+
+  async function recordDecision(trade: TradeRow, status: 'approved' | 'rejected') {
     setDeciding(trade.id);
     try {
       await setTradeStatus(
         trade.id,
-        { status },
+        { status, confirmed: true },
         { headers: { Authorization: `Bearer ${adminKey}` } },
       );
       Haptics.notificationAsync(

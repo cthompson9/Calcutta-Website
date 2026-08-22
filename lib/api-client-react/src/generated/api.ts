@@ -1526,7 +1526,7 @@ export const getSetTradeStatusUrl = (id: number,) => {
 }
 
 /**
- * @summary Approve or reject a trade (admin only — requires ADMIN_API_KEY bearer token)
+ * @summary Confirm and record a pending trade decision (admin only — requires ADMIN_API_KEY bearer token)
  */
 export const setTradeStatus = async (id: number,
     tradeStatusUpdate: TradeStatusUpdate, options?: Parameters<typeof customFetch>[1]): Promise<TradeRow> => {
@@ -1576,7 +1576,7 @@ const {mutation: mutationOptions, request: requestOptions} = options ?
     export type SetTradeStatusMutationError = ErrorType<ErrorResponse>
 
     /**
- * @summary Approve or reject a trade (admin only — requires ADMIN_API_KEY bearer token)
+ * @summary Confirm and record a pending trade decision (admin only — requires ADMIN_API_KEY bearer token)
  */
 export const useSetTradeStatus = <TError = ErrorType<ErrorResponse>,
     TContext = unknown>(options?: { mutation?:UseMutationOptions<Awaited<ReturnType<typeof setTradeStatus>>, TError,{id: number;data: BodyType<TradeStatusUpdate>}, TContext>, request?: SecondParameter<typeof customFetch>}

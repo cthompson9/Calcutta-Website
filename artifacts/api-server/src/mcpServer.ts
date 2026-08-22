@@ -725,6 +725,8 @@ function buildMcpServer() {
           toBidderId: tradesTable.toBidderId,
           price: tradesTable.price,
           percentage: tradesTable.percentage,
+          decisionAt: tradesTable.decisionAt,
+          decisionSource: tradesTable.decisionSource,
           tradeDate: tradesTable.tradeDate,
         })
         .from(tradesTable)
@@ -733,24 +735,33 @@ function buildMcpServer() {
 
       if (!rows[0]) return text(`Trade #${tradeId} not found`);
       const r = rows[0];
+      const decisionAudit = r.decisionAt
+        ? ` Decision recorded ${r.decisionAt.toISOString()} via ${r.decisionSource ?? "unknown channel"}.`
+        : r.status === "pending"
+          ? ""
+          : " Historical decision; audit details are unavailable.";
       return text(
-        `Trade #${r.id}: ${r.percentage}% stake for $${r.price} on ${r.tradeDate} — Status: ${r.status.toUpperCase()}`,
+        `Trade #${r.id}: ${r.percentage}% stake for $${r.price} on ${r.tradeDate} — Status: ${r.status.toUpperCase()}.${decisionAudit}`,
       );
     },
   );
 
   server.tool(
     "set_trade_status",
-    "Approve or reject a pending trade. Requires the ADMIN_API_KEY as the adminKey parameter. Only approved trades affect owner standings and returns.",
+    "Record one irreversible approval or rejection for a pending trade. Requires the ADMIN_API_KEY plus confirmed: true. Only approved trades affect owner standings and returns.",
     {
       tradeId:  z.number().describe("Trade ID to update"),
       status:   z.enum(["approved", "rejected"]).describe("New status: approved or rejected"),
+      confirmed: z.literal(true).describe("Must be true to explicitly confirm this irreversible decision"),
       adminKey: z.string().describe("Admin API key — only the pool admin knows this"),
     },
-    async ({ tradeId, status, adminKey }) => {
+    async ({ tradeId, status, confirmed, adminKey }) => {
       const expectedKey = process.env["ADMIN_API_KEY"];
       if (!expectedKey || adminKey !== expectedKey) {
         return text("Error: Invalid admin key. Only the pool admin can approve or reject trades.");
+      }
+      if (confirmed !== true) {
+        return text("Error: Set confirmed to true to record this irreversible trade decision.");
       }
 
       const outcome = await db.transaction(async (tx) => {
@@ -770,19 +781,27 @@ function buildMcpServer() {
           .where(eq(tradesTable.id, tradeId))
           .limit(1);
         if (!fresh[0]) return { kind: "not_found" as const };
+        if (fresh[0].status !== "pending") return { kind: "already_decided" as const };
 
-        if (status === "approved" && fresh[0].status !== "approved") {
+        if (status === "approved") {
           const validationError = await validateMcpTradeApproval(fresh[0]);
           if (validationError) return { kind: "invalid" as const, error: validationError };
         }
 
         await tx
           .update(tradesTable)
-          .set({ status })
+          .set({
+            status,
+            decisionAt: new Date(),
+            decisionSource: "commissioner_mcp",
+          })
           .where(eq(tradesTable.id, tradeId));
         return { kind: "updated" as const };
       });
       if (outcome.kind === "not_found") return text(`Trade #${tradeId} not found`);
+      if (outcome.kind === "already_decided") {
+        return text(`Error: Trade #${tradeId} has already been decided and cannot be changed. Record a new trade instead.`);
+      }
       if (outcome.kind === "invalid") return text(`Error: Cannot approve trade: ${outcome.error}`);
 
       return text(

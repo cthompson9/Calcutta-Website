@@ -455,6 +455,8 @@ export const GetTradesResponseItem = zod.object({
   "price": zod.number(),
   "percentage": zod.number().describe('Percentage of team traded (0–100). Default 100 = full transfer.'),
   "status": zod.enum(['pending', 'approved', 'rejected']).describe('Approval status. New trades start as pending.'),
+  "decisionAt": zod.coerce.date().nullable().describe('Time the commissioner decision was recorded. Null for pending or legacy records.'),
+  "decisionSource": zod.string().nullable().describe('Trusted channel that recorded the decision. Null for pending or legacy records.'),
   "tradeDate": zod.string(),
   "notes": zod.string().nullish()
 })
@@ -487,6 +489,8 @@ export const CreateTradeResponse = zod.object({
   "price": zod.number(),
   "percentage": zod.number().describe('Percentage of team traded (0–100). Default 100 = full transfer.'),
   "status": zod.enum(['pending', 'approved', 'rejected']).describe('Approval status. New trades start as pending.'),
+  "decisionAt": zod.coerce.date().nullable().describe('Time the commissioner decision was recorded. Null for pending or legacy records.'),
+  "decisionSource": zod.string().nullable().describe('Trusted channel that recorded the decision. Null for pending or legacy records.'),
   "tradeDate": zod.string(),
   "notes": zod.string().nullish()
 })
@@ -518,6 +522,8 @@ export const UpdateTradeResponse = zod.object({
   "price": zod.number(),
   "percentage": zod.number().describe('Percentage of team traded (0–100). Default 100 = full transfer.'),
   "status": zod.enum(['pending', 'approved', 'rejected']).describe('Approval status. New trades start as pending.'),
+  "decisionAt": zod.coerce.date().nullable().describe('Time the commissioner decision was recorded. Null for pending or legacy records.'),
+  "decisionSource": zod.string().nullable().describe('Trusted channel that recorded the decision. Null for pending or legacy records.'),
   "tradeDate": zod.string(),
   "notes": zod.string().nullish()
 })
@@ -534,14 +540,15 @@ export const DeleteTradeResponse = zod.void()
 
 
 /**
- * @summary Approve or reject a trade (admin only — requires ADMIN_API_KEY bearer token)
+ * @summary Confirm and record a pending trade decision (admin only — requires ADMIN_API_KEY bearer token)
  */
 export const SetTradeStatusParams = zod.object({
   "id": zod.coerce.number()
 })
 
 export const SetTradeStatusBody = zod.object({
-  "status": zod.enum(['approved', 'rejected'])
+  "status": zod.enum(['approved', 'rejected']),
+  "confirmed": zod.literal(true).describe('Must be true to record this irreversible commissioner decision.')
 })
 
 export const SetTradeStatusResponse = zod.object({
@@ -556,6 +563,8 @@ export const SetTradeStatusResponse = zod.object({
   "price": zod.number(),
   "percentage": zod.number().describe('Percentage of team traded (0–100). Default 100 = full transfer.'),
   "status": zod.enum(['pending', 'approved', 'rejected']).describe('Approval status. New trades start as pending.'),
+  "decisionAt": zod.coerce.date().nullable().describe('Time the commissioner decision was recorded. Null for pending or legacy records.'),
+  "decisionSource": zod.string().nullable().describe('Trusted channel that recorded the decision. Null for pending or legacy records.'),
   "tradeDate": zod.string(),
   "notes": zod.string().nullish()
 })

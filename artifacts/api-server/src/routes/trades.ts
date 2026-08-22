@@ -14,8 +14,9 @@ import {
   UpdateTradeBody,
   DeleteTradeParams,
   UpdateTradeParams,
+  SetTradeStatusBody,
+  SetTradeStatusParams,
 } from "@workspace/api-zod";
-import { z } from "zod";
 import { OWNERSHIP_SEASON_LOCK_NAMESPACE } from "../lib/ownershipShares";
 
 const router: IRouter = Router();
@@ -109,6 +110,8 @@ async function enrichTrade(tradeId: number) {
       price: tradesTable.price,
       percentage: tradesTable.percentage,
       status: tradesTable.status,
+      decisionAt: tradesTable.decisionAt,
+      decisionSource: tradesTable.decisionSource,
       tradeDate: tradesTable.tradeDate,
       notes: tradesTable.notes,
     })
@@ -144,6 +147,8 @@ async function enrichTrade(tradeId: number) {
     price: parseFloat(row.price),
     percentage: parseFloat(row.percentage),
     status: row.status,
+    decisionAt: row.decisionAt,
+    decisionSource: row.decisionSource,
     tradeDate: row.tradeDate,
     notes: row.notes,
   };
@@ -176,6 +181,8 @@ router.get("/trades", async (req, res): Promise<void> => {
       price: tradesTable.price,
       percentage: tradesTable.percentage,
       status: tradesTable.status,
+      decisionAt: tradesTable.decisionAt,
+      decisionSource: tradesTable.decisionSource,
       tradeDate: tradesTable.tradeDate,
       notes: tradesTable.notes,
     })
@@ -209,6 +216,8 @@ router.get("/trades", async (req, res): Promise<void> => {
       price: parseFloat(r.price),
       percentage: parseFloat(r.percentage),
       status: r.status,
+      decisionAt: r.decisionAt,
+      decisionSource: r.decisionSource,
       tradeDate: r.tradeDate,
       notes: r.notes,
     })),
@@ -317,7 +326,7 @@ router.patch("/trades/:id", async (req: Request, res: Response): Promise<void> =
       .where(eq(tradesTable.id, params.data.id))
       .limit(1);
     if (!fresh[0]) return { kind: "not_found" as const };
-    if (fresh[0].status === "approved") return { kind: "approved" as const };
+    if (fresh[0].status !== "pending") return { kind: "decided" as const };
 
     if (body.data.percentage !== undefined) {
       const validationError = await validateTradeOwnership({
@@ -343,8 +352,8 @@ router.patch("/trades/:id", async (req: Request, res: Response): Promise<void> =
     res.status(404).json({ error: "Trade not found" });
     return;
   }
-  if (updateResult.kind === "approved") {
-    res.status(409).json({ error: "Approved trades are immutable. Record a correcting trade instead." });
+  if (updateResult.kind === "decided") {
+    res.status(409).json({ error: "Decided trades are immutable. Record a new trade instead." });
     return;
   }
   if (updateResult.kind === "invalid") {
@@ -356,11 +365,7 @@ router.patch("/trades/:id", async (req: Request, res: Response): Promise<void> =
   res.json(enriched);
 });
 
-// ── PATCH /trades/:id/status — admin only ────────────────────────────────────
-
-const StatusUpdateSchema = z.object({
-  status: z.enum(["approved", "rejected"]),
-});
+// ── PATCH /trades/:id/status — commissioner confirmation only ───────────────
 
 router.patch("/trades/:id/status", async (req: Request, res: Response): Promise<void> => {
   if (!isAdminRequest(req)) {
@@ -370,51 +375,44 @@ router.patch("/trades/:id/status", async (req: Request, res: Response): Promise<
     return;
   }
 
-  const id = parseInt(String(req.params["id"] ?? ""), 10);
-  if (isNaN(id)) {
+  const params = SetTradeStatusParams.safeParse(req.params);
+  if (!params.success) {
     res.status(400).json({ error: "Invalid trade id" });
     return;
   }
+  const id = params.data.id;
 
-  const body = StatusUpdateSchema.safeParse(req.body);
+  const body = SetTradeStatusBody.safeParse(req.body);
   if (!body.success) {
-    res.status(400).json({ error: 'Body must be { "status": "approved" | "rejected" }' });
+    res.status(400).json({
+      error: 'Body must be { "status": "approved" | "rejected", "confirmed": true }',
+    });
     return;
   }
 
-  const existing = await db
-    .select()
-    .from(tradesTable)
-    .where(eq(tradesTable.id, id))
-    .limit(1);
-  if (!existing[0]) {
-    res.status(404).json({ error: "Trade not found" });
-    return;
-  }
-  const trade = existing[0];
+  // Serialize decisions with primary ownership changes. A status can transition
+  // exactly once: pending → approved | rejected. This eliminates accidental
+  // retries or later API calls rewriting commissioner history.
+  const decision = await db.transaction(async (tx) => {
+    const initial = await tx
+      .select({ seasonId: tradesTable.seasonId })
+      .from(tradesTable)
+      .where(eq(tradesTable.id, id))
+      .limit(1);
+    if (!initial[0]) return { kind: "not_found" as const };
 
-  if (body.data.status === "approved" && trade.status === "approved") {
-    const enriched = await enrichTrade(id);
-    res.json(enriched);
-    return;
-  }
+    await tx.execute(
+      sql`select pg_advisory_xact_lock(${OWNERSHIP_SEASON_LOCK_NAMESPACE}, ${initial[0].seasonId})`,
+    );
+    const fresh = await tx
+      .select()
+      .from(tradesTable)
+      .where(eq(tradesTable.id, id))
+      .limit(1);
+    if (!fresh[0]) return { kind: "not_found" as const };
+    if (fresh[0].status !== "pending") return { kind: "already_decided" as const };
 
-  // Revalidate ownership while holding the same season lock used by primary
-  // ownership corrections/imports. This prevents an approval from racing a
-  // primary-split replacement.
-  if (body.data.status === "approved") {
-    const approval = await db.transaction(async (tx) => {
-      await tx.execute(
-        sql`select pg_advisory_xact_lock(${OWNERSHIP_SEASON_LOCK_NAMESPACE}, ${trade.seasonId})`,
-      );
-      const fresh = await tx
-        .select()
-        .from(tradesTable)
-        .where(eq(tradesTable.id, id))
-        .limit(1);
-      if (!fresh[0]) return { kind: "not_found" as const };
-      if (fresh[0].status === "approved") return { kind: "already_approved" as const };
-
+    if (body.data.status === "approved") {
       const validationError = await validateTradeOwnership({
         seasonId: fresh[0].seasonId,
         teamId: fresh[0].teamId,
@@ -423,32 +421,38 @@ router.patch("/trades/:id/status", async (req: Request, res: Response): Promise<
         percentage: Number(fresh[0].percentage),
       });
       if (validationError) return { kind: "invalid" as const, error: validationError };
+    }
 
-      await tx
-        .update(tradesTable)
-        .set({ status: "approved" })
-        .where(eq(tradesTable.id, id));
-      return { kind: "approved" as const };
+    await tx
+      .update(tradesTable)
+      .set({
+        status: body.data.status,
+        decisionAt: new Date(),
+        decisionSource: "commissioner_api",
+      })
+      .where(eq(tradesTable.id, id));
+    return { kind: "recorded" as const };
+  });
+
+  if (decision.kind === "not_found") {
+    res.status(404).json({ error: "Trade not found" });
+    return;
+  }
+  if (decision.kind === "already_decided") {
+    res.status(409).json({
+      error: "This trade has already been decided and cannot be changed. Record a new trade instead.",
     });
-    if (approval.kind === "not_found") {
-      res.status(404).json({ error: "Trade not found" });
-      return;
-    }
-    if (approval.kind === "invalid") {
-      res.status(400).json({ error: `Cannot approve trade: ${approval.error}` });
-      return;
-    }
-
-    const enriched = await enrichTrade(id);
-    res.json(enriched);
+    return;
+  }
+  if (decision.kind === "invalid") {
+    res.status(400).json({ error: `Cannot approve trade: ${decision.error}` });
     return;
   }
 
-  await db
-    .update(tradesTable)
-    .set({ status: body.data.status })
-    .where(eq(tradesTable.id, id));
-
+  req.log.info(
+    { tradeId: id, status: body.data.status, decisionSource: "commissioner_api" },
+    "Commissioner trade decision recorded",
+  );
   const enriched = await enrichTrade(id);
   res.json(enriched);
 });
@@ -479,7 +483,7 @@ router.delete("/trades/:id", async (req: Request, res: Response): Promise<void> 
       .where(eq(tradesTable.id, parsed.data.id))
       .limit(1);
     if (!fresh[0]) return "not_found" as const;
-    if (fresh[0].status === "approved") return "approved" as const;
+    if (fresh[0].status !== "pending") return "decided" as const;
 
     await tx.delete(tradesTable).where(eq(tradesTable.id, parsed.data.id));
     return "deleted" as const;
@@ -488,8 +492,8 @@ router.delete("/trades/:id", async (req: Request, res: Response): Promise<void> 
     res.status(404).json({ error: "Trade not found" });
     return;
   }
-  if (deleteResult === "approved") {
-    res.status(409).json({ error: "Approved trades cannot be deleted. Record a correcting trade instead." });
+  if (deleteResult === "decided") {
+    res.status(409).json({ error: "Decided trades cannot be deleted. Record a new trade instead." });
     return;
   }
   res.status(204).send();

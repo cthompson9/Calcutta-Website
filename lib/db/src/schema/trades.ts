@@ -1,4 +1,4 @@
-import { pgTable, serial, integer, numeric, date, text } from "drizzle-orm/pg-core";
+import { pgTable, serial, integer, numeric, date, text, timestamp } from "drizzle-orm/pg-core";
 import { teamsTable } from "./teams";
 import { seasonsTable } from "./seasons";
 import { biddersTable } from "./bidders";
@@ -24,6 +24,10 @@ export const tradesTable = pgTable("trades", {
   percentage: numeric("percentage", { precision: 5, scale: 2 }).notNull().default("100"),
   /** Approval workflow: pending → approved | rejected */
   status: text("status").notNull().default("pending"),
+  /** Immutable audit metadata for a commissioner approval or rejection. */
+  decisionAt: timestamp("decision_at", { withTimezone: true }),
+  /** Trusted channel that recorded the commissioner decision; never stores credentials. */
+  decisionSource: text("decision_source"),
   tradeDate: date("trade_date", { mode: "string" }).notNull(),
   notes: text("notes"),
 });

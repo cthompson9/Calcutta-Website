@@ -299,6 +299,16 @@ export interface TradeRow {
   percentage: number;
   /** Approval status. New trades start as pending. */
   status: TradeRowStatus;
+  /**
+     * Time the commissioner decision was recorded. Null for pending or legacy records.
+     * @nullable
+     */
+  decisionAt: string | null;
+  /**
+     * Trusted channel that recorded the decision. Null for pending or legacy records.
+     * @nullable
+     */
+  decisionSource: string | null;
   tradeDate: string;
   /** @nullable */
   notes?: string | null;
@@ -334,6 +344,8 @@ export const TradeStatusUpdateStatus = {
 
 export interface TradeStatusUpdate {
   status: TradeStatusUpdateStatus;
+  /** Must be true to record this irreversible commissioner decision. */
+  confirmed: true;
 }
 
 /**

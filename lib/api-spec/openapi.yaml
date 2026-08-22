@@ -488,7 +488,7 @@ paths:
     patch:
       operationId: setTradeStatus
       tags: [trades]
-      summary: Approve or reject a trade (admin only — requires ADMIN_API_KEY bearer token)
+      summary: Confirm and record a pending trade decision (admin only — requires ADMIN_API_KEY bearer token)
       parameters:
         - name: id
           in: path
@@ -1171,6 +1171,13 @@ components:
           type: string
           enum: [pending, approved, rejected]
           description: Approval status. New trades start as pending.
+        decisionAt:
+          type: ["string", "null"]
+          format: date-time
+          description: Time the commissioner decision was recorded. Null for pending or legacy records.
+        decisionSource:
+          type: ["string", "null"]
+          description: Trusted channel that recorded the decision. Null for pending or legacy records.
         tradeDate:
           type: string
         notes:
@@ -1187,6 +1194,8 @@ components:
         - price
         - percentage
         - status
+        - decisionAt
+        - decisionSource
         - tradeDate
 
     TradeInput:
@@ -1230,7 +1239,11 @@ components:
         status:
           type: string
           enum: [approved, rejected]
-      required: [status]
+        confirmed:
+          type: boolean
+          enum: [true]
+          description: Must be true to record this irreversible commissioner decision.
+      required: [status, confirmed]
 
     # MTM
     MtmSnapshot:
