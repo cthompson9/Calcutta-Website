@@ -126,9 +126,9 @@ function calculateTeamExposure(team: TeamResultRow): number {
 }
 
 const OWNER_SUMMARY_GRID =
-  "grid-cols-[2.5rem_minmax(0,1fr)_4.5rem_7rem_2.5rem] md:grid-cols-[2.5rem_minmax(0,1fr)_4.5rem_8rem_8rem_2.5rem]";
+  "grid-cols-[2.5rem_minmax(0,1fr)_4.5rem_7rem_2.5rem] md:grid-cols-[2.5rem_minmax(14rem,22rem)_minmax(0,1fr)_4.5rem_8rem_8rem_2.5rem]";
 const OWNER_SUMMARY_COMPLETE_GRID =
-  "grid-cols-[2.5rem_minmax(0,1fr)_4.5rem_7rem_2.5rem] md:grid-cols-[2.5rem_minmax(0,1fr)_4.5rem_8rem_8rem_8rem_2.5rem]";
+  "grid-cols-[2.5rem_minmax(0,1fr)_4.5rem_7rem_2.5rem] md:grid-cols-[2.5rem_minmax(14rem,22rem)_minmax(0,1fr)_4.5rem_8rem_8rem_8rem_2.5rem]";
 const OWNER_TEAM_GRID =
   "grid-cols-[minmax(0,1fr)_minmax(7rem,auto)] md:grid-cols-[minmax(0,1.2fr)_minmax(0,1fr)_8rem_8rem]";
 
@@ -163,6 +163,7 @@ function ByOwnerView({
       >
         <div className="text-left">#</div>
         <div>Consortium</div>
+        <div className="hidden md:block" />
         <div className="text-right">Teams</div>
         {isComplete ? (
           <>
@@ -221,6 +222,7 @@ function ByOwnerView({
                   }
                 />
               </div>
+              <div className="hidden md:block" />
               <div className="text-right text-muted-foreground font-mono">
                 {row.teamCount.toFixed(2)}
               </div>
