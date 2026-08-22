@@ -9,6 +9,7 @@ import {
   seasonsTable,
   tradesTable,
   ownershipAdjustmentsTable,
+  syncSeasonPositions,
 } from "@workspace/db";
 import {
   GetTeamsQueryParams,
@@ -283,6 +284,7 @@ router.post("/teams", async (req, res): Promise<void> => {
         })),
       },
     });
+    await syncSeasonPositions(tx, seasonId);
     return { kind: "created" as const, teamId: team.id };
   });
 
@@ -433,6 +435,9 @@ router.patch("/teams/:id", async (req, res): Promise<void> => {
           })),
         },
       });
+    }
+    if (split || bidAmount !== undefined) {
+      await syncSeasonPositions(tx, seasonId);
     }
     return { kind: "updated" as const };
   });

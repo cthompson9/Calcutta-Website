@@ -1,0 +1,1 @@
+export { ownerPositionsMigration } from "./0005OwnerPositions";

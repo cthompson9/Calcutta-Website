@@ -22,6 +22,7 @@ let teamsTable;
 let teamBiddersTable;
 let teamSeasonAuctionsTable;
 let tradesTable;
+let positionsTable;
 let app;
 let loadSeasonOwnership;
 let resolveOrCreateBidder;
@@ -35,6 +36,7 @@ if (canRun) {
     teamBiddersTable,
     teamSeasonAuctionsTable,
     tradesTable,
+    positionsTable,
   } = await import("@workspace/db"));
   ({ default: app } = await import("../app.ts"));
   ({ loadSeasonOwnership } = await import("../lib/seasonOwnership.ts"));
@@ -229,6 +231,40 @@ describe("short trades and new trade participants", { skip: !canRun }, () => {
     }
     return Math.round(total * 10_000) / 10_000;
   }
+
+  test("MCP primary ownership corrections rebuild normalized primary positions", { skip: !MCP_KEY }, async () => {
+    const result = await callMcpTool("set_team_primary_ownership", {
+      team: (await db.select({ name: teamsTable.name }).from(teamsTable).where(eq(teamsTable.id, teamId)))[0].name,
+      owners: [
+        { owner: primaryOwner.name, share: 0.5 },
+        { owner: primaryBuyer.name, share: 0.5 },
+      ],
+      season: seasonYear,
+      adminKey: ADMIN_KEY,
+    });
+    assert.match(JSON.stringify(result), /Primary ownership corrected/i);
+    const primaryPositions = await db
+      .select({
+        bidderId: positionsTable.bidderId,
+        share: positionsTable.ownershipShare,
+        source: positionsTable.source,
+      })
+      .from(positionsTable)
+      .where(eq(positionsTable.source, "primary"));
+    const fixturePositions = primaryPositions.filter(
+      (position) =>
+        position.bidderId === primaryOwner.id || position.bidderId === primaryBuyer.id,
+    );
+    assert.deepEqual(
+      fixturePositions
+        .map((position) => [position.bidderId, Number(position.share)])
+        .sort((left, right) => left[0] - right[0]),
+      [
+        [primaryOwner.id, 0.5],
+        [primaryBuyer.id, 0.5],
+      ].sort((left, right) => left[0] - right[0]),
+    );
+  });
 
   test("allows an unauthenticated synthetic trade submission but keeps it pending", async () => {
     const response = await fetch(`${baseUrl}/api/trades`, {
@@ -581,5 +617,22 @@ describe("short trades and new trade participants", { skip: !canRun }, () => {
     assert.equal(storedTrade.status, "approved");
     assert.equal(storedTrade.decisionSource, "commissioner_mcp");
     assert.ok(storedTrade.decisionAt instanceof Date);
+    const tradeLegs = await db
+      .select({
+        bidderId: positionsTable.bidderId,
+        share: positionsTable.ownershipShare,
+      })
+      .from(positionsTable)
+      .where(eq(positionsTable.tradeId, pendingTrade.id));
+    assert.deepEqual(
+      tradeLegs
+        .map((leg) => [leg.bidderId, Number(leg.share)])
+        .sort((left, right) => left[0] - right[0]),
+      [
+        [mcpSeller.id, -0.1],
+        [mcpBuyer.id, 0.1],
+      ].sort((left, right) => left[0] - right[0]),
+      "MCP approval writes both signed normalized trade legs",
+    );
   });
 });

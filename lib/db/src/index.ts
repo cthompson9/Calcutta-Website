@@ -44,4 +44,6 @@ export async function closeDatabasePool(): Promise<void> {
 }
 
 export * from "./schema/index";
+export * from "./ownerPositions";
+export * from "./migrate";
 export { explicitRecordFromStoredValues } from "./regularSeasonRecord";

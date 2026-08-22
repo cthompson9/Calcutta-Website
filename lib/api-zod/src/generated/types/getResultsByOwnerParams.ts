@@ -6,6 +6,7 @@
  * OpenAPI spec version: 0.1.0
  */
 import type { GetResultsByOwnerBasis } from './getResultsByOwnerBasis';
+import type { GetResultsByOwnerMembershipView } from './getResultsByOwnerMembershipView';
 
 export type GetResultsByOwnerParams = {
 season: number;
@@ -19,4 +20,8 @@ period?: number;
  * Select the snapshot basis used for the focused return view.
  */
 basis?: GetResultsByOwnerBasis;
+/**
+ * Use historical consortium membership at the Calcutta as-of date (default), or the current roster.
+ */
+membershipView?: GetResultsByOwnerMembershipView;
 };

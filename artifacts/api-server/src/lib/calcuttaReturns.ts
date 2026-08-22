@@ -9,6 +9,9 @@ import {
 } from "@workspace/db";
 
 export const NFL_SPORT = "NFL";
+function calcuttaAsOfDate(year: number): string | undefined {
+  return year >= 1 && year <= 9999 ? `${year}-08-01` : undefined;
+}
 export const RETURN_METRICS = [
   "win",
   "pt_diff",
@@ -167,6 +170,7 @@ export async function getOrCreateCanonicalCalcutta(
       sport: NFL_SPORT,
       name,
       isCanonical: true,
+      asOfDate: calcuttaAsOfDate(args.year),
     })
     .onConflictDoNothing({ target: calcuttasTable.name });
 

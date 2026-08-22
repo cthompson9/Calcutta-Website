@@ -12,6 +12,7 @@ import {
   teamsTable,
   tradesTable,
   importRunsTable,
+  syncSeasonPositions,
 } from "@workspace/db";
 import {
   ImportAuctionDataBody,
@@ -268,6 +269,7 @@ router.post("/auction/import", async (req, res): Promise<void> => {
         requestedBy: "admin_api",
         requestId: req.id == null ? null : String(req.id),
       });
+      await syncSeasonPositions(tx, seasonRows[0]!.id);
       return { importedTeams: importedTeams.length, importedOwners };
     });
 
@@ -493,6 +495,7 @@ router.post("/auction/import/draft-order", async (req, res): Promise<void> => {
         requestedBy: "admin_api",
         requestId: req.id == null ? null : String(req.id),
       });
+      await syncSeasonPositions(tx, seasonRows[0]!.id);
       return { importedTeams: resolved.length, importedOwners: resolved.length };
     });
 

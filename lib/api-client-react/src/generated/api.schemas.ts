@@ -832,6 +832,10 @@ period?: number;
  * Select the snapshot basis used for the focused return view.
  */
 basis?: GetResultsByOwnerBasis;
+/**
+ * Use historical consortium membership at the Calcutta as-of date (default), or the current roster.
+ */
+membershipView?: GetResultsByOwnerMembershipView;
 };
 
 export type GetResultsByOwnerBasis = typeof GetResultsByOwnerBasis[keyof typeof GetResultsByOwnerBasis];
@@ -840,6 +844,14 @@ export type GetResultsByOwnerBasis = typeof GetResultsByOwnerBasis[keyof typeof 
 export const GetResultsByOwnerBasis = {
   realized: 'realized',
   mtm: 'mtm',
+} as const;
+
+export type GetResultsByOwnerMembershipView = typeof GetResultsByOwnerMembershipView[keyof typeof GetResultsByOwnerMembershipView];
+
+
+export const GetResultsByOwnerMembershipView = {
+  historical: 'historical',
+  current: 'current',
 } as const;
 
 export type GetSportPeriodsParams = {

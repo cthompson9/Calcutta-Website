@@ -8,6 +8,7 @@ import {
   teamBiddersTable,
   teamSeasonAuctionsTable,
   seasonsTable,
+  syncSeasonPositions,
 } from "@workspace/db";
 import {
   GetTradesQueryParams,
@@ -475,6 +476,9 @@ router.patch("/trades/:id/status", async (req: Request, res: Response): Promise<
         decisionSource: "commissioner_api",
       })
       .where(eq(tradesTable.id, id));
+    if (body.data.status === "approved") {
+      await syncSeasonPositions(tx, fresh[0].seasonId);
+    }
     return { kind: "recorded" as const };
   });
 

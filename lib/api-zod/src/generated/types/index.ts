@@ -22,6 +22,7 @@ export * from './getMtmSnapshotsParams';
 export * from './getPayoutRulesParams';
 export * from './getResultsBasis';
 export * from './getResultsByOwnerBasis';
+export * from './getResultsByOwnerMembershipView';
 export * from './getResultsByOwnerParams';
 export * from './getResultsConference';
 export * from './getResultsParams';

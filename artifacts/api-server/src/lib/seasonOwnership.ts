@@ -7,7 +7,15 @@
  * Exposed types and the single async factory `loadSeasonOwnership(seasonId)`.
  */
 import { eq, and } from "drizzle-orm";
-import { db, teamBiddersTable, tradesTable, biddersTable } from "@workspace/db";
+import {
+  calcuttaEntriesTable,
+  calcuttasTable,
+  db,
+  positionsTable,
+  teamBiddersTable,
+  tradesTable,
+  biddersTable,
+} from "@workspace/db";
 
 // ── Types ─────────────────────────────────────────────────────────────────────
 
@@ -118,7 +126,7 @@ function getOrCreateEntry(
  */
 export async function loadSeasonOwnership(seasonId: number): Promise<SeasonOwnership> {
   // 1. Primary ownership from team_bidders
-  const primaryRows = await db
+  const legacyPrimaryRows = await db
     .select({
       teamId: teamBiddersTable.teamId,
       bidderId: teamBiddersTable.bidderId,
@@ -126,6 +134,31 @@ export async function loadSeasonOwnership(seasonId: number): Promise<SeasonOwner
     })
     .from(teamBiddersTable)
     .where(eq(teamBiddersTable.seasonId, seasonId));
+  const normalizedPrimaryRows = await db
+    .select({
+      teamId: calcuttaEntriesTable.teamId,
+      bidderId: positionsTable.bidderId,
+      ownershipShare: positionsTable.ownershipShare,
+    })
+    .from(positionsTable)
+    .innerJoin(
+      calcuttaEntriesTable,
+      eq(calcuttaEntriesTable.id, positionsTable.entryId),
+    )
+    .innerJoin(
+      calcuttasTable,
+      eq(calcuttasTable.id, calcuttaEntriesTable.calcuttaId),
+    )
+    .where(
+      and(
+        eq(calcuttasTable.seasonId, seasonId),
+        eq(calcuttasTable.sport, "NFL"),
+        eq(calcuttasTable.isCanonical, true),
+        eq(positionsTable.source, "primary"),
+      ),
+    );
+  const primaryRows =
+    normalizedPrimaryRows.length > 0 ? normalizedPrimaryRows : legacyPrimaryRows;
 
   // 2. Approved trades
   const approvedTrades = await db

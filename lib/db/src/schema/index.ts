@@ -14,3 +14,5 @@ export * from "./sportPeriods";
 export * from "./calcuttaEntries";
 export * from "./payoutRules";
 export * from "./teamPeriodSnapshots";
+export * from "./consortiumMemberships";
+export * from "./positions";

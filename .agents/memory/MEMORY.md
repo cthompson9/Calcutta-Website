@@ -11,3 +11,4 @@
 - [Consortium identity](consortium-identity.md) — consortium names are shared global identities; capitalization and repeated spaces never create a different group.
 - [Trade test isolation](trade-test-isolation.md) — approved fixtures affect season-wide owner totals; isolate their bidders or seasons.
 - [Period return model](period-return-model.md) — pay snapshot deltas once; apply configurable multipliers to playoff-period changes only.
+- [Dated consortium reporting](dated-consortium-reporting.md) — historical reports use each Calcutta’s fixed as-of roster; current roster is always an explicit alternate view.

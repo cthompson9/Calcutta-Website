@@ -1,4 +1,4 @@
-import { boolean, index, integer, pgTable, serial, text, timestamp, uniqueIndex } from "drizzle-orm/pg-core";
+import { boolean, date, index, integer, pgTable, serial, text, timestamp, uniqueIndex } from "drizzle-orm/pg-core";
 import { createInsertSchema } from "drizzle-zod";
 import { z } from "zod/v4";
 import { seasonsTable } from "./seasons";
@@ -14,6 +14,8 @@ export const calcuttasTable = pgTable(
     year: integer("year").notNull(),
     sport: text("sport").notNull().default("NFL"),
     isCanonical: boolean("is_canonical").notNull().default(true),
+    /** Deterministic date used for historical consortium membership rollups. */
+    asOfDate: date("as_of_date", { mode: "string" }),
     createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
   },
   (t) => [

@@ -12,6 +12,7 @@
     "push-force": "drizzle-kit push --force --config ./drizzle.config.ts",
     "seed2025": "pnpm --filter @workspace/api-server exec tsx ../../lib/db/src/seed2025.ts",
     "backfill-period-snapshots": "pnpm --filter @workspace/api-server exec tsx ../../lib/db/src/backfillPeriodSnapshots.ts",
+    "backfill-owner-positions": "pnpm --filter @workspace/api-server exec tsx ../../lib/db/src/backfillOwnerPositions.ts",
     "test": "node --test src/**/*.test.mjs"
   },
   "dependencies": {

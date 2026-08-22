@@ -364,6 +364,12 @@ paths:
           schema:
             type: string
             enum: [realized, mtm]
+        - name: membershipView
+          in: query
+          description: Use historical consortium membership at the Calcutta as-of date (default), or the current roster.
+          schema:
+            type: string
+            enum: [historical, current]
       responses:
         "200":
           description: Owner-level result summaries

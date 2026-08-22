@@ -8,7 +8,7 @@
 import { McpServer } from "@modelcontextprotocol/sdk/server/mcp.js";
 import { StreamableHTTPServerTransport } from "@modelcontextprotocol/sdk/server/streamableHttp.js";
 import { z } from "zod";
-import { ilike, eq, and, sql } from "drizzle-orm";
+import { ilike, eq, and, isNull, sql } from "drizzle-orm";
 import {
   db,
   teamsTable,
@@ -21,11 +21,13 @@ import {
   teamBiddersTable,
   ownershipAdjustmentsTable,
   consortiaTable,
+  consortiumMembershipsTable,
   calcuttasTable,
   calcuttaEntriesTable,
   sportPeriodsTable,
   teamPeriodSnapshotsTable,
   payoutRulesTable,
+  syncSeasonPositions,
 } from "@workspace/db";
 import type { Router, IRouter, Request, Response } from "express";
 import { Router as ExpressRouter } from "express";
@@ -46,6 +48,7 @@ import {
 } from "./lib/calcuttaReturns";
 
 // ─── DB helpers ─────────────────────────────────────────────────────────────
+const CONSORTIUM_MEMBERSHIP_LOCK_NAMESPACE = 841204;
 
 async function resolveSeasonId(year: number): Promise<number | null> {
   const rows = await db
@@ -560,10 +563,53 @@ function buildMcpServer() {
         }
       }
 
-      await db
-        .update(biddersTable)
-        .set({ consortiumId })
-        .where(eq(biddersTable.id, bidderMatch.id));
+      const fromDate = todayInNewYork();
+      await db.transaction(async (tx) => {
+        await tx.execute(
+          sql`select pg_advisory_xact_lock(${CONSORTIUM_MEMBERSHIP_LOCK_NAMESPACE}, ${bidderMatch.id})`,
+        );
+        const active = await tx
+          .select({
+            id: consortiumMembershipsTable.id,
+            consortiumId: consortiumMembershipsTable.consortiumId,
+            fromDate: consortiumMembershipsTable.fromDate,
+          })
+          .from(consortiumMembershipsTable)
+          .where(
+            and(
+              eq(consortiumMembershipsTable.bidderId, bidderMatch.id),
+              isNull(consortiumMembershipsTable.toDate),
+            ),
+          );
+        if (active.some((membership) => membership.consortiumId === consortiumId)) {
+          return;
+        }
+        for (const membership of active) {
+          if (membership.fromDate === fromDate) {
+            await tx
+              .delete(consortiumMembershipsTable)
+              .where(eq(consortiumMembershipsTable.id, membership.id));
+          } else {
+            await tx
+              .update(consortiumMembershipsTable)
+              .set({ toDate: fromDate })
+              .where(eq(consortiumMembershipsTable.id, membership.id));
+          }
+        }
+        if (consortiumId != null) {
+          await tx.insert(consortiumMembershipsTable).values({
+            bidderId: bidderMatch.id,
+            consortiumId,
+            fromDate,
+          });
+        }
+        // Retained during the transition so existing bidder-directory clients
+        // continue to display a current consortium while reports use history.
+        await tx
+          .update(biddersTable)
+          .set({ consortiumId })
+          .where(eq(biddersTable.id, bidderMatch.id));
+      });
 
       return text(
         consortiumName
@@ -668,6 +714,7 @@ function buildMcpServer() {
             })),
           },
         });
+        await syncSeasonPositions(tx, seasonId);
         return "updated" as const;
       });
       if (writeOutcome === "not_auctioned") {
@@ -865,6 +912,9 @@ function buildMcpServer() {
             decisionSource: "commissioner_mcp",
           })
           .where(eq(tradesTable.id, tradeId));
+        if (status === "approved") {
+          await syncSeasonPositions(tx, fresh[0].seasonId);
+        }
         return { kind: "updated" as const };
       });
       if (outcome.kind === "not_found") return text(`Trade #${tradeId} not found`);

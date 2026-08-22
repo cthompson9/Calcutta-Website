@@ -25,6 +25,7 @@ export default function Results() {
   const [expandedOwner, setExpandedOwner] = useState<number | null>(null);
   const [period, setPeriod] = useState<number | undefined>(undefined);
   const [basis, setBasis] = useState<"realized" | "mtm">("mtm");
+  const [membershipView, setMembershipView] = useState<"historical" | "current">("historical");
   const { data: periods } = useGetSportPeriods({ sport: "NFL" });
 
   const { data: teamResults, isLoading: loadingTeams } = useGetResults({
@@ -33,9 +34,9 @@ export default function Results() {
     basis,
   });
   const { data: ownerResults, isLoading: loadingOwners } = useGetResultsByOwner(
-    { season: year, period, basis },
+    { season: year, period, basis, membershipView },
   );
-  const { data: bidders } = useGetBidders({});
+  const { data: bidders } = useGetBidders({ season: year });
   const consortiumByBidderId = bidderConsortiums(bidders);
 
   const isLoading = loadingTeams || loadingOwners;
@@ -90,6 +91,24 @@ export default function Results() {
             </button>
           ))}
         </div>
+        {tab === "byOwner" && (
+          <div className="flex rounded-md border border-input p-0.5">
+            {(["historical", "current"] as const).map((value) => (
+              <button
+                key={value}
+                onClick={() => setMembershipView(value)}
+                className={cn(
+                  "rounded px-3 py-1.5 text-xs font-mono font-bold uppercase tracking-widest",
+                  membershipView === value
+                    ? "bg-primary text-primary-foreground"
+                    : "text-muted-foreground hover:text-foreground",
+                )}
+              >
+                {value === "historical" ? "Season roster" : "Current roster"}
+              </button>
+            ))}
+          </div>
+        )}
       </div>
 
       {/* Tabs */}

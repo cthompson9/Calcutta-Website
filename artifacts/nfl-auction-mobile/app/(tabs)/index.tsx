@@ -409,8 +409,9 @@ export default function StandingsScreen() {
   const [mode, setMode] = useState<ViewMode>('owner');
   const [period, setPeriod] = useState<number | undefined>(undefined);
   const [basis, setBasis] = useState<'realized' | 'mtm'>('mtm');
+  const [membershipView, setMembershipView] = useState<'historical' | 'current'>('historical');
 
-  const ownerQuery = useGetResultsByOwner({ season, period, basis });
+  const ownerQuery = useGetResultsByOwner({ season, period, basis, membershipView });
   const teamQuery = useGetResults({ season, period, basis });
   const mtmQuery = useGetMtmSnapshots({ season });
 
@@ -468,6 +469,30 @@ export default function StandingsScreen() {
             </Pressable>
           ))}
         </View>
+        {mode === 'owner' && (
+          <View style={styles.periodChipRow}>
+            {([
+              { label: 'SEASON ROSTER', value: 'historical' },
+              { label: 'CURRENT ROSTER', value: 'current' },
+            ] as const).map((option) => (
+              <Pressable
+                key={option.value}
+                onPress={() => setMembershipView(option.value)}
+                style={[
+                  styles.snapshotChip,
+                  {
+                    borderColor: membershipView === option.value ? colors.primary : colors.border,
+                    backgroundColor: membershipView === option.value ? colors.primary : 'transparent',
+                  },
+                ]}
+              >
+                <Text style={{ color: membershipView === option.value ? colors.primaryForeground : colors.mutedForeground, fontSize: 11, fontFamily: 'Inter_600SemiBold' }}>
+                  {option.label}
+                </Text>
+              </Pressable>
+            ))}
+          </View>
+        )}
         <View style={styles.periodChipRow}>
           {(['mtm', 'realized'] as const).map((option) => (
             <Pressable

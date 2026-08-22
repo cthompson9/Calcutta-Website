@@ -322,7 +322,8 @@ export const getResultsByOwnerQueryPeriodMultipleOf = 1;
 export const GetResultsByOwnerQueryParams = zod.object({
   "season": zod.coerce.number(),
   "period": zod.coerce.number().min(getResultsByOwnerQueryPeriodMin).max(getResultsByOwnerQueryPeriodMax).multipleOf(getResultsByOwnerQueryPeriodMultipleOf).optional().describe('NFL period sequence through which cumulative returns are calculated.'),
-  "basis": zod.enum(['realized', 'mtm']).optional().describe('Select the snapshot basis used for the focused return view.')
+  "basis": zod.enum(['realized', 'mtm']).optional().describe('Select the snapshot basis used for the focused return view.'),
+  "membershipView": zod.enum(['historical', 'current']).optional().describe('Use historical consortium membership at the Calcutta as-of date (default), or the current roster.')
 })
 
 export const GetResultsByOwnerResponseItem = zod.object({
