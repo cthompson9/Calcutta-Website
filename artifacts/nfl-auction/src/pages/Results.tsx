@@ -2,6 +2,7 @@ import { useState } from "react";
 import {
   useGetResults,
   useGetResultsByOwner,
+  useGetBidders,
 } from "@workspace/api-client-react";
 import type {
   TeamResultRow,
@@ -11,6 +12,8 @@ import { formatCurrency } from "@/lib/utils";
 import { cn } from "@/lib/utils";
 import { useSeason } from "@/hooks/useSeason";
 import { ChevronDown, Trophy, Star } from "lucide-react";
+import { bidderConsortiums, ownerLabelById } from "@/lib/ownerDisplay";
+import { ConsortiumLabel } from "@/components/ConsortiumLabel";
 
 type TabId = "byTeam" | "byOwner";
 
@@ -25,6 +28,8 @@ export default function Results() {
   const { data: ownerResults, isLoading: loadingOwners } = useGetResultsByOwner(
     { season: year },
   );
+  const { data: bidders } = useGetBidders({});
+  const consortiumByBidderId = bidderConsortiums(bidders);
 
   const isLoading = loadingTeams || loadingOwners;
   const isComplete = selectedSeason?.isComplete ?? false;
@@ -60,7 +65,7 @@ export default function Results() {
                 : "border-transparent text-muted-foreground hover:text-foreground",
             )}
           >
-            {t === "byOwner" ? "By Owner" : "By Team"}
+            {t === "byOwner" ? "By Consortium" : "By Team"}
           </button>
         ))}
       </div>
@@ -73,9 +78,14 @@ export default function Results() {
           isComplete={isComplete}
           expandedOwner={expandedOwner}
           setExpandedOwner={setExpandedOwner}
+          consortiumByBidderId={consortiumByBidderId}
         />
       ) : (
-        <ByTeamView rows={teamResults ?? []} isComplete={isComplete} />
+        <ByTeamView
+          rows={teamResults ?? []}
+          isComplete={isComplete}
+          consortiumByBidderId={consortiumByBidderId}
+        />
       )}
     </div>
   );
@@ -88,11 +98,13 @@ function ByOwnerView({
   isComplete,
   expandedOwner,
   setExpandedOwner,
+  consortiumByBidderId,
 }: {
   rows: OwnerResultRow[];
   isComplete: boolean;
   expandedOwner: number | null;
   setExpandedOwner: (id: number | null) => void;
+  consortiumByBidderId: Map<number, string>;
 }) {
   if (!rows.length) return <Empty />;
 
@@ -106,7 +118,7 @@ function ByOwnerView({
       {/* Summary header */}
       <div className="hidden md:grid grid-cols-12 bg-muted/60 text-muted-foreground text-xs font-mono font-bold uppercase tracking-widest px-4 py-3 border border-border">
         <div className="col-span-1 text-center">#</div>
-        <div className="col-span-3">Owner</div>
+        <div className="col-span-3">Consortium</div>
         <div className="col-span-1 text-center">Teams</div>
         {isComplete ? (
           <>
@@ -156,8 +168,14 @@ function ByOwnerView({
                 )}
                 <span>{idx + 1}</span>
               </div>
-              <div className="col-span-2 md:col-span-3 font-bold truncate">
-                {row.bidderName}
+              <div className="col-span-2 md:col-span-3 min-w-0 font-bold">
+                <ConsortiumLabel
+                  label={ownerLabelById(
+                    row.bidderId,
+                    row.bidderName,
+                    consortiumByBidderId,
+                  )}
+                />
               </div>
               <div className="col-span-1 text-center text-muted-foreground font-mono">
                 {row.teamCount.toFixed(2)}
@@ -269,6 +287,7 @@ function ByOwnerView({
                       team={t}
                       isComplete={isComplete}
                       ownerId={row.bidderId}
+                      consortiumByBidderId={consortiumByBidderId}
                     />
                   ))}
               </div>
@@ -288,10 +307,12 @@ function TeamSubRow({
   team,
   isComplete,
   ownerId,
+  consortiumByBidderId,
 }: {
   team: TeamResultRow;
   isComplete: boolean;
   ownerId: number;
+  consortiumByBidderId: Map<number, string>;
 }) {
   const hasSB = team.sbBerth;
   const wonSB = team.winSuperBowl;
@@ -356,8 +377,18 @@ function TeamSubRow({
           <div className="col-span-2 text-right font-mono text-sm text-muted-foreground">
             {formatCurrency(team.cost)}
           </div>
-          <div className="col-span-1 text-right font-mono text-xs text-muted-foreground">
-            {team.owners.map((o) => o.bidderName).join(" / ")}
+           <div className="col-span-1 min-w-0 text-right font-mono text-xs text-muted-foreground">
+             <ConsortiumLabel
+               label={team.owners
+                 .map((o) =>
+                   ownerLabelById(
+                     o.bidderId,
+                     o.bidderName,
+                     consortiumByBidderId,
+                   ),
+                 )
+                 .join(" / ")}
+             />
           </div>
         </>
       )}
@@ -454,6 +485,7 @@ function computeSeeds(rows: TeamResultRow[]): Map<number, number | null> {
 function expandTeams(
   rows: TeamResultRow[],
   seeds: Map<number, number | null>,
+  consortiumByBidderId: Map<number, string>,
 ): ExpandedTeamRow[] {
   const result: ExpandedTeamRow[] = [];
   for (const team of rows) {
@@ -466,7 +498,11 @@ function expandTeams(
         division: team.division,
         seed: seeds.get(team.teamId) ?? null,
         bidderId: owner.bidderId,
-        ownerName: owner.bidderName,
+        ownerName: ownerLabelById(
+          owner.bidderId,
+          owner.bidderName,
+          consortiumByBidderId,
+        ),
         pct: Math.round(s * 100),
         wins: team.wins,
         losses: team.losses,
@@ -488,9 +524,11 @@ function expandTeams(
 function ByTeamView({
   rows,
   isComplete,
+  consortiumByBidderId,
 }: {
   rows: TeamResultRow[];
   isComplete: boolean;
+  consortiumByBidderId: Map<number, string>;
 }) {
   const [splitByOwner, setSplitByOwner] = useState(false);
   const [sortKey, setSortKey] = useState<BTSortKey>(isComplete ? "net" : "mtm");
@@ -583,7 +621,17 @@ function ByTeamView({
           r.teamName.toLowerCase().includes(q) ||
           r.conference.toLowerCase().includes(q) ||
           r.division.toLowerCase().includes(q) ||
-          r.owners.some((o) => o.bidderName.toLowerCase().includes(q)),
+          r.owners.some(
+            (o) =>
+              o.bidderName.toLowerCase().includes(q) ||
+              ownerLabelById(
+                o.bidderId,
+                o.bidderName,
+                consortiumByBidderId,
+              )
+                .toLowerCase()
+                .includes(q),
+          ),
       )
     : rows;
 
@@ -615,8 +663,16 @@ function ByTeamView({
       case "seed":
         return seedCmp(sa, sb, sortAsc);
       case "owner":
-        diff = (a.owners[0]?.bidderName ?? "").localeCompare(
-          b.owners[0]?.bidderName ?? "",
+        diff = ownerLabelById(
+          a.owners[0]?.bidderId ?? 0,
+          a.owners[0]?.bidderName ?? "",
+          consortiumByBidderId,
+        ).localeCompare(
+          ownerLabelById(
+            b.owners[0]?.bidderId ?? 0,
+            b.owners[0]?.bidderName ?? "",
+            consortiumByBidderId,
+          ),
         );
         break;
       case "record":
@@ -652,7 +708,11 @@ function ByTeamView({
       r.seed ?? computedSeeds.get(r.teamId) ?? null,
     ]),
   );
-  const expanded = expandTeams(baseFiltered, expandedSeeds);
+  const expanded = expandTeams(
+    baseFiltered,
+    expandedSeeds,
+    consortiumByBidderId,
+  );
 
   const ownerSorted = [...expanded].sort((a, b) => {
     let diff = 0;
@@ -708,7 +768,7 @@ function ByTeamView({
           type="search"
           value={search}
           onChange={(e) => setSearch(e.target.value)}
-          placeholder="Filter by team, owner, conference, division…"
+          placeholder="Filter by team, consortium, conference, division…"
           className="w-full min-w-0 md:w-[28rem] md:flex-none border border-border bg-background px-3 py-1.5 text-sm font-mono placeholder:text-muted-foreground focus:outline-none focus:ring-1 focus:ring-primary"
         />
         <button
@@ -720,7 +780,7 @@ function ByTeamView({
               : "border-border text-muted-foreground hover:bg-muted hover:text-foreground",
           )}
         >
-          Split by Owner
+          Split by Consortium
         </button>
       </div>
 
@@ -744,7 +804,7 @@ function ByTeamView({
               </th>
               <th className="px-3 py-2.5 text-left">
                 <SH
-                  label={splitByOwner ? "Owner" : "Owner(s)"}
+                   label={splitByOwner ? "Consortium" : "Consortium(s)"}
                   k="owner"
                   align="left"
                 />
@@ -806,8 +866,8 @@ function ByTeamView({
                     <td className="px-3 py-2.5 text-center">
                       <SeedCell seed={row.seed} />
                     </td>
-                    <td className="px-3 py-2.5 text-sm">
-                      {row.ownerName.split(" ")[0]}
+                     <td className="px-3 py-2.5 text-sm min-w-0">
+                       <ConsortiumLabel label={row.ownerName} />
                     </td>
                     <td className="px-3 py-2.5 text-center font-mono text-xs text-muted-foreground">
                       {row.pct}%
@@ -854,15 +914,16 @@ function ByTeamView({
                 ))
               : teamSorted.map((row) => {
                   const seed = getSeed(row);
-                  const ownerLabel =
-                    row.owners.length === 1
-                      ? row.owners[0].bidderName.split(" ")[0]
-                      : row.owners
-                          .map(
-                            (o) =>
-                              `${o.bidderName.split(" ")[0]}${o.ownershipShare < 1 ? ` (${Math.round(o.ownershipShare * 100)}%)` : ""}`,
-                          )
-                          .join(" / ");
+                  const ownerLabel = row.owners
+                    .map((o) => {
+                      const label = ownerLabelById(
+                        o.bidderId,
+                        o.bidderName,
+                        consortiumByBidderId,
+                      );
+                      return `${label}${o.ownershipShare < 1 ? ` (${Math.round(o.ownershipShare * 100)}%)` : ""}`;
+                    })
+                    .join(" / ");
                   return (
                     <tr
                       key={row.teamId}
@@ -894,8 +955,8 @@ function ByTeamView({
                       <td className="px-3 py-2.5 text-center">
                         <SeedCell seed={seed} />
                       </td>
-                      <td className="px-3 py-2.5 text-sm text-muted-foreground">
-                        {ownerLabel}
+                       <td className="px-3 py-2.5 text-sm text-muted-foreground min-w-0">
+                         <ConsortiumLabel label={ownerLabel} />
                       </td>
                       <td className="px-3 py-2.5 text-center font-mono text-xs">
                         {formatRecord(row.wins, row.losses, row.ties)}

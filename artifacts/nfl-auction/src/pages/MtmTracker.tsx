@@ -1,11 +1,22 @@
 import { useState } from "react";
-import { useGetMtmSnapshots, useGetTeams, useCaptureWeekZeroMtm } from "@workspace/api-client-react";
+import {
+  useGetMtmSnapshots,
+  useGetTeams,
+  useCaptureWeekZeroMtm,
+  useGetBidders,
+} from "@workspace/api-client-react";
 import type { MtmData, MtmWeekData, MtmTeamWeekMarketStatus } from "@workspace/api-client-react";
 import { formatCurrency } from "@/lib/utils";
 import { cn } from "@/lib/utils";
 import { useSeason } from "@/hooks/useSeason";
 import { TrendingUp, TrendingDown, Lock, Unlock, Plus, X, ChevronDown, ChevronUp, Activity, AlertTriangle, ShieldCheck, Zap, Info, ServerOff } from "lucide-react";
 import { toast } from "sonner";
+import {
+  bidderConsortiumsByName,
+  combinedOwnerLabel,
+  ownerLabel,
+} from "@/lib/ownerDisplay";
+import { ConsortiumLabel } from "@/components/ConsortiumLabel";
 
 const OWNER_COLORS = [
   "#3b82f6", // blue
@@ -48,6 +59,8 @@ async function upsertMtmSnapshot(
 export default function MtmTracker() {
   const { year } = useSeason();
   const { data, isLoading, refetch } = useGetMtmSnapshots({ season: year });
+  const { data: bidders } = useGetBidders({});
+  const consortiumByName = bidderConsortiumsByName(bidders);
   const [adminKey, setAdminKey] = useState<string | null>(
     () => sessionStorage.getItem("nfl_admin_key"),
   );
@@ -115,7 +128,7 @@ export default function MtmTracker() {
       ) : !hasData ? (
         <EmptyState year={year} isAdmin={!!adminKey} onEnterData={() => setShowEntry(true)} />
       ) : (
-        <MtmContent data={data!} />
+        <MtmContent data={data!} consortiumByName={consortiumByName} />
       )}
     </div>
   );
@@ -561,7 +574,13 @@ function EmptyState({
 
 // ── Main chart + table ────────────────────────────────────────────────────────
 
-function MtmContent({ data }: { data: MtmData }) {
+function MtmContent({
+  data,
+  consortiumByName,
+}: {
+  data: MtmData;
+  consortiumByName: Map<string, string>;
+}) {
   const hasOwners = data.owners.length > 0;
   const kalshiWeeks = data.weeks.filter(w => w.weekNum === 0 || w.source === 'kalshi' || w.label === 'Week 0');
   const hasKalshi = kalshiWeeks.length > 0;
@@ -610,11 +629,13 @@ function MtmContent({ data }: { data: MtmData }) {
   const series =
     activeView === "owner" && hasOwners
       ? data.owners.map((o, i) => ({
-          name: o.bidderName,
+          key: o.bidderName,
+          name: ownerLabel(o.bidderName, consortiumByName),
           values: o.weeklyTotals,
           color: OWNER_COLORS[i % OWNER_COLORS.length] as string,
         }))
       : data.teams.map((t, i) => ({
+          key: t.teamName,
           name: t.teamName,
           values: t.weeklyValues,
           color: OWNER_COLORS[i % OWNER_COLORS.length] as string,
@@ -644,7 +665,7 @@ function MtmContent({ data }: { data: MtmData }) {
                 : "border-transparent text-muted-foreground hover:text-foreground",
             )}
           >
-            By Owner
+            By Consortium
           </button>
         )}
         <button
@@ -674,7 +695,10 @@ function MtmContent({ data }: { data: MtmData }) {
       </div>
 
       {activeView === "week0" && hasKalshi ? (
-        <Week0AuditView week={kalshiWeeks[kalshiWeeks.length - 1]!} />
+        <Week0AuditView
+          week={kalshiWeeks[kalshiWeeks.length - 1]!}
+          consortiumByName={consortiumByName}
+        />
       ) : (
         <>
           {/* SVG Line Chart */}
@@ -744,7 +768,7 @@ function MtmContent({ data }: { data: MtmData }) {
               {/* Series lines */}
               {series.map((s) => (
                 <path
-                  key={s.name}
+                  key={s.key}
                   d={toPath(s.values)}
                   fill="none"
                   stroke={s.color}
@@ -759,7 +783,7 @@ function MtmContent({ data }: { data: MtmData }) {
                 const lastVal = s.values[lastIdx] ?? 0;
                 return (
                   <circle
-                    key={s.name}
+                    key={s.key}
                     cx={xPos(lastIdx)}
                     cy={yPos(lastVal)}
                     r={4}
@@ -772,11 +796,12 @@ function MtmContent({ data }: { data: MtmData }) {
             {/* Legend */}
             <div className="flex flex-wrap gap-4 mt-4 px-2">
               {series.map((s) => (
-                <div key={s.name} className="flex items-center gap-1.5">
+                <div key={s.key} className="flex items-center gap-1.5">
                   <div className="w-3 h-0.5" style={{ backgroundColor: s.color }} />
-                  <span className="text-xs text-muted-foreground font-mono">
-                    {activeView === "owner" ? s.name.split(" ")[0] : s.name}
-                  </span>
+                  <ConsortiumLabel
+                    label={s.name}
+                    className="text-xs text-muted-foreground font-mono"
+                  />
                 </div>
               ))}
             </div>
@@ -787,14 +812,14 @@ function MtmContent({ data }: { data: MtmData }) {
             <div className="border border-border bg-card overflow-x-auto">
               <div className="px-4 pt-4 pb-2">
                 <h3 className="font-bold text-sm uppercase tracking-tight">
-                  Weekly Breakdown — By Owner
+                  Weekly Breakdown — By Consortium
                 </h3>
               </div>
               <table className="w-full text-sm">
                 <thead>
                   <tr className="border-b border-border bg-muted/60">
                     <th className="px-4 py-2 text-left text-xs font-mono font-bold uppercase tracking-widest text-muted-foreground">
-                      Owner
+                      Consortium
                     </th>
                     {data.weeks.map((w) => (
                       <th
@@ -818,7 +843,10 @@ function MtmContent({ data }: { data: MtmData }) {
                             className="w-2 h-2 rounded-full shrink-0"
                             style={{ backgroundColor: OWNER_COLORS[oi % OWNER_COLORS.length] }}
                           />
-                          {owner.bidderName.split(" ")[0]}
+                          <ConsortiumLabel
+                            label={ownerLabel(owner.bidderName, consortiumByName)}
+                            className="text-sm"
+                          />
                         </div>
                       </td>
                       {owner.weeklyTotals.map((v, wi) => {
@@ -865,7 +893,13 @@ function MtmContent({ data }: { data: MtmData }) {
 
 // ── Week 0 Audit View ────────────────────────────────────────────────────────
 
-function Week0AuditView({ week }: { week: MtmWeekData }) {
+function Week0AuditView({
+  week,
+  consortiumByName,
+}: {
+  week: MtmWeekData;
+  consortiumByName: Map<string, string>;
+}) {
   const sortedTeams = [...week.teamValues].sort((a, b) => b.mtmValue - a.mtmValue);
   const methodologyTeam = sortedTeams.find(
     (team) => team.regularSeasonMethod || team.intermediateRoundMethod,
@@ -975,7 +1009,7 @@ function Week0AuditView({ week }: { week: MtmWeekData }) {
                 Bonus Eq
               </th>
               <th className="px-4 py-3 text-left text-xs font-mono font-bold uppercase tracking-widest text-muted-foreground">
-                Owner
+                Consortium
               </th>
               <th className="px-4 py-3 text-left text-xs font-mono font-bold uppercase tracking-widest text-muted-foreground">
                 Quotes
@@ -1043,7 +1077,13 @@ function Week0AuditView({ week }: { week: MtmWeekData }) {
                   {t.bonusEquityPoints != null ? t.bonusEquityPoints.toFixed(2) : "—"}
                 </td>
                 <td className="px-4 py-3 text-left text-muted-foreground text-xs whitespace-nowrap">
-                  {t.ownerName || "—"}
+                  {t.ownerName ? (
+                    <ConsortiumLabel
+                      label={combinedOwnerLabel(t.ownerName, consortiumByName)}
+                    />
+                  ) : (
+                    "—"
+                  )}
                 </td>
                 <td className="px-4 py-3 text-left text-xs">
                   <details>

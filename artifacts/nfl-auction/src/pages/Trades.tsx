@@ -11,7 +11,9 @@ import { formatCurrency } from "@/lib/utils";
 import { cn } from "@/lib/utils";
 import { todayInNewYork } from "@/lib/newYorkTime";
 import { useSeason } from "@/hooks/useSeason";
-import { ArrowRight, Plus, Trash2, X, Lock, Unlock, Check, Ban } from "lucide-react";
+import { ArrowRight, Plus, Trash2, X, Lock, Unlock, Check, Ban, Search } from "lucide-react";
+import { bidderConsortiums, ownerLabelById } from "@/lib/ownerDisplay";
+import { ConsortiumLabel } from "@/components/ConsortiumLabel";
 
 // ── Status badge ─────────────────────────────────────────────────────────────
 
@@ -60,11 +62,13 @@ function TradeCard({
   onDelete,
   adminKey,
   onStatusChange,
+  consortiumByBidderId,
 }: {
   trade: TradeRow;
   onDelete: (id: number) => void;
   adminKey: string | null;
   onStatusChange: () => void;
+  consortiumByBidderId: Map<number, string>;
 }) {
   const [acting, setActing] = useState(false);
   const [adminError, setAdminError] = useState("");
@@ -105,9 +109,23 @@ function TradeCard({
             <StatusBadge status={trade.status} />
           </div>
           <div className="flex items-center gap-1.5 text-sm text-muted-foreground font-mono">
-            <span>{trade.fromBidderName}</span>
+            <ConsortiumLabel
+              className="flex-1 min-w-0"
+              label={ownerLabelById(
+                trade.fromBidderId,
+                trade.fromBidderName,
+                consortiumByBidderId,
+              )}
+            />
             <ArrowRight className="w-3 h-3" />
-            <span>{trade.toBidderName}</span>
+            <ConsortiumLabel
+              className="flex-1 min-w-0"
+              label={ownerLabelById(
+                trade.toBidderId,
+                trade.toBidderName,
+                consortiumByBidderId,
+              )}
+            />
           </div>
         </div>
 
@@ -451,6 +469,7 @@ export default function Trades() {
   const { data: teams } = useGetTeams({ season: year });
   const { data: seasonBidders } = useGetBidders({ season: year });
   const { data: bidderDirectory } = useGetBidders({});
+  const consortiumByBidderId = bidderConsortiums(bidderDirectory);
   const { mutate: createTrade, isPending: creating } = useCreateTrade();
   const { mutate: deleteTrade } = useDeleteTrade();
 
@@ -469,9 +488,36 @@ export default function Trades() {
     deleteTrade({ id }, { onSuccess: () => refetch() });
   }
 
-  const pending  = (trades as TradeRow[] | undefined)?.filter((t) => t.status === "pending")  ?? [];
-  const approved = (trades as TradeRow[] | undefined)?.filter((t) => t.status === "approved") ?? [];
-  const rejected = (trades as TradeRow[] | undefined)?.filter((t) => t.status === "rejected") ?? [];
+  const [search, setSearch] = useState("");
+  const allTrades = (trades as TradeRow[] | undefined) ?? [];
+  const query = search.trim().toLowerCase();
+  const filteredTrades = query
+    ? allTrades.filter((trade) =>
+        [
+          trade.teamName,
+          trade.fromBidderName,
+          trade.toBidderName,
+          ownerLabelById(
+            trade.fromBidderId,
+            trade.fromBidderName,
+            consortiumByBidderId,
+          ),
+          ownerLabelById(
+            trade.toBidderId,
+            trade.toBidderName,
+            consortiumByBidderId,
+          ),
+          trade.status,
+          trade.tradeDate,
+          trade.percentage.toString(),
+          trade.price.toString(),
+          trade.notes ?? "",
+        ].some((value) => value.toLowerCase().includes(query)),
+      )
+    : allTrades;
+  const pending = filteredTrades.filter((t) => t.status === "pending");
+  const approved = filteredTrades.filter((t) => t.status === "approved");
+  const rejected = filteredTrades.filter((t) => t.status === "rejected");
 
   return (
     <div className="p-4 md:p-8 space-y-6 max-w-4xl mx-auto">
@@ -515,14 +561,48 @@ export default function Trades() {
         />
       )}
 
+      {!isLoading && allTrades.length > 0 && (
+        <div className="flex flex-col sm:flex-row sm:items-center gap-2">
+          <div className="relative flex-1 min-w-0">
+            <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-muted-foreground pointer-events-none" />
+            <input
+              type="search"
+              value={search}
+              onChange={(event) => setSearch(event.target.value)}
+              placeholder="Filter by team, bidder, consortium, status…"
+              aria-label="Filter trades"
+              className="w-full border border-border bg-background pl-9 pr-3 py-2 text-sm font-mono placeholder:text-muted-foreground focus:outline-none focus:ring-1 focus:ring-primary"
+            />
+          </div>
+          {query && (
+            <span className="text-xs text-muted-foreground font-mono whitespace-nowrap">
+              {filteredTrades.length} of {allTrades.length} trades
+            </span>
+          )}
+        </div>
+      )}
+
       {isLoading ? (
         <div className="space-y-3 animate-pulse">
           {[1, 2, 3].map((i) => <div key={i} className="h-20 bg-muted border border-border" />)}
         </div>
-      ) : !trades?.length ? (
+      ) : !allTrades.length ? (
         <div className="border border-dashed border-border flex flex-col items-center justify-center py-24 text-center">
           <p className="text-muted-foreground font-mono text-sm uppercase tracking-widest">No trades recorded for {year}</p>
           <p className="text-xs text-muted-foreground mt-2">Use Add Trade to log a trade — it will start as Pending Review</p>
+        </div>
+      ) : !filteredTrades.length ? (
+        <div className="border border-dashed border-border flex flex-col items-center justify-center py-24 text-center">
+          <p className="text-muted-foreground font-mono text-sm uppercase tracking-widest">
+            No trades match “{search}”
+          </p>
+          <button
+            type="button"
+            onClick={() => setSearch("")}
+            className="mt-3 text-xs font-mono uppercase tracking-widest text-primary hover:underline"
+          >
+            Clear filter
+          </button>
         </div>
       ) : (
         <div className="space-y-6">
@@ -534,7 +614,14 @@ export default function Trades() {
               </h2>
               <div className="space-y-2">
                 {pending.map((t) => (
-                  <TradeCard key={t.id} trade={t} onDelete={handleDelete} adminKey={adminKey} onStatusChange={refetch} />
+                  <TradeCard
+                    key={t.id}
+                    trade={t}
+                    onDelete={handleDelete}
+                    adminKey={adminKey}
+                    onStatusChange={refetch}
+                    consortiumByBidderId={consortiumByBidderId}
+                  />
                 ))}
               </div>
             </section>
@@ -548,7 +635,14 @@ export default function Trades() {
               </h2>
               <div className="space-y-2">
                 {approved.map((t) => (
-                  <TradeCard key={t.id} trade={t} onDelete={handleDelete} adminKey={adminKey} onStatusChange={refetch} />
+                  <TradeCard
+                    key={t.id}
+                    trade={t}
+                    onDelete={handleDelete}
+                    adminKey={adminKey}
+                    onStatusChange={refetch}
+                    consortiumByBidderId={consortiumByBidderId}
+                  />
                 ))}
               </div>
             </section>
@@ -562,7 +656,14 @@ export default function Trades() {
               </h2>
               <div className="space-y-2">
                 {rejected.map((t) => (
-                  <TradeCard key={t.id} trade={t} onDelete={handleDelete} adminKey={adminKey} onStatusChange={refetch} />
+                  <TradeCard
+                    key={t.id}
+                    trade={t}
+                    onDelete={handleDelete}
+                    adminKey={adminKey}
+                    onStatusChange={refetch}
+                    consortiumByBidderId={consortiumByBidderId}
+                  />
                 ))}
               </div>
             </section>
