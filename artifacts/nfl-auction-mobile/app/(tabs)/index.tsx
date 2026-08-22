@@ -16,6 +16,7 @@ import {
   useGetResults,
   useGetResultsByOwner,
   type MtmOwnerSeries,
+  type OwnershipSegment,
   type OwnerResultRow,
   type TeamResultRow,
 } from '@workspace/api-client-react';
@@ -222,19 +223,23 @@ function OwnerCard({
       {expanded && (
         <View style={[styles.teamList, { borderTopColor: colors.border }]}>
           {owner.teams.map((t) => {
-            const share = t.owners.find((o) => o.bidderId === owner.bidderId);
+            const ownerSegments = t.ownershipSegments.filter(
+              (segment) => segment.bidderId === owner.bidderId,
+            );
+            const ownerEntries = t.owners.filter(
+              (entry) => entry.bidderId === owner.bidderId,
+            );
             return (
               <View key={t.teamId} style={styles.teamListRow}>
                 <View style={{ flex: 1 }}>
                   <Text style={[styles.teamListName, { color: colors.foreground }]}>
                     {t.teamName}
-                    {share && share.ownershipShare < 0.999 ? (
-                      <Text style={{ color: colors.mutedForeground }}>
-                        {'  '}
-                        {fmtShare(share.ownershipShare)}
-                      </Text>
-                    ) : null}
                   </Text>
+                  <OwnershipBreakdown
+                    segments={ownerSegments}
+                    owners={ownerEntries}
+                    compact
+                  />
                   <Text style={[styles.teamListMeta, { color: colors.mutedForeground }]}>
                     {t.conference} {t.division} · {t.wins} W · cost {fmtMoney(t.cost)}
                   </Text>
@@ -251,18 +256,97 @@ function OwnerCard({
   );
 }
 
+function formatOwnershipSegmentShare(share: number, isTrade: boolean): string {
+  if (!isTrade) return fmtShare(share);
+
+  const percentage = Math.round(share * 10_000) / 100;
+  const sign = percentage > 0 ? '+' : '';
+  return `${sign}${percentage}%`;
+}
+
+function OwnershipBreakdown({
+  segments,
+  owners,
+  compact = false,
+}: {
+  segments: OwnershipSegment[];
+  owners: TeamResultRow['owners'];
+  compact?: boolean;
+}) {
+  const colors = useColors();
+  const displaySegments: OwnershipSegment[] =
+    segments.length > 0
+      ? segments
+      : owners.map((owner) => ({ ...owner, source: 'primary' }));
+
+  if (displaySegments.length === 0) return null;
+
+  return (
+    <View style={styles.ownershipBreakdown}>
+      {!compact && (
+        <Text style={[styles.ownershipHeading, { color: colors.mutedForeground }]}>
+          OWNERSHIP
+        </Text>
+      )}
+      {displaySegments.map((segment, index) => {
+        const isTrade = segment.source === 'trade';
+        const isAcquisition = segment.tradeDirection === 'acquired';
+        const counterparty = segment.counterpartyBidderName;
+        const sourceLabel = !isTrade
+          ? 'AUCTION'
+          : isAcquisition
+            ? 'TRADE IN'
+            : 'TRADE OUT';
+        const rowBorder = !isTrade
+          ? colors.border
+          : isAcquisition
+            ? colors.nfc
+            : colors.destructive;
+
+        return (
+          <View
+            key={`${segment.source}-${segment.tradeId ?? 'primary'}-${segment.bidderId}-${index}`}
+            style={[
+              styles.ownershipRow,
+              { backgroundColor: colors.muted, borderColor: rowBorder },
+            ]}
+          >
+            <View style={styles.ownershipInfo}>
+              <Text style={[styles.ownershipSource, { color: colors.foreground }]}>
+                {sourceLabel}
+              </Text>
+              <Text
+                style={[styles.ownershipParty, { color: colors.foreground }]}
+                numberOfLines={1}
+              >
+                {segment.bidderName}
+              </Text>
+              {isTrade && counterparty ? (
+                <Text
+                  style={[styles.ownershipCounterparty, { color: colors.mutedForeground }]}
+                  numberOfLines={1}
+                >
+                  {isAcquisition ? 'from' : 'to'} {counterparty}
+                </Text>
+              ) : null}
+            </View>
+            <Text
+              style={[styles.ownershipShare, { color: colors.foreground }]}
+            >
+              {formatOwnershipSegmentShare(segment.ownershipShare, isTrade)}
+            </Text>
+          </View>
+        );
+      })}
+    </View>
+  );
+}
+
 // ── Team row ─────────────────────────────────────────────────────────────────
 
 function TeamCard({ team }: { team: TeamResultRow }) {
   const colors = useColors();
   const netColor = team.netReturn >= 0 ? colors.success : colors.destructive;
-  const ownerNames = team.owners
-    .map((o) =>
-      o.ownershipShare < 0.999
-        ? `${o.bidderName} (${fmtShare(o.ownershipShare)})`
-        : o.bidderName,
-    )
-    .join(', ');
 
   return (
     <View
@@ -277,12 +361,10 @@ function TeamCard({ team }: { team: TeamResultRow }) {
           <Text style={[styles.ownerName, { color: colors.foreground }]}>
             {team.teamName}
           </Text>
-          <Text style={[styles.ownerMeta, { color: colors.mutedForeground }]}>
-            {ownerNames || 'Unowned'}
-          </Text>
         </View>
         <ConferenceChip conference={team.conference} />
       </View>
+      <OwnershipBreakdown segments={team.ownershipSegments} owners={team.owners} />
       <View style={[styles.statRow, { borderTopColor: colors.border }]}>
         <View style={styles.stat}>
           <Text style={[styles.statLabel, { color: colors.mutedForeground }]}>COST</Text>
@@ -526,5 +608,47 @@ const styles = StyleSheet.create({
   teamListMtm: {
     fontSize: 14,
     fontFamily: 'Inter_600SemiBold',
+  },
+  ownershipBreakdown: {
+    gap: 4,
+  },
+  ownershipHeading: {
+    fontSize: 10,
+    fontFamily: 'Inter_600SemiBold',
+    letterSpacing: 0.8,
+    marginBottom: 2,
+  },
+  ownershipRow: {
+    flexDirection: 'row',
+    alignItems: 'flex-start',
+    gap: 8,
+    paddingHorizontal: 7,
+    paddingVertical: 5,
+    borderWidth: StyleSheet.hairlineWidth,
+  },
+  ownershipInfo: {
+    flex: 1,
+    minWidth: 0,
+  },
+  ownershipSource: {
+    fontSize: 9,
+    fontFamily: 'Inter_600SemiBold',
+    letterSpacing: 0.7,
+  },
+  ownershipParty: {
+    fontSize: 11,
+    fontFamily: 'Inter_500Medium',
+    marginTop: 1,
+  },
+  ownershipCounterparty: {
+    fontSize: 10,
+    fontFamily: 'Inter_400Regular',
+    marginTop: 1,
+  },
+  ownershipShare: {
+    flexShrink: 0,
+    fontSize: 13,
+    lineHeight: 18,
+    fontFamily: 'Inter_700Bold',
   },
 });
