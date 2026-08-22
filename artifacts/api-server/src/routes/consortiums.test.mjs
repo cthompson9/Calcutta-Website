@@ -11,10 +11,12 @@ const canRun = Boolean(DATABASE_URL && ADMIN_KEY && MCP_KEY);
 let db;
 let biddersTable;
 let consortiaTable;
+let consortiumMembershipsTable;
 let app;
 
 if (canRun) {
-  ({ db, biddersTable, consortiaTable } = await import("@workspace/db"));
+  ({ db, biddersTable, consortiaTable, consortiumMembershipsTable } =
+    await import("@workspace/db"));
   ({ default: app } = await import("../app.ts"));
 }
 
@@ -71,6 +73,7 @@ describe("bidder consortiums", { skip: !canRun }, () => {
   let server;
   let baseUrl;
   let consortium;
+  const createdConsortia = [];
 
   before(async () => {
     const uniqueName = `Consortium Fixture Bidder ${Date.now()}`;
@@ -92,8 +95,10 @@ describe("bidder consortiums", { skip: !canRun }, () => {
         .delete(biddersTable)
         .where(inArray(biddersTable.id, [bidder.id, secondBidder.id]));
     }
-    if (consortium) {
-      await db.delete(consortiaTable).where(eq(consortiaTable.id, consortium.id));
+    if (createdConsortia.length > 0) {
+      await db
+        .delete(consortiaTable)
+        .where(inArray(consortiaTable.id, createdConsortia.map((item) => item.id)));
     }
   });
 
@@ -151,6 +156,7 @@ describe("bidder consortiums", { skip: !canRun }, () => {
       .from(consortiaTable)
       .where(eq(consortiaTable.name, consortiumName));
     assert.ok(consortium);
+    createdConsortia.push(consortium);
 
     const reused = await mcpRequest(baseUrl, 5, "tools/call", {
       name: "set_bidder_consortium",
@@ -161,11 +167,11 @@ describe("bidder consortiums", { skip: !canRun }, () => {
       },
     });
     assert.equal(mcpText(reused), `Consortium set: ${secondBidder.name} → ${consortiumName}.`);
-    const [secondStoredBidder] = await db
-      .select({ consortiumId: biddersTable.consortiumId })
-      .from(biddersTable)
-      .where(eq(biddersTable.id, secondBidder.id));
-    assert.equal(secondStoredBidder.consortiumId, consortium.id);
+    const [secondMembership] = await db
+      .select({ consortiumId: consortiumMembershipsTable.consortiumId })
+      .from(consortiumMembershipsTable)
+      .where(eq(consortiumMembershipsTable.bidderId, secondBidder.id));
+    assert.equal(secondMembership.consortiumId, consortium.id);
 
     await assert.rejects(
       db.insert(consortiaTable).values({ name: consortiumName.toLowerCase() }),
@@ -183,6 +189,58 @@ describe("bidder consortiums", { skip: !canRun }, () => {
     assert.equal(
       listedBidders.find((entry) => entry.id === bidder.id).consortium,
       consortiumName,
+    );
+
+    const [initialMembership] = await db
+      .select()
+      .from(consortiumMembershipsTable)
+      .where(eq(consortiumMembershipsTable.bidderId, bidder.id));
+    assert.ok(initialMembership);
+    await db
+      .update(consortiumMembershipsTable)
+      .set({ fromDate: "2020-01-01" })
+      .where(eq(consortiumMembershipsTable.id, initialMembership.id));
+
+    const reassignedName = `Reassigned Group ${Date.now()}`;
+    const reassigned = await mcpRequest(baseUrl, 5, "tools/call", {
+      name: "set_bidder_consortium",
+      arguments: {
+        bidder: bidder.name,
+        consortium: reassignedName,
+        adminKey: ADMIN_KEY,
+      },
+    });
+    assert.equal(
+      mcpText(reassigned),
+      `Consortium set: ${bidder.name} → ${reassignedName}.`,
+    );
+    const [reassignedConsortium] = await db
+      .select()
+      .from(consortiaTable)
+      .where(eq(consortiaTable.name, reassignedName));
+    assert.ok(reassignedConsortium);
+    createdConsortia.push(reassignedConsortium);
+
+    const membershipsAfterReassignment = await db
+      .select()
+      .from(consortiumMembershipsTable)
+      .where(eq(consortiumMembershipsTable.bidderId, bidder.id));
+    assert.equal(membershipsAfterReassignment.length, 2);
+    const closedMembership = membershipsAfterReassignment.find(
+      (membership) => membership.toDate !== null,
+    );
+    const activeMembership = membershipsAfterReassignment.find(
+      (membership) => membership.toDate === null,
+    );
+    assert.equal(closedMembership?.consortiumId, consortium.id);
+    assert.equal(closedMembership?.fromDate, "2020-01-01");
+    assert.equal(closedMembership?.toDate, activeMembership?.fromDate);
+    assert.equal(activeMembership?.consortiumId, reassignedConsortium.id);
+    const reassignedListResponse = await fetch(`${baseUrl}/api/bidders`);
+    const reassignedBidders = await reassignedListResponse.json();
+    assert.equal(
+      reassignedBidders.find((entry) => entry.id === bidder.id).consortium,
+      reassignedName,
     );
 
     const cleared = await mcpRequest(baseUrl, 6, "tools/call", {

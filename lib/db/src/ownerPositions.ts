@@ -230,20 +230,6 @@ export async function syncSeasonPositions(
 export async function ensureOwnerPositionRollout(): Promise<void> {
   await db.transaction(async (tx) => {
     await tx.execute(sql`select pg_advisory_xact_lock(841204, 45)`);
-    // Legacy values are only a bootstrap source. Once a bidder has dated
-    // history, never manufacture a competing open-ended membership.
-    await tx.execute(sql`
-      insert into consortium_memberships (bidder_id, consortium_id, from_date)
-      select b.id, b.consortium_id, date '1900-01-01'
-      from bidders b
-      where b.consortium_id is not null
-        and not exists (
-          select 1
-          from consortium_memberships m
-          where m.bidder_id = b.id
-        )
-      on conflict do nothing
-    `);
     await tx.execute(sql`
       update calcuttas
       set as_of_date = make_date(year, 8, 1)

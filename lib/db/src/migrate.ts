@@ -1,8 +1,14 @@
 import { sql } from "drizzle-orm";
 import { db } from "./index";
-import { ownerPositionsMigration } from "./migrations";
+import {
+  ownerPositionsMigration,
+  retireLegacyConsortiumMigration,
+} from "./migrations";
 
-const migrations = [ownerPositionsMigration] as const;
+const migrations = [
+  ownerPositionsMigration,
+  retireLegacyConsortiumMigration,
+] as const;
 
 /**
  * Applies database changes required by the running API before any feature

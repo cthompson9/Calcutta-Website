@@ -1,4 +1,4 @@
-import { and, eq, isNull, lte, or, sql } from "drizzle-orm";
+import { and, eq, inArray, isNull, lte, or, sql } from "drizzle-orm";
 import {
   calcuttasTable,
   consortiumMembershipsTable,
@@ -8,6 +8,40 @@ import {
 } from "@workspace/db";
 
 export type MembershipView = "historical" | "current";
+
+/**
+ * Loads the current roster for the bidder directory and commissioner tools.
+ * Historical reports must use loadSeasonConsortiums instead so a later
+ * reassignment cannot rewrite an earlier Calcutta.
+ */
+export async function loadCurrentBidderConsortiums(
+  bidderIds?: number[],
+): Promise<Map<number, string>> {
+  if (bidderIds && bidderIds.length === 0) return new Map();
+
+  const memberships = await db
+    .select({
+      bidderId: consortiumMembershipsTable.bidderId,
+      consortium: consortiaTable.name,
+    })
+    .from(consortiumMembershipsTable)
+    .innerJoin(
+      consortiaTable,
+      eq(consortiaTable.id, consortiumMembershipsTable.consortiumId),
+    )
+    .where(
+      bidderIds
+        ? and(
+            inArray(consortiumMembershipsTable.bidderId, bidderIds),
+            isNull(consortiumMembershipsTable.toDate),
+          )
+        : isNull(consortiumMembershipsTable.toDate),
+    );
+
+  return new Map(
+    memberships.map((membership) => [membership.bidderId, membership.consortium]),
+  );
+}
 
 function todayIso(): string {
   const parts = new Intl.DateTimeFormat("en-US", {

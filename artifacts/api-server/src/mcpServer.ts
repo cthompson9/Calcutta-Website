@@ -46,6 +46,7 @@ import {
   hasConfiguredPayoutRules,
   loadCalculatedTeamReturns,
 } from "./lib/calcuttaReturns";
+import { loadCurrentBidderConsortiums } from "./lib/consortiumMemberships";
 
 // ─── DB helpers ─────────────────────────────────────────────────────────────
 const CONSORTIUM_MEMBERSHIP_LOCK_NAMESPACE = 841204;
@@ -491,16 +492,12 @@ function buildMcpServer() {
     },
     async ({ bidder }) => {
       const rows = await db
-        .select({
-          id: biddersTable.id,
-          name: biddersTable.name,
-          consortium: consortiaTable.name,
-        })
-        .from(biddersTable)
-        .leftJoin(consortiaTable, eq(biddersTable.consortiumId, consortiaTable.id));
+        .select({ id: biddersTable.id, name: biddersTable.name })
+        .from(biddersTable);
       const match = resolveUniqueName(rows, bidder, "Bidder");
       if ("error" in match) return text(`Error: ${match.error}`);
-      return text(match.consortium);
+      const consortiumByBidder = await loadCurrentBidderConsortiums([match.id]);
+      return text(consortiumByBidder.get(match.id) ?? null);
     },
   );
 
@@ -603,12 +600,6 @@ function buildMcpServer() {
             fromDate,
           });
         }
-        // Retained during the transition so existing bidder-directory clients
-        // continue to display a current consortium while reports use history.
-        await tx
-          .update(biddersTable)
-          .set({ consortiumId })
-          .where(eq(biddersTable.id, bidderMatch.id));
       });
 
       return text(

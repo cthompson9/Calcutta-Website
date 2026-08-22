@@ -6,7 +6,6 @@ import {
   teamsTable,
   teamSeasonAuctionsTable,
   seasonsTable,
-  consortiaTable,
 } from "@workspace/db";
 import {
   GetBiddersQueryParams,
@@ -16,6 +15,7 @@ import {
   DeleteBidderParams,
 } from "@workspace/api-zod";
 import { loadSeasonOwnership } from "../lib/seasonOwnership";
+import { loadCurrentBidderConsortiums } from "../lib/consortiumMemberships";
 
 const router: IRouter = Router();
 
@@ -33,13 +33,16 @@ async function getBidderResponse(id: number) {
     .select({
       id: biddersTable.id,
       name: biddersTable.name,
-      consortium: consortiaTable.name,
     })
     .from(biddersTable)
-    .leftJoin(consortiaTable, eq(biddersTable.consortiumId, consortiaTable.id))
     .where(eq(biddersTable.id, id))
     .limit(1);
-  return rows[0] ?? null;
+  if (!rows[0]) return null;
+  const consortiumByBidder = await loadCurrentBidderConsortiums([id]);
+  return {
+    ...rows[0],
+    consortium: consortiumByBidder.get(id) ?? null,
+  };
 }
 
 router.get("/bidders", async (req, res): Promise<void> => {
@@ -81,14 +84,14 @@ router.get("/bidders", async (req, res): Promise<void> => {
 
     // Fetch bidder name rows for all participants
     const participantIdArr = Array.from(ownership.participantIds);
+    const consortiumByBidder =
+      await loadCurrentBidderConsortiums(participantIdArr);
     const bidderRows = await db
       .select({
         id: biddersTable.id,
         name: biddersTable.name,
-        consortium: consortiaTable.name,
       })
       .from(biddersTable)
-      .leftJoin(consortiaTable, eq(biddersTable.consortiumId, consortiaTable.id))
       .where(inArray(biddersTable.id, participantIdArr))
       .orderBy(biddersTable.name);
 
@@ -140,7 +143,7 @@ router.get("/bidders", async (req, res): Promise<void> => {
       return {
         id: bidder.id,
         name: bidder.name,
-        consortium: bidder.consortium,
+        consortium: consortiumByBidder.get(bidder.id) ?? null,
         teamCount: Math.round(teamCount * 10) / 10,
         totalPaid: Math.round(totalPaid * 100) / 100,
         teams: teamsList,
@@ -158,16 +161,15 @@ router.get("/bidders", async (req, res): Promise<void> => {
     .select({
       id: biddersTable.id,
       name: biddersTable.name,
-      consortium: consortiaTable.name,
     })
     .from(biddersTable)
-    .leftJoin(consortiaTable, eq(biddersTable.consortiumId, consortiaTable.id))
     .orderBy(biddersTable.name);
+  const consortiumByBidder = await loadCurrentBidderConsortiums();
 
   const results = bidders.map((bidder) => ({
     id: bidder.id,
     name: bidder.name,
-    consortium: bidder.consortium,
+    consortium: consortiumByBidder.get(bidder.id) ?? null,
     teamCount: 0,
     totalPaid: 0,
     teams: [] as Array<{

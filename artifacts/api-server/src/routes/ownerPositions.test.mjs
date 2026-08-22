@@ -63,11 +63,17 @@ describe("owner positions and dated consortium rollups", { skip: !DATABASE_URL }
   let buyerId;
   let server;
   let baseUrl;
+  let fixtureId;
+  let historicConsortiumName;
+  let currentConsortiumName;
 
   before(async () => {
     await runDatabaseMigrations();
     await ensureOwnerPositionRollout();
-    seasonYear = 2800 + Math.floor(Math.random() * 100);
+    seasonYear = 2000 + (Date.now() % 7000);
+    fixtureId = `${seasonYear}-${Math.random().toString(36).slice(2)}`;
+    historicConsortiumName = `Historic consortium ${fixtureId}`;
+    currentConsortiumName = `Current consortium ${fixtureId}`;
     const [season] = await db.insert(seasonsTable).values({
       year: seasonYear,
       isActive: false,
@@ -78,17 +84,16 @@ describe("owner positions and dated consortium rollups", { skip: !DATABASE_URL }
     const [team] = await db.select({ id: teamsTable.id }).from(teamsTable).limit(1);
     teamId = team.id;
     const [historic] = await db.insert(consortiaTable).values({
-      name: `Historic consortium ${seasonYear}`,
+      name: historicConsortiumName,
     }).returning();
     const [current] = await db.insert(consortiaTable).values({
-      name: `Current consortium ${seasonYear}`,
+      name: currentConsortiumName,
     }).returning();
     const [seller] = await db.insert(biddersTable).values({
-      name: `Seller ${seasonYear}`,
-      consortiumId: historic.id,
+      name: `Seller ${fixtureId}`,
     }).returning();
     const [buyer] = await db.insert(biddersTable).values({
-      name: `Buyer ${seasonYear}`,
+      name: `Buyer ${fixtureId}`,
     }).returning();
     sellerId = seller.id;
     buyerId = buyer.id;
@@ -178,14 +183,14 @@ describe("owner positions and dated consortium rollups", { skip: !DATABASE_URL }
     assert.equal(historical.status, 200);
     const historicalRows = await historical.json();
     const historicalSeller = historicalRows.find((row) => row.bidderId === sellerId);
-    assert.equal(historicalSeller.consortium, `Historic consortium ${seasonYear}`);
+    assert.equal(historicalSeller.consortium, historicConsortiumName);
     assert.equal(historicalSeller.totalRealizedReturn, 50);
 
     const current = await fetch(`${baseUrl}/api/results/by-owner?season=${seasonYear}&membershipView=current`);
     assert.equal(current.status, 200);
     const currentRows = await current.json();
     const currentSeller = currentRows.find((row) => row.bidderId === sellerId);
-    assert.equal(currentSeller.consortium, `Current consortium ${seasonYear}`);
+    assert.equal(currentSeller.consortium, currentConsortiumName);
     assert.equal(currentSeller.totalRealizedReturn, 50);
   });
 
@@ -213,13 +218,12 @@ describe("owner positions and dated consortium rollups", { skip: !DATABASE_URL }
     }
   });
 
-  test("backfills a legacy bidder consortium and rejects overlapping memberships", async () => {
+  test("uses only dated memberships and rejects overlapping intervals", async () => {
     const [legacyGroup] = await db.insert(consortiaTable).values({
-      name: `Legacy group ${seasonYear}`,
+      name: `Legacy group ${fixtureId}`,
     }).returning();
     const [legacyBidder] = await db.insert(biddersTable).values({
-      name: `Legacy bidder ${seasonYear}`,
-      consortiumId: legacyGroup.id,
+      name: `Legacy bidder ${fixtureId}`,
     }).returning();
     const [legacySeason] = await db.insert(seasonsTable).values({
       year: seasonYear - 1,
@@ -228,6 +232,11 @@ describe("owner positions and dated consortium rollups", { skip: !DATABASE_URL }
       label: "Legacy membership rollout fixture",
     }).returning();
     try {
+      await db.insert(consortiumMembershipsTable).values({
+        bidderId: legacyBidder.id,
+        consortiumId: legacyGroup.id,
+        fromDate: `${seasonYear - 1}-01-01`,
+      });
       await ensureOwnerPositionRollout();
       const membership = await db
         .select()
