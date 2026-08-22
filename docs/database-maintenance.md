@@ -15,6 +15,29 @@ Do not run ad-hoc production DDL, database push commands against production, or
 startup-time migrations. The Publish flow is the supported production schema
 change path and will surface destructive or rename operations for confirmation.
 
+## Legacy consortium membership bridge
+
+When moving from the legacy `bidders.consortium_id` relation to dated
+`consortium_memberships`, use a bridge release:
+
+1. Publish the additive schema with both the legacy column and the new
+   membership table present. Do not accept a Publish diff that removes the
+   populated legacy column.
+2. Run the ADMIN_API_KEY-protected
+   `migrate_legacy_consortium_memberships` MCP tool. It copies every named
+   legacy assignment into an open-ended membership, validates the result in
+   one transaction, and is safe to retry.
+3. Confirm the migrated bidder and consortium-name counts in production.
+4. Only in a later release, remove the legacy column and the temporary
+   compatibility fallback after production validation is complete.
+
+During the bridge, a legacy name is used only for a bidder with no dated
+membership history. Once any membership exists, including a dated clear,
+the dated record is authoritative.
+
+Never use the Publish UI's overwrite-data option for this transition: it
+replaces production data rather than copying the needed assignments.
+
 ## Import operations
 
 - Auction imports require a complete 32-team source and are serialized per

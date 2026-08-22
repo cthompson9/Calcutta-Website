@@ -1,13 +1,9 @@
 import { sql } from "drizzle-orm";
 import { db } from "./index";
-import {
-  ownerPositionsMigration,
-  retireLegacyConsortiumMigration,
-} from "./migrations";
+import { ownerPositionsMigration } from "./migrations";
 
 const migrations = [
   ownerPositionsMigration,
-  retireLegacyConsortiumMigration,
 ] as const;
 
 /**

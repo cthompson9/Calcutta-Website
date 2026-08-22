@@ -1,4 +1,5 @@
 export * from "./consortia";
+export * from "./appSchemaMigrations";
 export * from "./bidders";
 export * from "./teams";
 export * from "./seasons";

@@ -9,6 +9,7 @@
 - [Short position semantics](short-position-semantics.md) — approved trades may create signed shorts; only positive stakes are current owners while position reports remain signed.
 - [New York timezone](new-york-timezone.md) — pool calendar defaults and visible timestamps use America/New_York, never UTC or a viewer’s local timezone.
 - [Consortium identity](consortium-identity.md) — consortium names are shared global identities; capitalization and repeated spaces never create a different group.
+- [Consortium bridge rollout](consortium-bridge-rollout.md) — retain legacy links through an additive publish, then copy and validate memberships explicitly.
 - [Trade test isolation](trade-test-isolation.md) — approved fixtures affect season-wide owner totals; isolate their bidders or seasons.
 - [Period return model](period-return-model.md) — pay snapshot deltas once; apply configurable multipliers to playoff-period changes only.
 - [Dated consortium reporting](dated-consortium-reporting.md) — historical reports use each Calcutta’s fixed as-of roster; current roster is always an explicit alternate view.

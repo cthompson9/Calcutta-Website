@@ -27,6 +27,8 @@ import {
   sportPeriodsTable,
   teamPeriodSnapshotsTable,
   payoutRulesTable,
+  CONSORTIUM_MEMBERSHIP_LOCK_NAMESPACE,
+  migrateLegacyConsortiumMemberships,
   syncSeasonPositions,
 } from "@workspace/db";
 import type { Router, IRouter, Request, Response } from "express";
@@ -52,8 +54,6 @@ import {
 import { loadCurrentBidderConsortiums } from "./lib/consortiumMemberships";
 
 // ─── DB helpers ─────────────────────────────────────────────────────────────
-const CONSORTIUM_MEMBERSHIP_LOCK_NAMESPACE = 841204;
-
 async function resolveSeasonId(year: number): Promise<number | null> {
   const rows = await db
     .select({ id: seasonsTable.id })
@@ -610,6 +610,31 @@ function buildMcpServer() {
           ? `Consortium set: ${bidderMatch.name} → ${consortiumName}.`
           : `Consortium cleared: ${bidderMatch.name}.`,
       );
+    },
+  );
+
+  server.tool(
+    "migrate_legacy_consortium_memberships",
+    "Copies legacy bidder consortium assignments into the dated membership model without deleting the old column. Safe to retry; requires ADMIN_API_KEY.",
+    {
+      adminKey: z.string().describe("Admin API key — only the pool admin knows this"),
+    },
+    async ({ adminKey }) => {
+      const expectedKey = process.env["ADMIN_API_KEY"];
+      if (!expectedKey || adminKey !== expectedKey) {
+        return text(
+          "Error: Invalid admin key. Only the pool admin can migrate legacy consortium assignments.",
+        );
+      }
+      try {
+        return text(
+          JSON.stringify(await migrateLegacyConsortiumMemberships()),
+        );
+      } catch (error) {
+        return text(
+          `Error: ${error instanceof Error ? error.message : "Legacy consortium migration failed."}`,
+        );
+      }
     },
   );
 
