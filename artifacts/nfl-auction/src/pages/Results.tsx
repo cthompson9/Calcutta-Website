@@ -1,14 +1,23 @@
-import { useState } from "react";
+import { useEffect, useState, useMemo } from "react";
 import {
   useGetResults,
+  getGetResultsQueryKey,
   useGetResultsByOwner,
+  getGetResultsByOwnerQueryKey,
   useGetBidders,
   useGetSportPeriods,
+  useGetSeasons,
+  useGetResultsCompare,
+  getGetResultsCompareQueryKey,
 } from "@workspace/api-client-react";
 import type {
   OwnershipSegment,
   TeamResultRow,
   OwnerResultRow,
+  CalcuttaComparisonResponse,
+  CalcuttaComparisonRow,
+  CalcuttaComparisonCell,
+  CalcuttaComparisonAggregate,
 } from "@workspace/api-client-react";
 import { formatCurrency } from "@/lib/utils";
 import { cn } from "@/lib/utils";
@@ -17,7 +26,7 @@ import { ChevronDown, Trophy, Star } from "lucide-react";
 import { bidderConsortiums, ownerLabelById } from "@/lib/ownerDisplay";
 import { ConsortiumLabel } from "@/components/ConsortiumLabel";
 
-type TabId = "byTeam" | "byOwner";
+type TabId = "byOwner" | "byTeam" | "compare";
 
 export default function Results() {
   const { year, selectedSeason } = useSeason();
@@ -26,20 +35,56 @@ export default function Results() {
   const [period, setPeriod] = useState<number | undefined>(undefined);
   const [basis, setBasis] = useState<"realized" | "mtm">("mtm");
   const [membershipView, setMembershipView] = useState<"historical" | "current">("historical");
-  const { data: periods } = useGetSportPeriods({ sport: "NFL" });
+  const [compareSeasons, setCompareSeasons] = useState<number[]>([]);
+  const [compareGroupBy, setCompareGroupBy] = useState<"bidder" | "consortium">("consortium");
 
-  const { data: teamResults, isLoading: loadingTeams } = useGetResults({
-    season: year,
-    period,
-    basis,
-  });
+  const { data: periods } = useGetSportPeriods({ sport: "NFL" });
+  const { data: allSeasons } = useGetSeasons();
+
+  useEffect(() => {
+    if (allSeasons && compareSeasons.length === 0) {
+      const recent = [...allSeasons]
+        .filter((s) => s.isActive || s.isComplete)
+        .sort((a, b) => b.year - a.year)
+        .slice(0, 2)
+        .map((s) => s.year);
+      if (recent.length > 0) {
+        setCompareSeasons(recent);
+      }
+    }
+  }, [allSeasons, compareSeasons.length]);
+
+  const { data: teamResults, isLoading: loadingTeams } = useGetResults(
+    { season: year, period, basis },
+    { query: { enabled: tab === "byTeam", queryKey: getGetResultsQueryKey({ season: year, period, basis }) } }
+  );
   const { data: ownerResults, isLoading: loadingOwners } = useGetResultsByOwner(
     { season: year, period, basis, membershipView },
+    { query: { enabled: tab === "byOwner", queryKey: getGetResultsByOwnerQueryKey({ season: year, period, basis, membershipView }) } }
   );
-  const { data: bidders } = useGetBidders({ season: year });
-  const consortiumByBidderId = bidderConsortiums(bidders);
 
-  const isLoading = loadingTeams || loadingOwners;
+  const compareParams = {
+    seasons: compareSeasons.join(","),
+    period,
+    basis,
+    groupBy: compareGroupBy,
+    membershipView,
+  };
+  const { data: compareResults, isLoading: loadingCompare } = useGetResultsCompare(
+    compareParams,
+    { query: { enabled: tab === "compare" && compareSeasons.length >= 2, queryKey: getGetResultsCompareQueryKey(compareParams) } }
+  );
+
+  const { data: bidders } = useGetBidders({ season: year });
+  const consortiumByBidderId = useMemo(() => bidderConsortiums(bidders), [bidders]);
+
+  const isLoading =
+    tab === "byTeam"
+      ? loadingTeams
+      : tab === "byOwner"
+        ? loadingOwners
+        : loadingCompare;
+
   const isComplete = basis === "realized";
   const selectedPeriodLabel = period == null
     ? "latest available period"
@@ -81,7 +126,7 @@ export default function Results() {
               key={value}
               onClick={() => setBasis(value)}
               className={cn(
-                "rounded px-3 py-1.5 text-xs font-mono font-bold uppercase tracking-widest",
+                "rounded px-3 py-1.5 text-xs font-mono font-bold uppercase tracking-widest transition-colors",
                 basis === value
                   ? "bg-primary text-primary-foreground"
                   : "text-muted-foreground hover:text-foreground",
@@ -91,14 +136,14 @@ export default function Results() {
             </button>
           ))}
         </div>
-        {tab === "byOwner" && (
+        {(tab === "byOwner" || tab === "compare") && (
           <div className="flex rounded-md border border-input p-0.5">
             {(["historical", "current"] as const).map((value) => (
               <button
                 key={value}
                 onClick={() => setMembershipView(value)}
                 className={cn(
-                  "rounded px-3 py-1.5 text-xs font-mono font-bold uppercase tracking-widest",
+                  "rounded px-3 py-1.5 text-xs font-mono font-bold uppercase tracking-widest transition-colors",
                   membershipView === value
                     ? "bg-primary text-primary-foreground"
                     : "text-muted-foreground hover:text-foreground",
@@ -109,11 +154,63 @@ export default function Results() {
             ))}
           </div>
         )}
+        {tab === "compare" && (
+          <div className="flex rounded-md border border-input p-0.5">
+            {(["consortium", "bidder"] as const).map((value) => (
+              <button
+                key={value}
+                onClick={() => setCompareGroupBy(value)}
+                className={cn(
+                  "rounded px-3 py-1.5 text-xs font-mono font-bold uppercase tracking-widest transition-colors",
+                  compareGroupBy === value
+                    ? "bg-primary text-primary-foreground"
+                    : "text-muted-foreground hover:text-foreground",
+                )}
+              >
+                {value === "consortium" ? "By Consortium" : "By Bidder"}
+              </button>
+            ))}
+          </div>
+        )}
       </div>
+
+      {tab === "compare" && allSeasons && (
+        <div className="flex flex-wrap items-center gap-1.5 rounded-lg border border-border bg-card p-3">
+          <span className="text-xs font-mono font-bold uppercase tracking-widest text-muted-foreground mr-2">
+            Compare Seasons
+          </span>
+          {allSeasons.map((s) => {
+            const isSelected = compareSeasons.includes(s.year);
+            const disabled = !isSelected && compareSeasons.length >= 6;
+            return (
+              <button
+                key={s.id}
+                disabled={disabled}
+                onClick={() => {
+                  setCompareSeasons((prev) =>
+                    isSelected
+                      ? prev.filter((y) => y !== s.year)
+                      : [...prev, s.year].sort((a, b) => b - a)
+                  );
+                }}
+                className={cn(
+                  "rounded px-3 py-1.5 text-xs font-mono font-bold transition-colors",
+                  isSelected
+                    ? "bg-foreground text-background"
+                    : "bg-muted text-muted-foreground hover:bg-muted/80",
+                  disabled && "opacity-50 cursor-not-allowed"
+                )}
+              >
+                {s.year}
+              </button>
+            );
+          })}
+        </div>
+      )}
 
       {/* Tabs */}
       <div className="flex border-b border-border">
-        {(["byOwner", "byTeam"] as TabId[]).map((t) => (
+        {(["byOwner", "byTeam", "compare"] as TabId[]).map((t) => (
           <button
             key={t}
             onClick={() => setTab(t)}
@@ -124,7 +221,7 @@ export default function Results() {
                 : "border-transparent text-muted-foreground hover:text-foreground",
             )}
           >
-            {t === "byOwner" ? "By Consortium" : "By Team"}
+            {t === "byOwner" ? "By Consortium" : t === "byTeam" ? "By Team" : "Compare"}
           </button>
         ))}
       </div>
@@ -139,6 +236,19 @@ export default function Results() {
           setExpandedOwner={setExpandedOwner}
           consortiumByBidderId={consortiumByBidderId}
         />
+      ) : tab === "compare" ? (
+        compareSeasons.length < 2 ? (
+          <div className="flex flex-col items-center justify-center rounded-lg border border-dashed border-border bg-card/50 p-12 text-center text-muted-foreground">
+            <Trophy className="h-8 w-8 mb-4 opacity-50" />
+            <p className="font-mono text-sm uppercase tracking-widest font-bold">Select seasons to compare</p>
+            <p className="mt-1 text-sm">Choose at least two seasons from the list above to view a comparison.</p>
+          </div>
+        ) : (
+          <CompareView
+            response={compareResults}
+            isComplete={isComplete}
+          />
+        )
       ) : (
         <ByTeamView
           rows={teamResults ?? []}
@@ -1202,6 +1312,126 @@ function ByTeamView({
     </div>
   );
 }
+
+// ─── Compare ──────────────────────────────────────────────────────────────────
+
+function CompareView({
+  response,
+  isComplete,
+}: {
+  response: CalcuttaComparisonResponse | undefined;
+  isComplete: boolean;
+}) {
+  if (!response || !response.rows.length) return <Empty />;
+
+  // Sort rows by aggregate MTM or Net return
+  const sorted = [...response.rows].sort((a, b) =>
+    isComplete ? b.aggregate.totalNetReturn - a.aggregate.totalNetReturn : b.aggregate.totalMtm - a.aggregate.totalMtm
+  );
+
+  return (
+    <div className="overflow-x-auto rounded-lg border border-border bg-card shadow-sm">
+      <table className="w-full text-left text-sm font-mono whitespace-nowrap border-collapse min-w-max">
+        <thead className="bg-muted/60 text-muted-foreground text-xs uppercase tracking-widest">
+          <tr>
+            <th className="px-4 py-3 font-bold border-b border-border sticky left-0 z-20 bg-muted/95 backdrop-blur border-r">
+              {response.groupBy === "consortium" ? "Consortium" : "Bidder"}
+            </th>
+            {response.calcuttas.map((c) => (
+              <th key={c.id} className="px-4 py-3 font-bold border-b border-r border-border text-right">
+                <div className="text-foreground">{c.year}</div>
+                <div className="text-[10px] text-muted-foreground font-normal normal-case tracking-normal">{c.label}</div>
+              </th>
+            ))}
+            <th className="px-4 py-3 font-bold border-b border-border text-right bg-muted/60">
+              Aggregate
+            </th>
+          </tr>
+        </thead>
+        <tbody className="divide-y divide-border">
+          {sorted.map((row) => (
+            <tr key={row.id} className="group hover:bg-muted/40 transition-colors">
+              <td className="px-4 py-4 font-bold sticky left-0 z-10 bg-card group-hover:bg-muted/80 transition-colors border-r border-border">
+                <ConsortiumLabel label={row.name} />
+              </td>
+              {row.calcuttas.map((cell, idx) => (
+                <td key={idx} className="px-4 py-4 border-r border-border text-right align-top">
+                  {cell ? <CompareCell cell={cell} isComplete={isComplete} /> : <span className="text-muted-foreground/40">—</span>}
+                </td>
+              ))}
+              <td className="px-4 py-4 text-right bg-muted/10 font-bold align-top">
+                <CompareAggregate aggregate={row.aggregate} isComplete={isComplete} />
+              </td>
+            </tr>
+          ))}
+        </tbody>
+      </table>
+    </div>
+  );
+}
+
+function CompareCell({ cell, isComplete }: { cell: CalcuttaComparisonCell; isComplete: boolean }) {
+  if (!cell.snapshotAvailable) {
+    return (
+      <div className="text-xs text-muted-foreground/60 italic flex flex-col items-end">
+        <span>
+          {cell.snapshotTeamCount > 0
+            ? `Partial snapshots (${cell.snapshotTeamCount}/${cell.teamCount})`
+            : "No snapshot"}
+        </span>
+        <span className="text-[10px]">{cell.periodLabel ?? "Unknown period"}</span>
+      </div>
+    );
+  }
+
+  const value = isComplete ? cell.totalNetReturn : cell.totalMtm;
+  const isPositive = value >= 0;
+
+  return (
+    <div className="flex flex-col items-end gap-1">
+      <div className={cn("font-bold text-sm", isPositive ? "text-green-600 dark:text-green-500" : "text-red-600 dark:text-red-500")}>
+        {isPositive ? "+" : ""}{formatCurrency(value)}
+      </div>
+      <div className="flex flex-col items-end gap-0.5 text-[10px] text-muted-foreground">
+        {cell.signedShare < 0 && (
+          <span className="bg-rose-100 text-rose-700 dark:bg-rose-950 dark:text-rose-300 px-1 py-0.5 rounded font-bold">
+            SHORT
+          </span>
+        )}
+        <span title="Exposure">Exp: {formatCurrency(cell.exposure)}</span>
+      </div>
+    </div>
+  );
+}
+
+function CompareAggregate({ aggregate, isComplete }: { aggregate: CalcuttaComparisonAggregate; isComplete: boolean }) {
+  if (!aggregate.snapshotAvailable) {
+    return (
+      <div className="text-xs text-muted-foreground/60 italic flex flex-col items-end">
+        <span>Partial snapshots</span>
+        <span className="text-[10px]">
+          {aggregate.snapshotTeamCount}/{aggregate.teamCount} positions covered
+        </span>
+      </div>
+    );
+  }
+
+  const value = isComplete ? aggregate.totalNetReturn : aggregate.totalMtm;
+  const isPositive = value >= 0;
+
+  return (
+    <div className="flex flex-col items-end gap-1">
+      <div className={cn("font-bold text-sm", isPositive ? "text-green-600 dark:text-green-500" : "text-red-600 dark:text-red-500")}>
+        {isPositive ? "+" : ""}{formatCurrency(value)}
+      </div>
+      <div className="flex flex-col items-end gap-0.5 text-[10px] text-muted-foreground font-normal">
+        <span title="Exposure">Exp: {formatCurrency(aggregate.exposure)}</span>
+      </div>
+    </div>
+  );
+}
+
+// ─── Helpers ─────────────────────────────────────────────────────────────────
 
 function Empty() {
   return (

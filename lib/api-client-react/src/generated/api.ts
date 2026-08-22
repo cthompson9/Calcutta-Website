@@ -27,12 +27,14 @@ import type {
   BidderInput,
   BidderSummary,
   BidderUpdate,
+  CalcuttaComparisonResponse,
   ErrorResponse,
   GetAuctionSummaryParams,
   GetBiddersParams,
   GetMtmSnapshotsParams,
   GetPayoutRulesParams,
   GetResultsByOwnerParams,
+  GetResultsCompareParams,
   GetResultsParams,
   GetSportPeriodsParams,
   GetTeamsParams,
@@ -1143,6 +1145,90 @@ export function useGetResultsByOwner<TData = Awaited<ReturnType<typeof getResult
  ):  UseQueryResult<TData, TError> & { queryKey: QueryKey } {
 
   const queryOptions = getGetResultsByOwnerQueryOptions(params,options)
+
+  const query = useQuery(queryOptions) as  UseQueryResult<TData, TError> & { queryKey: QueryKey };
+
+  return withQueryKey(query, queryOptions.queryKey);
+}
+
+
+
+
+
+
+
+export const getGetResultsCompareUrl = (params: GetResultsCompareParams,) => {
+  const normalizedParams = new URLSearchParams();
+
+  Object.entries(params || {}).forEach(([key, value]) => {
+
+    if (value !== undefined) {
+      normalizedParams.append(key, value === null ? 'null' : String(value))
+    }
+  });
+
+  const stringifiedParams = normalizedParams.toString();
+
+  return stringifiedParams.length > 0 ? `/api/results/compare?${stringifiedParams}` : `/api/results/compare`
+}
+
+/**
+ * @summary Compare bidder or consortium returns across selected Calcuttas
+ */
+export const getResultsCompare = async (params: GetResultsCompareParams, options?: Parameters<typeof customFetch>[1]): Promise<CalcuttaComparisonResponse> => {
+
+  return customFetch<CalcuttaComparisonResponse>(getGetResultsCompareUrl(params),
+  {
+    ...options,
+    method: 'GET'
+
+
+  }
+);}
+
+
+
+
+
+export const getGetResultsCompareQueryKey = (params?: GetResultsCompareParams,) => {
+    return [
+    `/api/results/compare`, ...(params ? [params] : [])
+    ] as const;
+    }
+
+
+export const getGetResultsCompareQueryOptions = <TData = Awaited<ReturnType<typeof getResultsCompare>>, TError = ErrorType<ErrorResponse>>(params: GetResultsCompareParams, options?: { query?:UseQueryOptions<Awaited<ReturnType<typeof getResultsCompare>>, TError, TData>, request?: SecondParameter<typeof customFetch>}
+) => {
+
+const {query: queryOptions, request: requestOptions} = options ?? {};
+
+  const queryKey =  queryOptions?.queryKey ?? getGetResultsCompareQueryKey(params);
+
+
+
+    const queryFn: QueryFunction<Awaited<ReturnType<typeof getResultsCompare>>> = ({ signal }) => getResultsCompare(params, { signal, ...requestOptions });
+
+
+
+
+
+   return  { queryKey, queryFn, ...queryOptions} as UseQueryOptions<Awaited<ReturnType<typeof getResultsCompare>>, TError, TData> & { queryKey: QueryKey }
+}
+
+export type GetResultsCompareQueryResult = NonNullable<Awaited<ReturnType<typeof getResultsCompare>>>
+export type GetResultsCompareQueryError = ErrorType<ErrorResponse>
+
+
+/**
+ * @summary Compare bidder or consortium returns across selected Calcuttas
+ */
+
+export function useGetResultsCompare<TData = Awaited<ReturnType<typeof getResultsCompare>>, TError = ErrorType<ErrorResponse>>(
+ params: GetResultsCompareParams, options?: { query?:UseQueryOptions<Awaited<ReturnType<typeof getResultsCompare>>, TError, TData>, request?: SecondParameter<typeof customFetch>}
+
+ ):  UseQueryResult<TData, TError> & { queryKey: QueryKey } {
+
+  const queryOptions = getGetResultsCompareQueryOptions(params,options)
 
   const query = useQuery(queryOptions) as  UseQueryResult<TData, TError> & { queryKey: QueryKey };
 

@@ -31,7 +31,10 @@ import {
 } from "@workspace/db";
 import type { Router, IRouter, Request, Response } from "express";
 import { Router as ExpressRouter } from "express";
-import { loadSeasonOwnership } from "./lib/seasonOwnership";
+import {
+  loadCrossCalcuttaRollup,
+  loadSeasonOwnership,
+} from "./lib/seasonOwnership";
 import {
   OWNERSHIP_SEASON_LOCK_NAMESPACE,
   validatePrimaryOwnership,
@@ -917,6 +920,49 @@ function buildMcpServer() {
       return text(
         `Trade #${tradeId} has been ${status.toUpperCase()}. ${status === "approved" ? "It now affects owner standings and returns." : "It has been rejected and will not affect results."}`,
       );
+    },
+  );
+
+  server.tool(
+    "compare_calcutta_returns",
+    "Compares signed bidder or consortium returns across two to six selected NFL Calcuttas. Historical consortium membership is resolved at each Calcutta's as-of date by default, and cells flag missing selected snapshots.",
+    {
+      seasons: z.array(z.number().int()).min(2).max(6).describe("Two to six season years to compare"),
+      groupBy: z.enum(["bidder", "consortium"]).default("bidder"),
+      basis: z.enum(["realized", "mtm"]).default("realized"),
+      period: z.number().int().min(0).max(22).optional(),
+      membershipView: z.enum(["historical", "current"]).default("historical"),
+    },
+    async ({ seasons, groupBy, basis, period, membershipView }) => {
+      const years = [...new Set(seasons)].sort((a, b) => a - b);
+      if (years.length !== seasons.length) {
+        return text("Error: seasons must be unique.");
+      }
+      const known = await db
+        .select({ year: seasonsTable.year })
+        .from(seasonsTable)
+        .where(sql`${seasonsTable.year} in (${sql.join(years.map((year) => sql`${year}`), sql`, `)})`);
+      const knownYears = new Set(known.map((season) => season.year));
+      const missing = years.filter((year) => !knownYears.has(year));
+      if (missing.length) return text(`Error: Season not found: ${missing.join(", ")}`);
+
+      const rollup = await loadCrossCalcuttaRollup({
+        years,
+        basis,
+        period,
+        groupBy,
+        membershipView,
+      });
+      const missingCalcuttas = years.filter(
+        (year) => !rollup.calcuttas.some((calcutta) => calcutta.year === year),
+      );
+      if (missingCalcuttas.length) {
+        return text(
+          `Error: No canonical NFL Calcutta found for season${missingCalcuttas.length === 1 ? "" : "s"}: ${missingCalcuttas.join(", ")}`,
+        );
+      }
+
+      return text(JSON.stringify(rollup));
     },
   );
 

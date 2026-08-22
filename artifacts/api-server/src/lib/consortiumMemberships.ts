@@ -122,3 +122,65 @@ export async function loadSeasonConsortiums(
   }
   return result;
 }
+
+/**
+ * Resolves a bidder roster against one Calcutta's own fixed as-of date.
+ * Cross-Calcutta reports call this rather than using a season-wide default so
+ * an alternate pool can preserve its own historical roster boundary.
+ */
+export async function loadCalcuttaConsortiums(
+  calcuttaId: number,
+  view: MembershipView = "historical",
+): Promise<Map<number, string | null>> {
+  const calcutta = await db
+    .select({
+      year: calcuttasTable.year,
+      asOfDate: calcuttasTable.asOfDate,
+    })
+    .from(calcuttasTable)
+    .where(eq(calcuttasTable.id, calcuttaId))
+    .limit(1);
+  if (!calcutta[0]) return new Map();
+
+  const anchorDate =
+    view === "current"
+      ? todayIso()
+      : calcutta[0].asOfDate ?? `${calcutta[0].year}-08-01`;
+  if (
+    view === "historical" &&
+    (calcutta[0].year < 1 || calcutta[0].year > 9999) &&
+    !calcutta[0].asOfDate
+  ) {
+    return new Map();
+  }
+
+  const memberships = await db
+    .select({
+      bidderId: consortiumMembershipsTable.bidderId,
+      consortium: consortiaTable.name,
+      fromDate: consortiumMembershipsTable.fromDate,
+    })
+    .from(consortiumMembershipsTable)
+    .innerJoin(
+      consortiaTable,
+      eq(consortiaTable.id, consortiumMembershipsTable.consortiumId),
+    )
+    .where(
+      view === "current"
+        ? isNull(consortiumMembershipsTable.toDate)
+        : and(
+            lte(consortiumMembershipsTable.fromDate, anchorDate),
+            or(
+              isNull(consortiumMembershipsTable.toDate),
+              sql`${consortiumMembershipsTable.toDate} > ${anchorDate}`,
+            ),
+          ),
+    )
+    .orderBy(consortiumMembershipsTable.fromDate);
+
+  const result = new Map<number, string | null>();
+  for (const membership of memberships) {
+    result.set(membership.bidderId, membership.consortium);
+  }
+  return result;
+}

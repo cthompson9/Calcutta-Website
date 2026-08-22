@@ -380,6 +380,59 @@ paths:
                 items:
                   $ref: "#/components/schemas/OwnerResultRow"
 
+  /results/compare:
+    get:
+      operationId: getResultsCompare
+      tags: [results]
+      summary: Compare bidder or consortium returns across selected Calcuttas
+      parameters:
+        - name: seasons
+          in: query
+          required: true
+          description: Comma-separated NFL season years to compare (two to six selections).
+          schema:
+            type: string
+            example: "2025,2026"
+        - name: period
+          in: query
+          description: NFL period sequence through which cumulative returns are calculated.
+          schema:
+            type: number
+            minimum: 0
+            maximum: 22
+            multipleOf: 1
+        - name: basis
+          in: query
+          description: Basis used to rank the comparison rows and identify missing snapshots.
+          schema:
+            type: string
+            enum: [realized, mtm]
+        - name: groupBy
+          in: query
+          description: Roll up positions by individual bidder or dated consortium roster.
+          schema:
+            type: string
+            enum: [bidder, consortium]
+        - name: membershipView
+          in: query
+          description: Use historical consortium membership at each Calcutta as-of date (default), or the current roster.
+          schema:
+            type: string
+            enum: [historical, current]
+      responses:
+        "200":
+          description: Cross-Calcutta comparison rows
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/CalcuttaComparisonResponse"
+        "400":
+          description: Validation error
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+
   /results/upsert:
     post:
       operationId: upsertTeamResult
@@ -1388,6 +1441,165 @@ components:
         - netPctReturn
         - totalMtm
         - teams
+
+    CalcuttaComparisonCell:
+      type: object
+      properties:
+        calcuttaId:
+          type: number
+        seasonId:
+          type: number
+        year:
+          type: number
+        label:
+          type: string
+        asOfDate:
+          type: ["string", "null"]
+        consortium:
+          type: ["string", "null"]
+        teamCount:
+          type: number
+        snapshotTeamCount:
+          type: number
+          description: Number of positions with a valid snapshot for the selected basis and period.
+        signedShare:
+          type: number
+          description: Net signed ownership share. A negative value represents a net short.
+        exposure:
+          type: number
+          description: Absolute dollar exposure across long and short position legs.
+        totalCost:
+          type: number
+        totalRealizedReturn:
+          type: number
+        totalNetReturn:
+          type: number
+        totalMtm:
+          type: number
+        netPctReturn:
+          type: number
+        snapshotAvailable:
+          type: boolean
+          description: False when this Calcutta has payout rules but no valid snapshot for the selected basis and period.
+        throughPeriod:
+          type: ["number", "null"]
+        periodLabel:
+          type: ["string", "null"]
+      required:
+        - calcuttaId
+        - seasonId
+        - year
+        - label
+        - asOfDate
+        - consortium
+        - teamCount
+        - snapshotTeamCount
+        - signedShare
+        - exposure
+        - totalCost
+        - totalRealizedReturn
+        - totalNetReturn
+        - totalMtm
+        - netPctReturn
+        - snapshotAvailable
+        - throughPeriod
+        - periodLabel
+
+    CalcuttaComparisonAggregate:
+      type: object
+      properties:
+        teamCount:
+          type: number
+        snapshotTeamCount:
+          type: number
+        missingSnapshotCount:
+          type: number
+        snapshotAvailable:
+          type: boolean
+        signedShare:
+          type: number
+        exposure:
+          type: number
+        totalCost:
+          type: number
+        totalRealizedReturn:
+          type: number
+        totalNetReturn:
+          type: number
+        totalMtm:
+          type: number
+        netPctReturn:
+          type: number
+      required:
+        - teamCount
+        - snapshotTeamCount
+        - missingSnapshotCount
+        - snapshotAvailable
+        - signedShare
+        - exposure
+        - totalCost
+        - totalRealizedReturn
+        - totalNetReturn
+        - totalMtm
+        - netPctReturn
+
+    CalcuttaComparisonRow:
+      type: object
+      properties:
+        id:
+          type: string
+        name:
+          type: string
+        bidderId:
+          type: ["number", "null"]
+        bidderName:
+          type: ["string", "null"]
+        consortium:
+          type: ["string", "null"]
+        calcuttas:
+          type: array
+          items:
+            anyOf:
+              - $ref: "#/components/schemas/CalcuttaComparisonCell"
+              - type: "null"
+        aggregate:
+          $ref: "#/components/schemas/CalcuttaComparisonAggregate"
+      required:
+        - id
+        - name
+        - bidderId
+        - bidderName
+        - consortium
+        - calcuttas
+        - aggregate
+
+    CalcuttaComparisonResponse:
+      type: object
+      properties:
+        groupBy:
+          type: string
+          enum: [bidder, consortium]
+        calcuttas:
+          type: array
+          items:
+            type: object
+            properties:
+              id:
+                type: number
+              seasonId:
+                type: number
+              year:
+                type: number
+              label:
+                type: string
+              asOfDate:
+                type: ["string", "null"]
+            required: [id, seasonId, year, label, asOfDate]
+        rows:
+          type: array
+          items:
+            $ref: "#/components/schemas/CalcuttaComparisonRow"
+      required: [groupBy, calcuttas, rows]
 
     TeamResultInput:
       type: object

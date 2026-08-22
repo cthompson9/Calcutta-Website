@@ -15,6 +15,11 @@ import {
   useGetMtmSnapshots,
   useGetResults,
   useGetResultsByOwner,
+  useGetResultsCompare,
+  getGetResultsCompareQueryKey,
+  useGetSeasons,
+  type CalcuttaComparisonResponse,
+  type CalcuttaComparisonRow,
   type MtmOwnerSeries,
   type OwnershipSegment,
   type OwnerResultRow,
@@ -33,7 +38,7 @@ import {
 } from '@/components/ui';
 import { fmtMoney, fmtMoneySigned, fmtPct, fmtShare } from '@/lib/format';
 
-type ViewMode = 'owner' | 'team';
+type ViewMode = 'owner' | 'team' | 'compare';
 
 // ── Sparkline ─────────────────────────────────────────────────────────────────
 
@@ -401,6 +406,115 @@ function TeamCard({ team, basis }: { team: TeamResultRow; basis: 'realized' | 'm
   );
 }
 
+function ComparisonCard({
+  row,
+  comparison,
+  basis,
+}: {
+  row: CalcuttaComparisonRow;
+  comparison: CalcuttaComparisonResponse;
+  basis: 'realized' | 'mtm';
+}) {
+  const colors = useColors();
+  const [expanded, setExpanded] = useState(false);
+  const aggregateReturn = basis === 'mtm' ? row.aggregate.totalMtm : row.aggregate.totalNetReturn;
+
+  return (
+    <View style={[styles.card, { backgroundColor: colors.card, borderColor: colors.border }]}>
+      <Pressable
+        testID={`comparison-card-${row.id}`}
+        onPress={() => {
+          Haptics.selectionAsync();
+          setExpanded((value) => !value);
+        }}
+        style={({ pressed }) => [styles.cardBody, { opacity: pressed ? 0.85 : 1 }]}
+      >
+        <View style={styles.ownerTopRow}>
+          <View style={{ flex: 1 }}>
+            <Text style={[styles.ownerName, { color: colors.foreground }]}>{row.name}</Text>
+            <Text style={[styles.ownerConsortium, { color: colors.mutedForeground }]}>
+              {comparison.groupBy === 'bidder' ? 'OWNER · TAP FOR CALCUTTAS' : 'CONSORTIUM · TAP FOR CALCUTTAS'}
+            </Text>
+          </View>
+          <View style={{ alignItems: 'flex-end' }}>
+            <Text style={[styles.statLabel, { color: colors.mutedForeground }]}>
+              {basis === 'mtm' ? 'MTM RETURN' : 'NET RETURN'}
+            </Text>
+            {row.aggregate.snapshotAvailable ? (
+              <Text style={[styles.mtmValue, { color: aggregateReturn >= 0 ? colors.success : colors.destructive }]}>
+                {fmtMoneySigned(aggregateReturn)}
+              </Text>
+            ) : (
+              <Text style={[styles.comparisonMissing, { color: colors.destructive }]}>PARTIAL SNAPSHOTS</Text>
+            )}
+          </View>
+        </View>
+        <View style={[styles.comparisonSummary, { borderTopColor: colors.border }]}>
+          <View>
+            <Text style={[styles.statLabel, { color: colors.mutedForeground }]}>EXPOSURE</Text>
+            <Text style={[styles.comparisonSummaryValue, { color: colors.foreground }]}>
+              {fmtMoney(row.aggregate.exposure)}
+            </Text>
+          </View>
+          <View>
+            <Text style={[styles.statLabel, { color: colors.mutedForeground }]}>SIGNED POS.</Text>
+            <Text style={[styles.comparisonSummaryValue, { color: colors.foreground }]}>
+              {fmtShare(row.aggregate.signedShare)}
+            </Text>
+          </View>
+          <View>
+            <Text style={[styles.statLabel, { color: colors.mutedForeground }]}>POOLS</Text>
+            <Text style={[styles.comparisonSummaryValue, { color: colors.foreground }]}>
+              {row.calcuttas.filter(Boolean).length}
+            </Text>
+          </View>
+        </View>
+      </Pressable>
+      {expanded ? (
+        <View style={[styles.comparisonDetails, { borderTopColor: colors.border }]}>
+          {comparison.calcuttas.map((calcutta, index) => {
+            const cell = row.calcuttas[index];
+            const value =
+              basis === 'mtm' ? (cell?.totalMtm ?? 0) : (cell?.totalNetReturn ?? 0);
+            return (
+              <View
+                key={calcutta.id}
+                style={[styles.comparisonCell, { backgroundColor: colors.muted, borderColor: colors.border }]}
+              >
+                <View style={{ flex: 1 }}>
+                  <Text style={[styles.comparisonYear, { color: colors.foreground }]}>{calcutta.year}</Text>
+                  <Text style={[styles.comparisonMeta, { color: colors.mutedForeground }]}>
+                    {cell ? `${cell.consortium ?? 'Unassigned'} · ${fmtShare(cell.signedShare)}` : 'No position'}
+                  </Text>
+                </View>
+                {cell && !cell.snapshotAvailable ? (
+                  <View style={{ alignItems: 'flex-end' }}>
+                    <Text style={[styles.comparisonMissing, { color: colors.destructive }]}>
+                      {cell.snapshotTeamCount > 0 ? 'PARTIAL SNAPSHOTS' : 'SNAPSHOT MISSING'}
+                    </Text>
+                    <Text style={[styles.comparisonMeta, { color: colors.mutedForeground }]}>
+                      {cell.snapshotTeamCount}/{cell.teamCount} positions covered
+                    </Text>
+                  </View>
+                ) : (
+                  <View style={{ alignItems: 'flex-end' }}>
+                    <Text style={[styles.comparisonValue, { color: value >= 0 ? colors.success : colors.destructive }]}>
+                      {fmtMoneySigned(value)}
+                    </Text>
+                    <Text style={[styles.comparisonMeta, { color: colors.mutedForeground }]}>
+                      EXP {fmtMoney(cell?.exposure ?? 0)}
+                    </Text>
+                  </View>
+                )}
+              </View>
+            );
+          })}
+        </View>
+      ) : null}
+    </View>
+  );
+}
+
 // ── Screen ───────────────────────────────────────────────────────────────────
 
 export default function StandingsScreen() {
@@ -410,10 +524,38 @@ export default function StandingsScreen() {
   const [period, setPeriod] = useState<number | undefined>(undefined);
   const [basis, setBasis] = useState<'realized' | 'mtm'>('mtm');
   const [membershipView, setMembershipView] = useState<'historical' | 'current'>('historical');
+  const [comparisonGroupBy, setComparisonGroupBy] = useState<'bidder' | 'consortium'>('bidder');
+  const [comparisonYears, setComparisonYears] = useState<number[]>([]);
 
   const ownerQuery = useGetResultsByOwner({ season, period, basis, membershipView });
   const teamQuery = useGetResults({ season, period, basis });
   const mtmQuery = useGetMtmSnapshots({ season });
+  const seasonsQuery = useGetSeasons();
+  const availableComparisonYears = React.useMemo(
+    () => (seasonsQuery.data ?? []).map((item) => item.year).sort((a, b) => a - b),
+    [seasonsQuery.data],
+  );
+  React.useEffect(() => {
+    if (comparisonYears.length === 0 && availableComparisonYears.length >= 2) {
+      setComparisonYears(availableComparisonYears.slice(-2));
+    }
+  }, [availableComparisonYears, comparisonYears.length]);
+  const comparisonQuery = useGetResultsCompare(
+    {
+      seasons: comparisonYears.join(','),
+      period,
+      basis,
+      groupBy: comparisonGroupBy,
+      membershipView,
+    },
+    { query: { enabled: comparisonYears.length >= 2, queryKey: getGetResultsCompareQueryKey({
+      seasons: comparisonYears.join(','),
+      period,
+      basis,
+      groupBy: comparisonGroupBy,
+      membershipView,
+    }) } },
+  );
 
   // Build bidderName → weeklyTotals lookup from MTM snapshot data
   const mtmByName = React.useMemo<Record<string, number[]>>(() => {
@@ -423,7 +565,7 @@ export default function StandingsScreen() {
     );
   }, [mtmQuery.data]);
 
-  const active = mode === 'owner' ? ownerQuery : teamQuery;
+  const active = mode === 'owner' ? ownerQuery : mode === 'team' ? teamQuery : comparisonQuery;
 
   const listBottomPad = Platform.OS === 'web' ? 84 + 16 : 100;
 
@@ -439,6 +581,7 @@ export default function StandingsScreen() {
           options={[
             { label: 'By Owner', value: 'owner' },
             { label: 'By Team', value: 'team' },
+            { label: 'Compare', value: 'compare' },
           ]}
           value={mode}
           onChange={setMode}
@@ -469,7 +612,7 @@ export default function StandingsScreen() {
             </Pressable>
           ))}
         </View>
-        {mode === 'owner' && (
+        {(mode === 'owner' || mode === 'compare') && (
           <View style={styles.periodChipRow}>
             {([
               { label: 'SEASON ROSTER', value: 'historical' },
@@ -493,6 +636,58 @@ export default function StandingsScreen() {
             ))}
           </View>
         )}
+        {mode === 'compare' ? (
+          <>
+            <View style={styles.periodChipRow}>
+              {availableComparisonYears.map((year) => {
+                const selected = comparisonYears.includes(year);
+                return (
+                  <Pressable
+                    key={year}
+                    testID={`compare-season-${year}`}
+                    onPress={() => {
+                      Haptics.selectionAsync();
+                      setComparisonYears((current) => {
+                        if (current.includes(year)) return current.filter((item) => item !== year);
+                        return [...current, year].sort((a, b) => a - b).slice(-6);
+                      });
+                    }}
+                    style={[
+                      styles.snapshotChip,
+                      {
+                        borderColor: selected ? colors.primary : colors.border,
+                        backgroundColor: selected ? colors.primary : 'transparent',
+                      },
+                    ]}
+                  >
+                    <Text style={{ color: selected ? colors.primaryForeground : colors.mutedForeground, fontSize: 11, fontFamily: 'Inter_600SemiBold' }}>
+                      {year}
+                    </Text>
+                  </Pressable>
+                );
+              })}
+            </View>
+            <View style={styles.periodChipRow}>
+              {(['bidder', 'consortium'] as const).map((option) => (
+                <Pressable
+                  key={option}
+                  onPress={() => setComparisonGroupBy(option)}
+                  style={[
+                    styles.snapshotChip,
+                    {
+                      borderColor: comparisonGroupBy === option ? colors.primary : colors.border,
+                      backgroundColor: comparisonGroupBy === option ? colors.primary : 'transparent',
+                    },
+                  ]}
+                >
+                  <Text style={{ color: comparisonGroupBy === option ? colors.primaryForeground : colors.mutedForeground, fontSize: 11, fontFamily: 'Inter_600SemiBold' }}>
+                    {option === 'bidder' ? 'OWNERS' : 'CONSORTIUMS'}
+                  </Text>
+                </Pressable>
+              ))}
+            </View>
+          </>
+        ) : null}
         <View style={styles.periodChipRow}>
           {(['mtm', 'realized'] as const).map((option) => (
             <Pressable
@@ -518,6 +713,39 @@ export default function StandingsScreen() {
         <LoadingState />
       ) : active.error ? (
         <ErrorState onRetry={() => active.refetch()} />
+      ) : mode === 'compare' ? (
+        comparisonYears.length < 2 ? (
+          <EmptyState
+            icon="list"
+            title="Select two Calcuttas"
+            subtitle="Choose at least two seasons to compare returns."
+          />
+        ) : (
+          <FlatList
+            data={comparisonQuery.data?.rows ?? []}
+            keyExtractor={(item) => item.id}
+            renderItem={({ item }) =>
+              comparisonQuery.data ? (
+                <ComparisonCard row={item} comparison={comparisonQuery.data} basis={basis} />
+              ) : null
+            }
+            contentContainerStyle={[styles.listContent, { paddingBottom: listBottomPad }]}
+            refreshControl={
+              <RefreshControl
+                refreshing={comparisonQuery.isRefetching}
+                onRefresh={() => comparisonQuery.refetch()}
+                tintColor={colors.mutedForeground}
+              />
+            }
+            ListEmptyComponent={
+              <EmptyState
+                icon="bar-chart-2"
+                title="No comparable positions"
+                subtitle="The selected Calcuttas have no owner positions yet."
+              />
+            }
+          />
+        )
       ) : mode === 'owner' ? (
         <FlatList
           data={ownerQuery.data ?? []}
@@ -704,6 +932,49 @@ const styles = StyleSheet.create({
     borderRadius: 999,
     paddingHorizontal: 10,
     paddingVertical: 5,
+  },
+  comparisonSummary: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    marginTop: 12,
+    paddingTop: 10,
+    borderTopWidth: StyleSheet.hairlineWidth,
+  },
+  comparisonSummaryValue: {
+    fontSize: 13,
+    fontFamily: 'Inter_600SemiBold',
+    marginTop: 3,
+  },
+  comparisonDetails: {
+    borderTopWidth: StyleSheet.hairlineWidth,
+    padding: 12,
+    gap: 6,
+  },
+  comparisonCell: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 8,
+    borderWidth: StyleSheet.hairlineWidth,
+    paddingHorizontal: 9,
+    paddingVertical: 8,
+  },
+  comparisonYear: {
+    fontSize: 14,
+    fontFamily: 'Inter_700Bold',
+  },
+  comparisonMeta: {
+    fontSize: 10,
+    fontFamily: 'Inter_500Medium',
+    marginTop: 2,
+  },
+  comparisonValue: {
+    fontSize: 14,
+    fontFamily: 'Inter_700Bold',
+  },
+  comparisonMissing: {
+    fontSize: 10,
+    fontFamily: 'Inter_700Bold',
+    letterSpacing: 0.5,
   },
   ownershipBreakdown: {
     gap: 4,

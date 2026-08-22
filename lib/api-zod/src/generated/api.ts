@@ -380,6 +380,75 @@ export const GetResultsByOwnerResponse = zod.array(GetResultsByOwnerResponseItem
 
 
 /**
+ * @summary Compare bidder or consortium returns across selected Calcuttas
+ */
+export const getResultsCompareQueryPeriodMin = 0;
+export const getResultsCompareQueryPeriodMax = 22;
+export const getResultsCompareQueryPeriodMultipleOf = 1;
+
+
+
+export const GetResultsCompareQueryParams = zod.object({
+  "seasons": zod.coerce.string().describe('Comma-separated NFL season years to compare (two to six selections).'),
+  "period": zod.coerce.number().min(getResultsCompareQueryPeriodMin).max(getResultsCompareQueryPeriodMax).multipleOf(getResultsCompareQueryPeriodMultipleOf).optional().describe('NFL period sequence through which cumulative returns are calculated.'),
+  "basis": zod.enum(['realized', 'mtm']).optional().describe('Basis used to rank the comparison rows and identify missing snapshots.'),
+  "groupBy": zod.enum(['bidder', 'consortium']).optional().describe('Roll up positions by individual bidder or dated consortium roster.'),
+  "membershipView": zod.enum(['historical', 'current']).optional().describe('Use historical consortium membership at each Calcutta as-of date (default), or the current roster.')
+})
+
+export const GetResultsCompareResponse = zod.object({
+  "groupBy": zod.enum(['bidder', 'consortium']),
+  "calcuttas": zod.array(zod.object({
+  "id": zod.number(),
+  "seasonId": zod.number(),
+  "year": zod.number(),
+  "label": zod.string(),
+  "asOfDate": zod.string().nullable()
+})),
+  "rows": zod.array(zod.object({
+  "id": zod.string(),
+  "name": zod.string(),
+  "bidderId": zod.number().nullable(),
+  "bidderName": zod.string().nullable(),
+  "consortium": zod.string().nullable(),
+  "calcuttas": zod.array(zod.union([zod.object({
+  "calcuttaId": zod.number(),
+  "seasonId": zod.number(),
+  "year": zod.number(),
+  "label": zod.string(),
+  "asOfDate": zod.string().nullable(),
+  "consortium": zod.string().nullable(),
+  "teamCount": zod.number(),
+  "snapshotTeamCount": zod.number().describe('Number of positions with a valid snapshot for the selected basis and period.'),
+  "signedShare": zod.number().describe('Net signed ownership share. A negative value represents a net short.'),
+  "exposure": zod.number().describe('Absolute dollar exposure across long and short position legs.'),
+  "totalCost": zod.number(),
+  "totalRealizedReturn": zod.number(),
+  "totalNetReturn": zod.number(),
+  "totalMtm": zod.number(),
+  "netPctReturn": zod.number(),
+  "snapshotAvailable": zod.boolean().describe('False when this Calcutta has payout rules but no valid snapshot for the selected basis and period.'),
+  "throughPeriod": zod.number().nullable(),
+  "periodLabel": zod.string().nullable()
+}),zod.null()])),
+  "aggregate": zod.object({
+  "teamCount": zod.number(),
+  "snapshotTeamCount": zod.number(),
+  "missingSnapshotCount": zod.number(),
+  "snapshotAvailable": zod.boolean(),
+  "signedShare": zod.number(),
+  "exposure": zod.number(),
+  "totalCost": zod.number(),
+  "totalRealizedReturn": zod.number(),
+  "totalNetReturn": zod.number(),
+  "totalMtm": zod.number(),
+  "netPctReturn": zod.number()
+})
+}))
+})
+
+
+/**
  * @summary Create or update a team result record
  */
 export const upsertTeamResultBodyWinsMin = 0;

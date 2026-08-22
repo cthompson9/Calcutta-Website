@@ -14,9 +14,11 @@ import {
 import {
   GetResultsQueryParams,
   GetResultsByOwnerQueryParams,
+  GetResultsCompareQueryParams,
   UpsertTeamResultBody,
 } from "@workspace/api-zod";
 import {
+  loadCrossCalcuttaRollup,
   loadSeasonOwnership,
   type OwnershipSegment,
 } from "../lib/seasonOwnership";
@@ -622,6 +624,60 @@ router.get("/results/by-owner", async (req, res): Promise<void> => {
     );
 
   res.json(ownerRows);
+});
+
+// GET /results/compare?seasons=2025,2026
+// Cross-Calcutta comparisons are computed from signed normalized position
+// entries. A missing snapshot is represented explicitly in each cell instead
+// of suppressing a bidder or silently borrowing another season's data.
+router.get("/results/compare", async (req, res): Promise<void> => {
+  const parsed = GetResultsCompareQueryParams.safeParse(req.query);
+  if (!parsed.success) {
+    res.status(400).json({ error: parsed.error.message });
+    return;
+  }
+  const selectedYears = parsed.data.seasons
+    .split(",")
+    .map((value) => Number(value.trim()))
+    .filter(Number.isInteger);
+  const years = [...new Set(selectedYears)].sort((a, b) => a - b);
+  if (years.length < 2 || years.length > 6 || years.length !== selectedYears.length) {
+    res.status(400).json({
+      error: "seasons must contain two to six unique numeric season years.",
+    });
+    return;
+  }
+
+  const available = await db
+    .select({ year: seasonsTable.year })
+    .from(seasonsTable)
+    .where(sql`${seasonsTable.year} in (${sql.join(years.map((year) => sql`${year}`), sql`, `)})`);
+  const availableYears = new Set(available.map((season) => season.year));
+  const missing = years.filter((year) => !availableYears.has(year));
+  if (missing.length) {
+    res.status(400).json({
+      error: `Season${missing.length === 1 ? "" : "s"} not found: ${missing.join(", ")}`,
+    });
+    return;
+  }
+
+  const rollup = await loadCrossCalcuttaRollup({
+    years,
+    period: parsed.data.period,
+    basis: parsed.data.basis ?? "realized",
+    membershipView: parsed.data.membershipView ?? "historical",
+    groupBy: parsed.data.groupBy ?? "bidder",
+  });
+  const missingCalcuttas = years.filter(
+    (year) => !rollup.calcuttas.some((calcutta) => calcutta.year === year),
+  );
+  if (missingCalcuttas.length) {
+    res.status(400).json({
+      error: `No canonical NFL Calcutta found for season${missingCalcuttas.length === 1 ? "" : "s"}: ${missingCalcuttas.join(", ")}`,
+    });
+    return;
+  }
+  res.json(rollup);
 });
 
 // POST /results/upsert

@@ -391,6 +391,85 @@ export interface OwnerResultRow {
   teams: TeamResultRow[];
 }
 
+export interface CalcuttaComparisonCell {
+  calcuttaId: number;
+  seasonId: number;
+  year: number;
+  label: string;
+  /** @nullable */
+  asOfDate: string | null;
+  /** @nullable */
+  consortium: string | null;
+  teamCount: number;
+  /** Number of positions with a valid snapshot for the selected basis and period. */
+  snapshotTeamCount: number;
+  /** Net signed ownership share. A negative value represents a net short. */
+  signedShare: number;
+  /** Absolute dollar exposure across long and short position legs. */
+  exposure: number;
+  totalCost: number;
+  totalRealizedReturn: number;
+  totalNetReturn: number;
+  totalMtm: number;
+  netPctReturn: number;
+  /** False when this Calcutta has payout rules but no valid snapshot for the selected basis and period. */
+  snapshotAvailable: boolean;
+  /** @nullable */
+  throughPeriod: number | null;
+  /** @nullable */
+  periodLabel: string | null;
+}
+
+export interface CalcuttaComparisonAggregate {
+  teamCount: number;
+  snapshotTeamCount: number;
+  missingSnapshotCount: number;
+  snapshotAvailable: boolean;
+  signedShare: number;
+  exposure: number;
+  totalCost: number;
+  totalRealizedReturn: number;
+  totalNetReturn: number;
+  totalMtm: number;
+  netPctReturn: number;
+}
+
+export interface CalcuttaComparisonRow {
+  id: string;
+  name: string;
+  /** @nullable */
+  bidderId: number | null;
+  /** @nullable */
+  bidderName: string | null;
+  /** @nullable */
+  consortium: string | null;
+  calcuttas: (CalcuttaComparisonCell | null)[];
+  aggregate: CalcuttaComparisonAggregate;
+}
+
+export type CalcuttaComparisonResponseGroupBy = typeof CalcuttaComparisonResponseGroupBy[keyof typeof CalcuttaComparisonResponseGroupBy];
+
+
+export const CalcuttaComparisonResponseGroupBy = {
+  bidder: 'bidder',
+  consortium: 'consortium',
+} as const;
+
+export type CalcuttaComparisonResponseCalcuttasItem = {
+  id: number;
+  seasonId: number;
+  year: number;
+  label: string;
+  /** @nullable */
+  asOfDate: string | null;
+};
+
+export interface CalcuttaComparisonResponse {
+  groupBy: CalcuttaComparisonResponseGroupBy;
+  calcuttas: CalcuttaComparisonResponseCalcuttasItem[];
+  rows: CalcuttaComparisonRow[];
+}
+
 export interface TeamResultInput {
   teamId: number;
   seasonYear: number;
@@ -850,6 +929,55 @@ export type GetResultsByOwnerMembershipView = typeof GetResultsByOwnerMembership
 
 
 export const GetResultsByOwnerMembershipView = {
+  historical: 'historical',
+  current: 'current',
+} as const;
+
+export type GetResultsCompareParams = {
+/**
+ * Comma-separated NFL season years to compare (two to six selections).
+ */
+seasons: string;
+/**
+ * NFL period sequence through which cumulative returns are calculated.
+ * @minimum 0
+ * @maximum 22
+ */
+period?: number;
+/**
+ * Basis used to rank the comparison rows and identify missing snapshots.
+ */
+basis?: GetResultsCompareBasis;
+/**
+ * Roll up positions by individual bidder or dated consortium roster.
+ */
+groupBy?: GetResultsCompareGroupBy;
+/**
+ * Use historical consortium membership at each Calcutta as-of date (default), or the current roster.
+ */
+membershipView?: GetResultsCompareMembershipView;
+};
+
+export type GetResultsCompareBasis = typeof GetResultsCompareBasis[keyof typeof GetResultsCompareBasis];
+
+
+export const GetResultsCompareBasis = {
+  realized: 'realized',
+  mtm: 'mtm',
+} as const;
+
+export type GetResultsCompareGroupBy = typeof GetResultsCompareGroupBy[keyof typeof GetResultsCompareGroupBy];
+
+
+export const GetResultsCompareGroupBy = {
+  bidder: 'bidder',
+  consortium: 'consortium',
+} as const;
+
+export type GetResultsCompareMembershipView = typeof GetResultsCompareMembershipView[keyof typeof GetResultsCompareMembershipView];
+
+
+export const GetResultsCompareMembershipView = {
   historical: 'historical',
   current: 'current',
 } as const;

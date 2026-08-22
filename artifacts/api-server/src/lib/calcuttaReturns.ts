@@ -237,6 +237,18 @@ export async function hasConfiguredPayoutRules(seasonId: number): Promise<boolea
   return Boolean(rows[0]);
 }
 
+/** Returns whether this exact Calcutta has any payout rules configured. */
+export async function hasConfiguredPayoutRulesForCalcutta(
+  calcuttaId: number,
+): Promise<boolean> {
+  const rows = await db
+    .select({ id: payoutRulesTable.id })
+    .from(payoutRulesTable)
+    .where(eq(payoutRulesTable.calcuttaId, calcuttaId))
+    .limit(1);
+  return Boolean(rows[0]);
+}
+
 function parseSnapshot(row: {
   sequence: number;
   label: string;
@@ -290,7 +302,18 @@ export async function loadCalculatedTeamReturns(
     )
     .limit(1);
   if (!calcutta[0]) return new Map();
+  return loadCalculatedTeamReturnsForCalcutta(calcutta[0].id, periodSequence);
+}
 
+/**
+ * Loads calculated returns for one Calcutta entry set. This intentionally
+ * accepts non-canonical Calcuttas so cross-pool reporting uses each pool's
+ * own rules and snapshots.
+ */
+export async function loadCalculatedTeamReturnsForCalcutta(
+  calcuttaId: number,
+  periodSequence?: number,
+): Promise<Map<number, CalculatedTeamReturns>> {
   const rawRules = await db
     .select({
       metric: payoutRulesTable.metric,
@@ -298,7 +321,7 @@ export async function loadCalculatedTeamReturns(
       playoffMultiplier: payoutRulesTable.playoffMultiplier,
     })
     .from(payoutRulesTable)
-    .where(eq(payoutRulesTable.calcuttaId, calcutta[0].id));
+    .where(eq(payoutRulesTable.calcuttaId, calcuttaId));
   const rules = rawRules.map((rule) => ({
     metric: rule.metric as ReturnMetric,
     dollarsPerUnit: Number(rule.dollarsPerUnit),
@@ -306,7 +329,7 @@ export async function loadCalculatedTeamReturns(
   }));
 
   const where = [
-    eq(calcuttaEntriesTable.calcuttaId, calcutta[0].id),
+    eq(calcuttaEntriesTable.calcuttaId, calcuttaId),
     ...(periodSequence == null
       ? []
       : [lte(sportPeriodsTable.sequence, periodSequence)]),
