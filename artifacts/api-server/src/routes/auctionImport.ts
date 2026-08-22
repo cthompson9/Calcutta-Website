@@ -1,4 +1,5 @@
 import { Router, type IRouter, type Request } from "express";
+import { createHash } from "node:crypto";
 import { and, eq, inArray, sql } from "drizzle-orm";
 import {
   db,
@@ -10,6 +11,7 @@ import {
   teamSeasonAuctionsTable,
   teamsTable,
   tradesTable,
+  importRunsTable,
 } from "@workspace/db";
 import {
   ImportAuctionDataBody,
@@ -31,6 +33,7 @@ import {
 } from "../lib/ownershipShares";
 
 const router: IRouter = Router();
+const COMPLETE_NFL_TEAM_COUNT = 32;
 
 function isAdminRequest(req: Request): boolean {
   const adminKey = process.env["ADMIN_API_KEY"];
@@ -70,6 +73,19 @@ class ApprovedTradeConflictError extends Error {
   constructor() {
     super("This season has approved trades. Import would replace the primary auction ownership and is blocked to preserve trade history.");
     this.name = "ApprovedTradeConflictError";
+  }
+}
+
+function sourceFingerprint(payload: unknown): string {
+  return createHash("sha256").update(JSON.stringify(payload)).digest("hex");
+}
+
+function assertCompleteImport(teamCount: number, sourceLabel: string): void {
+  if (teamCount !== COMPLETE_NFL_TEAM_COUNT) {
+    throw new AuctionProImportError(
+      `${sourceLabel} must contain all ${COMPLETE_NFL_TEAM_COUNT} NFL teams; received ${teamCount}.`,
+      422,
+    );
   }
 }
 
@@ -146,13 +162,40 @@ router.post("/auction/import", async (req, res): Promise<void> => {
   }
 
   try {
-    const importedTeams = await resolveImportTeams(await fetchAuctionProPayload());
+    const sourcePayload = await fetchAuctionProPayload();
+    const importedTeams = await resolveImportTeams(sourcePayload);
+    assertCompleteImport(importedTeams.length, "AuctionPro export");
     const teamIds = importedTeams.map((team) => team.teamId);
+    const importedOwners = importedTeams.reduce(
+      (count, team) => count + team.owners.length,
+      0,
+    );
+    const sourceHash = sourceFingerprint(sourcePayload);
 
-    await db.transaction(async (tx) => {
+    const importOutcome = await db.transaction(async (tx) => {
       await tx.execute(
         sql`select pg_advisory_xact_lock(${OWNERSHIP_SEASON_LOCK_NAMESPACE}, ${seasonRows[0]!.id})`,
       );
+      const previousRun = await tx
+        .select({
+          importedTeams: importRunsTable.importedTeams,
+          importedOwners: importRunsTable.importedOwners,
+        })
+        .from(importRunsTable)
+        .where(
+          and(
+            eq(importRunsTable.seasonId, seasonRows[0]!.id),
+            eq(importRunsTable.source, "auctionpro_json"),
+            eq(importRunsTable.sourceHash, sourceHash),
+          ),
+        )
+        .limit(1);
+      if (previousRun[0]) {
+        return {
+          importedTeams: previousRun[0].importedTeams,
+          importedOwners: previousRun[0].importedOwners,
+        };
+      }
       const approvedTrades = await tx
         .select({ teamId: tradesTable.teamId })
         .from(tradesTable)
@@ -216,12 +259,22 @@ router.post("/auction/import", async (req, res): Promise<void> => {
           },
         })),
       );
+      await tx.insert(importRunsTable).values({
+        seasonId: seasonRows[0]!.id,
+        source: "auctionpro_json",
+        sourceHash,
+        importedTeams: importedTeams.length,
+        importedOwners,
+        requestedBy: "admin_api",
+        requestId: req.id == null ? null : String(req.id),
+      });
+      return { importedTeams: importedTeams.length, importedOwners };
     });
 
     const result = ImportAuctionDataResponse.parse({
       seasonYear: parsed.data.seasonYear,
-      importedTeams: importedTeams.length,
-      importedOwners: importedTeams.reduce((count, team) => count + team.owners.length, 0),
+      importedTeams: importOutcome.importedTeams,
+      importedOwners: importOutcome.importedOwners,
       source: "AuctionPro JSON export",
     });
     res.json(result);
@@ -317,13 +370,40 @@ router.post("/auction/import/draft-order", async (req, res): Promise<void> => {
         draftOrder: entry.draftOrder,
       });
     }
+    if (resolved.length !== COMPLETE_NFL_TEAM_COUNT) {
+      throw new DraftOrderImportError(
+        `AuctionPro draft-order export must contain all ${COMPLETE_NFL_TEAM_COUNT} NFL teams; received ${resolved.length}.`,
+        422,
+      );
+    }
 
     const teamIds = resolved.map((r) => r.teamId);
+    const sourceHash = sourceFingerprint(rawEntries);
 
-    await db.transaction(async (tx) => {
+    const importOutcome = await db.transaction(async (tx) => {
       await tx.execute(
         sql`select pg_advisory_xact_lock(${OWNERSHIP_SEASON_LOCK_NAMESPACE}, ${seasonRows[0]!.id})`,
       );
+      const previousRun = await tx
+        .select({
+          importedTeams: importRunsTable.importedTeams,
+          importedOwners: importRunsTable.importedOwners,
+        })
+        .from(importRunsTable)
+        .where(
+          and(
+            eq(importRunsTable.seasonId, seasonRows[0]!.id),
+            eq(importRunsTable.source, "auctionpro_draft_order"),
+            eq(importRunsTable.sourceHash, sourceHash),
+          ),
+        )
+        .limit(1);
+      if (previousRun[0]) {
+        return {
+          importedTeams: previousRun[0].importedTeams,
+          importedOwners: previousRun[0].importedOwners,
+        };
+      }
 
       const approvedTrades = await tx
         .select({ teamId: tradesTable.teamId })
@@ -404,12 +484,22 @@ router.post("/auction/import/draft-order", async (req, res): Promise<void> => {
           },
         })),
       );
+      await tx.insert(importRunsTable).values({
+        seasonId: seasonRows[0]!.id,
+        source: "auctionpro_draft_order",
+        sourceHash,
+        importedTeams: resolved.length,
+        importedOwners: resolved.length,
+        requestedBy: "admin_api",
+        requestId: req.id == null ? null : String(req.id),
+      });
+      return { importedTeams: resolved.length, importedOwners: resolved.length };
     });
 
     const result = ImportAuctionDataResponse.parse({
       seasonYear: parsed.data.seasonYear,
-      importedTeams: resolved.length,
-      importedOwners: resolved.length,
+      importedTeams: importOutcome.importedTeams,
+      importedOwners: importOutcome.importedOwners,
       source: "AuctionPro live draft-order",
     });
     res.json(result);

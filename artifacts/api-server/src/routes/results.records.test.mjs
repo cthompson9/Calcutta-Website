@@ -4,15 +4,17 @@ import { after, before, describe, test } from "node:test";
 import { eq } from "drizzle-orm";
 
 const DATABASE_URL = process.env.DATABASE_URL;
+const ADMIN_KEY = process.env.ADMIN_API_KEY;
 
 let db;
 let seasonsTable;
 let teamsTable;
 let teamResultsTable;
+let teamSeasonAuctionsTable;
 let app;
 
 if (DATABASE_URL) {
-  ({ db, seasonsTable, teamsTable, teamResultsTable } =
+  ({ db, seasonsTable, teamsTable, teamResultsTable, teamSeasonAuctionsTable } =
     await import("@workspace/db"));
   ({ default: app } = await import("../app.ts"));
 }
@@ -33,7 +35,7 @@ function stopServer(server) {
   );
 }
 
-describe("team result records", { skip: !DATABASE_URL }, () => {
+describe("team result records", { skip: !DATABASE_URL || !ADMIN_KEY }, () => {
   let seasonYear;
   let seasonId;
   let teamId;
@@ -63,6 +65,11 @@ describe("team result records", { skip: !DATABASE_URL }, () => {
     assert.ok(legacyTeam, "a second NFL team fixture must exist");
     teamId = team.id;
     legacyTeamId = legacyTeam.id;
+    await db.insert(teamSeasonAuctionsTable).values({
+      seasonId,
+      teamId,
+      bidAmount: "1000.00",
+    });
 
     ({ server, baseUrl } = await startServer(app));
   });
@@ -76,7 +83,10 @@ describe("team result records", { skip: !DATABASE_URL }, () => {
   test("defaults an unplayed team to 0-0 and stores a played 0-3-0 record", async () => {
     const unplayedUpsert = await fetch(`${baseUrl}/api/results/upsert`, {
       method: "POST",
-      headers: { "Content-Type": "application/json" },
+      headers: {
+        "Content-Type": "application/json",
+        Authorization: `Bearer ${ADMIN_KEY}`,
+      },
       body: JSON.stringify({
         teamId,
         seasonYear,
@@ -96,7 +106,10 @@ describe("team result records", { skip: !DATABASE_URL }, () => {
 
     const upsert = await fetch(`${baseUrl}/api/results/upsert`, {
       method: "POST",
-      headers: { "Content-Type": "application/json" },
+      headers: {
+        "Content-Type": "application/json",
+        Authorization: `Bearer ${ADMIN_KEY}`,
+      },
       body: JSON.stringify({
         teamId,
         seasonYear,
@@ -126,7 +139,10 @@ describe("team result records", { skip: !DATABASE_URL }, () => {
   test("rejects the legacy fractional-win format", async () => {
     const response = await fetch(`${baseUrl}/api/results/upsert`, {
       method: "POST",
-      headers: { "Content-Type": "application/json" },
+      headers: {
+        "Content-Type": "application/json",
+        Authorization: `Bearer ${ADMIN_KEY}`,
+      },
       body: JSON.stringify({
         teamId,
         seasonYear,
@@ -140,7 +156,10 @@ describe("team result records", { skip: !DATABASE_URL }, () => {
   test("rejects records with more than 17 games", async () => {
     const response = await fetch(`${baseUrl}/api/results/upsert`, {
       method: "POST",
-      headers: { "Content-Type": "application/json" },
+      headers: {
+        "Content-Type": "application/json",
+        Authorization: `Bearer ${ADMIN_KEY}`,
+      },
       body: JSON.stringify({
         teamId,
         seasonYear,

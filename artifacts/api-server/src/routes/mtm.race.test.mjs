@@ -338,6 +338,32 @@ describe(
       },
     );
 
+    test(
+      "Week 0 capture and recapture succeed with the partial snapshot-key uniqueness index",
+      async () => {
+        const DATE = "9999-09-05";
+        globalThis.fetch = makeKalshiMock(realFetch);
+        try {
+          const firstCapture = await postWeekZeroCapture({ snapshotDate: DATE });
+          assert.equal(firstCapture.status, 200, "initial Week 0 capture must succeed");
+          const recapture = await postWeekZeroCapture({ snapshotDate: DATE });
+          assert.equal(recapture.status, 200, "Week 0 recapture must use the partial unique index");
+
+          const rows = await snapshotsAtDate(DATE);
+          assert.equal(rows.length, 32, "one protected snapshot must exist for every team");
+          assert.ok(
+            rows.every((row) => row.snapshotKey === WEEK_ZERO_SNAPSHOT_KEY),
+            "all rows must retain the protected Week 0 key",
+          );
+          await deleteSnapshotsByIds(rows.map((row) => row.id));
+        } finally {
+          globalThis.fetch = realFetch;
+          const leaked = await snapshotsAtDate(DATE);
+          await deleteSnapshotsByIds(leaked.map((row) => row.id));
+        }
+      },
+    );
+
     // ── Concurrent race test ───────────────────────────────────────────────
 
     test(

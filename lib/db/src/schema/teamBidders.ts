@@ -1,4 +1,12 @@
-import { pgTable, primaryKey, integer, numeric } from "drizzle-orm/pg-core";
+import { sql } from "drizzle-orm";
+import {
+  pgTable,
+  primaryKey,
+  integer,
+  numeric,
+  index,
+  check,
+} from "drizzle-orm/pg-core";
 import { biddersTable } from "./bidders";
 import { teamsTable } from "./teams";
 import { seasonsTable } from "./seasons";
@@ -21,7 +29,18 @@ export const teamBiddersTable = pgTable(
       .notNull()
       .default("1.0000"),
   },
-  (t) => [primaryKey({ columns: [t.teamId, t.bidderId, t.seasonId] })],
+  (t) => [
+    primaryKey({ columns: [t.teamId, t.bidderId, t.seasonId] }),
+    // ownership_share is the primary auction stake — must be a valid fraction (0, 1]
+    check(
+      "team_bidders_ownership_share_range",
+      sql`${t.ownershipShare} > 0 AND ${t.ownershipShare} <= 1`,
+    ),
+    // Quickly find all team owners for a season
+    index("team_bidders_season_team_idx").on(t.seasonId, t.teamId),
+    // Quickly find all teams owned by a bidder in a season
+    index("team_bidders_season_bidder_idx").on(t.seasonId, t.bidderId),
+  ],
 );
 
 export type TeamBidder = typeof teamBiddersTable.$inferSelect;

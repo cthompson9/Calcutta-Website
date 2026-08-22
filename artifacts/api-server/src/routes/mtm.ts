@@ -22,6 +22,10 @@ import {
   WEEK_ZERO_SNAPSHOT_KEY,
   type MarketQuote,
 } from "../lib/weekZeroValuation";
+import {
+  MTM_SEASON_LOCK_NAMESPACE,
+  writeManualMtmSnapshot,
+} from "../lib/manualMtm";
 
 function isAdminRequest(req: Request): boolean {
   const adminKey = process.env["ADMIN_API_KEY"];
@@ -31,8 +35,6 @@ function isAdminRequest(req: Request): boolean {
 }
 
 const router: IRouter = Router();
-const MTM_SEASON_LOCK_NAMESPACE = 7_140;
-
 class WeekZeroDateCollisionError extends Error {}
 
 interface StoredWeekZeroMarketData {
@@ -299,60 +301,24 @@ router.post("/mtm", async (req, res): Promise<void> => {
   const today = todayInNewYork();
   const snapshotDate = data.snapshotDate ?? today;
 
-  const manualWrite = await db.transaction(async (tx) => {
-    await tx.execute(
-      sql`select pg_advisory_xact_lock(${MTM_SEASON_LOCK_NAMESPACE}, ${seasonId})`,
-    );
-    const existingAtDate = await tx
-      .select({ snapshotKey: mtmSnapshotsTable.snapshotKey })
-      .from(mtmSnapshotsTable)
-      .where(
-        and(
-          eq(mtmSnapshotsTable.teamId, data.teamId),
-          eq(mtmSnapshotsTable.seasonId, seasonId),
-          eq(mtmSnapshotsTable.snapshotDate, snapshotDate),
-        ),
-      )
-      .limit(1);
-    if (existingAtDate[0]?.snapshotKey === WEEK_ZERO_SNAPSHOT_KEY) {
-      return { protectedWeekZero: true as const };
-    }
-
-    const [snap] = await tx
-      .insert(mtmSnapshotsTable)
-      .values({
-        teamId: data.teamId,
-        seasonId,
-        weekNum: data.weekNum ?? null,
-        snapshotDate,
-        mtmValue: data.mtmValue.toString(),
-      })
-      .onConflictDoUpdate({
-        target: [
-          mtmSnapshotsTable.teamId,
-          mtmSnapshotsTable.seasonId,
-          mtmSnapshotsTable.snapshotDate,
-        ],
-        set: {
-          weekNum: data.weekNum ?? null,
-          mtmValue: data.mtmValue.toString(),
-          source: "manual",
-          capturedAt: null,
-          marketStatus: null,
-          bankedPoints: null,
-          seasonEquityPoints: null,
-          bonusEquityPoints: null,
-          totalPoints: null,
-          normalizedShare: null,
-          marketData: null,
-        },
-        setWhere: isNull(mtmSnapshotsTable.snapshotKey),
-      })
-      .returning();
-    return { protectedWeekZero: !snap, snap };
+  const manualWrite = await writeManualMtmSnapshot({
+    seasonId,
+    teamId: data.teamId,
+    snapshotDate,
+    mtmValue: data.mtmValue,
+    weekNum: data.weekNum,
   });
-
-  if (manualWrite.protectedWeekZero || !manualWrite.snap) {
+  if (manualWrite.kind === "invalid_value") {
+    res.status(400).json({ error: "MTM value must be a non-negative number." });
+    return;
+  }
+  if (manualWrite.kind === "not_auctioned") {
+    res.status(400).json({
+      error: "Team is not auctioned in this season and cannot receive an MTM snapshot.",
+    });
+    return;
+  }
+  if (manualWrite.kind === "protected_week_zero") {
     res.status(409).json({
       error:
         "That team/date is the protected Kalshi Week 0 snapshot. Use the Week 0 recapture action instead.",
@@ -360,7 +326,7 @@ router.post("/mtm", async (req, res): Promise<void> => {
     return;
   }
 
-  res.json(manualWrite.snap);
+  res.json(manualWrite.snapshot);
 });
 
 router.post("/mtm/week-zero/capture", async (req, res): Promise<void> => {
@@ -412,6 +378,12 @@ router.post("/mtm/week-zero/capture", async (req, res): Promise<void> => {
     .select({ bidAmount: teamSeasonAuctionsTable.bidAmount })
     .from(teamSeasonAuctionsTable)
     .where(eq(teamSeasonAuctionsTable.seasonId, seasonId));
+  if (auctionRows.length !== 32) {
+    res.status(400).json({
+      error: `Week 0 requires auction prices for all 32 teams; found ${auctionRows.length}.`,
+    });
+    return;
+  }
   const potSize = auctionRows.reduce(
     (total, auction) => total + parseFloat(auction.bidAmount),
     0,
@@ -498,6 +470,7 @@ router.post("/mtm/week-zero/capture", async (req, res): Promise<void> => {
               mtmSnapshotsTable.seasonId,
               mtmSnapshotsTable.snapshotKey,
             ],
+            targetWhere: sql`${mtmSnapshotsTable.snapshotKey} IS NOT NULL`,
             set: values,
           });
       }

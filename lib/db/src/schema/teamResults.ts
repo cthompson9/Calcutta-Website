@@ -7,6 +7,7 @@ import {
   numeric,
   primaryKey,
   check,
+  index,
 } from "drizzle-orm/pg-core";
 import { teamsTable } from "./teams";
 import { seasonsTable } from "./seasons";
@@ -61,10 +62,22 @@ export const teamResultsTable = pgTable(
   },
   (t) => [
     primaryKey({ columns: [t.teamId, t.seasonId] }),
+    // Existing guard: total games must not exceed a full 17-game season
     check(
       "team_results_record_total_at_most_17",
       sql`${t.wins} + ${t.losses} + ${t.ties} <= 17`,
     ),
+    // Wins, losses, and ties must be non-negative
+    check("team_results_wins_nonneg", sql`${t.wins} >= 0`),
+    check("team_results_losses_nonneg", sql`${t.losses} >= 0`),
+    check("team_results_ties_nonneg", sql`${t.ties} >= 0`),
+    // Playoff seed is either NULL (unset) or a valid 1–7 value
+    check(
+      "team_results_seed_range",
+      sql`${t.seed} IS NULL OR (${t.seed} >= 1 AND ${t.seed} <= 7)`,
+    ),
+    // Quickly load all results for a season
+    index("team_results_season_idx").on(t.seasonId),
   ],
 );
 

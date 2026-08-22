@@ -61,6 +61,8 @@ describe("short trades and new trade participants", { skip: !canRun }, () => {
   let seasonYear;
   let seasonId;
   let teamId;
+  let primaryOwner;
+  let primaryBuyer;
   let shortSeller;
   let newBuyer;
   let server;
@@ -88,6 +90,35 @@ describe("short trades and new trade participants", { skip: !canRun }, () => {
       teamId,
       bidAmount: "1000.00",
     });
+
+    const [createdPrimaryOwner] = await db
+      .insert(biddersTable)
+      .values({ name: `Primary Owner ${seasonYear}` })
+      .returning();
+    primaryOwner = createdPrimaryOwner;
+    createdBidderIds.push(primaryOwner.id);
+
+    const [createdPrimaryBuyer] = await db
+      .insert(biddersTable)
+      .values({ name: `Primary Buyer ${seasonYear}` })
+      .returning();
+    primaryBuyer = createdPrimaryBuyer;
+    createdBidderIds.push(primaryBuyer.id);
+
+    await db.insert(teamBiddersTable).values([
+      {
+        seasonId,
+        teamId,
+        bidderId: primaryOwner.id,
+        ownershipShare: "0.5000",
+      },
+      {
+        seasonId,
+        teamId,
+        bidderId: primaryBuyer.id,
+        ownershipShare: "0.5000",
+      },
+    ]);
 
     const [seller] = await db
       .insert(biddersTable)
@@ -127,7 +158,10 @@ describe("short trades and new trade participants", { skip: !canRun }, () => {
   }) {
     const createResponse = await fetch(`${baseUrl}/api/trades`, {
       method: "POST",
-      headers: { "Content-Type": "application/json" },
+      headers: {
+        "Content-Type": "application/json",
+        Authorization: `Bearer ${ADMIN_KEY}`,
+      },
       body: JSON.stringify({
         seasonYear,
         teamId: tradeTeamId,
@@ -186,6 +220,14 @@ describe("short trades and new trade participants", { skip: !canRun }, () => {
       .find((line) => line.startsWith("data: "));
     assert.ok(dataLine, `MCP response did not include an SSE data event: ${responseText}`);
     return JSON.parse(dataLine.slice("data: ".length));
+  }
+
+  function teamEffectiveTotal(ownership, selectedTeamId) {
+    let total = 0;
+    for (const teamMap of ownership.byBidder.values()) {
+      total += teamMap.get(selectedTeamId)?.effectiveShare ?? 0;
+    }
+    return Math.round(total * 10_000) / 10_000;
   }
 
   test("allows an unauthenticated synthetic trade submission but keeps it pending", async () => {
@@ -252,6 +294,12 @@ describe("short trades and new trade participants", { skip: !canRun }, () => {
       teamId: auditTeam.id,
       bidAmount: "1000.00",
     });
+    await db.insert(teamBiddersTable).values({
+      seasonId,
+      teamId: auditTeam.id,
+      bidderId: primaryOwner.id,
+      ownershipShare: "1.0000",
+    });
     const [auditSeller] = await db
       .insert(biddersTable)
       .values({ name: `Audit Seller ${seasonYear}` })
@@ -306,28 +354,23 @@ describe("short trades and new trade participants", { skip: !canRun }, () => {
       assert.equal(response.status, 400, `${percentage}% must be rejected`);
     }
 
-    const [malformedPendingTrade] = await db
-      .insert(tradesTable)
-      .values({
-        seasonId,
-        teamId,
-        fromBidderId: shortSeller.id,
-        toBidderId: newBuyer.id,
-        percentage: "0",
-        price: "0",
-        status: "pending",
-        tradeDate: "2030-01-01",
-      })
-      .returning();
-    const malformedApproval = await fetch(`${baseUrl}/api/trades/${malformedPendingTrade.id}/status`, {
-      method: "PATCH",
-      headers: {
-        "Content-Type": "application/json",
-        Authorization: `Bearer ${ADMIN_KEY}`,
-      },
-      body: JSON.stringify({ status: "approved", confirmed: true }),
-    });
-    assert.equal(malformedApproval.status, 400, "approval rejects malformed pending percentages");
+    await assert.rejects(
+      db
+        .insert(tradesTable)
+        .values({
+          seasonId,
+          teamId,
+          fromBidderId: shortSeller.id,
+          toBidderId: newBuyer.id,
+          percentage: "0",
+          price: "0",
+          status: "pending",
+          tradeDate: "2030-01-01",
+        })
+        .returning(),
+      /failed query|violates/i,
+      "database checks reject malformed trade rows even outside the API",
+    );
 
     await createAndApproveTrade({
       fromBidderId: shortSeller.id,
@@ -339,11 +382,23 @@ describe("short trades and new trade participants", { skip: !canRun }, () => {
     let ownership = await loadSeasonOwnership(seasonId);
     assert.equal(ownership.byBidder.get(shortSeller.id).get(teamId).effectiveShare, -1);
     assert.equal(ownership.byBidder.get(newBuyer.id).get(teamId).effectiveShare, 1);
+    assert.equal(
+      teamEffectiveTotal(ownership, teamId),
+      1,
+      "the short and long legs offset while the team remains 100% owned",
+    );
     assert.ok(ownership.participantIds.has(shortSeller.id));
     assert.ok(ownership.participantIds.has(newBuyer.id));
-    assert.deepEqual(
-      ownership.currentOwnersByTeam.get(teamId).map((owner) => owner.bidderId),
-      [newBuyer.id],
+    const currentOwnerIds = ownership.currentOwnersByTeam
+      .get(teamId)
+      .map((owner) => owner.bidderId);
+    assert.ok(
+      currentOwnerIds.includes(newBuyer.id),
+      "the trade buyer is presented as a current team owner",
+    );
+    assert.equal(
+      currentOwnerIds.includes(shortSeller.id),
+      false,
       "a short seller is never presented as a current team owner",
     );
 
@@ -365,6 +420,7 @@ describe("short trades and new trade participants", { skip: !canRun }, () => {
     ownership = await loadSeasonOwnership(seasonId);
     assert.equal(ownership.byBidder.get(shortSeller.id).get(teamId).effectiveShare, -0.75);
     assert.equal(ownership.byBidder.get(newBuyer.id).get(teamId).effectiveShare, 0.75);
+    assert.equal(teamEffectiveTotal(ownership, teamId), 1);
 
     const offsetOwnerResultsResponse = await fetch(`${baseUrl}/api/results/by-owner?season=${seasonYear}`);
     assert.equal(offsetOwnerResultsResponse.status, 200);
@@ -386,18 +442,7 @@ describe("short trades and new trade participants", { skip: !canRun }, () => {
       .insert(biddersTable)
       .values({ name: `Trade Seller ${seasonYear}` })
       .returning();
-    const [primaryBuyer] = await db
-      .insert(biddersTable)
-      .values({ name: `Primary Buyer ${seasonYear}` })
-      .returning();
-    createdBidderIds.push(tradeSeller.id, primaryBuyer.id);
-
-    await db.insert(teamBiddersTable).values({
-      seasonId,
-      teamId,
-      bidderId: primaryBuyer.id,
-      ownershipShare: "0.5000",
-    });
+    createdBidderIds.push(tradeSeller.id);
 
     await createAndApproveTrade({
       fromBidderId: tradeSeller.id,
@@ -449,6 +494,25 @@ describe("short trades and new trade participants", { skip: !canRun }, () => {
         .ownershipShare,
       2.5,
       "the existing current-owner response remains the effective total",
+    );
+    const ownership = await loadSeasonOwnership(seasonId);
+    assert.equal(teamEffectiveTotal(ownership, teamId), 1);
+
+    const primaryRewrite = await fetch(`${baseUrl}/api/teams/${teamId}`, {
+      method: "PATCH",
+      headers: {
+        "Content-Type": "application/json",
+        Authorization: `Bearer ${ADMIN_KEY}`,
+      },
+      body: JSON.stringify({
+        season: seasonYear,
+        owners: [{ bidderId: primaryOwner.id, ownershipShare: 1 }],
+      }),
+    });
+    assert.equal(
+      primaryRewrite.status,
+      409,
+      "approved trades prevent a later replacement of primary ownership",
     );
   });
 

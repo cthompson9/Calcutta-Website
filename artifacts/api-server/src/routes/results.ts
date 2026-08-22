@@ -1,5 +1,5 @@
 import { Router, type IRouter } from "express";
-import { eq, and, ilike } from "drizzle-orm";
+import { eq, and, ilike, sql } from "drizzle-orm";
 import {
   db,
   teamsTable,
@@ -21,8 +21,14 @@ import {
   loadSeasonOwnership,
   type OwnershipSegment,
 } from "../lib/seasonOwnership";
+import { OWNERSHIP_SEASON_LOCK_NAMESPACE } from "../lib/ownershipShares";
 
 const router: IRouter = Router();
+
+function isAdminRequest(req: import("express").Request): boolean {
+  const adminKey = process.env["ADMIN_API_KEY"];
+  return Boolean(adminKey && req.headers.authorization === `Bearer ${adminKey}`);
+}
 
 async function resolveSeasonId(year: number): Promise<number | null> {
   const rows = await db
@@ -220,9 +226,7 @@ function buildOwnerTeamResult(
 
 // PATCH /results/seed — set a team's playoff seed for a season (admin only)
 router.patch("/results/seed", async (req, res): Promise<void> => {
-  const adminKey = process.env["ADMIN_API_KEY"];
-  const auth = req.headers["authorization"];
-  if (!adminKey || auth !== `Bearer ${adminKey}`) {
+  if (!isAdminRequest(req)) {
     res.status(401).json({ error: "Unauthorized" });
     return;
   }
@@ -240,13 +244,36 @@ router.patch("/results/seed", async (req, res): Promise<void> => {
     res.status(400).json({ error: `Season ${seasonYear} not found` });
     return;
   }
-  await db
-    .insert(teamResultsTable)
-    .values({ teamId, seasonId, seed })
-    .onConflictDoUpdate({
-      target: [teamResultsTable.teamId, teamResultsTable.seasonId],
-      set: { seed },
+  const seedWritten = await db.transaction(async (tx) => {
+    await tx.execute(
+      sql`select pg_advisory_xact_lock(${OWNERSHIP_SEASON_LOCK_NAMESPACE}, ${seasonId})`,
+    );
+    const auctionedTeam = await tx
+      .select({ teamId: teamSeasonAuctionsTable.teamId })
+      .from(teamSeasonAuctionsTable)
+      .where(
+        and(
+          eq(teamSeasonAuctionsTable.teamId, teamId),
+          eq(teamSeasonAuctionsTable.seasonId, seasonId),
+        ),
+      )
+      .limit(1);
+    if (!auctionedTeam[0]) return false;
+    await tx
+      .insert(teamResultsTable)
+      .values({ teamId, seasonId, seed })
+      .onConflictDoUpdate({
+        target: [teamResultsTable.teamId, teamResultsTable.seasonId],
+        set: { seed },
+      });
+    return true;
+  });
+  if (!seedWritten) {
+    res.status(400).json({
+      error: "Team is not auctioned in this season and cannot receive a playoff seed.",
     });
+    return;
+  }
   res.json({ teamId, seasonYear, seed });
 });
 
@@ -493,6 +520,10 @@ router.get("/results/by-owner", async (req, res): Promise<void> => {
 
 // POST /results/upsert
 router.post("/results/upsert", async (req, res): Promise<void> => {
+  if (!isAdminRequest(req)) {
+    res.status(401).json({ error: "Unauthorized" });
+    return;
+  }
   const parsed = UpsertTeamResultBody.safeParse(req.body);
   if (!parsed.success) {
     res.status(400).json({ error: parsed.error.message });
@@ -524,26 +555,34 @@ router.post("/results/upsert", async (req, res): Promise<void> => {
     return;
   }
 
-  // Use season auction price as cost basis
-  const cost = await getSeasonCost(data.teamId, seasonId);
+  const writeOutcome = await db.transaction(async (tx) => {
+    await tx.execute(
+      sql`select pg_advisory_xact_lock(${OWNERSHIP_SEASON_LOCK_NAMESPACE}, ${seasonId})`,
+    );
+    const auctionedTeam = await tx
+      .select({ bidAmount: teamSeasonAuctionsTable.bidAmount })
+      .from(teamSeasonAuctionsTable)
+      .where(
+        and(
+          eq(teamSeasonAuctionsTable.teamId, data.teamId),
+          eq(teamSeasonAuctionsTable.seasonId, seasonId),
+        ),
+      )
+      .limit(1);
+    if (!auctionedTeam[0]) return { kind: "not_auctioned" as const };
 
-  const realizedReturn = data.realizedReturn ?? 0;
-  const realizedMultiple =
-    data.realizedMultiple ?? (cost > 0 ? realizedReturn / cost : 0);
-  const netReturn = data.netReturn ?? realizedReturn - cost;
-  const netPctReturn = data.netPctReturn ?? (cost > 0 ? netReturn / cost : 0);
-  const markToMarket = data.markToMarket ?? 0;
-
-  const [row] = await db
-    .insert(teamResultsTable)
-    .values({
-      teamId: data.teamId,
-      seasonId,
+    const cost = Number(auctionedTeam[0].bidAmount);
+    const realizedReturn = data.realizedReturn ?? 0;
+    const realizedMultiple =
+      data.realizedMultiple ?? (cost > 0 ? realizedReturn / cost : 0);
+    const netReturn = data.netReturn ?? realizedReturn - cost;
+    const netPctReturn = data.netPctReturn ?? (cost > 0 ? netReturn / cost : 0);
+    const markToMarket = data.markToMarket ?? 0;
+    const values = {
       wins: wins.toString(),
       losses,
       ties,
       ptDiff: data.ptDiff ?? 0,
-      startingPoints: (data.startingPoints ?? 150).toString(),
       draftOrder: data.draftOrder ?? null,
       playoffBerth: data.playoffBerth ?? false,
       divRound: data.divRound ?? false,
@@ -555,28 +594,30 @@ router.post("/results/upsert", async (req, res): Promise<void> => {
       netReturn: netReturn.toFixed(6),
       netPctReturn: netPctReturn.toFixed(7),
       markToMarket: markToMarket.toFixed(6),
-    })
-    .onConflictDoUpdate({
-      target: [teamResultsTable.teamId, teamResultsTable.seasonId],
-      set: {
-        wins: wins.toString(),
-        losses,
-        ties,
-        ptDiff: data.ptDiff ?? 0,
-        draftOrder: data.draftOrder ?? null,
-        playoffBerth: data.playoffBerth ?? false,
-        divRound: data.divRound ?? false,
-        confRound: data.confRound ?? false,
-        sbBerth: data.sbBerth ?? false,
-        winSuperBowl: data.winSuperBowl ?? false,
-        realizedReturn: realizedReturn.toFixed(6),
-        realizedMultiple: realizedMultiple.toFixed(7),
-        netReturn: netReturn.toFixed(6),
-        netPctReturn: netPctReturn.toFixed(7),
-        markToMarket: markToMarket.toFixed(6),
-      },
-    })
-    .returning();
+    };
+    const [row] = await tx
+      .insert(teamResultsTable)
+      .values({
+        teamId: data.teamId,
+        seasonId,
+        ...values,
+        startingPoints: (data.startingPoints ?? 150).toString(),
+      })
+      .onConflictDoUpdate({
+        target: [teamResultsTable.teamId, teamResultsTable.seasonId],
+        set: values,
+      })
+      .returning();
+    return { kind: "saved" as const, row, cost };
+  });
+  if (writeOutcome.kind === "not_auctioned") {
+    res.status(400).json({
+      error: "Team is not auctioned in this season and cannot receive results.",
+    });
+    return;
+  }
+  const row = writeOutcome.row;
+  const cost = writeOutcome.cost;
 
   // Build response in TeamResultRow shape
   const teamInfo = await db

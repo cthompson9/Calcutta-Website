@@ -1,4 +1,12 @@
-import { pgTable, primaryKey, integer, numeric } from "drizzle-orm/pg-core";
+import { sql } from "drizzle-orm";
+import {
+  pgTable,
+  primaryKey,
+  integer,
+  numeric,
+  index,
+  check,
+} from "drizzle-orm/pg-core";
 import { teamsTable } from "./teams";
 import { seasonsTable } from "./seasons";
 import { createInsertSchema } from "drizzle-zod";
@@ -20,7 +28,13 @@ export const teamSeasonAuctionsTable = pgTable(
       .references(() => seasonsTable.id, { onDelete: "cascade" }),
     bidAmount: numeric("bid_amount", { precision: 10, scale: 2 }).notNull().default("0"),
   },
-  (t) => [primaryKey({ columns: [t.teamId, t.seasonId] })],
+  (t) => [
+    primaryKey({ columns: [t.teamId, t.seasonId] }),
+    // Auction bids must be non-negative
+    check("team_season_auctions_bid_nonneg", sql`${t.bidAmount} >= 0`),
+    // Quickly list all teams auctioned in a season
+    index("team_season_auctions_season_idx").on(t.seasonId),
+  ],
 );
 
 export const insertTeamSeasonAuctionSchema = createInsertSchema(teamSeasonAuctionsTable);

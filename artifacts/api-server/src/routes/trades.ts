@@ -5,6 +5,7 @@ import {
   teamsTable,
   biddersTable,
   tradesTable,
+  teamBiddersTable,
   teamSeasonAuctionsTable,
   seasonsTable,
 } from "@workspace/db";
@@ -17,7 +18,10 @@ import {
   SetTradeStatusBody,
   SetTradeStatusParams,
 } from "@workspace/api-zod";
-import { OWNERSHIP_SEASON_LOCK_NAMESPACE } from "../lib/ownershipShares";
+import {
+  OWNERSHIP_SEASON_LOCK_NAMESPACE,
+  validatePrimaryOwnership,
+} from "../lib/ownershipShares";
 
 const router: IRouter = Router();
 
@@ -44,7 +48,7 @@ async function validateTradeOwnership(args: {
   fromBidderId: number;
   toBidderId: number;
   percentage: number;
-}): Promise<string | null> {
+}, query: Pick<typeof db, "select"> = db, requireCompletePrimaryOwnership = false): Promise<string | null> {
   const { seasonId, teamId, fromBidderId, toBidderId, percentage } = args;
 
   if (fromBidderId === toBidderId) {
@@ -60,7 +64,7 @@ async function validateTradeOwnership(args: {
   }
 
   // Team must be auctioned in this season
-  const auctionRow = await db
+  const auctionRow = await query
     .select({ teamId: teamSeasonAuctionsTable.teamId })
     .from(teamSeasonAuctionsTable)
     .where(
@@ -72,6 +76,30 @@ async function validateTradeOwnership(args: {
     .limit(1);
   if (!auctionRow[0]) {
     return "Team is not auctioned in this season and cannot be traded.";
+  }
+
+  if (requireCompletePrimaryOwnership) {
+    const primaryOwners = await query
+      .select({
+        bidderId: teamBiddersTable.bidderId,
+        ownershipShare: teamBiddersTable.ownershipShare,
+      })
+      .from(teamBiddersTable)
+      .where(
+        and(
+          eq(teamBiddersTable.teamId, teamId),
+          eq(teamBiddersTable.seasonId, seasonId),
+        ),
+      );
+    const primarySplit = validatePrimaryOwnership(
+      primaryOwners.map((owner) => ({
+        bidderId: owner.bidderId,
+        share: Number(owner.ownershipShare),
+      })),
+    );
+    if (!primarySplit.ok) {
+      return `The team's original auction ownership is incomplete or invalid: ${primarySplit.error}`;
+    }
   }
 
   return null;
@@ -233,59 +261,71 @@ router.post("/trades", async (req, res): Promise<void> => {
     return;
   }
   const data = parsed.data;
+  if (data.price !== undefined && (!Number.isFinite(data.price) || data.price < 0)) {
+    res.status(400).json({ error: "Trade price must be a non-negative number." });
+    return;
+  }
   const seasonId = await resolveSeasonId(data.seasonYear);
   if (!seasonId) {
     res.status(400).json({ error: `Season ${data.seasonYear} not found` });
     return;
   }
 
-  // Ownership-integrity validation before creating the trade
-  const validationError = await validateTradeOwnership({
-    seasonId,
-    teamId: data.teamId,
-    fromBidderId: data.fromBidderId,
-    toBidderId: data.toBidderId,
-    percentage: data.percentage ?? 100,
+  const outcome = await db.transaction(async (tx) => {
+    await tx.execute(
+      sql`select pg_advisory_xact_lock(${OWNERSHIP_SEASON_LOCK_NAMESPACE}, ${seasonId})`,
+    );
+    const validationError = await validateTradeOwnership(
+      {
+        seasonId,
+        teamId: data.teamId,
+        fromBidderId: data.fromBidderId,
+        toBidderId: data.toBidderId,
+        percentage: data.percentage ?? 100,
+      },
+      tx,
+    );
+    if (validationError) return { kind: "invalid" as const, error: validationError };
+
+    let price = data.price;
+    if (price === undefined || price === null) {
+      const auctionRow = await tx
+        .select({ bidAmount: teamSeasonAuctionsTable.bidAmount })
+        .from(teamSeasonAuctionsTable)
+        .where(
+          and(
+            eq(teamSeasonAuctionsTable.teamId, data.teamId),
+            eq(teamSeasonAuctionsTable.seasonId, seasonId),
+          ),
+        )
+        .limit(1);
+      const bidAmt = Number(auctionRow[0]?.bidAmount ?? "0");
+      price = Math.round(bidAmt * ((data.percentage ?? 100) / 100) * 100) / 100;
+    }
+
+    const [trade] = await tx
+      .insert(tradesTable)
+      .values({
+        seasonId,
+        teamId: data.teamId,
+        fromBidderId: data.fromBidderId,
+        toBidderId: data.toBidderId,
+        price: price.toFixed(2),
+        percentage: (data.percentage ?? 100).toString(),
+        status: "pending",
+        tradeDate: data.tradeDate,
+        notes: data.notes,
+      })
+      .returning({ id: tradesTable.id });
+    return { kind: "created" as const, tradeId: trade.id };
   });
-  if (validationError) {
-    res.status(400).json({ error: validationError });
+
+  if (outcome.kind === "invalid") {
+    res.status(400).json({ error: outcome.error });
     return;
   }
 
-  // If no price provided, default to the season auction price × percentage / 100
-  let price = data.price;
-  if (price === undefined || price === null) {
-    const auctionRow = await db
-      .select({ bidAmount: teamSeasonAuctionsTable.bidAmount })
-      .from(teamSeasonAuctionsTable)
-      .where(
-        and(
-          eq(teamSeasonAuctionsTable.teamId, data.teamId),
-          eq(teamSeasonAuctionsTable.seasonId, seasonId),
-        ),
-      )
-      .limit(1);
-    const bidAmt = parseFloat(auctionRow[0]?.bidAmount ?? "0");
-    const pct = (data.percentage ?? 100) / 100;
-    price = Math.round(bidAmt * pct * 100) / 100;
-  }
-
-  const [trade] = await db
-    .insert(tradesTable)
-    .values({
-      seasonId,
-      teamId: data.teamId,
-      fromBidderId: data.fromBidderId,
-      toBidderId: data.toBidderId,
-      price: price.toString(),
-      percentage: (data.percentage ?? 100).toString(),
-      status: "pending", // always starts pending — admin must approve
-      tradeDate: data.tradeDate,
-      notes: data.notes,
-    })
-    .returning();
-
-  const enriched = await enrichTrade(trade.id);
+  const enriched = await enrichTrade(outcome.tradeId);
   res.status(201).json(enriched);
 });
 
@@ -303,6 +343,10 @@ router.patch("/trades/:id", async (req: Request, res: Response): Promise<void> =
     res.status(401).json({
       error: "Changing trade ownership percentage requires the ADMIN_API_KEY bearer token.",
     });
+    return;
+  }
+  if (body.data.price !== undefined && (!Number.isFinite(body.data.price) || body.data.price < 0)) {
+    res.status(400).json({ error: "Trade price must be a non-negative number." });
     return;
   }
 
@@ -335,7 +379,7 @@ router.patch("/trades/:id", async (req: Request, res: Response): Promise<void> =
         fromBidderId: fresh[0].fromBidderId,
         toBidderId: fresh[0].toBidderId,
         percentage: body.data.percentage,
-      });
+      }, tx);
       if (validationError) return { kind: "invalid" as const, error: validationError };
     }
 
@@ -419,7 +463,7 @@ router.patch("/trades/:id/status", async (req: Request, res: Response): Promise<
         fromBidderId: fresh[0].fromBidderId,
         toBidderId: fresh[0].toBidderId,
         percentage: Number(fresh[0].percentage),
-      });
+      }, tx, true);
       if (validationError) return { kind: "invalid" as const, error: validationError };
     }
 

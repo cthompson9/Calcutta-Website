@@ -1,3 +1,4 @@
+import { sql } from "drizzle-orm";
 import {
   pgTable,
   serial,
@@ -8,6 +9,8 @@ import {
   text,
   timestamp,
   uniqueIndex,
+  index,
+  check,
 } from "drizzle-orm/pg-core";
 import { teamsTable } from "./teams";
 import { seasonsTable } from "./seasons";
@@ -41,8 +44,16 @@ export const mtmSnapshotsTable = pgTable(
     marketData: jsonb("market_data").$type<Record<string, unknown>>(),
   },
   (t) => [
+    // One snapshot per team per season per calendar date (the primary upsert key)
     uniqueIndex("mtm_team_season_date_idx").on(t.teamId, t.seasonId, t.snapshotDate),
-    uniqueIndex("mtm_team_season_key_idx").on(t.teamId, t.seasonId, t.snapshotKey),
+    // snapshot_key uniqueness only applies when a key is actually present;
+    // NULL rows (manual/unlabelled snapshots) must not collide with each other.
+    uniqueIndex("mtm_team_season_key_idx")
+      .on(t.teamId, t.seasonId, t.snapshotKey)
+      .where(sql`${t.snapshotKey} IS NOT NULL`),
+    check("mtm_snapshots_value_non_negative", sql`${t.mtmValue} >= 0`),
+    // Quickly load all snapshots for a season
+    index("mtm_snapshots_season_idx").on(t.seasonId),
   ],
 );
 

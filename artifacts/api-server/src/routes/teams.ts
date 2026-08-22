@@ -1,5 +1,5 @@
-import { Router, type IRouter } from "express";
-import { eq, and, ilike, sql } from "drizzle-orm";
+import { Router, type IRouter, type Request } from "express";
+import { eq, and, ilike, inArray, sql } from "drizzle-orm";
 import {
   db,
   teamsTable,
@@ -7,6 +7,8 @@ import {
   teamBiddersTable,
   teamSeasonAuctionsTable,
   seasonsTable,
+  tradesTable,
+  ownershipAdjustmentsTable,
 } from "@workspace/db";
 import {
   GetTeamsQueryParams,
@@ -17,8 +19,17 @@ import {
   DeleteTeamParams,
 } from "@workspace/api-zod";
 import { loadSeasonOwnership } from "../lib/seasonOwnership";
+import {
+  OWNERSHIP_SEASON_LOCK_NAMESPACE,
+  validatePrimaryOwnership,
+} from "../lib/ownershipShares";
 
 const router: IRouter = Router();
+
+function isAdminRequest(req: Request): boolean {
+  const adminKey = process.env["ADMIN_API_KEY"];
+  return Boolean(adminKey && req.headers.authorization === `Bearer ${adminKey}`);
+}
 
 async function getActiveSeasonId(): Promise<number> {
   const rows = await db
@@ -194,6 +205,10 @@ router.get("/teams", async (req, res): Promise<void> => {
 });
 
 router.post("/teams", async (req, res): Promise<void> => {
+  if (!isAdminRequest(req)) {
+    res.status(401).json({ error: "ADMIN_API_KEY bearer token is required." });
+    return;
+  }
   const parsed = CreateTeamBody.safeParse(req.body);
   if (!parsed.success) {
     res.status(400).json({ error: parsed.error.message });
@@ -202,13 +217,17 @@ router.post("/teams", async (req, res): Promise<void> => {
 
   const { name, conference, division, bidAmount, owners, season: seasonYear } = parsed.data;
 
-  // Insert into teams table — legacy bidAmount initialized to 0 (deprecated)
-  const [team] = await db
-    .insert(teamsTable)
-    .values({ name, conference, division, bidAmount: "0" })
-    .returning();
+  const split = validatePrimaryOwnership(
+    owners.map((owner) => ({
+      bidderId: owner.bidderId,
+      share: owner.ownershipShare,
+    })),
+  );
+  if (!split.ok) {
+    res.status(400).json({ error: split.error });
+    return;
+  }
 
-  // Resolve season
   let seasonId: number;
   if (seasonYear != null) {
     const resolved = await resolveSeasonId(seasonYear);
@@ -221,25 +240,58 @@ router.post("/teams", async (req, res): Promise<void> => {
     seasonId = await getActiveSeasonId();
   }
 
-  // Write season auction price into team_season_auctions
-  await db
-    .insert(teamSeasonAuctionsTable)
-    .values({ teamId: team.id, seasonId, bidAmount: String(bidAmount) })
-    .onConflictDoUpdate({
-      target: [teamSeasonAuctionsTable.teamId, teamSeasonAuctionsTable.seasonId],
-      set: { bidAmount: String(bidAmount) },
-    });
+  const outcome = await db.transaction(async (tx) => {
+    await tx.execute(
+      sql`select pg_advisory_xact_lock(${OWNERSHIP_SEASON_LOCK_NAMESPACE}, ${seasonId})`,
+    );
+    const matchedBidders = await tx
+      .select({ id: biddersTable.id })
+      .from(biddersTable)
+      .where(inArray(biddersTable.id, split.owners.map((owner) => owner.bidderId)));
+    if (matchedBidders.length !== split.owners.length) {
+      return { kind: "unknown_owner" as const };
+    }
 
-  await db.insert(teamBiddersTable).values(
-    owners.map((o) => ({
+    // Insert into teams table — legacy bidAmount remains unused at runtime.
+    const [team] = await tx
+      .insert(teamsTable)
+      .values({ name, conference, division, bidAmount: "0" })
+      .returning({ id: teamsTable.id });
+    await tx.insert(teamSeasonAuctionsTable).values({
       teamId: team.id,
-      bidderId: o.bidderId,
       seasonId,
-      ownershipShare: String(o.ownershipShare),
-    })),
-  );
+      bidAmount: String(bidAmount),
+    });
+    await tx.insert(teamBiddersTable).values(
+      split.owners.map((owner) => ({
+        teamId: team.id,
+        bidderId: owner.bidderId,
+        seasonId,
+        ownershipShare: String(owner.share),
+      })),
+    );
+    await tx.insert(ownershipAdjustmentsTable).values({
+      teamId: team.id,
+      seasonId,
+      source: "team_create",
+      note: "Initial primary ownership recorded with team creation",
+      owners: {
+        bidAmount,
+        owners: split.owners.map((owner) => ({
+          bidderId: owner.bidderId,
+          ownershipShare: owner.share,
+        })),
+      },
+    });
+    return { kind: "created" as const, teamId: team.id };
+  });
 
-  const full = await fetchTeamWithOwners(team.id, seasonId);
+  if (outcome.kind === "unknown_owner") {
+    res.status(400).json({ error: "Every primary owner must be an existing bidder." });
+    return;
+  }
+
+  const full = await fetchTeamWithOwners(outcome.teamId, seasonId);
   res.status(201).json(full);
 });
 
@@ -260,6 +312,10 @@ router.get("/teams/:id", async (req, res): Promise<void> => {
 });
 
 router.patch("/teams/:id", async (req, res): Promise<void> => {
+  if (!isAdminRequest(req)) {
+    res.status(401).json({ error: "ADMIN_API_KEY bearer token is required." });
+    return;
+  }
   const params = UpdateTeamParams.safeParse(req.params);
   if (!params.success) {
     res.status(400).json({ error: params.error.message });
@@ -273,8 +329,20 @@ router.patch("/teams/:id", async (req, res): Promise<void> => {
   }
 
   const { owners, bidAmount, season: seasonYear, ...rest } = parsed.data;
+  const split =
+    owners === undefined
+      ? null
+      : validatePrimaryOwnership(
+          owners.map((owner) => ({
+            bidderId: owner.bidderId,
+            share: owner.ownershipShare,
+          })),
+        );
+  if (split && !split.ok) {
+    res.status(400).json({ error: split.error });
+    return;
+  }
 
-  // Resolve season
   let seasonId: number;
   if (seasonYear != null) {
     const resolved = await resolveSeasonId(seasonYear);
@@ -287,42 +355,102 @@ router.patch("/teams/:id", async (req, res): Promise<void> => {
     seasonId = await getActiveSeasonId();
   }
 
-  // Update non-financial static fields on the teams table (name, conference, division)
-  // Do NOT write bidAmount back to the legacy column
-  const updates: Record<string, unknown> = { ...rest };
-  if (Object.keys(updates).length > 0) {
-    await db.update(teamsTable).set(updates).where(eq(teamsTable.id, params.data.id));
-  }
-
-  // Update season auction price only in team_season_auctions
-  if (bidAmount !== undefined) {
-    await db
-      .insert(teamSeasonAuctionsTable)
-      .values({ teamId: params.data.id, seasonId, bidAmount: String(bidAmount) })
-      .onConflictDoUpdate({
-        target: [teamSeasonAuctionsTable.teamId, teamSeasonAuctionsTable.seasonId],
-        set: { bidAmount: String(bidAmount) },
-      });
-  }
-
-  if (owners !== undefined) {
-    // Delete only this season's rows — preserves prior-season history
-    await db
-      .delete(teamBiddersTable)
-      .where(
-        and(
-          eq(teamBiddersTable.teamId, params.data.id),
-          eq(teamBiddersTable.seasonId, seasonId),
-        ),
-      );
-    await db.insert(teamBiddersTable).values(
-      owners.map((o) => ({
-        teamId: params.data.id,
-        bidderId: o.bidderId,
-        seasonId,
-        ownershipShare: String(o.ownershipShare),
-      })),
+  const updateResult = await db.transaction(async (tx) => {
+    await tx.execute(
+      sql`select pg_advisory_xact_lock(${OWNERSHIP_SEASON_LOCK_NAMESPACE}, ${seasonId})`,
     );
+    const existingTeam = await tx
+      .select({ id: teamsTable.id })
+      .from(teamsTable)
+      .where(eq(teamsTable.id, params.data.id))
+      .limit(1);
+    if (!existingTeam[0]) return { kind: "not_found" as const };
+
+    if (split) {
+      const [matchedBidders, approvedTrade] = await Promise.all([
+        tx
+          .select({ id: biddersTable.id })
+          .from(biddersTable)
+          .where(inArray(biddersTable.id, split.owners.map((owner) => owner.bidderId))),
+        tx
+          .select({ id: tradesTable.id })
+          .from(tradesTable)
+          .where(
+            and(
+              eq(tradesTable.teamId, params.data.id),
+              eq(tradesTable.seasonId, seasonId),
+              eq(tradesTable.status, "approved"),
+            ),
+          )
+          .limit(1),
+      ]);
+      if (matchedBidders.length !== split.owners.length) {
+        return { kind: "unknown_owner" as const };
+      }
+      if (approvedTrade[0]) return { kind: "approved_trade" as const };
+    }
+
+    // Do not write bidAmount back to the legacy teams table.
+    const updates: Record<string, unknown> = { ...rest };
+    if (Object.keys(updates).length > 0) {
+      await tx.update(teamsTable).set(updates).where(eq(teamsTable.id, params.data.id));
+    }
+    if (bidAmount !== undefined) {
+      await tx
+        .insert(teamSeasonAuctionsTable)
+        .values({ teamId: params.data.id, seasonId, bidAmount: String(bidAmount) })
+        .onConflictDoUpdate({
+          target: [teamSeasonAuctionsTable.teamId, teamSeasonAuctionsTable.seasonId],
+          set: { bidAmount: String(bidAmount) },
+        });
+    }
+    if (split) {
+      await tx
+        .delete(teamBiddersTable)
+        .where(
+          and(
+            eq(teamBiddersTable.teamId, params.data.id),
+            eq(teamBiddersTable.seasonId, seasonId),
+          ),
+        );
+      await tx.insert(teamBiddersTable).values(
+        split.owners.map((owner) => ({
+          teamId: params.data.id,
+          bidderId: owner.bidderId,
+          seasonId,
+          ownershipShare: String(owner.share),
+        })),
+      );
+      await tx.insert(ownershipAdjustmentsTable).values({
+        teamId: params.data.id,
+        seasonId,
+        source: "team_primary_ownership",
+        note: "Primary ownership replaced through the team editor",
+        owners: {
+          owners: split.owners.map((owner) => ({
+            bidderId: owner.bidderId,
+            ownershipShare: owner.share,
+          })),
+        },
+      });
+    }
+    return { kind: "updated" as const };
+  });
+
+  if (updateResult.kind === "not_found") {
+    res.status(404).json({ error: "Team not found" });
+    return;
+  }
+  if (updateResult.kind === "unknown_owner") {
+    res.status(400).json({ error: "Every primary owner must be an existing bidder." });
+    return;
+  }
+  if (updateResult.kind === "approved_trade") {
+    res.status(409).json({
+      error:
+        "This team has approved trades. Preserve that history with a correcting trade instead of replacing primary ownership.",
+    });
+    return;
   }
 
   const full = await fetchTeamWithOwners(params.data.id, seasonId);
@@ -334,6 +462,10 @@ router.patch("/teams/:id", async (req, res): Promise<void> => {
 });
 
 router.delete("/teams/:id", async (req, res): Promise<void> => {
+  if (!isAdminRequest(req)) {
+    res.status(401).json({ error: "ADMIN_API_KEY bearer token is required." });
+    return;
+  }
   const params = DeleteTeamParams.safeParse(req.params);
   if (!params.success) {
     res.status(400).json({ error: params.error.message });

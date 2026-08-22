@@ -30,6 +30,7 @@ import {
   validatePrimaryOwnership,
 } from "./lib/ownershipShares";
 import { currentYearInNewYork, todayInNewYork } from "./lib/newYorkTime";
+import { writeManualMtmSnapshot } from "./lib/manualMtm";
 
 // ─── DB helpers ─────────────────────────────────────────────────────────────
 
@@ -144,7 +145,7 @@ async function validateMcpTradeApproval(trade: {
   fromBidderId: number;
   toBidderId: number;
   percentage: string;
-}): Promise<string | null> {
+}, query: Pick<typeof db, "select"> = db, requireCompletePrimaryOwnership = false): Promise<string | null> {
   if (trade.fromBidderId === trade.toBidderId) {
     return "Seller and buyer must be different owners.";
   }
@@ -154,7 +155,7 @@ async function validateMcpTradeApproval(trade: {
     return "Trade percentage must be between 1% and 100%.";
   }
 
-  const auctionRow = await db
+  const auctionRow = await query
     .select({ teamId: teamSeasonAuctionsTable.teamId })
     .from(teamSeasonAuctionsTable)
     .where(and(
@@ -164,6 +165,28 @@ async function validateMcpTradeApproval(trade: {
     .limit(1);
   if (!auctionRow[0]) {
     return "Team is not auctioned in this season and cannot be traded.";
+  }
+
+  if (requireCompletePrimaryOwnership) {
+    const primaryOwners = await query
+      .select({
+        bidderId: teamBiddersTable.bidderId,
+        ownershipShare: teamBiddersTable.ownershipShare,
+      })
+      .from(teamBiddersTable)
+      .where(and(
+        eq(teamBiddersTable.teamId, trade.teamId),
+        eq(teamBiddersTable.seasonId, trade.seasonId),
+      ));
+    const split = validatePrimaryOwnership(
+      primaryOwners.map((owner) => ({
+        bidderId: owner.bidderId,
+        share: Number(owner.ownershipShare),
+      })),
+    );
+    if (!split.ok) {
+      return `The team's original auction ownership is incomplete or invalid: ${split.error}`;
+    }
   }
 
   // Do not cap a sale to a seller's long stake: approved trades are a signed
@@ -663,50 +686,58 @@ function buildMcpServer() {
       const sid = await resolveSeasonId(year);
       if (!sid) return text(`Season ${year} not found`);
 
-      const validationError = await validateMcpTradeApproval({
-        seasonId: sid,
-        teamId: t.id,
-        fromBidderId: from.id,
-        toBidderId: to.id,
-        percentage: percentage.toString(),
-      });
-      if (validationError) return text(`Error: ${validationError}`);
-
-      // Use season auction price for default trade price; missing row → 0, never teams.bidAmount
-      let auctionBidAmount = 0;
-      if (price === undefined) {
-        const auctionRows = await db
-          .select({ bidAmount: teamSeasonAuctionsTable.bidAmount })
-          .from(teamSeasonAuctionsTable)
-          .where(and(eq(teamSeasonAuctionsTable.teamId, t.id), eq(teamSeasonAuctionsTable.seasonId, sid)))
-          .limit(1);
-        auctionBidAmount = auctionRows[0] ? parseFloat(auctionRows[0].bidAmount) : 0;
+      if (price !== undefined && (!Number.isFinite(price) || price < 0)) {
+        return text("Error: Trade price must be a non-negative number.");
       }
 
-      const effectivePrice =
-        price !== undefined
-          ? price
-          : Math.round(auctionBidAmount * (percentage / 100) * 100) / 100;
+      const outcome = await db.transaction(async (tx) => {
+        await tx.execute(
+          sql`select pg_advisory_xact_lock(${OWNERSHIP_SEASON_LOCK_NAMESPACE}, ${sid})`,
+        );
+        const validationError = await validateMcpTradeApproval(
+          {
+            seasonId: sid,
+            teamId: t.id,
+            fromBidderId: from.id,
+            toBidderId: to.id,
+            percentage: percentage.toString(),
+          },
+          tx,
+        );
+        if (validationError) return { kind: "invalid" as const, error: validationError };
 
-      const today = tradeDate ?? todayInNewYork();
+        let effectivePrice = price;
+        if (effectivePrice === undefined) {
+          const auctionRows = await tx
+            .select({ bidAmount: teamSeasonAuctionsTable.bidAmount })
+            .from(teamSeasonAuctionsTable)
+            .where(and(eq(teamSeasonAuctionsTable.teamId, t.id), eq(teamSeasonAuctionsTable.seasonId, sid)))
+            .limit(1);
+          effectivePrice = Math.round(
+            Number(auctionRows[0]?.bidAmount ?? "0") * (percentage / 100) * 100,
+          ) / 100;
+        }
 
-      const [inserted] = await db
-        .insert(tradesTable)
-        .values({
-          seasonId: sid,
-          teamId: t.id,
-          fromBidderId: from.id,
-          toBidderId: to.id,
-          price: effectivePrice.toString(),
-          percentage: percentage.toString(),
-          status: "pending",
-          tradeDate: today,
-          notes,
-        })
-        .returning();
+        const [inserted] = await tx
+          .insert(tradesTable)
+          .values({
+            seasonId: sid,
+            teamId: t.id,
+            fromBidderId: from.id,
+            toBidderId: to.id,
+            price: effectivePrice.toFixed(2),
+            percentage: percentage.toString(),
+            status: "pending",
+            tradeDate: tradeDate ?? todayInNewYork(),
+            notes,
+          })
+          .returning({ id: tradesTable.id });
+        return { kind: "created" as const, tradeId: inserted.id, effectivePrice };
+      });
+      if (outcome.kind === "invalid") return text(`Error: ${outcome.error}`);
 
       return text(
-        `Trade #${inserted.id} created: ${from.name} → ${to.name}, ${percentage}% of ${t.name} for $${effectivePrice}. Status: PENDING REVIEW. Admin must approve before it affects results.`,
+        `Trade #${outcome.tradeId} created: ${from.name} → ${to.name}, ${percentage}% of ${t.name} for $${outcome.effectivePrice}. Status: PENDING REVIEW. Admin must approve before it affects results.`,
       );
     },
   );
@@ -784,7 +815,7 @@ function buildMcpServer() {
         if (fresh[0].status !== "pending") return { kind: "already_decided" as const };
 
         if (status === "approved") {
-          const validationError = await validateMcpTradeApproval(fresh[0]);
+          const validationError = await validateMcpTradeApproval(fresh[0], tx, true);
           if (validationError) return { kind: "invalid" as const, error: validationError };
         }
 
@@ -849,13 +880,31 @@ function buildMcpServer() {
       const year = season ?? await defaultSeasonYear();
       const sid = await resolveSeasonId(year);
       if (!sid) return text(`Season ${year} not found`);
-      await db
-        .insert(teamResultsTable)
-        .values({ teamId: t.id, seasonId: sid, seed })
-        .onConflictDoUpdate({
-          target: [teamResultsTable.teamId, teamResultsTable.seasonId],
-          set: { seed },
-        });
+      const seedWritten = await db.transaction(async (tx) => {
+        await tx.execute(
+          sql`select pg_advisory_xact_lock(${OWNERSHIP_SEASON_LOCK_NAMESPACE}, ${sid})`,
+        );
+        const auctionedTeam = await tx
+          .select({ teamId: teamSeasonAuctionsTable.teamId })
+          .from(teamSeasonAuctionsTable)
+          .where(
+            and(
+              eq(teamSeasonAuctionsTable.teamId, t.id),
+              eq(teamSeasonAuctionsTable.seasonId, sid),
+            ),
+          )
+          .limit(1);
+        if (!auctionedTeam[0]) return false;
+        await tx
+          .insert(teamResultsTable)
+          .values({ teamId: t.id, seasonId: sid, seed })
+          .onConflictDoUpdate({
+            target: [teamResultsTable.teamId, teamResultsTable.seasonId],
+            set: { seed },
+          });
+        return true;
+      });
+      if (!seedWritten) return text(`Error: ${t.name} was not auctioned in ${year}.`);
       return text(seed != null
         ? `Seed set: ${t.name} · ${year} → #${seed}`
         : `Seed cleared: ${t.name} · ${year}`);
@@ -869,7 +918,7 @@ function buildMcpServer() {
     "Record or update the mark-to-market value for a team on a specific date. Same-date submissions overwrite the previous value; different dates accumulate as separate data points. Requires the ADMIN_API_KEY as adminKey.",
     {
       team:         z.string().describe("Full or partial team name, e.g. 'Seattle Seahawks' or 'Seahawks'"),
-      mtmValue:     z.number().describe("Mark-to-market value in dollars (net profit/loss vs auction cost, e.g. 320 or -45.50)"),
+      mtmValue:     z.number().nonnegative().describe("Mark-to-market value in dollars (e.g. 320 or 45.50)"),
       snapshotDate: z.string().optional().describe("Date as YYYY-MM-DD. Defaults to today. Submitting the same date again overwrites the previous value for that team."),
       weekNum:      z.number().int().min(0).max(22).optional().describe("Optional week label (0=pre-season, 1–18=regular, 19+=playoffs). Stored for display only."),
       season:       z.number().optional().describe("Season year (e.g. 2026). Defaults to the active season."),
@@ -899,23 +948,25 @@ function buildMcpServer() {
 
       const today = snapshotDate ?? todayInNewYork();
 
-      const [snap] = await db
-        .insert(mtmSnapshotsTable)
-        .values({
-          teamId: t.id,
-          seasonId: sid,
-          weekNum: weekNum ?? null,
-          snapshotDate: today,
-          mtmValue: mtmValue.toString(),
-        })
-        .onConflictDoUpdate({
-          target: [mtmSnapshotsTable.teamId, mtmSnapshotsTable.seasonId, mtmSnapshotsTable.snapshotDate],
-          set: {
-            weekNum: weekNum ?? null,
-            mtmValue: mtmValue.toString(),
-          },
-        })
-        .returning();
+      const writeOutcome = await writeManualMtmSnapshot({
+        seasonId: sid,
+        teamId: t.id,
+        snapshotDate: today,
+        mtmValue,
+        weekNum,
+      });
+      if (writeOutcome.kind === "invalid_value") {
+        return text("Error: MTM value must be a non-negative number.");
+      }
+      if (writeOutcome.kind === "not_auctioned") {
+        return text(`Error: ${t.name} was not auctioned in ${year}.`);
+      }
+      if (writeOutcome.kind === "protected_week_zero") {
+        return text(
+          "Error: That team/date is the protected Kalshi Week 0 snapshot. Use Week 0 recapture instead.",
+        );
+      }
+      const snap = writeOutcome.snapshot;
 
       const weekLabel = weekNum !== undefined
         ? (weekNum === 0 ? " · Pre-season" : weekNum <= 18 ? ` · Week ${weekNum}` : ` · Playoff Wk ${weekNum - 18}`)
