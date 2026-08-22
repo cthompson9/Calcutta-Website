@@ -22,6 +22,11 @@ import {
   type OwnershipSegment,
 } from "../lib/seasonOwnership";
 import { OWNERSHIP_SEASON_LOCK_NAMESPACE } from "../lib/ownershipShares";
+import {
+  hasConfiguredPayoutRules,
+  loadCalculatedTeamReturns,
+  type CalculatedTeamReturns,
+} from "../lib/calcuttaReturns";
 
 const router: IRouter = Router();
 
@@ -56,10 +61,96 @@ async function getSeasonCost(
   return parseFloat(rows[0]?.bidAmount ?? "0");
 }
 
+type ResultDisplay = {
+  isProjectedRecord?: boolean;
+  wins: string | number;
+  losses: number;
+  ties: number;
+  ptDiff: number;
+  startingPoints: string | number;
+  draftOrder: number | null;
+  seed: number | null;
+  playoffBerth: boolean;
+  divRound: boolean;
+  confRound: boolean;
+  sbBerth: boolean;
+  winSuperBowl: boolean;
+  realizedReturn: string | number;
+  realizedMultiple: string | number;
+  netReturn: string | number;
+  netPctReturn: string | number;
+  markToMarket: string | number;
+};
+
+function resultFromCalculatedSnapshots(
+  legacy: typeof teamResultsTable.$inferSelect | null,
+  calculated: CalculatedTeamReturns | undefined,
+  cost: number,
+  basis: "realized" | "mtm",
+  payoutRulesConfigured: boolean,
+): ResultDisplay | null {
+  if (!payoutRulesConfigured) return legacy;
+  const selected = calculated?.[basis];
+  if (!calculated || !selected) {
+    return {
+      isProjectedRecord: basis === "mtm",
+      wins: 0,
+      losses: 0,
+      ties: 0,
+      ptDiff: 0,
+      startingPoints: legacy?.startingPoints ?? "150",
+      draftOrder: legacy?.draftOrder ?? null,
+      seed: legacy?.seed ?? null,
+      playoffBerth: false,
+      divRound: false,
+      confRound: false,
+      sbBerth: false,
+      winSuperBowl: false,
+      realizedReturn: 0,
+      realizedMultiple: 0,
+      netReturn: -cost,
+      netPctReturn: cost > 0 ? -1 : 0,
+      markToMarket: 0,
+    };
+  }
+  const latest = selected.latest;
+
+  const useCalculatedMoney = calculated.rulesConfigured;
+  const realizedReturn = useCalculatedMoney
+    ? (calculated.realized?.grossReturn ?? 0)
+    : Number(legacy?.realizedReturn ?? 0);
+  const markToMarket = useCalculatedMoney
+    ? (basis === "mtm"
+      ? selected.grossReturn
+      : (calculated.mtm?.grossReturn ?? 0))
+    : Number(legacy?.markToMarket ?? 0);
+  const netReturn = realizedReturn - cost;
+  return {
+    isProjectedRecord: basis === "mtm",
+    wins: latest.wins,
+    losses: latest.losses,
+    ties: latest.ties,
+    ptDiff: latest.ptDiff,
+    startingPoints: legacy?.startingPoints ?? "150",
+    draftOrder: legacy?.draftOrder ?? null,
+    seed: legacy?.seed ?? null,
+    playoffBerth: latest.playoffBerth >= 0.999999,
+    divRound: latest.divRound >= 0.999999,
+    confRound: latest.confRound >= 0.999999,
+    sbBerth: latest.sbBerth >= 0.999999,
+    winSuperBowl: latest.winSuperBowl >= 0.999999,
+    realizedReturn,
+    realizedMultiple: cost > 0 ? realizedReturn / cost : 0,
+    netReturn,
+    netPctReturn: cost > 0 ? netReturn / cost : 0,
+    markToMarket,
+  };
+}
+
 // Helper: build TeamResultRow with effective current owners and season-scoped cost
 function buildTeamResult(
   team: typeof teamsTable.$inferSelect,
-  result: typeof teamResultsTable.$inferSelect | null,
+  result: ResultDisplay | null,
   owners: { bidderId: number; bidderName: string; ownershipShare: number }[],
   ownershipSegments: OwnershipSegment[],
   cost: number,
@@ -101,18 +192,16 @@ function buildTeamResult(
     };
   }
 
-  const record = explicitRecordFromStoredValues(
-    result.wins,
-    result.losses,
-    result.ties,
-  );
+  const record = result.isProjectedRecord
+    ? { wins: Number(result.wins), losses: Number(result.losses), ties: Number(result.ties) }
+    : explicitRecordFromStoredValues(result.wins, result.losses, result.ties);
   return {
     ...base,
     wins: record.wins,
     losses: record.losses,
     ties: record.ties,
     ptDiff: result.ptDiff,
-    startingPoints: parseFloat(result.startingPoints),
+    startingPoints: Number(result.startingPoints),
     draftOrder: result.draftOrder,
     seed: result.seed,
     playoffBerth: result.playoffBerth,
@@ -120,11 +209,11 @@ function buildTeamResult(
     confRound: result.confRound,
     sbBerth: result.sbBerth,
     winSuperBowl: result.winSuperBowl,
-    realizedReturn: parseFloat(result.realizedReturn),
-    realizedMultiple: parseFloat(result.realizedMultiple),
-    netReturn: parseFloat(result.netReturn),
-    netPctReturn: parseFloat(result.netPctReturn),
-    markToMarket: parseFloat(result.markToMarket),
+    realizedReturn: Number(result.realizedReturn),
+    realizedMultiple: Number(result.realizedMultiple),
+    netReturn: Number(result.netReturn),
+    netPctReturn: Number(result.netPctReturn),
+    markToMarket: Number(result.markToMarket),
   };
 }
 
@@ -133,7 +222,7 @@ function buildTeamResult(
 // Team-level NFL stats (wins, ptDiff, seed, playoff flags, etc.) are preserved.
 function buildOwnerTeamResult(
   team: typeof teamsTable.$inferSelect,
-  result: typeof teamResultsTable.$inferSelect | null,
+  result: ResultDisplay | null,
   args: {
     bidderId: number;
     bidderName: string;
@@ -189,16 +278,14 @@ function buildOwnerTeamResult(
   }
 
   // Owner-scaled financials
-  const realizedReturn = parseFloat(result.realizedReturn) * effectiveShare;
-  const markToMarket = parseFloat(result.markToMarket) * effectiveShare;
+  const realizedReturn = Number(result.realizedReturn) * effectiveShare;
+  const markToMarket = Number(result.markToMarket) * effectiveShare;
   const netReturn = realizedReturn - ownerCost;
   const realizedMultiple = ownerCost > 0 ? realizedReturn / ownerCost : 0;
   const netPctReturn = ownerCost > 0 ? netReturn / ownerCost : 0;
-  const record = explicitRecordFromStoredValues(
-    result.wins,
-    result.losses,
-    result.ties,
-  );
+  const record = result.isProjectedRecord
+    ? { wins: Number(result.wins), losses: Number(result.losses), ties: Number(result.ties) }
+    : explicitRecordFromStoredValues(result.wins, result.losses, result.ties);
 
   return {
     ...base,
@@ -207,7 +294,7 @@ function buildOwnerTeamResult(
     losses: record.losses,
     ties: record.ties,
     ptDiff: result.ptDiff,
-    startingPoints: parseFloat(result.startingPoints),
+    startingPoints: Number(result.startingPoints),
     draftOrder: result.draftOrder,
     seed: result.seed,
     playoffBerth: result.playoffBerth,
@@ -284,7 +371,8 @@ router.get("/results", async (req, res): Promise<void> => {
     res.status(400).json({ error: parsed.error.message });
     return;
   }
-  const { season, conference, search } = parsed.data;
+  const { season, conference, search, period, basis } = parsed.data;
+  const selectedBasis = basis ?? "realized";
 
   // Unknown season → empty list, never fall back to another season
   const seasonId = await resolveSeasonId(season);
@@ -310,6 +398,8 @@ router.get("/results", async (req, res): Promise<void> => {
     .from(teamResultsTable)
     .where(eq(teamResultsTable.seasonId, seasonId));
   for (const r of results) resultsMap.set(r.teamId, r);
+  const calculatedResults = await loadCalculatedTeamReturns(seasonId, period);
+  const payoutRulesConfigured = await hasConfiguredPayoutRules(seasonId);
 
   // Season auction prices
   const auctionRows = await db
@@ -337,7 +427,13 @@ router.get("/results", async (req, res): Promise<void> => {
       const ownershipSegments = ownership.ownershipSegmentsByTeam.get(t.id) ?? [];
       return buildTeamResult(
         t,
-        resultsMap.get(t.id) ?? null,
+        resultFromCalculatedSnapshots(
+          resultsMap.get(t.id) ?? null,
+          calculatedResults.get(t.id),
+          cost,
+          selectedBasis,
+          payoutRulesConfigured,
+        ),
         currentOwners,
         ownershipSegments,
         cost,
@@ -356,7 +452,8 @@ router.get("/results/by-owner", async (req, res): Promise<void> => {
     res.status(400).json({ error: parsed.error.message });
     return;
   }
-  const { season } = parsed.data;
+  const { season, period, basis } = parsed.data;
+  const selectedBasis = basis ?? "realized";
 
   // Unknown season → safe empty response
   const seasonId = await resolveSeasonId(season);
@@ -381,6 +478,8 @@ router.get("/results/by-owner", async (req, res): Promise<void> => {
     .from(teamResultsTable)
     .where(eq(teamResultsTable.seasonId, seasonId));
   for (const r of seasonResults) resultsMap.set(r.teamId, r);
+  const calculatedResults = await loadCalculatedTeamReturns(seasonId, period);
+  const payoutRulesConfigured = await hasConfiguredPayoutRules(seasonId);
 
   // Season auction prices
   const auctionRows = await db
@@ -453,24 +552,30 @@ router.get("/results/by-owner", async (req, res): Promise<void> => {
 
       const team = teamMap.get(teamId);
       if (!team) continue;
-      const result = resultsMap.get(teamId) ?? null;
+      const seasonAuctionPrice = auctionPriceMap.get(teamId) ?? 0;
+      const result = resultFromCalculatedSnapshots(
+        resultsMap.get(teamId) ?? null,
+        calculatedResults.get(teamId),
+        seasonAuctionPrice,
+        selectedBasis,
+        payoutRulesConfigured,
+      );
 
       // Owner-result reporting preserves the signed ledger position. A short
       // seller receives the inverse of a long holder's team-level outcome.
       const effectiveShare = entry.effectiveShare;
 
       // Cost basis: season auction price × original share + trade buys - trade sells
-      const seasonAuctionPrice = auctionPriceMap.get(teamId) ?? 0;
       const originalCostBasis = seasonAuctionPrice * entry.originalShare;
       const ownerCost =
         originalCostBasis + entry.tradePaid - entry.tradeReceived;
 
       // Returns scaled by effective (post-trade) share
       const realizedReturn = result
-        ? parseFloat(result.realizedReturn) * effectiveShare
+        ? Number(result.realizedReturn) * effectiveShare
         : 0;
       const markToMarket = result
-        ? parseFloat(result.markToMarket) * effectiveShare
+        ? Number(result.markToMarket) * effectiveShare
         : 0;
       const netReturn = realizedReturn - ownerCost;
 
@@ -513,7 +618,11 @@ router.get("/results/by-owner", async (req, res): Promise<void> => {
       totalMtm: Math.round(o.totalMtm * 100) / 100,
       teams: o.teams.sort((a, b) => a.teamName.localeCompare(b.teamName)),
     }))
-    .sort((a, b) => b.totalMtm - a.totalMtm);
+    .sort((a, b) =>
+      selectedBasis === "mtm"
+        ? b.totalMtm - a.totalMtm
+        : b.totalNetReturn - a.totalNetReturn,
+    );
 
   res.json(ownerRows);
 });

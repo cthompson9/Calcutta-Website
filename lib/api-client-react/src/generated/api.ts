@@ -31,8 +31,10 @@ import type {
   GetAuctionSummaryParams,
   GetBiddersParams,
   GetMtmSnapshotsParams,
+  GetPayoutRulesParams,
   GetResultsByOwnerParams,
   GetResultsParams,
+  GetSportPeriodsParams,
   GetTeamsParams,
   GetTradesParams,
   HealthStatus,
@@ -40,10 +42,15 @@ import type {
   MtmSnapshot,
   MtmSnapshotInput,
   OwnerResultRow,
+  PayoutRuleRow,
+  PayoutRulesUpdate,
   Season,
   SeasonInput,
+  SportPeriod,
   Team,
   TeamInput,
+  TeamPeriodSnapshotInput,
+  TeamPeriodSnapshotRow,
   TeamResultInput,
   TeamResultRow,
   TeamUpdate,
@@ -1217,6 +1224,316 @@ export const useUpsertTeamResult = <TError = ErrorType<ErrorResponse>,
         TContext
       > => {
       return useMutation(getUpsertTeamResultMutationOptions(options));
+    }
+
+export const getGetSportPeriodsUrl = (params?: GetSportPeriodsParams,) => {
+  const normalizedParams = new URLSearchParams();
+
+  Object.entries(params || {}).forEach(([key, value]) => {
+
+    if (value !== undefined) {
+      normalizedParams.append(key, value === null ? 'null' : String(value))
+    }
+  });
+
+  const stringifiedParams = normalizedParams.toString();
+
+  return stringifiedParams.length > 0 ? `/api/periods?${stringifiedParams}` : `/api/periods`
+}
+
+/**
+ * @summary List shared sport periods
+ */
+export const getSportPeriods = async (params?: GetSportPeriodsParams, options?: Parameters<typeof customFetch>[1]): Promise<SportPeriod[]> => {
+
+  return customFetch<SportPeriod[]>(getGetSportPeriodsUrl(params),
+  {
+    ...options,
+    method: 'GET'
+
+
+  }
+);}
+
+
+
+
+
+export const getGetSportPeriodsQueryKey = (params?: GetSportPeriodsParams,) => {
+    return [
+    `/api/periods`, ...(params ? [params] : [])
+    ] as const;
+    }
+
+
+export const getGetSportPeriodsQueryOptions = <TData = Awaited<ReturnType<typeof getSportPeriods>>, TError = ErrorType<unknown>>(params?: GetSportPeriodsParams, options?: { query?:UseQueryOptions<Awaited<ReturnType<typeof getSportPeriods>>, TError, TData>, request?: SecondParameter<typeof customFetch>}
+) => {
+
+const {query: queryOptions, request: requestOptions} = options ?? {};
+
+  const queryKey =  queryOptions?.queryKey ?? getGetSportPeriodsQueryKey(params);
+
+
+
+    const queryFn: QueryFunction<Awaited<ReturnType<typeof getSportPeriods>>> = ({ signal }) => getSportPeriods(params, { signal, ...requestOptions });
+
+
+
+
+
+   return  { queryKey, queryFn, ...queryOptions} as UseQueryOptions<Awaited<ReturnType<typeof getSportPeriods>>, TError, TData> & { queryKey: QueryKey }
+}
+
+export type GetSportPeriodsQueryResult = NonNullable<Awaited<ReturnType<typeof getSportPeriods>>>
+export type GetSportPeriodsQueryError = ErrorType<unknown>
+
+
+/**
+ * @summary List shared sport periods
+ */
+
+export function useGetSportPeriods<TData = Awaited<ReturnType<typeof getSportPeriods>>, TError = ErrorType<unknown>>(
+ params?: GetSportPeriodsParams, options?: { query?:UseQueryOptions<Awaited<ReturnType<typeof getSportPeriods>>, TError, TData>, request?: SecondParameter<typeof customFetch>}
+
+ ):  UseQueryResult<TData, TError> & { queryKey: QueryKey } {
+
+  const queryOptions = getGetSportPeriodsQueryOptions(params,options)
+
+  const query = useQuery(queryOptions) as  UseQueryResult<TData, TError> & { queryKey: QueryKey };
+
+  return withQueryKey(query, queryOptions.queryKey);
+}
+
+
+
+
+
+
+
+export const getUpsertTeamPeriodSnapshotUrl = () => {
+
+
+
+
+  return `/api/period-snapshots`
+}
+
+/**
+ * @summary Write one cumulative realized or mark-to-market team snapshot for an NFL period
+ */
+export const upsertTeamPeriodSnapshot = async (teamPeriodSnapshotInput: TeamPeriodSnapshotInput, options?: Parameters<typeof customFetch>[1]): Promise<TeamPeriodSnapshotRow> => {
+
+  return customFetch<TeamPeriodSnapshotRow>(getUpsertTeamPeriodSnapshotUrl(),
+  {
+    ...options,
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json', ...options?.headers },
+    body: JSON.stringify(teamPeriodSnapshotInput)
+  }
+);}
+
+
+
+
+
+export const getUpsertTeamPeriodSnapshotMutationOptions = <TError = ErrorType<ErrorResponse>,
+    TContext = unknown>(options?: { mutation?:UseMutationOptions<Awaited<ReturnType<typeof upsertTeamPeriodSnapshot>>, TError,{data: BodyType<TeamPeriodSnapshotInput>}, TContext>, request?: SecondParameter<typeof customFetch>}
+): UseMutationOptions<Awaited<ReturnType<typeof upsertTeamPeriodSnapshot>>, TError,{data: BodyType<TeamPeriodSnapshotInput>}, TContext> => {
+
+const mutationKey = ['upsertTeamPeriodSnapshot'];
+const {mutation: mutationOptions, request: requestOptions} = options ?
+      options.mutation && 'mutationKey' in options.mutation && options.mutation.mutationKey ?
+      options
+      : {...options, mutation: {...options.mutation, mutationKey}}
+      : {mutation: { mutationKey, }, request: undefined};
+
+
+
+
+      const mutationFn: MutationFunction<Awaited<ReturnType<typeof upsertTeamPeriodSnapshot>>, {data: BodyType<TeamPeriodSnapshotInput>}> = (props) => {
+          const {data} = props ?? {};
+
+          return  upsertTeamPeriodSnapshot(data,requestOptions)
+        }
+
+
+
+
+
+
+  return  { mutationFn, ...mutationOptions }}
+
+    export type UpsertTeamPeriodSnapshotMutationResult = NonNullable<Awaited<ReturnType<typeof upsertTeamPeriodSnapshot>>>
+    export type UpsertTeamPeriodSnapshotMutationBody = BodyType<TeamPeriodSnapshotInput>
+    export type UpsertTeamPeriodSnapshotMutationError = ErrorType<ErrorResponse>
+
+    /**
+ * @summary Write one cumulative realized or mark-to-market team snapshot for an NFL period
+ */
+export const useUpsertTeamPeriodSnapshot = <TError = ErrorType<ErrorResponse>,
+    TContext = unknown>(options?: { mutation?:UseMutationOptions<Awaited<ReturnType<typeof upsertTeamPeriodSnapshot>>, TError,{data: BodyType<TeamPeriodSnapshotInput>}, TContext>, request?: SecondParameter<typeof customFetch>}
+ ): UseMutationResult<
+        Awaited<ReturnType<typeof upsertTeamPeriodSnapshot>>,
+        TError,
+        {data: BodyType<TeamPeriodSnapshotInput>},
+        TContext
+      > => {
+      return useMutation(getUpsertTeamPeriodSnapshotMutationOptions(options));
+    }
+
+export const getGetPayoutRulesUrl = (params: GetPayoutRulesParams,) => {
+  const normalizedParams = new URLSearchParams();
+
+  Object.entries(params || {}).forEach(([key, value]) => {
+
+    if (value !== undefined) {
+      normalizedParams.append(key, value === null ? 'null' : String(value))
+    }
+  });
+
+  const stringifiedParams = normalizedParams.toString();
+
+  return stringifiedParams.length > 0 ? `/api/payout-rules?${stringifiedParams}` : `/api/payout-rules`
+}
+
+/**
+ * @summary List a season Calcutta's payout rules
+ */
+export const getPayoutRules = async (params: GetPayoutRulesParams, options?: Parameters<typeof customFetch>[1]): Promise<PayoutRuleRow[]> => {
+
+  return customFetch<PayoutRuleRow[]>(getGetPayoutRulesUrl(params),
+  {
+    ...options,
+    method: 'GET'
+
+
+  }
+);}
+
+
+
+
+
+export const getGetPayoutRulesQueryKey = (params?: GetPayoutRulesParams,) => {
+    return [
+    `/api/payout-rules`, ...(params ? [params] : [])
+    ] as const;
+    }
+
+
+export const getGetPayoutRulesQueryOptions = <TData = Awaited<ReturnType<typeof getPayoutRules>>, TError = ErrorType<unknown>>(params: GetPayoutRulesParams, options?: { query?:UseQueryOptions<Awaited<ReturnType<typeof getPayoutRules>>, TError, TData>, request?: SecondParameter<typeof customFetch>}
+) => {
+
+const {query: queryOptions, request: requestOptions} = options ?? {};
+
+  const queryKey =  queryOptions?.queryKey ?? getGetPayoutRulesQueryKey(params);
+
+
+
+    const queryFn: QueryFunction<Awaited<ReturnType<typeof getPayoutRules>>> = ({ signal }) => getPayoutRules(params, { signal, ...requestOptions });
+
+
+
+
+
+   return  { queryKey, queryFn, ...queryOptions} as UseQueryOptions<Awaited<ReturnType<typeof getPayoutRules>>, TError, TData> & { queryKey: QueryKey }
+}
+
+export type GetPayoutRulesQueryResult = NonNullable<Awaited<ReturnType<typeof getPayoutRules>>>
+export type GetPayoutRulesQueryError = ErrorType<unknown>
+
+
+/**
+ * @summary List a season Calcutta's payout rules
+ */
+
+export function useGetPayoutRules<TData = Awaited<ReturnType<typeof getPayoutRules>>, TError = ErrorType<unknown>>(
+ params: GetPayoutRulesParams, options?: { query?:UseQueryOptions<Awaited<ReturnType<typeof getPayoutRules>>, TError, TData>, request?: SecondParameter<typeof customFetch>}
+
+ ):  UseQueryResult<TData, TError> & { queryKey: QueryKey } {
+
+  const queryOptions = getGetPayoutRulesQueryOptions(params,options)
+
+  const query = useQuery(queryOptions) as  UseQueryResult<TData, TError> & { queryKey: QueryKey };
+
+  return withQueryKey(query, queryOptions.queryKey);
+}
+
+
+
+
+
+
+
+export const getReplacePayoutRulesUrl = () => {
+
+
+
+
+  return `/api/payout-rules`
+}
+
+/**
+ * @summary Replace all payout rules for a season's canonical Calcutta
+ */
+export const replacePayoutRules = async (payoutRulesUpdate: PayoutRulesUpdate, options?: Parameters<typeof customFetch>[1]): Promise<PayoutRuleRow[]> => {
+
+  return customFetch<PayoutRuleRow[]>(getReplacePayoutRulesUrl(),
+  {
+    ...options,
+    method: 'PUT',
+    headers: { 'Content-Type': 'application/json', ...options?.headers },
+    body: JSON.stringify(payoutRulesUpdate)
+  }
+);}
+
+
+
+
+
+export const getReplacePayoutRulesMutationOptions = <TError = ErrorType<unknown>,
+    TContext = unknown>(options?: { mutation?:UseMutationOptions<Awaited<ReturnType<typeof replacePayoutRules>>, TError,{data: BodyType<PayoutRulesUpdate>}, TContext>, request?: SecondParameter<typeof customFetch>}
+): UseMutationOptions<Awaited<ReturnType<typeof replacePayoutRules>>, TError,{data: BodyType<PayoutRulesUpdate>}, TContext> => {
+
+const mutationKey = ['replacePayoutRules'];
+const {mutation: mutationOptions, request: requestOptions} = options ?
+      options.mutation && 'mutationKey' in options.mutation && options.mutation.mutationKey ?
+      options
+      : {...options, mutation: {...options.mutation, mutationKey}}
+      : {mutation: { mutationKey, }, request: undefined};
+
+
+
+
+      const mutationFn: MutationFunction<Awaited<ReturnType<typeof replacePayoutRules>>, {data: BodyType<PayoutRulesUpdate>}> = (props) => {
+          const {data} = props ?? {};
+
+          return  replacePayoutRules(data,requestOptions)
+        }
+
+
+
+
+
+
+  return  { mutationFn, ...mutationOptions }}
+
+    export type ReplacePayoutRulesMutationResult = NonNullable<Awaited<ReturnType<typeof replacePayoutRules>>>
+    export type ReplacePayoutRulesMutationBody = BodyType<PayoutRulesUpdate>
+    export type ReplacePayoutRulesMutationError = ErrorType<unknown>
+
+    /**
+ * @summary Replace all payout rules for a season's canonical Calcutta
+ */
+export const useReplacePayoutRules = <TError = ErrorType<unknown>,
+    TContext = unknown>(options?: { mutation?:UseMutationOptions<Awaited<ReturnType<typeof replacePayoutRules>>, TError,{data: BodyType<PayoutRulesUpdate>}, TContext>, request?: SecondParameter<typeof customFetch>}
+ ): UseMutationResult<
+        Awaited<ReturnType<typeof replacePayoutRules>>,
+        TError,
+        {data: BodyType<PayoutRulesUpdate>},
+        TContext
+      > => {
+      return useMutation(getReplacePayoutRulesMutationOptions(options));
     }
 
 export const getGetTradesUrl = (params: GetTradesParams,) => {

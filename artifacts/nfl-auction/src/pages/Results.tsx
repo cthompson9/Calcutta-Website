@@ -3,6 +3,7 @@ import {
   useGetResults,
   useGetResultsByOwner,
   useGetBidders,
+  useGetSportPeriods,
 } from "@workspace/api-client-react";
 import type {
   OwnershipSegment,
@@ -22,18 +23,26 @@ export default function Results() {
   const { year, selectedSeason } = useSeason();
   const [tab, setTab] = useState<TabId>("byOwner");
   const [expandedOwner, setExpandedOwner] = useState<number | null>(null);
+  const [period, setPeriod] = useState<number | undefined>(undefined);
+  const [basis, setBasis] = useState<"realized" | "mtm">("mtm");
+  const { data: periods } = useGetSportPeriods({ sport: "NFL" });
 
   const { data: teamResults, isLoading: loadingTeams } = useGetResults({
     season: year,
+    period,
+    basis,
   });
   const { data: ownerResults, isLoading: loadingOwners } = useGetResultsByOwner(
-    { season: year },
+    { season: year, period, basis },
   );
   const { data: bidders } = useGetBidders({});
   const consortiumByBidderId = bidderConsortiums(bidders);
 
   const isLoading = loadingTeams || loadingOwners;
-  const isComplete = selectedSeason?.isComplete ?? false;
+  const isComplete = basis === "realized";
+  const selectedPeriodLabel = period == null
+    ? "latest available period"
+    : periods?.find((item) => item.sequence === period)?.label ?? `Period ${period}`;
 
   return (
     <div className="p-4 md:p-8 space-y-6 max-w-[1400px] mx-auto">
@@ -44,14 +53,44 @@ export default function Results() {
             Calcutta Returns
           </h1>
           <p className="text-muted-foreground font-mono text-sm uppercase tracking-widest">
-            {isComplete
-              ? `Final results · ${year} season`
-              : selectedSeason?.isActive
-                ? `Live season · ${year}`
-                : `Season · ${year}`}
+            {basis === "mtm" ? "Mark-to-market" : "Realized returns"} · {selectedPeriodLabel} · {year} season
           </p>
         </div>
       </header>
+
+      <div className="flex flex-col gap-3 rounded-lg border border-border bg-card p-3 sm:flex-row sm:items-center sm:justify-between">
+        <label className="flex items-center gap-2 text-xs font-mono font-bold uppercase tracking-widest text-muted-foreground">
+          Through period
+          <select
+            value={period ?? ""}
+            onChange={(event) => setPeriod(event.target.value === "" ? undefined : Number(event.target.value))}
+            className="rounded border border-input bg-background px-2 py-1.5 text-foreground outline-none focus:ring-2 focus:ring-ring"
+          >
+            <option value="">Latest available</option>
+            {(periods ?? []).map((item) => (
+              <option key={item.sequence} value={item.sequence}>
+                {item.label}
+              </option>
+            ))}
+          </select>
+        </label>
+        <div className="flex rounded-md border border-input p-0.5">
+          {(["mtm", "realized"] as const).map((value) => (
+            <button
+              key={value}
+              onClick={() => setBasis(value)}
+              className={cn(
+                "rounded px-3 py-1.5 text-xs font-mono font-bold uppercase tracking-widest",
+                basis === value
+                  ? "bg-primary text-primary-foreground"
+                  : "text-muted-foreground hover:text-foreground",
+              )}
+            >
+              {value === "mtm" ? "Mark to market" : "Realized"}
+            </button>
+          ))}
+        </div>
+      </div>
 
       {/* Tabs */}
       <div className="flex border-b border-border">
@@ -1139,9 +1178,7 @@ function ByTeamView({
 
       <p className="text-xs text-muted-foreground font-mono">
         {rowCount} {splitByOwner ? "owner-team rows" : "teams"} ·{" "}
-        {isComplete
-          ? "PO=$50 · DR=$100 · CR=$200 · SB Berth=$400 · Win SB=$800"
-          : "MTM = live valuation"}
+        Return values follow this Calcutta's configured payout rules.
       </p>
     </div>
   );

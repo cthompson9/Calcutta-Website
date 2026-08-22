@@ -5,10 +5,21 @@
  * NFL Auction Manager API
  * OpenAPI spec version: 0.1.0
  */
+import type { GetResultsBasis } from './getResultsBasis';
 import type { GetResultsConference } from './getResultsConference';
 
 export type GetResultsParams = {
 season: number;
+/**
+ * NFL period sequence through which cumulative returns are calculated.
+ * @minimum 0
+ * @maximum 22
+ */
+period?: number;
+/**
+ * Select the snapshot basis used for the focused return view.
+ */
+basis?: GetResultsBasis;
 conference?: GetResultsConference;
 search?: string;
 };

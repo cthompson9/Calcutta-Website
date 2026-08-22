@@ -231,6 +231,149 @@ export interface TeamResultRow {
   seed?: number | null;
 }
 
+export interface SportPeriod {
+  sequence: number;
+  label: string;
+  isPlayoff: boolean;
+}
+
+export type PayoutMetric = typeof PayoutMetric[keyof typeof PayoutMetric];
+
+
+export const PayoutMetric = {
+  win: 'win',
+  pt_diff: 'pt_diff',
+  playoff_berth: 'playoff_berth',
+  div_round: 'div_round',
+  conf_round: 'conf_round',
+  sb_berth: 'sb_berth',
+  win_super_bowl: 'win_super_bowl',
+} as const;
+
+export interface PayoutRuleInput {
+  metric: PayoutMetric;
+  dollarsPerUnit: number;
+  /** @minimum 0 */
+  playoffMultiplier?: number;
+}
+
+export interface PayoutRuleRow {
+  metric: PayoutMetric;
+  dollarsPerUnit: number;
+  /** @minimum 0 */
+  playoffMultiplier: number;
+}
+
+export interface PayoutRulesUpdate {
+  seasonYear: number;
+  /** @minItems 1 */
+  rules: PayoutRuleInput[];
+}
+
+export type TeamPeriodSnapshotInputBasis = typeof TeamPeriodSnapshotInputBasis[keyof typeof TeamPeriodSnapshotInputBasis];
+
+
+export const TeamPeriodSnapshotInputBasis = {
+  realized: 'realized',
+  mtm: 'mtm',
+} as const;
+
+export type TeamPeriodSnapshotInputPlayoffStatus = typeof TeamPeriodSnapshotInputPlayoffStatus[keyof typeof TeamPeriodSnapshotInputPlayoffStatus];
+
+
+export const TeamPeriodSnapshotInputPlayoffStatus = {
+  unknown: 'unknown',
+  alive: 'alive',
+  clinched: 'clinched',
+  eliminated: 'eliminated',
+} as const;
+
+export interface TeamPeriodSnapshotInput {
+  teamId: number;
+  seasonYear: number;
+  /**
+     * @minimum 0
+     * @maximum 22
+     */
+  periodSequence: number;
+  basis: TeamPeriodSnapshotInputBasis;
+  /** @minimum 0 */
+  wins?: number;
+  /** @minimum 0 */
+  losses?: number;
+  /** @minimum 0 */
+  ties?: number;
+  ptDiff?: number;
+  /**
+     * @minimum 0
+     * @maximum 1
+     */
+  playoffBerth?: number;
+  /**
+     * @minimum 0
+     * @maximum 1
+     */
+  divRound?: number;
+  /**
+     * @minimum 0
+     * @maximum 1
+     */
+  confRound?: number;
+  /**
+     * @minimum 0
+     * @maximum 1
+     */
+  sbBerth?: number;
+  /**
+     * @minimum 0
+     * @maximum 1
+     */
+  winSuperBowl?: number;
+  playoffStatus?: TeamPeriodSnapshotInputPlayoffStatus;
+}
+
+export type TeamPeriodSnapshotRowBasis = typeof TeamPeriodSnapshotRowBasis[keyof typeof TeamPeriodSnapshotRowBasis];
+
+
+export const TeamPeriodSnapshotRowBasis = {
+  realized: 'realized',
+  mtm: 'mtm',
+} as const;
+
+export type TeamPeriodSnapshotRowPlayoffStatus = typeof TeamPeriodSnapshotRowPlayoffStatus[keyof typeof TeamPeriodSnapshotRowPlayoffStatus];
+
+
+export const TeamPeriodSnapshotRowPlayoffStatus = {
+  unknown: 'unknown',
+  alive: 'alive',
+  clinched: 'clinched',
+  eliminated: 'eliminated',
+} as const;
+
+export interface TeamPeriodSnapshotRow {
+  teamId: number;
+  seasonYear: number;
+  /**
+     * @minimum 0
+     * @maximum 22
+     */
+  periodSequence: number;
+  periodLabel: string;
+  isPlayoff: boolean;
+  basis: TeamPeriodSnapshotRowBasis;
+  wins: number;
+  losses: number;
+  ties: number;
+  ptDiff: number;
+  playoffBerth: number;
+  divRound: number;
+  confRound: number;
+  sbBerth: number;
+  winSuperBowl: number;
+  playoffStatus: TeamPeriodSnapshotRowPlayoffStatus;
+  grossReturn: number;
+}
+
 export interface OwnerResultRow {
   bidderId: number;
   bidderName: string;
@@ -647,9 +790,27 @@ season?: number | null;
 
 export type GetResultsParams = {
 season: number;
+/**
+ * NFL period sequence through which cumulative returns are calculated.
+ * @minimum 0
+ * @maximum 22
+ */
+period?: number;
+/**
+ * Select the snapshot basis used for the focused return view.
+ */
+basis?: GetResultsBasis;
 conference?: GetResultsConference;
 search?: string;
 };
+
+export type GetResultsBasis = typeof GetResultsBasis[keyof typeof GetResultsBasis];
+
+
+export const GetResultsBasis = {
+  realized: 'realized',
+  mtm: 'mtm',
+} as const;
 
 export type GetResultsConference = typeof GetResultsConference[keyof typeof GetResultsConference];
 
@@ -660,6 +821,32 @@ export const GetResultsConference = {
 } as const;
 
 export type GetResultsByOwnerParams = {
+season: number;
+/**
+ * NFL period sequence through which cumulative returns are calculated.
+ * @minimum 0
+ * @maximum 22
+ */
+period?: number;
+/**
+ * Select the snapshot basis used for the focused return view.
+ */
+basis?: GetResultsByOwnerBasis;
+};
+
+export type GetResultsByOwnerBasis = typeof GetResultsByOwnerBasis[keyof typeof GetResultsByOwnerBasis];
+
+
+export const GetResultsByOwnerBasis = {
+  realized: 'realized',
+  mtm: 'mtm',
+} as const;
+
+export type GetSportPeriodsParams = {
+sport?: string;
+};
+
+export type GetPayoutRulesParams = {
 season: number;
 };
 
@@ -681,3 +868,4 @@ export type GetAuctionSummaryParams = {
  */
 season: number;
 };
+

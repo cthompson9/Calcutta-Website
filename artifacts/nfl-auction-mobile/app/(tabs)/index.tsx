@@ -76,15 +76,19 @@ function OwnerCard({
   owner,
   rank,
   weeklyTotals,
+  basis,
 }: {
   owner: OwnerResultRow;
   rank: number;
   weeklyTotals?: number[];
+  basis: 'realized' | 'mtm';
 }) {
   const colors = useColors();
   const [expanded, setExpanded] = useState<boolean>(false);
+  const value = basis === 'mtm' ? owner.totalMtm : owner.totalRealizedReturn;
+  const net = basis === 'mtm' ? owner.totalMtm - owner.totalCost : owner.totalNetReturn;
   const mtmColor =
-    owner.totalMtm - owner.totalCost >= 0 ? colors.success : colors.destructive;
+    net >= 0 ? colors.success : colors.destructive;
 
   // Week-over-week delta: last two entries in weeklyTotals
   const wowDelta =
@@ -143,19 +147,19 @@ function OwnerCard({
           {/* MTM value + WoW trend */}
           <View style={{ alignItems: 'flex-end', gap: 4 }}>
             <View style={styles.mtmRow}>
-              {weeklyTotals && weeklyTotals.length >= 2 && (
+              {basis === 'mtm' && weeklyTotals && weeklyTotals.length >= 2 && (
                 <Sparkline data={weeklyTotals} color={sparklineColor} />
               )}
               <View style={{ alignItems: 'flex-end' }}>
                 <Text style={[styles.mtmValue, { color: colors.foreground }]}>
-                  {fmtMoney(owner.totalMtm)}
+                  {fmtMoney(value)}
                 </Text>
                 <Text style={[styles.mtmDelta, { color: mtmColor }]}>
-                  {fmtMoneySigned(owner.totalMtm - owner.totalCost)}
+                  {fmtMoneySigned(net)}
                 </Text>
               </View>
             </View>
-            {wowDelta !== null && (
+            {basis === 'mtm' && wowDelta !== null && (
               <View style={styles.wowRow}>
                 <Feather
                   name={wowDelta >= 0 ? 'trending-up' : 'trending-down'}
@@ -245,7 +249,7 @@ function OwnerCard({
                   </Text>
                 </View>
                 <Text style={[styles.teamListMtm, { color: colors.foreground }]}>
-                  {fmtMoney(t.markToMarket)}
+                  {fmtMoney(basis === 'mtm' ? t.markToMarket : t.realizedReturn)}
                 </Text>
               </View>
             );
@@ -344,9 +348,11 @@ function OwnershipBreakdown({
 
 // ── Team row ─────────────────────────────────────────────────────────────────
 
-function TeamCard({ team }: { team: TeamResultRow }) {
+function TeamCard({ team, basis }: { team: TeamResultRow; basis: 'realized' | 'mtm' }) {
   const colors = useColors();
-  const netColor = team.netReturn >= 0 ? colors.success : colors.destructive;
+  const value = basis === 'mtm' ? team.markToMarket : team.realizedReturn;
+  const net = basis === 'mtm' ? team.markToMarket - team.cost : team.netReturn;
+  const netColor = net >= 0 ? colors.success : colors.destructive;
 
   return (
     <View
@@ -377,15 +383,17 @@ function TeamCard({ team }: { team: TeamResultRow }) {
           <Text style={[styles.statValue, { color: colors.foreground }]}>{team.wins}</Text>
         </View>
         <View style={styles.stat}>
-          <Text style={[styles.statLabel, { color: colors.mutedForeground }]}>MTM</Text>
+          <Text style={[styles.statLabel, { color: colors.mutedForeground }]}>
+            {basis === 'mtm' ? 'MTM' : 'RETURN'}
+          </Text>
           <Text style={[styles.statValue, { color: colors.foreground }]}>
-            {fmtMoney(team.markToMarket)}
+            {fmtMoney(value)}
           </Text>
         </View>
         <View style={styles.stat}>
           <Text style={[styles.statLabel, { color: colors.mutedForeground }]}>NET</Text>
           <Text style={[styles.statValue, { color: netColor }]}>
-            {fmtMoneySigned(team.netReturn)}
+            {fmtMoneySigned(net)}
           </Text>
         </View>
       </View>
@@ -399,9 +407,11 @@ export default function StandingsScreen() {
   const colors = useColors();
   const { season } = useApp();
   const [mode, setMode] = useState<ViewMode>('owner');
+  const [period, setPeriod] = useState<number | undefined>(undefined);
+  const [basis, setBasis] = useState<'realized' | 'mtm'>('mtm');
 
-  const ownerQuery = useGetResultsByOwner({ season });
-  const teamQuery = useGetResults({ season });
+  const ownerQuery = useGetResultsByOwner({ season, period, basis });
+  const teamQuery = useGetResults({ season, period, basis });
   const mtmQuery = useGetMtmSnapshots({ season });
 
   // Build bidderName → weeklyTotals lookup from MTM snapshot data
@@ -433,6 +443,51 @@ export default function StandingsScreen() {
           onChange={setMode}
         />
       </View>
+      <View style={styles.snapshotControls}>
+        <View style={styles.periodChipRow}>
+          {[
+            { label: 'Latest', value: undefined },
+            { label: 'Wk 0', value: 0 },
+            { label: 'Wk 18', value: 18 },
+            { label: 'SB', value: 22 },
+          ].map((option) => (
+            <Pressable
+              key={option.label}
+              onPress={() => setPeriod(option.value)}
+              style={[
+                styles.snapshotChip,
+                {
+                  borderColor: period === option.value ? colors.primary : colors.border,
+                  backgroundColor: period === option.value ? colors.primary : 'transparent',
+                },
+              ]}
+            >
+              <Text style={{ color: period === option.value ? colors.primaryForeground : colors.mutedForeground, fontSize: 11, fontFamily: 'Inter_600SemiBold' }}>
+                {option.label}
+              </Text>
+            </Pressable>
+          ))}
+        </View>
+        <View style={styles.periodChipRow}>
+          {(['mtm', 'realized'] as const).map((option) => (
+            <Pressable
+              key={option}
+              onPress={() => setBasis(option)}
+              style={[
+                styles.snapshotChip,
+                {
+                  borderColor: basis === option ? colors.primary : colors.border,
+                  backgroundColor: basis === option ? colors.primary : 'transparent',
+                },
+              ]}
+            >
+              <Text style={{ color: basis === option ? colors.primaryForeground : colors.mutedForeground, fontSize: 11, fontFamily: 'Inter_600SemiBold' }}>
+                {option === 'mtm' ? 'MARK TO MARKET' : 'REALIZED'}
+              </Text>
+            </Pressable>
+          ))}
+        </View>
+      </View>
 
       {active.isLoading ? (
         <LoadingState />
@@ -447,6 +502,7 @@ export default function StandingsScreen() {
               owner={item}
               rank={index + 1}
               weeklyTotals={mtmByName[item.bidderName]}
+              basis={basis}
             />
           )}
           contentContainerStyle={[styles.listContent, { paddingBottom: listBottomPad }]}
@@ -470,7 +526,7 @@ export default function StandingsScreen() {
         <FlatList
           data={teamQuery.data ?? []}
           keyExtractor={(item) => String(item.teamId)}
-          renderItem={({ item }) => <TeamCard team={item} />}
+          renderItem={({ item }) => <TeamCard team={item} basis={basis} />}
           contentContainerStyle={[styles.listContent, { paddingBottom: listBottomPad }]}
           scrollEnabled={(teamQuery.data ?? []).length > 0}
           refreshControl={
@@ -608,6 +664,21 @@ const styles = StyleSheet.create({
   teamListMtm: {
     fontSize: 14,
     fontFamily: 'Inter_600SemiBold',
+  },
+  snapshotControls: {
+    paddingHorizontal: 16,
+    paddingBottom: 8,
+    gap: 6,
+  },
+  periodChipRow: {
+    flexDirection: 'row',
+    gap: 6,
+  },
+  snapshotChip: {
+    borderWidth: StyleSheet.hairlineWidth,
+    borderRadius: 999,
+    paddingHorizontal: 10,
+    paddingVertical: 5,
   },
   ownershipBreakdown: {
     gap: 4,

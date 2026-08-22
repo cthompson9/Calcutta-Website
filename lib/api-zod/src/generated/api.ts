@@ -255,8 +255,15 @@ export const DeleteBidderResponse = zod.void()
 /**
  * @summary Calcutta Returns by team for a season
  */
+export const getResultsQueryPeriodMin = 0;
+export const getResultsQueryPeriodMax = 22;
+
+
+
 export const GetResultsQueryParams = zod.object({
   "season": zod.coerce.number(),
+  "period": zod.coerce.number().int().min(getResultsQueryPeriodMin).max(getResultsQueryPeriodMax).optional().describe('NFL period sequence through which cumulative returns are calculated.'),
+  "basis": zod.enum(['realized', 'mtm']).optional().describe('Select the snapshot basis used for the focused return view.'),
   "conference": zod.enum(['AFC', 'NFC']).optional(),
   "search": zod.coerce.string().optional()
 })
@@ -306,8 +313,16 @@ export const GetResultsResponse = zod.array(GetResultsResponseItem)
 /**
  * @summary Calcutta Returns aggregated by owner for a season
  */
+export const getResultsByOwnerQueryPeriodMin = 0;
+export const getResultsByOwnerQueryPeriodMax = 22;
+export const getResultsByOwnerQueryPeriodMultipleOf = 1;
+
+
+
 export const GetResultsByOwnerQueryParams = zod.object({
-  "season": zod.coerce.number()
+  "season": zod.coerce.number(),
+  "period": zod.coerce.number().min(getResultsByOwnerQueryPeriodMin).max(getResultsByOwnerQueryPeriodMax).multipleOf(getResultsByOwnerQueryPeriodMultipleOf).optional().describe('NFL period sequence through which cumulative returns are calculated.'),
+  "basis": zod.enum(['realized', 'mtm']).optional().describe('Select the snapshot basis used for the focused return view.')
 })
 
 export const GetResultsByOwnerResponseItem = zod.object({
@@ -434,6 +449,150 @@ export const UpsertTeamResultResponse = zod.object({
   "markToMarket": zod.number(),
   "seed": zod.number().nullish().describe('Playoff seed within conference (1–7). Null if team missed playoffs or seed not yet set.')
 })
+
+
+/**
+ * @summary List shared sport periods
+ */
+export const getSportPeriodsQuerySportDefault = `NFL`;
+
+export const GetSportPeriodsQueryParams = zod.object({
+  "sport": zod.coerce.string().default(getSportPeriodsQuerySportDefault)
+})
+
+export const getSportPeriodsResponseSequenceMultipleOf = 1;
+
+
+
+export const GetSportPeriodsResponseItem = zod.object({
+  "sequence": zod.number().multipleOf(getSportPeriodsResponseSequenceMultipleOf),
+  "label": zod.string(),
+  "isPlayoff": zod.boolean()
+})
+export const GetSportPeriodsResponse = zod.array(GetSportPeriodsResponseItem)
+
+
+/**
+ * @summary Write one cumulative realized or mark-to-market team snapshot for an NFL period
+ */
+export const upsertTeamPeriodSnapshotBodyPeriodSequenceMin = 0;
+export const upsertTeamPeriodSnapshotBodyPeriodSequenceMax = 22;
+export const upsertTeamPeriodSnapshotBodyPeriodSequenceMultipleOf = 1;
+
+export const upsertTeamPeriodSnapshotBodyWinsMin = 0;
+
+export const upsertTeamPeriodSnapshotBodyLossesMin = 0;
+
+export const upsertTeamPeriodSnapshotBodyTiesMin = 0;
+
+export const upsertTeamPeriodSnapshotBodyPlayoffBerthMin = 0;
+export const upsertTeamPeriodSnapshotBodyPlayoffBerthMax = 1;
+
+export const upsertTeamPeriodSnapshotBodyDivRoundMin = 0;
+export const upsertTeamPeriodSnapshotBodyDivRoundMax = 1;
+
+export const upsertTeamPeriodSnapshotBodyConfRoundMin = 0;
+export const upsertTeamPeriodSnapshotBodyConfRoundMax = 1;
+
+export const upsertTeamPeriodSnapshotBodySbBerthMin = 0;
+export const upsertTeamPeriodSnapshotBodySbBerthMax = 1;
+
+export const upsertTeamPeriodSnapshotBodyWinSuperBowlMin = 0;
+export const upsertTeamPeriodSnapshotBodyWinSuperBowlMax = 1;
+
+
+
+export const UpsertTeamPeriodSnapshotBody = zod.object({
+  "teamId": zod.number(),
+  "seasonYear": zod.number(),
+  "periodSequence": zod.number().min(upsertTeamPeriodSnapshotBodyPeriodSequenceMin).max(upsertTeamPeriodSnapshotBodyPeriodSequenceMax).multipleOf(upsertTeamPeriodSnapshotBodyPeriodSequenceMultipleOf),
+  "basis": zod.enum(['realized', 'mtm']),
+  "wins": zod.number().min(upsertTeamPeriodSnapshotBodyWinsMin).optional(),
+  "losses": zod.number().min(upsertTeamPeriodSnapshotBodyLossesMin).optional(),
+  "ties": zod.number().min(upsertTeamPeriodSnapshotBodyTiesMin).optional(),
+  "ptDiff": zod.number().optional(),
+  "playoffBerth": zod.number().min(upsertTeamPeriodSnapshotBodyPlayoffBerthMin).max(upsertTeamPeriodSnapshotBodyPlayoffBerthMax).optional(),
+  "divRound": zod.number().min(upsertTeamPeriodSnapshotBodyDivRoundMin).max(upsertTeamPeriodSnapshotBodyDivRoundMax).optional(),
+  "confRound": zod.number().min(upsertTeamPeriodSnapshotBodyConfRoundMin).max(upsertTeamPeriodSnapshotBodyConfRoundMax).optional(),
+  "sbBerth": zod.number().min(upsertTeamPeriodSnapshotBodySbBerthMin).max(upsertTeamPeriodSnapshotBodySbBerthMax).optional(),
+  "winSuperBowl": zod.number().min(upsertTeamPeriodSnapshotBodyWinSuperBowlMin).max(upsertTeamPeriodSnapshotBodyWinSuperBowlMax).optional(),
+  "playoffStatus": zod.enum(['unknown', 'alive', 'clinched', 'eliminated']).optional()
+})
+
+export const upsertTeamPeriodSnapshotResponsePeriodSequenceMin = 0;
+export const upsertTeamPeriodSnapshotResponsePeriodSequenceMax = 22;
+export const upsertTeamPeriodSnapshotResponsePeriodSequenceMultipleOf = 1;
+
+
+
+export const UpsertTeamPeriodSnapshotResponse = zod.object({
+  "teamId": zod.number(),
+  "seasonYear": zod.number(),
+  "periodSequence": zod.number().min(upsertTeamPeriodSnapshotResponsePeriodSequenceMin).max(upsertTeamPeriodSnapshotResponsePeriodSequenceMax).multipleOf(upsertTeamPeriodSnapshotResponsePeriodSequenceMultipleOf),
+  "periodLabel": zod.string(),
+  "isPlayoff": zod.boolean(),
+  "basis": zod.enum(['realized', 'mtm']),
+  "wins": zod.number(),
+  "losses": zod.number(),
+  "ties": zod.number(),
+  "ptDiff": zod.number(),
+  "playoffBerth": zod.number(),
+  "divRound": zod.number(),
+  "confRound": zod.number(),
+  "sbBerth": zod.number(),
+  "winSuperBowl": zod.number(),
+  "playoffStatus": zod.enum(['unknown', 'alive', 'clinched', 'eliminated']),
+  "grossReturn": zod.number()
+})
+
+
+/**
+ * @summary List a season Calcutta's payout rules
+ */
+export const GetPayoutRulesQueryParams = zod.object({
+  "season": zod.coerce.number()
+})
+
+export const getPayoutRulesResponsePlayoffMultiplierMin = 0;
+
+
+
+export const GetPayoutRulesResponseItem = zod.object({
+  "metric": zod.enum(['win', 'pt_diff', 'playoff_berth', 'div_round', 'conf_round', 'sb_berth', 'win_super_bowl']),
+  "dollarsPerUnit": zod.number(),
+  "playoffMultiplier": zod.number().min(getPayoutRulesResponsePlayoffMultiplierMin)
+})
+export const GetPayoutRulesResponse = zod.array(GetPayoutRulesResponseItem)
+
+
+/**
+ * @summary Replace all payout rules for a season's canonical Calcutta
+ */
+export const replacePayoutRulesBodyRulesItemPlayoffMultiplierDefault = 2;
+export const replacePayoutRulesBodyRulesItemPlayoffMultiplierMin = 0;
+
+
+
+
+export const ReplacePayoutRulesBody = zod.object({
+  "seasonYear": zod.number(),
+  "rules": zod.array(zod.object({
+  "metric": zod.enum(['win', 'pt_diff', 'playoff_berth', 'div_round', 'conf_round', 'sb_berth', 'win_super_bowl']),
+  "dollarsPerUnit": zod.number(),
+  "playoffMultiplier": zod.number().min(replacePayoutRulesBodyRulesItemPlayoffMultiplierMin).default(replacePayoutRulesBodyRulesItemPlayoffMultiplierDefault)
+})).min(1)
+})
+
+export const replacePayoutRulesResponsePlayoffMultiplierMin = 0;
+
+
+
+export const ReplacePayoutRulesResponseItem = zod.object({
+  "metric": zod.enum(['win', 'pt_diff', 'playoff_berth', 'div_round', 'conf_round', 'sb_berth', 'win_super_bowl']),
+  "dollarsPerUnit": zod.number(),
+  "playoffMultiplier": zod.number().min(replacePayoutRulesResponsePlayoffMultiplierMin)
+})
+export const ReplacePayoutRulesResponse = zod.array(ReplacePayoutRulesResponseItem)
 
 
 /**
@@ -772,4 +931,5 @@ export const ImportDraftOrderResponse = zod.object({
   "importedOwners": zod.number(),
   "source": zod.string()
 })
+
 

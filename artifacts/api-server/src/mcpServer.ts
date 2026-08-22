@@ -21,6 +21,11 @@ import {
   teamBiddersTable,
   ownershipAdjustmentsTable,
   consortiaTable,
+  calcuttasTable,
+  calcuttaEntriesTable,
+  sportPeriodsTable,
+  teamPeriodSnapshotsTable,
+  payoutRulesTable,
 } from "@workspace/db";
 import type { Router, IRouter, Request, Response } from "express";
 import { Router as ExpressRouter } from "express";
@@ -31,6 +36,14 @@ import {
 } from "./lib/ownershipShares";
 import { currentYearInNewYork, todayInNewYork } from "./lib/newYorkTime";
 import { writeManualMtmSnapshot } from "./lib/manualMtm";
+import {
+  NFL_SPORT,
+  ensureNflSportPeriods,
+  getOrCreateCalcuttaEntry,
+  getOrCreateCanonicalCalcutta,
+  hasConfiguredPayoutRules,
+  loadCalculatedTeamReturns,
+} from "./lib/calcuttaReturns";
 
 // ─── DB helpers ─────────────────────────────────────────────────────────────
 
@@ -212,6 +225,8 @@ async function getTeamOwners(teamId: number, seasonId: number): Promise<string[]
 /** Aggregate cost/return/mtm for a bidder using effective ownership (post-trades). */
 async function getOwnerAgg(bidderId: number, seasonId: number) {
   const ownership = await loadSeasonOwnership(seasonId);
+  const calculatedReturns = await loadCalculatedTeamReturns(seasonId);
+  const payoutRulesConfigured = await hasConfiguredPayoutRules(seasonId);
   const teamMap = ownership.byBidder.get(bidderId);
   if (!teamMap) return { totalCost: 0, totalReturn: 0, totalMtm: 0 };
 
@@ -235,8 +250,15 @@ async function getOwnerAgg(bidderId: number, seasonId: number) {
         .where(and(eq(teamResultsTable.teamId, teamId), eq(teamResultsTable.seasonId, seasonId)))
         .limit(1);
       if (resultRows[0]) {
-        totalReturn += parseFloat(resultRows[0].realizedReturn) * effectiveShare;
-        totalMtm += parseFloat(resultRows[0].markToMarket) * effectiveShare;
+        const calculated = calculatedReturns.get(teamId);
+        const realized = payoutRulesConfigured
+          ? (calculated?.realized?.grossReturn ?? 0)
+          : parseFloat(resultRows[0].realizedReturn);
+        const mtm = payoutRulesConfigured
+          ? (calculated?.mtm?.grossReturn ?? 0)
+          : parseFloat(resultRows[0].markToMarket);
+        totalReturn += realized * effectiveShare;
+        totalMtm += mtm * effectiveShare;
       }
     }
   }
@@ -359,7 +381,15 @@ function buildMcpServer() {
       const sid = await resolveSeasonId(year);
       if (!sid) return text(null);
       const r = await getTeamResult(t.id, sid);
-      return text(r ? parseFloat(r.realizedReturn) : null);
+      const calculated = (await loadCalculatedTeamReturns(sid)).get(t.id);
+      const payoutRulesConfigured = await hasConfiguredPayoutRules(sid);
+      return text(
+        payoutRulesConfigured
+          ? (calculated?.realized?.grossReturn ?? 0)
+          : r
+            ? parseFloat(r.realizedReturn)
+            : null,
+      );
     },
   );
 
@@ -374,7 +404,15 @@ function buildMcpServer() {
       const sid = await resolveSeasonId(year);
       if (!sid) return text(null);
       const r = await getTeamResult(t.id, sid);
-      return text(r ? parseFloat(r.markToMarket) : null);
+      const calculated = (await loadCalculatedTeamReturns(sid)).get(t.id);
+      const payoutRulesConfigured = await hasConfiguredPayoutRules(sid);
+      return text(
+        payoutRulesConfigured
+          ? (calculated?.mtm?.grossReturn ?? 0)
+          : r
+            ? parseFloat(r.markToMarket)
+            : null,
+      );
     },
   );
 
@@ -838,6 +876,206 @@ function buildMcpServer() {
       return text(
         `Trade #${tradeId} has been ${status.toUpperCase()}. ${status === "approved" ? "It now affects owner standings and returns." : "It has been rejected and will not affect results."}`,
       );
+    },
+  );
+
+  // ── Period-return tools ───────────────────────────────────────────────────
+
+  server.tool(
+    "get_team_period_return",
+    "Returns the calculated cumulative realized or mark-to-market return through an NFL period. The Calcutta must have payout rules configured.",
+    {
+      team: z.string().describe("Full or partial team name"),
+      basis: z.enum(["realized", "mtm"]).default("realized"),
+      period: z.number().int().min(0).max(22).optional(),
+      season: z.number().optional().describe("Season year, defaulting to the active season"),
+    },
+    async ({ team, basis, period, season }) => {
+      const t = await findTeam(team);
+      if (!t) return text(`Team not found: ${team}`);
+      const year = season ?? await defaultSeasonYear();
+      const sid = await resolveSeasonId(year);
+      if (!sid) return text(`Season ${year} not found`);
+      const calculated = (await loadCalculatedTeamReturns(sid, period)).get(t.id);
+      if (!await hasConfiguredPayoutRules(sid)) {
+        return text(`No payout rules are configured for ${year}; no calculated period return is available.`);
+      }
+      const value = calculated?.[basis];
+      return text(value
+        ? JSON.stringify({
+            team: t.name,
+            season: year,
+            basis,
+            throughPeriod: value.latest.sequence,
+            periodLabel: value.latest.label,
+            grossReturn: value.grossReturn,
+            playoffStatus: value.latest.playoffStatus,
+          })
+        : null);
+    },
+  );
+
+  server.tool(
+    "set_team_period_snapshot",
+    "Upserts a cumulative NFL period snapshot used to calculate returns from payout rules. Requires ADMIN_API_KEY.",
+    {
+      team: z.string().describe("Full or partial team name"),
+      season: z.number().describe("Season year"),
+      period: z.number().int().min(0).max(22).describe("NFL period: Week 0–18, then 19–22 for playoffs"),
+      basis: z.enum(["realized", "mtm"]),
+      wins: z.number().nonnegative().default(0),
+      losses: z.number().nonnegative().default(0),
+      ties: z.number().nonnegative().default(0),
+      ptDiff: z.number().default(0),
+      playoffBerth: z.number().min(0).max(1).default(0),
+      divRound: z.number().min(0).max(1).default(0),
+      confRound: z.number().min(0).max(1).default(0),
+      sbBerth: z.number().min(0).max(1).default(0),
+      winSuperBowl: z.number().min(0).max(1).default(0),
+      playoffStatus: z.enum(["unknown", "alive", "clinched", "eliminated"]).default("unknown"),
+      adminKey: z.string().describe("Admin API key"),
+    },
+    async ({ team, season, period, basis, adminKey, ...metrics }) => {
+      if (!process.env["ADMIN_API_KEY"] || adminKey !== process.env["ADMIN_API_KEY"]) {
+        return text("Error: Invalid admin key. Only the pool admin can write period snapshots.");
+      }
+      const t = await findTeam(team);
+      if (!t) return text(`Team not found: ${team}`);
+      const sid = await resolveSeasonId(season);
+      if (!sid) return text(`Season ${season} not found`);
+      const saved = await db.transaction(async (tx) => {
+        await tx.execute(sql`select pg_advisory_xact_lock(${OWNERSHIP_SEASON_LOCK_NAMESPACE}, ${sid})`);
+        await ensureNflSportPeriods(tx);
+        const auctioned = await tx
+          .select({ teamId: teamSeasonAuctionsTable.teamId })
+          .from(teamSeasonAuctionsTable)
+          .where(and(eq(teamSeasonAuctionsTable.teamId, t.id), eq(teamSeasonAuctionsTable.seasonId, sid)))
+          .limit(1);
+        if (!auctioned[0]) return null;
+        const calcutta = await getOrCreateCanonicalCalcutta(tx, { seasonId: sid, year: season });
+        const entry = await getOrCreateCalcuttaEntry(tx, { calcuttaId: calcutta.id, teamId: t.id });
+        const [periodRow] = await tx
+          .select({
+            id: sportPeriodsTable.id,
+            label: sportPeriodsTable.label,
+            isPlayoff: sportPeriodsTable.isPlayoff,
+          })
+          .from(sportPeriodsTable)
+          .where(and(eq(sportPeriodsTable.sport, NFL_SPORT), eq(sportPeriodsTable.sequence, period)));
+        if (!periodRow) throw new Error("NFL period was not seeded.");
+        if (periodRow.isPlayoff) {
+          const baseline = await tx
+            .select({ id: teamPeriodSnapshotsTable.id })
+            .from(teamPeriodSnapshotsTable)
+            .innerJoin(
+              sportPeriodsTable,
+              eq(sportPeriodsTable.id, teamPeriodSnapshotsTable.periodId),
+            )
+            .where(
+              and(
+                eq(teamPeriodSnapshotsTable.entryId, entry.id),
+                eq(teamPeriodSnapshotsTable.basis, basis),
+                eq(sportPeriodsTable.sport, NFL_SPORT),
+                eq(sportPeriodsTable.sequence, 18),
+              ),
+            )
+            .limit(1);
+          if (!baseline[0]) return "missing_regular_baseline";
+        }
+        const values = {
+          entryId: entry.id,
+          periodId: periodRow.id,
+          basis,
+          wins: metrics.wins.toString(),
+          losses: metrics.losses.toString(),
+          ties: metrics.ties.toString(),
+          ptDiff: metrics.ptDiff.toString(),
+          playoffBerth: metrics.playoffBerth.toString(),
+          divRound: metrics.divRound.toString(),
+          confRound: metrics.confRound.toString(),
+          sbBerth: metrics.sbBerth.toString(),
+          winSuperBowl: metrics.winSuperBowl.toString(),
+          playoffStatus: metrics.playoffStatus,
+          capturedAt: new Date(),
+        };
+        await tx.insert(teamPeriodSnapshotsTable).values(values).onConflictDoUpdate({
+          target: [teamPeriodSnapshotsTable.entryId, teamPeriodSnapshotsTable.periodId, teamPeriodSnapshotsTable.basis],
+          set: values,
+        });
+        return periodRow.label;
+      });
+      if (!saved) return text(`Error: ${t.name} was not auctioned in ${season}.`);
+      if (saved === "missing_regular_baseline") {
+        return text("Error: Save a Week 18 cumulative baseline for this team and basis before recording a playoff snapshot.");
+      }
+      const grossReturn = (await loadCalculatedTeamReturns(sid, period)).get(t.id)?.[basis]?.grossReturn ?? 0;
+      return text(JSON.stringify({ team: t.name, season, basis, period, periodLabel: saved, grossReturn }));
+    },
+  );
+
+  server.tool(
+    "get_calcutta_payout_rules",
+    "Lists the configured return payout rules for a season's canonical NFL Calcutta.",
+    { season: z.number().optional().describe("Season year, defaulting to the active season") },
+    async ({ season }) => {
+      const year = season ?? await defaultSeasonYear();
+      const sid = await resolveSeasonId(year);
+      if (!sid) return text(`Season ${year} not found`);
+      const [calcutta] = await db
+        .select({ id: calcuttasTable.id })
+        .from(calcuttasTable)
+        .where(and(eq(calcuttasTable.seasonId, sid), eq(calcuttasTable.sport, NFL_SPORT), eq(calcuttasTable.isCanonical, true)));
+      if (!calcutta) return text("[]");
+      const rules = await db
+        .select({
+          metric: payoutRulesTable.metric,
+          dollarsPerUnit: payoutRulesTable.dollarsPerUnit,
+          playoffMultiplier: payoutRulesTable.playoffMultiplier,
+        })
+        .from(payoutRulesTable)
+        .where(eq(payoutRulesTable.calcuttaId, calcutta.id));
+      return text(JSON.stringify(rules.map((rule) => ({
+        metric: rule.metric,
+        dollarsPerUnit: Number(rule.dollarsPerUnit),
+        playoffMultiplier: Number(rule.playoffMultiplier),
+      }))));
+    },
+  );
+
+  server.tool(
+    "set_calcutta_payout_rules",
+    "Replaces every payout rule for a season's canonical NFL Calcutta. Rates are dollars per cumulative metric unit; the playoff multiplier applies to changes recorded in playoff periods. Requires ADMIN_API_KEY.",
+    {
+      season: z.number().describe("Season year"),
+      rules: z.array(z.object({
+        metric: z.enum(["win", "pt_diff", "playoff_berth", "div_round", "conf_round", "sb_berth", "win_super_bowl"]),
+        dollarsPerUnit: z.number(),
+        playoffMultiplier: z.number().nonnegative().default(2),
+      })).min(1),
+      adminKey: z.string().describe("Admin API key"),
+    },
+    async ({ season, rules, adminKey }) => {
+      if (!process.env["ADMIN_API_KEY"] || adminKey !== process.env["ADMIN_API_KEY"]) {
+        return text("Error: Invalid admin key. Only the pool admin can configure payout rules.");
+      }
+      const sid = await resolveSeasonId(season);
+      if (!sid) return text(`Season ${season} not found`);
+      if (new Set(rules.map((rule) => rule.metric)).size !== rules.length) {
+        return text("Error: Each payout metric may only appear once.");
+      }
+      await db.transaction(async (tx) => {
+        await tx.execute(sql`select pg_advisory_xact_lock(${OWNERSHIP_SEASON_LOCK_NAMESPACE}, ${sid})`);
+        await ensureNflSportPeriods(tx);
+        const calcutta = await getOrCreateCanonicalCalcutta(tx, { seasonId: sid, year: season });
+        await tx.delete(payoutRulesTable).where(eq(payoutRulesTable.calcuttaId, calcutta.id));
+        await tx.insert(payoutRulesTable).values(rules.map((rule) => ({
+          calcuttaId: calcutta.id,
+          metric: rule.metric,
+          dollarsPerUnit: rule.dollarsPerUnit.toString(),
+          playoffMultiplier: rule.playoffMultiplier.toString(),
+        })));
+      });
+      return text(`Saved ${rules.length} payout rule${rules.length === 1 ? "" : "s"} for ${season}.`);
     },
   );
 
