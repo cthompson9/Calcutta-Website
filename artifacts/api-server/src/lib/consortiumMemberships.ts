@@ -1,6 +1,5 @@
-import { and, eq, inArray, isNotNull, isNull, lte, or, sql } from "drizzle-orm";
+import { and, eq, inArray, isNull, lte, or, sql } from "drizzle-orm";
 import {
-  biddersTable,
   calcuttasTable,
   consortiumMembershipsTable,
   consortiaTable,
@@ -9,63 +8,6 @@ import {
 } from "@workspace/db";
 
 export type MembershipView = "historical" | "current";
-
-async function loadLegacyBidderConsortiums(
-  bidderIds?: number[],
-): Promise<Map<number, string>> {
-  if (bidderIds && bidderIds.length === 0) return new Map();
-
-  const legacyRows = await db
-    .select({
-      bidderId: biddersTable.id,
-      consortium: consortiaTable.name,
-    })
-    .from(biddersTable)
-    .innerJoin(
-      consortiaTable,
-      eq(consortiaTable.id, biddersTable.legacyConsortiumId),
-    )
-    .where(
-      bidderIds
-        ? inArray(biddersTable.id, bidderIds)
-        : isNotNull(biddersTable.legacyConsortiumId),
-    );
-  return new Map(
-    legacyRows.map((membership) => [membership.bidderId, membership.consortium]),
-  );
-}
-
-async function loadBiddersWithMembershipHistory(
-  bidderIds?: number[],
-): Promise<Set<number>> {
-  if (bidderIds && bidderIds.length === 0) return new Set();
-
-  const memberships = await db
-    .select({ bidderId: consortiumMembershipsTable.bidderId })
-    .from(consortiumMembershipsTable)
-    .where(
-      bidderIds
-        ? inArray(consortiumMembershipsTable.bidderId, bidderIds)
-        : undefined,
-    );
-  return new Set(memberships.map((membership) => membership.bidderId));
-}
-
-function preserveLegacyFallback(
-  memberships: Map<number, string>,
-  legacyMemberships: Map<number, string>,
-  biddersWithMembershipHistory: Set<number>,
-): Map<number, string> {
-  for (const [bidderId, consortium] of legacyMemberships) {
-    if (
-      !memberships.has(bidderId) &&
-      !biddersWithMembershipHistory.has(bidderId)
-    ) {
-      memberships.set(bidderId, consortium);
-    }
-  }
-  return memberships;
-}
 
 /**
  * Loads the current roster for the bidder directory and commissioner tools.
@@ -96,17 +38,8 @@ export async function loadCurrentBidderConsortiums(
         : isNull(consortiumMembershipsTable.toDate),
     );
 
-  const currentMemberships = new Map(
+  return new Map(
     memberships.map((membership) => [membership.bidderId, membership.consortium]),
-  );
-  const [legacyMemberships, biddersWithMembershipHistory] = await Promise.all([
-    loadLegacyBidderConsortiums(bidderIds),
-    loadBiddersWithMembershipHistory(bidderIds),
-  ]);
-  return preserveLegacyFallback(
-    currentMemberships,
-    legacyMemberships,
-    biddersWithMembershipHistory,
   );
 }
 
@@ -187,15 +120,7 @@ export async function loadSeasonConsortiums(
   for (const membership of memberships) {
     result.set(membership.bidderId, membership.consortium);
   }
-  const [legacyMemberships, biddersWithMembershipHistory] = await Promise.all([
-    loadLegacyBidderConsortiums(),
-    loadBiddersWithMembershipHistory(),
-  ]);
-  return preserveLegacyFallback(
-    result as Map<number, string>,
-    legacyMemberships,
-    biddersWithMembershipHistory,
-  );
+  return result;
 }
 
 /**
@@ -257,13 +182,5 @@ export async function loadCalcuttaConsortiums(
   for (const membership of memberships) {
     result.set(membership.bidderId, membership.consortium);
   }
-  const [legacyMemberships, biddersWithMembershipHistory] = await Promise.all([
-    loadLegacyBidderConsortiums(),
-    loadBiddersWithMembershipHistory(),
-  ]);
-  return preserveLegacyFallback(
-    result as Map<number, string>,
-    legacyMemberships,
-    biddersWithMembershipHistory,
-  );
+  return result;
 }

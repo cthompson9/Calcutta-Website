@@ -15,10 +15,10 @@ Do not run ad-hoc production DDL, database push commands against production, or
 startup-time migrations. The Publish flow is the supported production schema
 change path and will surface destructive or rename operations for confirmation.
 
-## Legacy consortium membership bridge
+## Legacy consortium membership bridge (completed)
 
-When moving from the legacy `bidders.consortium_id` relation to dated
-`consortium_memberships`, use a bridge release:
+The production move from the legacy `bidders.consortium_id` relation to dated
+`consortium_memberships` used this bridge release:
 
 1. Publish the additive schema with both the legacy column and the new
    membership table present. Do not accept a Publish diff that removes the
@@ -37,6 +37,10 @@ the dated record is authoritative.
 
 Never use the Publish UI's overwrite-data option for this transition: it
 replaces production data rather than copying the needed assignments.
+
+Production validation completed with 15 bidder assignments, 11 consortiums,
+and `1900-01-01` as the earliest membership date. The temporary fallback and
+one-shot migration operation are removed in the cleanup release.
 
 ## Import operations
 
