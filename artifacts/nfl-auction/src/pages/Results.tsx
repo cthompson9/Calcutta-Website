@@ -273,12 +273,47 @@ function calculateTeamExposure(team: TeamResultRow): number {
   return Math.round(exposure * 100) / 100;
 }
 
+type SignedTeamPosition = {
+  bidderId: number;
+  bidderName: string;
+  ownershipShare: number;
+};
+
+/**
+ * The team endpoint's `owners` field intentionally contains only current,
+ * positive owners. Results also carries the complete signed transaction
+ * history, which lets the report expose leveraged longs and shorts alongside
+ * those owners without redefining who is a current owner.
+ */
+function effectivePositionsForTeam(
+  team: Pick<TeamResultRow, "owners" | "ownershipSegments">,
+): SignedTeamPosition[] {
+  if (!team.ownershipSegments.length) {
+    return team.owners;
+  }
+
+  const byBidder = new Map<number, SignedTeamPosition>();
+  for (const segment of team.ownershipSegments) {
+    const position = byBidder.get(segment.bidderId) ?? {
+      bidderId: segment.bidderId,
+      bidderName: segment.bidderName,
+      ownershipShare: 0,
+    };
+    position.ownershipShare += segment.ownershipShare;
+    byBidder.set(segment.bidderId, position);
+  }
+
+  return [...byBidder.values()]
+    .filter((position) => Math.abs(position.ownershipShare) >= 0.00005)
+    .sort((a, b) => b.ownershipShare - a.ownershipShare);
+}
+
 const OWNER_SUMMARY_GRID =
   "grid-cols-[2.5rem_minmax(0,1fr)_4.5rem_7rem_2.5rem] md:grid-cols-[2.5rem_minmax(14rem,22rem)_minmax(0,1fr)_4.5rem_8rem_8rem_2.5rem]";
 const OWNER_SUMMARY_COMPLETE_GRID =
   "grid-cols-[2.5rem_minmax(0,1fr)_4.5rem_7rem_2.5rem] md:grid-cols-[2.5rem_minmax(14rem,22rem)_minmax(0,1fr)_4.5rem_8rem_8rem_8rem_2.5rem]";
 const OWNER_TEAM_GRID =
-  "grid-cols-[minmax(0,1fr)_minmax(7rem,auto)] md:grid-cols-[minmax(0,1.2fr)_minmax(0,1fr)_8rem_8rem]";
+  "grid-cols-[minmax(0,1fr)_minmax(7rem,auto)] md:grid-cols-[minmax(0,1.2fr)_minmax(0,1fr)_6.5rem_8rem_8rem]";
 
 function ByOwnerView({
   rows,
@@ -302,6 +337,14 @@ function ByOwnerView({
 
   return (
     <div className="space-y-3">
+      <div className="flex flex-col gap-1 border border-sky-200 bg-sky-50 px-4 py-3 text-xs dark:border-sky-900 dark:bg-sky-950/30 sm:flex-row sm:items-center sm:justify-between">
+        <span className="font-mono font-bold uppercase tracking-widest text-sky-900 dark:text-sky-100">
+          Signed position ledger
+        </span>
+        <span className="text-sky-800 dark:text-sky-200">
+          Leveraged longs and negative shorts are both included; every team nets to 100% ownership.
+        </span>
+      </div>
       {/* Summary header */}
       <div
         className={cn(
@@ -312,7 +355,7 @@ function ByOwnerView({
         <div className="text-left">#</div>
         <div>Consortium</div>
         <div className="hidden md:block" />
-        <div className="text-right">Teams</div>
+        <div className="text-right">Net Teams</div>
         {isComplete ? (
           <>
             <div className="text-right">Exposure</div>
@@ -372,6 +415,7 @@ function ByOwnerView({
               </div>
               <div className="hidden md:block" />
               <div className="text-right text-muted-foreground font-mono">
+                {row.teamCount > 0 ? "+" : ""}
                 {row.teamCount.toFixed(2)}
               </div>
               {isComplete ? (
@@ -472,6 +516,7 @@ function ByOwnerView({
                 >
                   <div>Team</div>
                   <div>Type</div>
+                  <div className="text-right">Net Position</div>
                   <div className="text-right">MTM Return</div>
                   <div className="text-right">Exposure</div>
                 </div>
@@ -592,6 +637,7 @@ function TeamSubRow({
     (segment) => segment.bidderId === ownerId,
   );
   const ownerEntries = team.owners.filter((owner) => owner.bidderId === ownerId);
+  const netPosition = ownerEntries[0]?.ownershipShare ?? 0;
 
   return (
     <div
@@ -619,6 +665,17 @@ function TeamSubRow({
           showOwner={false}
           compact
         />
+      </div>
+      <div
+        className={cn(
+          "text-right font-mono text-sm font-bold",
+          netPosition >= 0 ? "text-sky-700 dark:text-sky-300" : "text-rose-600 dark:text-rose-300",
+        )}
+      >
+        <span className="mr-2 text-[10px] uppercase tracking-widest text-muted-foreground md:hidden">
+          Net Position
+        </span>
+        {formatOwnershipPercent(netPosition, true)}
       </div>
       <div
         className={cn(
@@ -656,7 +713,8 @@ type ExpandedTeamRow = {
   // ownership
   bidderId: number;
   ownerName: string;
-  pct: number; // 1–100
+  ownershipShare: number;
+  pct: number;
   ownershipSegments: OwnershipSegment[];
   owners: Array<{
     bidderId: number;
@@ -743,7 +801,7 @@ function expandTeams(
 ): ExpandedTeamRow[] {
   const result: ExpandedTeamRow[] = [];
   for (const team of rows) {
-    for (const owner of team.owners) {
+    for (const owner of effectivePositionsForTeam(team)) {
       const s = owner.ownershipShare;
       result.push({
         teamId: team.teamId,
@@ -757,7 +815,8 @@ function expandTeams(
           owner.bidderName,
           consortiumByBidderId,
         ),
-        pct: Math.round(s * 100),
+        ownershipShare: s,
+        pct: s * 100,
         ownershipSegments: team.ownershipSegments.filter(
           (segment) => segment.bidderId === owner.bidderId,
         ),
@@ -788,7 +847,7 @@ function ByTeamView({
   isComplete: boolean;
   consortiumByBidderId: Map<number, string>;
 }) {
-  const [splitByOwner, setSplitByOwner] = useState(false);
+  const [splitByOwner, setSplitByOwner] = useState(true);
   const [sortKey, setSortKey] = useState<BTSortKey>(isComplete ? "net" : "mtm");
   const [sortAsc, setSortAsc] = useState(false);
   const [search, setSearch] = useState("");
@@ -1061,6 +1120,9 @@ function ByTeamView({
           Split by Consortium
         </button>
       </div>
+      <p className="border border-sky-200 bg-sky-50 px-3 py-2 text-xs text-sky-900 dark:border-sky-900 dark:bg-sky-950/30 dark:text-sky-100">
+        Ownership is signed: leveraged long positions can exceed 100%, short positions are negative, and each team’s combined positions reconcile to 100%.
+      </p>
 
       {/* Table */}
       <div className="border border-border bg-card overflow-x-auto">
@@ -1089,7 +1151,7 @@ function ByTeamView({
               </th>
               {splitByOwner && (
                 <th className="px-3 py-2.5 text-center">
-                  <SH label="%" k="pct" align="center" />
+                  <SH label="Net Position" k="pct" align="center" />
                 </th>
               )}
               <th className="px-3 py-2.5 text-center">
@@ -1151,8 +1213,15 @@ function ByTeamView({
                         consortiumByBidderId={consortiumByBidderId}
                       />
                     </td>
-                    <td className="px-3 py-2.5 text-center font-mono text-xs text-muted-foreground">
-                      {row.pct}%
+                    <td
+                      className={cn(
+                        "px-3 py-2.5 text-center font-mono text-xs font-bold",
+                        row.ownershipShare >= 0
+                          ? "text-sky-700 dark:text-sky-300"
+                          : "text-rose-600 dark:text-rose-300",
+                      )}
+                    >
+                      {formatOwnershipPercent(row.ownershipShare, true)}
                     </td>
                     <td className="px-3 py-2.5 text-center font-mono text-xs">
                       {formatRecord(row.wins, row.losses, row.ties)}
