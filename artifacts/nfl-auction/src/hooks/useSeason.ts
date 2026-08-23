@@ -60,6 +60,10 @@ export function SeasonProvider({ children }: { children: ReactNode }) {
 
   const selectedCalcutta =
     calcuttas.find((calcutta) => calcutta.id === selectedCalcuttaId) ??
+    calcuttas.find(
+      (calcutta) =>
+        calcutta.year === storedSelection.year && calcutta.sport === "NFL",
+    ) ??
     calcuttas.find((calcutta) => calcutta.year === storedSelection.year) ??
     calcuttas[0] ??
     null;
@@ -85,7 +89,11 @@ export function SeasonProvider({ children }: { children: ReactNode }) {
 
   const setYear = useCallback(
     (nextYear: number) => {
-      const calcutta = calcuttas.find((candidate) => candidate.year === nextYear);
+      const calcutta =
+        calcuttas.find(
+          (candidate) =>
+            candidate.year === nextYear && candidate.sport === "NFL",
+        ) ?? calcuttas.find((candidate) => candidate.year === nextYear);
       setSelectedCalcuttaId(calcutta?.id ?? null);
     },
     [calcuttas],

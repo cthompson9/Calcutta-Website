@@ -231,7 +231,8 @@ export const GetCalcuttasResponseItem = zod.object({
   "sport": zod.string(),
   "year": zod.number(),
   "isActive": zod.boolean(),
-  "isComplete": zod.boolean()
+  "isComplete": zod.boolean(),
+  "isCanonical": zod.boolean()
 })
 export const GetCalcuttasResponse = zod.array(GetCalcuttasResponseItem)
 

@@ -18,6 +18,15 @@ interface ShellProps {
 export function Shell({ children }: ShellProps) {
   const [location] = useLocation();
   const { selectedCalcutta } = useSeason();
+  const isNflReportRoute =
+    location === "/" ||
+    ["/mtm", "/trades", "/teams", "/bidders", "/dashboard"].some((route) =>
+      location.startsWith(route),
+    );
+  const unsupportedSport =
+    isNflReportRoute && selectedCalcutta && selectedCalcutta.sport !== "NFL"
+      ? selectedCalcutta.sport
+      : null;
 
   const navItems = [
     { href: "/", label: "Results", icon: Trophy },
@@ -86,7 +95,15 @@ export function Shell({ children }: ShellProps) {
           </span>
           <SeasonToggle />
         </div>
-        {children}
+        {unsupportedSport ? (
+          <UnsupportedSportState
+            calcuttaName={selectedCalcutta?.name ?? "Selected Calcutta"}
+            sport={unsupportedSport}
+            year={selectedCalcutta?.year}
+          />
+        ) : (
+          children
+        )}
       </main>
 
       {/* Mobile Tab Bar — show 5 most important */}
@@ -115,5 +132,34 @@ export function Shell({ children }: ShellProps) {
         })}
       </nav>
     </div>
+  );
+}
+
+function UnsupportedSportState({
+  calcuttaName,
+  sport,
+  year,
+}: {
+  calcuttaName: string;
+  sport: string;
+  year?: number;
+}) {
+  return (
+    <section className="flex min-h-[70dvh] items-center justify-center px-6 py-16">
+      <div className="max-w-xl border border-border bg-card p-8 text-center shadow-sm">
+        <p className="mb-3 text-[10px] font-mono font-bold uppercase tracking-[0.22em] text-primary">
+          {calcuttaName}
+          {year ? ` · ${year}` : ""}
+        </p>
+        <h1 className="text-2xl font-semibold tracking-tight">
+          {sport} reports are not available yet
+        </h1>
+        <p className="mt-3 text-sm leading-6 text-muted-foreground">
+          This catalog includes Calcuttas from multiple sports, but the current
+          reports are still NFL-only. Choose an NFL Calcutta above to view
+          Results, M2M Tracker, Trades, or Auction Results.
+        </p>
+      </div>
+    </section>
   );
 }

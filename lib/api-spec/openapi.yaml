@@ -1007,7 +1007,9 @@ components:
           type: boolean
         isComplete:
           type: boolean
-      required: [id, seasonId, name, sport, year, isActive, isComplete]
+        isCanonical:
+          type: boolean
+      required: [id, seasonId, name, sport, year, isActive, isComplete, isCanonical]
 
     Bidder:
       type: object

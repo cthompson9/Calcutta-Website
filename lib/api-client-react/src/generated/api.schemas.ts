@@ -36,6 +36,7 @@ export interface CalcuttaOption {
   year: number;
   isActive: boolean;
   isComplete: boolean;
+  isCanonical: boolean;
 }
 
 export interface Bidder {

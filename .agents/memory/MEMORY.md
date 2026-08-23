@@ -19,3 +19,4 @@
 - [Expo Web font loading](expo-web-font-loading.md) — do not block Expo Web’s root on font assets behind the preview proxy; render with system fallbacks.
 - [Expo Web source navigation](expo-web-source-navigation.md) — long-list source links use DOM row reveal on web; nested RN layout offsets are not ScrollView content offsets.
 - [OpenAPI numeric fields](openapi-numeric-fields.md) — this workspace’s generated Zod client requires `number`, not OpenAPI `integer`, for new response fields.
+- [Cross-sport Calcutta catalog](cross-sport-calcutta-catalog.md) — selector lists every sport; non-NFL selections deliberately show an NFL-only report state.
