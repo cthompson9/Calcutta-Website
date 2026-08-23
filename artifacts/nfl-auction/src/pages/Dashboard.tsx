@@ -7,6 +7,7 @@ import {
 import { formatCurrency } from "@/lib/utils";
 import { DollarSign, Activity, Download, Lock, Unlock, Loader2, ReceiptText } from "lucide-react";
 import { useSeason } from "@/hooks/useSeason";
+import { useBacklinkBackShortcut } from "@/hooks/useBacklinkBackShortcut";
 import { useQueryClient } from "@tanstack/react-query";
 import { useLocation } from "wouter";
 import { parseResultSourceTarget } from "@/lib/resultSourceLinks";
@@ -100,6 +101,7 @@ export default function Dashboard() {
   const sourceTarget = parseResultSourceTarget(
     typeof window === "undefined" ? location : window.location.href,
   );
+  useBacklinkBackShortcut(sourceTarget.teamId != null);
 
   const [adminKey, setAdminKey] = useState<string | null>(
     () => sessionStorage.getItem("nfl_admin_key"),
@@ -216,6 +218,12 @@ export default function Dashboard() {
           )}
         </div>
       </header>
+
+      {sourceTarget.teamId != null && (
+        <div className="border border-primary/30 bg-primary/5 px-3 py-2 text-xs font-mono text-muted-foreground">
+          Back to Results: <kbd className="border border-border bg-background px-1.5 py-0.5 text-foreground">Ctrl + [</kbd>
+        </div>
+      )}
 
       {/* Import feedback */}
       {importResult && (

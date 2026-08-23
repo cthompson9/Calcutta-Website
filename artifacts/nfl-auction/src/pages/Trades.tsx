@@ -11,6 +11,7 @@ import { formatCurrency } from "@/lib/utils";
 import { cn } from "@/lib/utils";
 import { todayInNewYork } from "@/lib/newYorkTime";
 import { useSeason } from "@/hooks/useSeason";
+import { useBacklinkBackShortcut } from "@/hooks/useBacklinkBackShortcut";
 import { useLocation } from "wouter";
 import { parseResultSourceTarget } from "@/lib/resultSourceLinks";
 import { ArrowRight, Plus, Trash2, X, Lock, Unlock, Check, Ban, Search } from "lucide-react";
@@ -507,6 +508,7 @@ export default function Trades() {
   const sourceTarget = parseResultSourceTarget(
     typeof window === "undefined" ? location : window.location.href,
   );
+  useBacklinkBackShortcut(sourceTarget.tradeId != null);
   const [showForm, setShowForm]     = useState(false);
   const [submissionError, setSubmissionError] = useState("");
   const [adminKey, setAdminKey]     = useState<string | null>(null);
@@ -613,6 +615,12 @@ export default function Trades() {
           </button>
         </div>
       </header>
+
+      {sourceTarget.tradeId != null && (
+        <div className="border border-primary/30 bg-primary/5 px-3 py-2 text-xs font-mono text-muted-foreground">
+          Back to Results: <kbd className="border border-border bg-background px-1.5 py-0.5 text-foreground">Ctrl + [</kbd>
+        </div>
+      )}
 
       {adminKey && (
         <div className="border border-green-300 bg-green-50 px-4 py-2 text-xs font-mono text-green-800">
