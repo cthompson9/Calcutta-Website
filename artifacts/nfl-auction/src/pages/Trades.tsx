@@ -1,4 +1,4 @@
-import { useState, useEffect, useMemo } from "react";
+import { useState, useEffect, useMemo, useRef } from "react";
 import {
   useGetTrades,
   useGetTeams,
@@ -25,7 +25,6 @@ import {
   Ban,
   Search,
   ChevronDown,
-  Layers,
 } from "lucide-react";
 import { bidderConsortiums, ownerLabelById } from "@/lib/ownerDisplay";
 import { ConsortiumLabel } from "@/components/ConsortiumLabel";
@@ -95,143 +94,158 @@ function decisionAuditLabel(trade: TradeRow): string | null {
 type TradeGroup = {
   key: string;
   trades: TradeRow[];
-  description: string;
-  status: TradeRow["status"];
-  tradeDate: string;
-  totalPrice: number;
-  teamNames: string[];
-  counterpartyIds: number[];
-  sortTimestamp: number;
 };
 
-function normalizeTradeDescription(notes: string | null | undefined): string | null {
-  const value = notes?.trim();
-  if (!value) return null;
-
-  let description = value
-    .replace(/^leg\s+\d+(?:\s+of\s+\d+)?\s*:\s*/i, "")
-    .replace(
-      /(?:\s*[.·-]\s*|\s+)leg\s+\d+\s*(?:of\s+|\/)\d+\s*(?:[.·-]\s*consideration)?\s*[.·]*\s*$/i,
-      "",
-    )
-    .trim();
-
-  if (/lion king crossbook/i.test(description)) {
-    description = description
-      .split(/\s+-\s+/, 1)[0]
-      .replace(/\s+leg\b/i, "")
-      .trim();
-  }
-
-  return description || null;
+function sharedTradeDescription(notes: string | null | undefined): string {
+  const description = (notes ?? "")
+    .normalize("NFKC")
+    .trim()
+    .replace(/\s+/g, " ");
+  const withoutLeadingLeg = description.replace(
+    /^leg\s+\d+\s+(?:of|\/)\s*\d+\s*:\s*/i,
+    "",
+  );
+  const withoutTrailingLeg = withoutLeadingLeg.replace(
+    /\s*[.;,]?\s*leg\s+\d+\s*(?:\/|of)\s*\d+(?:\s*[-–—:]\s*[^.]*)?\.?\s*$/i,
+    "",
+  );
+  const sharedLead = withoutTrailingLeg.match(/^(.+?\bleg\b[^.]*\.)\s+.+$/i);
+  return sharedLead?.[1] ?? withoutTrailingLeg;
 }
 
-function tradeSortTimestamp(trade: TradeRow): number {
-  const decisionTimestamp = trade.decisionAt ? new Date(trade.decisionAt).getTime() : 0;
-  if (Number.isFinite(decisionTimestamp) && decisionTimestamp > 0) {
-    return decisionTimestamp;
-  }
-
-  const tradeTimestamp = new Date(`${trade.tradeDate}T00:00:00`).getTime();
-  return Number.isFinite(tradeTimestamp) ? tradeTimestamp : 0;
+function normalizeTradeDescription(notes: string | null | undefined): string {
+  return sharedTradeDescription(notes).toLowerCase();
 }
 
-function tradeStatusRank(status: TradeRow["status"]): number {
-  return status === "approved" ? 0 : status === "pending" ? 1 : 2;
-}
-
-function groupTrades(trades: TradeRow[]): TradeGroup[] {
-  const grouped = new Map<string, TradeRow[]>();
-
-  for (const trade of trades) {
-    const description = normalizeTradeDescription(trade.notes);
-    const counterparties = [trade.fromBidderId, trade.toBidderId].sort((a, b) => a - b);
-    const key = description
-      ? [
-          description.toLocaleLowerCase(),
-          trade.tradeDate,
-          trade.status,
-          counterparties.join(":"),
-        ].join("|")
-      : `single:${trade.id}`;
-    const members = grouped.get(key) ?? [];
-    members.push(trade);
-    grouped.set(key, members);
-  }
-
-  return [...grouped.entries()]
-    .map(([key, members]) => {
-      const first = members[0]!;
-      const teamNames = [...new Set(members.map((trade) => trade.teamName))].sort((a, b) =>
-        a.localeCompare(b),
-      );
-      const counterpartyIds = [first.fromBidderId, first.toBidderId].sort((a, b) => a - b);
-
-      return {
-        key,
-        trades: [...members].sort((a, b) => a.id - b.id),
-        description: normalizeTradeDescription(first.notes) ?? "Trade",
-        status: first.status,
-        tradeDate: first.tradeDate,
-        totalPrice: members.reduce((total, trade) => total + trade.price, 0),
-        teamNames,
-        counterpartyIds,
-        sortTimestamp: Math.max(...members.map(tradeSortTimestamp)),
-      };
-    })
-    .sort((a, b) =>
-      tradeStatusRank(a.status) - tradeStatusRank(b.status)
-      || b.sortTimestamp - a.sortTimestamp
-      || (b.trades[0]?.id ?? 0) - (a.trades[0]?.id ?? 0)
-    );
-}
-
-function tradeMatchesQuery(
-  trade: TradeRow,
-  query: string,
-  consortiumByBidderId: Map<number, string>,
-): boolean {
+function tradeGroupKey(trade: TradeRow): string {
+  const description = normalizeTradeDescription(trade.notes);
+  const counterparties = [trade.fromBidderId, trade.toBidderId].sort((a, b) => a - b);
   return [
-    trade.teamName,
-    trade.fromBidderName,
-    trade.toBidderName,
-    ownerLabelById(trade.fromBidderId, trade.fromBidderName, consortiumByBidderId),
-    ownerLabelById(trade.toBidderId, trade.toBidderName, consortiumByBidderId),
-    trade.status,
+    description,
     trade.tradeDate,
-    trade.percentage.toString(),
-    trade.price.toString(),
-    trade.notes ?? "",
-  ].some((value) => value.toLowerCase().includes(query));
+    trade.status,
+    counterparties[0],
+    counterparties[1],
+  ].join("|");
 }
 
-function groupedTeamSummary(teamNames: string[]): string {
-  if (teamNames.length <= 4) return teamNames.join(", ");
-  return `${teamNames.length} teams · ${teamNames.slice(0, 3).join(", ")} +${teamNames.length - 3} more`;
+function teamNamesInDescription(trades: TradeRow[], description: string): boolean {
+  const uniqueTeams = [...new Set(trades.map((trade) => trade.teamName))];
+  return uniqueTeams.length > 1 && uniqueTeams.every((teamName) => {
+    const normalizedName = teamName.normalize("NFKC").toLowerCase();
+    const nickname = normalizedName.split(/\s+/).at(-1) ?? normalizedName;
+    return description.includes(normalizedName) || description.includes(nickname);
+  });
 }
 
-function groupLegCount(groups: TradeGroup[]): number {
-  return groups.reduce((total, group) => total + group.trades.length, 0);
+function hasExplicitLegLabel(notes: string | null | undefined): boolean {
+  const rawNotes = (notes ?? "").normalize("NFKC").replace(/\s+/g, " ");
+  return /\bleg\s+\d+\s*(?:of|\/)\s*\d+\b/i.test(rawNotes);
 }
 
-// ── Trade card ───────────────────────────────────────────────────────────────
+function hasTransactionSignal(trades: TradeRow[]): boolean {
+  const description = normalizeTradeDescription(trades[0]?.notes);
+  if (!description) return false;
 
-function TradeCard({
+  return (
+    trades.every((trade) => hasExplicitLegLabel(trade.notes)) ||
+    /\bcrossbook\b/.test(description) ||
+    teamNamesInDescription(trades, description)
+  );
+}
+
+function buildTradeGroups(trades: TradeRow[]): TradeGroup[] {
+  const groups = new Map<string, TradeRow[]>();
+  for (const trade of trades) {
+    const existing = groups.get(tradeGroupKey(trade));
+    if (existing) {
+      existing.push(trade);
+    } else {
+      groups.set(tradeGroupKey(trade), [trade]);
+    }
+  }
+
+  return [...groups.entries()].flatMap(([key, groupedTrades]) => {
+    if (groupedTrades.length > 1 && hasTransactionSignal(groupedTrades)) {
+      return [{
+        key,
+        trades: [...groupedTrades].sort((a, b) => b.id - a.id),
+      }];
+    }
+
+    return groupedTrades.map((trade) => ({
+      key: `${key}|${trade.id}`,
+      trades: [trade],
+    }));
+  });
+}
+
+function latestDecisionTime(group: TradeGroup): number {
+  return Math.max(
+    ...group.trades.map((trade) => {
+      if (!trade.decisionAt) return 0;
+      const timestamp = Date.parse(trade.decisionAt);
+      return Number.isFinite(timestamp) ? timestamp : 0;
+    }),
+  );
+}
+
+function latestTradeDate(group: TradeGroup): string {
+  return group.trades.reduce(
+    (latest, trade) => (trade.tradeDate > latest ? trade.tradeDate : latest),
+    "",
+  );
+}
+
+function sortTradeGroups(a: TradeGroup, b: TradeGroup): number {
+  const aStatus = a.trades[0]?.status ?? "pending";
+  const bStatus = b.trades[0]?.status ?? "pending";
+  const statusOrder: Record<string, number> = {
+    pending: 0,
+    approved: 1,
+    rejected: 2,
+  };
+
+  if (aStatus !== bStatus) {
+    return (statusOrder[aStatus] ?? 99) - (statusOrder[bStatus] ?? 99);
+  }
+
+  if (aStatus === "approved") {
+    const approvalOrder = latestDecisionTime(b) - latestDecisionTime(a);
+    if (approvalOrder !== 0) return approvalOrder;
+  } else if (aStatus === "rejected") {
+    const decisionOrder = latestDecisionTime(b) - latestDecisionTime(a);
+    if (decisionOrder !== 0) return decisionOrder;
+  }
+
+  const dateOrder = latestTradeDate(b).localeCompare(latestTradeDate(a));
+  if (dateOrder !== 0) return dateOrder;
+
+  const aMaxId = Math.max(...a.trades.map((trade) => trade.id));
+  const bMaxId = Math.max(...b.trades.map((trade) => trade.id));
+  return bMaxId - aMaxId;
+}
+
+function tradeOwnerLabel(
+  bidderId: number,
+  bidderName: string,
+  consortiumByBidderId: Map<number, string>,
+): string {
+  return ownerLabelById(bidderId, bidderName, consortiumByBidderId);
+}
+
+function TradeActions({
   trade,
   onDelete,
   adminKey,
   onStatusChange,
-  consortiumByBidderId,
-  isHighlighted = false,
-  compact = false,
+  showDelete = true,
 }: {
   trade: TradeRow;
   onDelete: (id: number) => void;
   adminKey: string | null;
   onStatusChange: () => void;
-  consortiumByBidderId: Map<number, string>;
-  isHighlighted?: boolean;
-  compact?: boolean;
+  showDelete?: boolean;
 }) {
   const [acting, setActing] = useState(false);
   const [adminError, setAdminError] = useState("");
@@ -255,6 +269,60 @@ function TradeCard({
     }
   }
 
+  return (
+    <>
+      {showDelete && (
+        <button
+          onClick={() => onDelete(trade.id)}
+          className="text-muted-foreground hover:text-destructive transition-colors"
+          title="Delete trade"
+          aria-label={`Delete trade ${trade.id}`}
+        >
+          <Trash2 className="w-3.5 h-3.5" />
+        </button>
+      )}
+
+      {adminKey && trade.status === "pending" && (
+        <div className="border-t border-border pt-2 flex items-center gap-2 flex-wrap basis-full">
+          <span className="text-xs font-mono text-muted-foreground uppercase tracking-widest">Admin:</span>
+          <button
+            onClick={() => handleStatus("approved")}
+            disabled={acting}
+            className="flex items-center gap-1.5 px-3 py-1 bg-green-600 text-white text-xs font-mono font-bold uppercase tracking-wider hover:bg-green-700 disabled:opacity-50 transition-colors"
+          >
+            <Check className="w-3 h-3" /> Approve
+          </button>
+          <button
+            onClick={() => handleStatus("rejected")}
+            disabled={acting}
+            className="flex items-center gap-1.5 px-3 py-1 bg-red-600 text-white text-xs font-mono font-bold uppercase tracking-wider hover:bg-red-700 disabled:opacity-50 transition-colors"
+          >
+            <Ban className="w-3 h-3" /> Reject
+          </button>
+          {adminError && <span className="text-xs text-destructive font-mono">{adminError}</span>}
+        </div>
+      )}
+    </>
+  );
+}
+
+// ── Trade card ───────────────────────────────────────────────────────────────
+
+function TradeCard({
+  trade,
+  onDelete,
+  adminKey,
+  onStatusChange,
+  consortiumByBidderId,
+  isHighlighted = false,
+}: {
+  trade: TradeRow;
+  onDelete: (id: number) => void;
+  adminKey: string | null;
+  onStatusChange: () => void;
+  consortiumByBidderId: Map<number, string>;
+  isHighlighted?: boolean;
+}) {
   const showPct = trade.percentage !== 100;
 
   return (
@@ -262,8 +330,7 @@ function TradeCard({
       id={`trade-${trade.id}`}
       tabIndex={-1}
       className={cn(
-        "scroll-mt-6 border border-border space-y-3 focus:outline-none",
-        compact ? "p-3" : "p-4",
+        "scroll-mt-6 border border-border p-4 space-y-3 focus:outline-none",
         trade.status === "pending" && "border-amber-200 bg-amber-50/30",
         trade.status === "rejected" && "opacity-60",
         isHighlighted && "ring-2 ring-primary ring-offset-2 bg-primary/10",
@@ -279,7 +346,7 @@ function TradeCard({
                 {trade.percentage}%
               </span>
             )}
-            {!compact && <StatusBadge status={trade.status} />}
+            <StatusBadge status={trade.status} />
           </div>
           <div className="flex items-center gap-1.5 text-sm text-muted-foreground font-mono">
             <ConsortiumLabel
@@ -305,21 +372,20 @@ function TradeCard({
         {/* Right: price + date + delete */}
         <div className="text-right shrink-0 space-y-1">
           <div className="font-mono font-bold text-sm">{formatCurrency(trade.price)}</div>
-          {!compact && <div className="text-xs text-muted-foreground font-mono">{trade.tradeDate}</div>}
-          <button
-            onClick={() => onDelete(trade.id)}
-            className="text-muted-foreground hover:text-destructive transition-colors"
-            title="Delete trade"
-          >
-            <Trash2 className="w-3.5 h-3.5" />
-          </button>
+          <div className="text-xs text-muted-foreground font-mono">{trade.tradeDate}</div>
+          <TradeActions
+            trade={trade}
+            onDelete={onDelete}
+            adminKey={null}
+            onStatusChange={onStatusChange}
+          />
         </div>
       </div>
 
-      {!compact && trade.notes && (
+      {trade.notes && (
         <p className="text-xs text-muted-foreground font-mono border-t border-border pt-2">{trade.notes}</p>
       )}
-      {!compact && decisionAuditLabel(trade) && (
+      {decisionAuditLabel(trade) && (
         <p className="text-[11px] text-muted-foreground font-mono border-t border-border pt-2">
           {decisionAuditLabel(trade)}
         </p>
@@ -327,24 +393,96 @@ function TradeCard({
 
       {/* Admin approve/reject — only for pending trades when admin key is entered */}
       {adminKey && trade.status === "pending" && (
-        <div className="border-t border-border pt-2 flex items-center gap-2 flex-wrap">
-          <span className="text-xs font-mono text-muted-foreground uppercase tracking-widest">Admin:</span>
-          <button
-            onClick={() => handleStatus("approved")}
-            disabled={acting}
-            className="flex items-center gap-1.5 px-3 py-1 bg-green-600 text-white text-xs font-mono font-bold uppercase tracking-wider hover:bg-green-700 disabled:opacity-50 transition-colors"
-          >
-            <Check className="w-3 h-3" /> Approve
-          </button>
-          <button
-            onClick={() => handleStatus("rejected")}
-            disabled={acting}
-            className="flex items-center gap-1.5 px-3 py-1 bg-red-600 text-white text-xs font-mono font-bold uppercase tracking-wider hover:bg-red-700 disabled:opacity-50 transition-colors"
-          >
-            <Ban className="w-3 h-3" /> Reject
-          </button>
-          {adminError && <span className="text-xs text-destructive font-mono">{adminError}</span>}
+        <TradeActions
+          trade={trade}
+          onDelete={() => {}}
+          adminKey={adminKey}
+          onStatusChange={onStatusChange}
+          showDelete={false}
+        />
+      )}
+    </div>
+  );
+}
+
+function TradeLeg({
+  trade,
+  onDelete,
+  adminKey,
+  onStatusChange,
+  consortiumByBidderId,
+  isHighlighted = false,
+}: {
+  trade: TradeRow;
+  onDelete: (id: number) => void;
+  adminKey: string | null;
+  onStatusChange: () => void;
+  consortiumByBidderId: Map<number, string>;
+  isHighlighted?: boolean;
+}) {
+  return (
+    <div
+      id={`trade-${trade.id}`}
+      tabIndex={-1}
+      className={cn(
+        "scroll-mt-6 border-t border-border px-4 py-3 space-y-2 focus:outline-none",
+        isHighlighted && "ring-2 ring-primary ring-inset bg-primary/10",
+      )}
+    >
+      <div className="flex items-start justify-between gap-3">
+        <div className="min-w-0 flex-1 space-y-1">
+          <div className="flex items-center gap-2 flex-wrap">
+            <span className="font-mono font-bold text-sm">{trade.teamName}</span>
+            <span className="bg-muted border border-border px-1.5 py-0 text-[10px] font-mono text-muted-foreground">
+              {trade.percentage}%
+            </span>
+          </div>
+          <div className="flex items-center gap-1.5 text-sm text-muted-foreground font-mono">
+            <span className="sr-only">Direction: </span>
+            <ConsortiumLabel
+              className="min-w-0"
+              label={tradeOwnerLabel(
+                trade.fromBidderId,
+                trade.fromBidderName,
+                consortiumByBidderId,
+              )}
+            />
+            <ArrowRight className="w-3 h-3 shrink-0" aria-hidden="true" />
+            <ConsortiumLabel
+              className="min-w-0"
+              label={tradeOwnerLabel(
+                trade.toBidderId,
+                trade.toBidderName,
+                consortiumByBidderId,
+              )}
+            />
+          </div>
         </div>
+        <div className="text-right shrink-0 space-y-1">
+          <div className="font-mono font-bold text-sm">{formatCurrency(trade.price)}</div>
+          <TradeActions
+            trade={trade}
+            onDelete={onDelete}
+            adminKey={null}
+            onStatusChange={onStatusChange}
+          />
+        </div>
+      </div>
+
+      {trade.decisionAt && decisionAuditLabel(trade) && (
+        <p className="text-[11px] text-muted-foreground font-mono border-t border-border pt-2">
+          {decisionAuditLabel(trade)}
+        </p>
+      )}
+
+      {adminKey && trade.status === "pending" && (
+        <TradeActions
+          trade={trade}
+          onDelete={() => {}}
+          adminKey={adminKey}
+          onStatusChange={onStatusChange}
+          showDelete={false}
+        />
       )}
     </div>
   );
@@ -352,6 +490,8 @@ function TradeCard({
 
 function TradeGroupCard({
   group,
+  expanded,
+  onToggle,
   onDelete,
   adminKey,
   onStatusChange,
@@ -359,24 +499,134 @@ function TradeGroupCard({
   highlightedTradeId,
 }: {
   group: TradeGroup;
+  expanded: boolean;
+  onToggle: () => void;
   onDelete: (id: number) => void;
   adminKey: string | null;
   onStatusChange: () => void;
   consortiumByBidderId: Map<number, string>;
   highlightedTradeId: number | null;
 }) {
-  const isMultiLeg = group.trades.length > 1;
-  const containsHighlightedTrade = group.trades.some((trade) => trade.id === highlightedTradeId);
-  const [expanded, setExpanded] = useState(
-    () => isMultiLeg && containsHighlightedTrade,
+  const firstTrade = group.trades[0];
+  const description = sharedTradeDescription(firstTrade.notes) || "Trade transaction";
+  const totalValue = group.trades.reduce((total, trade) => total + trade.price, 0);
+  const teamNames = [...new Set(group.trades.map((trade) => trade.teamName))];
+  const fromLabel = tradeOwnerLabel(
+    firstTrade.fromBidderId,
+    firstTrade.fromBidderName,
+    consortiumByBidderId,
   );
+  const toLabel = tradeOwnerLabel(
+    firstTrade.toBidderId,
+    firstTrade.toBidderName,
+    consortiumByBidderId,
+  );
+  const groupId = `trade-group-${group.trades.map((trade) => trade.id).sort((a, b) => a - b).join("-")}`;
+  const latestDecisionTrade = [...group.trades].sort((a, b) => {
+    const aTime = a.decisionAt ? Date.parse(a.decisionAt) : 0;
+    const bTime = b.decisionAt ? Date.parse(b.decisionAt) : 0;
+    return (Number.isFinite(bTime) ? bTime : 0) - (Number.isFinite(aTime) ? aTime : 0);
+  })[0];
 
-  useEffect(() => {
-    if (containsHighlightedTrade) setExpanded(true);
-  }, [containsHighlightedTrade]);
+  return (
+    <div
+      className={cn(
+        "border border-border overflow-hidden",
+        firstTrade.status === "pending" && "border-amber-200 bg-amber-50/30",
+        firstTrade.status === "rejected" && "opacity-60",
+      )}
+      data-trade-group={group.key}
+    >
+      <button
+        type="button"
+        onClick={onToggle}
+        aria-expanded={expanded}
+        aria-controls={groupId}
+        className="w-full text-left p-4 space-y-3 hover:bg-muted/30 transition-colors focus:outline-none focus:ring-2 focus:ring-primary focus:ring-inset"
+      >
+        <div className="flex items-start justify-between gap-3">
+          <div className="min-w-0 flex-1 space-y-1">
+            <div className="flex items-center gap-2 flex-wrap">
+              <span className="font-mono font-bold text-sm">{description}</span>
+              <StatusBadge status={firstTrade.status} />
+              <span className="text-[10px] font-mono text-muted-foreground uppercase tracking-widest">
+                {group.trades.length} legs
+              </span>
+            </div>
+            <div className="flex items-center gap-1.5 text-sm text-muted-foreground font-mono">
+              <ConsortiumLabel className="min-w-0" label={fromLabel} />
+              <ArrowRight className="w-3 h-3 shrink-0" aria-hidden="true" />
+              <ConsortiumLabel className="min-w-0" label={toLabel} />
+            </div>
+          </div>
+          <div className="flex items-start gap-3 shrink-0">
+            <div className="text-right space-y-1">
+              <div className="font-mono font-bold text-sm">{formatCurrency(totalValue)}</div>
+              <div className="text-xs text-muted-foreground font-mono">{firstTrade.tradeDate}</div>
+            </div>
+            <ChevronDown
+              className={cn(
+                "w-4 h-4 mt-1 text-muted-foreground transition-transform",
+                !expanded && "-rotate-90",
+              )}
+              aria-hidden="true"
+            />
+          </div>
+        </div>
+        <div className="flex flex-wrap gap-x-4 gap-y-1 text-xs text-muted-foreground font-mono">
+          <span>Teams: {teamNames.join(", ")}</span>
+          <span>Aggregate: {formatCurrency(totalValue)}</span>
+        </div>
+        {decisionAuditLabel(latestDecisionTrade) && (
+          <p className="text-[11px] text-muted-foreground font-mono border-t border-border pt-2">
+            {decisionAuditLabel(latestDecisionTrade)}
+          </p>
+        )}
+      </button>
 
-  if (!isMultiLeg) {
-    const trade = group.trades[0]!;
+      <div
+        id={groupId}
+        role="group"
+        aria-label={`${description} trade legs`}
+        hidden={!expanded}
+      >
+          {group.trades.map((trade) => (
+            <TradeLeg
+              key={trade.id}
+              trade={trade}
+              onDelete={onDelete}
+              adminKey={adminKey}
+              onStatusChange={onStatusChange}
+              consortiumByBidderId={consortiumByBidderId}
+              isHighlighted={highlightedTradeId === trade.id}
+            />
+          ))}
+      </div>
+    </div>
+  );
+}
+
+function TradeGroupPresentation({
+  group,
+  expanded,
+  onToggle,
+  onDelete,
+  adminKey,
+  onStatusChange,
+  consortiumByBidderId,
+  highlightedTradeId,
+}: {
+  group: TradeGroup;
+  expanded: boolean;
+  onToggle: () => void;
+  onDelete: (id: number) => void;
+  adminKey: string | null;
+  onStatusChange: () => void;
+  consortiumByBidderId: Map<number, string>;
+  highlightedTradeId: number | null;
+}) {
+  if (group.trades.length === 1) {
+    const trade = group.trades[0];
     return (
       <TradeCard
         trade={trade}
@@ -384,101 +634,22 @@ function TradeGroupCard({
         adminKey={adminKey}
         onStatusChange={onStatusChange}
         consortiumByBidderId={consortiumByBidderId}
-        isHighlighted={trade.id === highlightedTradeId}
+        isHighlighted={highlightedTradeId === trade.id}
       />
     );
   }
 
-  const counterparties = group.counterpartyIds.map((id) => {
-    const trade = group.trades.find(
-      (candidate) => candidate.fromBidderId === id || candidate.toBidderId === id,
-    );
-    return trade
-      ? ownerLabelById(
-          id,
-          id === trade.fromBidderId ? trade.fromBidderName : trade.toBidderName,
-          consortiumByBidderId,
-        )
-      : `Bidder #${id}`;
-  });
-  const groupId = `trade-group-${group.trades[0]!.id}`;
-
   return (
-    <section
-      id={groupId}
-      className={cn(
-        "border border-border bg-background",
-        containsHighlightedTrade && "ring-1 ring-primary/40",
-      )}
-    >
-      <button
-        type="button"
-        aria-expanded={expanded}
-        aria-controls={`${groupId}-legs`}
-        onClick={() => setExpanded((value) => !value)}
-        className="w-full p-4 text-left transition-colors hover:bg-muted/40 focus:outline-none focus:ring-2 focus:ring-primary focus:ring-inset"
-      >
-        <div className="flex items-start justify-between gap-3">
-          <div className="min-w-0 flex-1 space-y-2">
-            <div className="flex items-center gap-2 flex-wrap">
-              <span className="font-mono text-sm font-bold uppercase tracking-wide">
-                {group.description}
-              </span>
-              <StatusBadge status={group.status} />
-              <span className="inline-flex items-center gap-1 border border-border bg-muted px-1.5 py-0.5 text-[10px] font-mono font-bold uppercase tracking-widest text-muted-foreground">
-                <Layers className="h-3 w-3" aria-hidden="true" />
-                {group.trades.length} legs
-              </span>
-            </div>
-            <dl className="grid gap-x-4 gap-y-2 text-xs font-mono text-muted-foreground sm:grid-cols-2">
-              <div>
-                <dt className="uppercase tracking-widest">Aggregate value</dt>
-                <dd className="mt-0.5 text-sm font-bold text-foreground">{formatCurrency(group.totalPrice)}</dd>
-              </div>
-              <div>
-                <dt className="uppercase tracking-widest">Counterparties</dt>
-                <dd className="mt-0.5 text-sm text-foreground">{counterparties.join(" ↔ ")}</dd>
-              </div>
-              <div>
-                <dt className="uppercase tracking-widest">Date</dt>
-                <dd className="mt-0.5 text-sm text-foreground">{group.tradeDate}</dd>
-              </div>
-              <div>
-                <dt className="uppercase tracking-widest">Teams involved</dt>
-                <dd className="mt-0.5 text-sm text-foreground">{groupedTeamSummary(group.teamNames)}</dd>
-              </div>
-            </dl>
-          </div>
-          <ChevronDown
-            className={cn(
-              "mt-1 h-5 w-5 shrink-0 text-muted-foreground transition-transform",
-              expanded && "rotate-180",
-            )}
-            aria-hidden="true"
-          />
-        </div>
-        <span className="mt-3 block text-[10px] font-mono font-bold uppercase tracking-widest text-muted-foreground">
-          {expanded ? "Hide leg details" : "Show leg details"}
-        </span>
-      </button>
-
-      {expanded && (
-        <div id={`${groupId}-legs`} className="space-y-2 border-t border-border bg-muted/20 p-2">
-          {group.trades.map((trade) => (
-            <TradeCard
-              key={trade.id}
-              trade={trade}
-              onDelete={onDelete}
-              adminKey={adminKey}
-              onStatusChange={onStatusChange}
-              consortiumByBidderId={consortiumByBidderId}
-              isHighlighted={trade.id === highlightedTradeId}
-              compact
-            />
-          ))}
-        </div>
-      )}
-    </section>
+    <TradeGroupCard
+      group={group}
+      expanded={expanded}
+      onToggle={onToggle}
+      onDelete={onDelete}
+      adminKey={adminKey}
+      onStatusChange={onStatusChange}
+      consortiumByBidderId={consortiumByBidderId}
+      highlightedTradeId={highlightedTradeId}
+    />
   );
 }
 
@@ -781,6 +952,8 @@ export default function Trades() {
   const [showForm, setShowForm]     = useState(false);
   const [submissionError, setSubmissionError] = useState("");
   const [adminKey, setAdminKey]     = useState<string | null>(null);
+  const [expandedGroups, setExpandedGroups] = useState<Set<string>>(() => new Set());
+  const sourceExpandedTradeId = useRef<number | null>(null);
 
   const { data: trades, isLoading, refetch } = useGetTrades({ season: year });
   const { data: teams } = useGetTeams({ season: year });
@@ -804,40 +977,47 @@ export default function Trades() {
 
   const [search, setSearch] = useState("");
   const allTrades = (trades as TradeRow[] | undefined) ?? [];
-  const tradeGroups = useMemo(() => groupTrades(allTrades), [allTrades]);
   const query = search.trim().toLowerCase();
-  const filteredGroups = query
-    ? tradeGroups.filter((group) =>
-        group.trades.some((trade) => tradeMatchesQuery(trade, query, consortiumByBidderId)),
-      )
-    : tradeGroups;
-  const pendingGroups = filteredGroups.filter((group) => group.status === "pending");
-  const approvedGroups = filteredGroups.filter((group) => group.status === "approved");
-  const rejectedGroups = filteredGroups.filter((group) => group.status === "rejected");
-  const filteredTradeCount = groupLegCount(filteredGroups);
-  const sections = [
-    {
-      status: "approved" as const,
-      label: "Approved",
-      icon: "✓",
-      headingClass: "text-green-700 border-green-200",
-      groups: approvedGroups,
-    },
-    {
-      status: "pending" as const,
-      label: "Pending Review",
-      icon: "⏳",
-      headingClass: "text-amber-700 border-amber-200",
-      groups: pendingGroups,
-    },
-    {
-      status: "rejected" as const,
-      label: "Rejected",
-      icon: "✗",
-      headingClass: "text-muted-foreground border-border",
-      groups: rejectedGroups,
-    },
-  ];
+  const allGroups = useMemo(() => buildTradeGroups(allTrades), [allTrades]);
+  const matchesSearch = (trade: TradeRow) =>
+    [
+      trade.teamName,
+      trade.fromBidderName,
+      trade.toBidderName,
+      ownerLabelById(
+        trade.fromBidderId,
+        trade.fromBidderName,
+        consortiumByBidderId,
+      ),
+      ownerLabelById(
+        trade.toBidderId,
+        trade.toBidderName,
+        consortiumByBidderId,
+      ),
+      trade.status,
+      trade.tradeDate,
+      trade.percentage.toString(),
+      trade.price.toString(),
+      trade.notes ?? "",
+    ].some((value) => value.toLowerCase().includes(query));
+  const filteredTrades = query
+    ? allTrades.filter(matchesSearch)
+    : allTrades;
+  const visibleGroups = useMemo(
+    () =>
+      allGroups
+        .filter((group) => !query || group.trades.some(matchesSearch))
+        .sort(sortTradeGroups),
+    [allGroups, query, consortiumByBidderId],
+  );
+  const pending = visibleGroups.filter((group) => group.trades[0]?.status === "pending");
+  const approved = visibleGroups.filter((group) => group.trades[0]?.status === "approved");
+  const rejected = visibleGroups.filter((group) => group.trades[0]?.status === "rejected");
+  const targetGroup = sourceTarget.tradeId == null
+    ? null
+    : allGroups.find((group) =>
+        group.trades.some((trade) => trade.id === sourceTarget.tradeId),
+      ) ?? null;
 
   useEffect(() => {
     if (sourceTarget.seasonYear != null && sourceTarget.seasonYear !== year) {
@@ -846,28 +1026,61 @@ export default function Trades() {
   }, [setYear, sourceTarget.seasonYear, year]);
 
   useEffect(() => {
+    if (sourceTarget.tradeId == null) {
+      sourceExpandedTradeId.current = null;
+      return;
+    }
+
+    if (
+      sourceTarget.seasonYear != null && sourceTarget.seasonYear !== year ||
+      isLoading ||
+      !targetGroup ||
+      targetGroup.trades.length < 2 ||
+      sourceExpandedTradeId.current === sourceTarget.tradeId
+    ) {
+      return;
+    }
+
+    sourceExpandedTradeId.current = sourceTarget.tradeId;
+    setExpandedGroups((current) => {
+      if (current.has(targetGroup.key)) return current;
+      const next = new Set(current);
+      next.add(targetGroup.key);
+      return next;
+    });
+  }, [
+    isLoading,
+    sourceTarget.seasonYear,
+    sourceTarget.tradeId,
+    targetGroup,
+    year,
+  ]);
+
+  useEffect(() => {
     if (
       sourceTarget.tradeId == null ||
       sourceTarget.seasonYear != null && sourceTarget.seasonYear !== year ||
       isLoading ||
-      !allTrades.some((trade) => trade.id === sourceTarget.tradeId)
+      !targetGroup ||
+      targetGroup.trades.length >= 2 && !expandedGroups.has(targetGroup.key)
     ) {
       return;
     }
 
     const frame = window.requestAnimationFrame(() => {
-      const card = document.getElementById(`trade-${sourceTarget.tradeId}`);
-      if (!card) return;
-      card.scrollIntoView({ behavior: "smooth", block: "center" });
-      card.focus({ preventScroll: true });
+      const leg = document.getElementById(`trade-${sourceTarget.tradeId}`);
+      if (!leg) return;
+      leg.scrollIntoView({ behavior: "smooth", block: "center" });
+      leg.focus({ preventScroll: true });
     });
     return () => window.cancelAnimationFrame(frame);
   }, [
-    allTrades,
+    expandedGroups,
     isLoading,
     location,
     sourceTarget.seasonYear,
     sourceTarget.tradeId,
+    targetGroup,
     year,
   ]);
 
@@ -950,7 +1163,7 @@ export default function Trades() {
           </div>
           {query && (
             <span className="text-xs text-muted-foreground font-mono whitespace-nowrap">
-              {filteredTradeCount} of {allTrades.length} trades
+              {filteredTrades.length} of {allTrades.length} trades
             </span>
           )}
         </div>
@@ -965,7 +1178,7 @@ export default function Trades() {
           <p className="text-muted-foreground font-mono text-sm uppercase tracking-widest">No trades recorded for {year}</p>
           <p className="text-xs text-muted-foreground mt-2">Use Submit Trade to propose a trade — it will start as Pending Review</p>
         </div>
-      ) : !filteredGroups.length ? (
+      ) : !filteredTrades.length ? (
         <div className="border border-dashed border-border flex flex-col items-center justify-center py-24 text-center">
           <p className="text-muted-foreground font-mono text-sm uppercase tracking-widest">
             No trades match “{search}”
@@ -980,33 +1193,97 @@ export default function Trades() {
         </div>
       ) : (
         <div className="space-y-6">
-          {sections.map((section) =>
-            section.groups.length > 0 ? (
-              <section key={section.status} className="space-y-2">
-                <h2
-                  className={cn(
-                    "border-b pb-1 text-xs font-mono font-bold uppercase tracking-widest",
-                    section.headingClass,
-                  )}
-                >
-                  {section.icon} {section.label} ({section.groups.length} groups ·{" "}
-                  {groupLegCount(section.groups)} legs)
-                </h2>
-                <div className="space-y-2">
-                  {section.groups.map((group) => (
-                    <TradeGroupCard
-                      key={group.key}
-                      group={group}
-                      onDelete={handleDelete}
-                      adminKey={adminKey}
-                      onStatusChange={refetch}
-                      consortiumByBidderId={consortiumByBidderId}
-                      highlightedTradeId={sourceTarget.tradeId}
-                    />
-                  ))}
-                </div>
-              </section>
-            ) : null,
+          {/* Pending */}
+          {pending.length > 0 && (
+            <section className="space-y-2">
+              <h2 className="text-xs font-mono font-bold uppercase tracking-widest text-amber-700 border-b border-amber-200 pb-1">
+                ⏳ Pending Review ({pending.length})
+              </h2>
+              <div className="space-y-2">
+                {pending.map((group) => (
+                  <TradeGroupPresentation
+                    key={group.key}
+                    group={group}
+                    expanded={expandedGroups.has(group.key)}
+                    onToggle={() =>
+                      setExpandedGroups((current) => {
+                        const next = new Set(current);
+                        if (next.has(group.key)) next.delete(group.key);
+                        else next.add(group.key);
+                        return next;
+                      })
+                    }
+                    onDelete={handleDelete}
+                    adminKey={adminKey}
+                    onStatusChange={refetch}
+                    consortiumByBidderId={consortiumByBidderId}
+                    highlightedTradeId={sourceTarget.tradeId}
+                  />
+                ))}
+              </div>
+            </section>
+          )}
+
+          {/* Approved */}
+          {approved.length > 0 && (
+            <section className="space-y-2">
+              <h2 className="text-xs font-mono font-bold uppercase tracking-widest text-green-700 border-b border-green-200 pb-1">
+                ✓ Approved ({approved.length})
+              </h2>
+              <div className="space-y-2">
+                {approved.map((group) => (
+                  <TradeGroupPresentation
+                    key={group.key}
+                    group={group}
+                    expanded={expandedGroups.has(group.key)}
+                    onToggle={() =>
+                      setExpandedGroups((current) => {
+                        const next = new Set(current);
+                        if (next.has(group.key)) next.delete(group.key);
+                        else next.add(group.key);
+                        return next;
+                      })
+                    }
+                    onDelete={handleDelete}
+                    adminKey={adminKey}
+                    onStatusChange={refetch}
+                    consortiumByBidderId={consortiumByBidderId}
+                    highlightedTradeId={sourceTarget.tradeId}
+                  />
+                ))}
+              </div>
+            </section>
+          )}
+
+          {/* Rejected */}
+          {rejected.length > 0 && (
+            <section className="space-y-2">
+              <h2 className="text-xs font-mono font-bold uppercase tracking-widest text-muted-foreground border-b border-border pb-1">
+                ✗ Rejected ({rejected.length})
+              </h2>
+              <div className="space-y-2">
+                {rejected.map((group) => (
+                  <TradeGroupPresentation
+                    key={group.key}
+                    group={group}
+                    expanded={expandedGroups.has(group.key)}
+                    onToggle={() =>
+                      setExpandedGroups((current) => {
+                        const next = new Set(current);
+                        if (next.has(group.key)) next.delete(group.key);
+                        else next.add(group.key);
+                        return next;
+                      })
+                    }
+                    onDelete={handleDelete}
+                    adminKey={adminKey}
+                    onStatusChange={refetch}
+                    consortiumByBidderId={consortiumByBidderId}
+                    highlightedTradeId={sourceTarget.tradeId}
+                  />
+                ))}
+              </div>
+            </section>
           )}
         </div>
       )}

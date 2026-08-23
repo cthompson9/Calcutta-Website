@@ -3,8 +3,14 @@ name: Deep-link query parsing
 description: Reliable query parameter handling for Results source links in the web app.
 ---
 
-For Results source backlinks, parse query parameters from the browser URL rather than relying only on Wouter's `useLocation()` value.
+For Results source backlinks, treat the browser URL as the canonical source of query parameters.
 
-**Why:** In this app, navigation reached the correct path while `useLocation()` could omit its query string. Destination pages therefore did not detect source record IDs and failed to focus or highlight them.
+**Why:** Route location state can omit the query string, which prevents destination pages from finding and focusing the linked record.
 
-**How to apply:** When a route's behavior depends on deep-link query parameters, use the router hook to react to route changes but read `window.location.href` (with a browser-safe fallback) when parsing the query.
+**How to apply:** Parse deep-link targets from the canonical URL whenever a page needs to act on a source record.
+
+When a source link opens an expandable destination, expand the matching disclosure once per target, then respect the user's subsequent collapse or expansion.
+
+**Why:** Source navigation should reveal the destination without overriding a user's later disclosure choice.
+
+**How to apply:** Reapply automatic expansion only after the source target changes or disappears.
