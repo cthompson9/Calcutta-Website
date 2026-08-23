@@ -1,0 +1,93 @@
+# Handoff: repo cleanup + legacy column drops (reviewed offline, apply in-place)
+
+Paste everything below this line to the Replit agent.
+
+---
+
+Apply the following cleanup to this Repl. Every change below has already been made and verified offline (full `pnpm run typecheck` green across all workspace projects; api-server and db test suites pass with `DATABASE_URL` set). Your job is to reproduce it exactly, verify, and stop. Do not redesign anything, do not "improve" adjacent code, and do not run `drizzle-kit push --force` at any point.
+
+## 0. Preflight
+
+1. Create a checkpoint/commit of the current state before touching anything.
+2. Confirm these files match what the instructions assume (they were exported 2026-08-23 13:25 ET). If any of them has changed since, STOP and report the diff instead of proceeding:
+   - `lib/db/src/schema/teams.ts`
+   - `lib/db/src/migrate.ts`
+   - `lib/db/src/migrations/index.ts`
+   - `artifacts/api-server/src/routes/teams.ts`
+   - `artifacts/nfl-auction/vite.config.ts`
+   - `lib/db/package.json`
+
+## 1. Delete (no code references remain to any of these — verified by grep and by the TypeScript compiler)
+
+- `artifacts/mockup-sandbox/` (design sandbox)
+- `artifacts/nfl-auction-mobile/` (Expo app; the responsive web app in `artifacts/nfl-auction` already ships the mobile UI, including the bottom tab bar in `src/components/layout/Shell.tsx`)
+- `attached_assets/` (pasted screenshots/text from agent chats)
+- `exports/` (a database export snapshot; backups do not belong in the repo)
+- `lib/db/src/seed2025.ts` (completed one-time 2025 seed)
+- `lib/db/src/backloadProduction2026.ts` and `lib/db/src/backloadProduction2026.test.ts` (completed one-time production backload)
+
+Do NOT delete: `lib/db/src/backfillPeriodSnapshots.ts` and `lib/db/src/backfillOwnerPositions.ts` (these are the forward migration tools for the period/basis model), `scripts/src/hello.ts` (keeps the scripts package typechecking), `docs/`.
+
+## 2. Edit
+
+**`lib/db/package.json`** — remove the `"seed2025"` and `"backload-production-2026"` script entries. Keep both `backfill-*` scripts and `test`.
+
+**`lib/db/src/schema/teams.ts`** — remove the `bidAmount` column definition and the now-unused `numeric` import. Final table shape: `id`, `name`, `conference`, `division` only.
+
+**`lib/db/src/migrations/0006DropLegacyColumns.ts`** — create with exactly:
+
+```ts
+export const dropLegacyColumnsMigration = {
+  version: "0006_drop_legacy_columns",
+  sql: `
+    -- bidders.consortium_id was replaced by the dated consortium_memberships
+    -- table (migration 0005). The Drizzle schema no longer defines it; the
+    -- column only survives in databases created before that migration.
+    alter table bidders drop column if exists consortium_id;
+
+    -- teams.bid_amount froze the 2025 auction prices onto the global franchise
+    -- table. Per-season prices live in team_season_auctions; the last reader
+    -- (the 2025 seed script) has been removed.
+    alter table teams drop column if exists bid_amount;
+  `,
+} as const;
+```
+
+**`lib/db/src/migrations/index.ts`** — export it alongside 0005:
+
+```ts
+export { ownerPositionsMigration } from "./0005OwnerPositions";
+export { dropLegacyColumnsMigration } from "./0006DropLegacyColumns";
+```
+
+**`lib/db/src/migrate.ts`** — import `dropLegacyColumnsMigration` and append it to the `migrations` array after `ownerPositionsMigration`. The existing startup runner (advisory lock + `app_schema_migrations` version check) handles idempotency; change nothing else in this file.
+
+**`artifacts/api-server/src/routes/teams.ts`** — in the team-creation transaction (~line 257), the `tx.insert(teamsTable).values(...)` call currently passes `bidAmount: "0"`. Remove that property (and the "legacy bidAmount" comment above the insert). The real auction price is already written to `teamSeasonAuctionsTable` two statements later; do not touch that.
+
+**`artifacts/nfl-auction/vite.config.ts`** — remove the `'@assets'` alias entry (it pointed at the deleted `attached_assets/`; nothing imports `@assets`).
+
+## 3. Hard guardrails
+
+- Do NOT modify or drop `team_bidders`, `positions`, `trades`, `ownership_adjustments`, `team_results`, or `mtm_snapshots` — schema or data. `team_bidders` + `trades` are the source of truth; `positions` is rebuilt from them by `syncSeasonPositions`. Inverting that is a separate future project, not this task.
+- The only database changes in this task are the two column drops, and they must happen ONLY via migration `0006` running at API startup. Never `drizzle-kit push --force`.
+- Do not upgrade or remove any npm dependencies in this task.
+
+## 4. Verify (all gates must pass, in order)
+
+1. `pnpm install` (regenerates the lockfile without the deleted `nfl-auction-mobile` workspace package — the lockfile diff should show only removals).
+2. If typecheck reports TS6305 ("Output file ... has not been built"), delete all `*.tsbuildinfo` files outside `node_modules` and retry — stale build info from before the edits.
+3. `pnpm run typecheck` — must be fully green.
+4. `pnpm --filter @workspace/api-server run test` and `pnpm --filter @workspace/db run test` — must pass (DATABASE_URL is set in this Repl; DB-dependent tests will run for real).
+5. Restart the API workflow. Startup runs migrations; confirm in fresh logs that it booted cleanly.
+6. Verify the migration applied against the dev database:
+   - `select version from app_schema_migrations order by version;` → includes `0006_drop_legacy_columns`
+   - `select column_name from information_schema.columns where table_name = 'bidders';` → no `consortium_id`
+   - `select column_name from information_schema.columns where table_name = 'teams';` → no `bid_amount`
+7. Browser smoke test, non-destructive: load Results, M2M Tracker, and Trades for the 2026 season; confirm data renders and there are no console or network errors. Also load once at a narrow viewport (<768px) and confirm the bottom tab bar and mobile season-toggle header render.
+8. Run one integrity spot-check: `select count(*) from positions;` should be unchanged from before the restart (the migration touches no rows).
+
+## 5. Production
+
+Production is updated only through the normal Publish flow. After all gates above pass in dev, publish; migration 0006 will apply itself to production on the first boot of the published deployment (both drops are `if exists`, so it is safe even if production state differs). After publish, re-run the step-6 SQL checks against production.
+
+Report back: the lockfile diff summary, typecheck/test output tails, the three SQL check results, and the smoke-test result. If anything fails, stop and report — do not attempt fixes beyond the tsbuildinfo note in step 4.2.
