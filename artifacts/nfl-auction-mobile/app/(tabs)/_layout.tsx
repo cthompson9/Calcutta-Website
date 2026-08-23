@@ -28,6 +28,10 @@ function NativeTabLayout() {
         <Icon sf={{ default: 'hammer', selected: 'hammer.fill' }} />
         <Label>Auction</Label>
       </NativeTabs.Trigger>
+      <NativeTabs.Trigger name="whats-new">
+        <Icon sf={{ default: 'sparkles', selected: 'sparkles' }} />
+        <Label>What’s New</Label>
+      </NativeTabs.Trigger>
     </NativeTabs>
   );
 }
@@ -121,6 +125,18 @@ function ClassicTabLayout() {
               <SymbolView name="hammer" tintColor={color} size={24} />
             ) : (
               <Feather name="shopping-bag" size={22} color={color} />
+            ),
+        }}
+      />
+      <Tabs.Screen
+        name="whats-new"
+        options={{
+          title: 'What’s New',
+          tabBarIcon: ({ color }) =>
+            isIOS ? (
+              <SymbolView name="sparkles" tintColor={color} size={24} />
+            ) : (
+              <Feather name="star" size={22} color={color} />
             ),
         }}
       />

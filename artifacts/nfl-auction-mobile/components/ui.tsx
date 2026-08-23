@@ -68,7 +68,11 @@ export function ScreenHeader({
 
 const SEASONS = [2025, 2026];
 
-export function SeasonToggle() {
+export function SeasonToggle({
+  onSeasonChange,
+}: {
+  onSeasonChange?: (season: number) => void;
+} = {}) {
   const colors = useColors();
   const { season, setSeason } = useApp();
 
@@ -83,7 +87,8 @@ export function SeasonToggle() {
             onPress={() => {
               if (!active) {
                 Haptics.selectionAsync();
-                setSeason(year);
+                if (onSeasonChange) onSeasonChange(year);
+                else setSeason(year);
               }
             }}
             style={[
@@ -184,6 +189,40 @@ export function ConferenceChip({ conference }: { conference: string }) {
   return (
     <View style={[styles.badge, { backgroundColor: `${color}1A` }]}>
       <Text style={[styles.badgeText, { color }]}>{conference}</Text>
+    </View>
+  );
+}
+
+// ── Results source return ────────────────────────────────────────────────────
+
+export function ResultsBacklink({ onPress }: { onPress: () => void }) {
+  const colors = useColors();
+  return (
+    <View
+      style={[
+        styles.backlink,
+        { backgroundColor: `${colors.primary}12`, borderColor: `${colors.primary}55` },
+      ]}
+    >
+      <Feather name="corner-up-left" size={15} color={colors.primary} />
+      <Text style={[styles.backlinkText, { color: colors.foreground }]}>
+        Viewing a source record from Results
+      </Text>
+      <Pressable
+        testID="back-to-results"
+        onPress={() => {
+          Haptics.selectionAsync();
+          onPress();
+        }}
+        style={({ pressed }) => [
+          styles.backlinkButton,
+          { backgroundColor: colors.primary, opacity: pressed ? 0.72 : 1 },
+        ]}
+      >
+        <Text style={[styles.backlinkButtonText, { color: colors.primaryForeground }]}>
+          Back to Results
+        </Text>
+      </Pressable>
     </View>
   );
 }
@@ -328,6 +367,31 @@ const styles = StyleSheet.create({
     fontSize: 10,
     fontFamily: 'JetBrainsMono_700Bold',
     letterSpacing: 0.8,
+  },
+  backlink: {
+    borderWidth: 1,
+    marginHorizontal: 16,
+    marginTop: 10,
+    padding: 10,
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 8,
+  },
+  backlinkText: {
+    flex: 1,
+    fontSize: 10,
+    fontFamily: 'JetBrainsMono_500Medium',
+    lineHeight: 14,
+  },
+  backlinkButton: {
+    paddingHorizontal: 9,
+    paddingVertical: 7,
+  },
+  backlinkButtonText: {
+    fontSize: 9,
+    fontFamily: 'JetBrainsMono_700Bold',
+    textTransform: 'uppercase',
+    letterSpacing: 0.4,
   },
   stateWrap: {
     flex: 1,

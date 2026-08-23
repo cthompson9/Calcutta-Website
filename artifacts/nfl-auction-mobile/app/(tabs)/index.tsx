@@ -11,6 +11,7 @@ import {
 import Svg, { Polyline } from 'react-native-svg';
 import { Feather } from '@expo/vector-icons';
 import * as Haptics from 'expo-haptics';
+import { useRouter } from 'expo-router';
 import {
   useGetMtmSnapshots,
   useGetResults,
@@ -82,11 +83,13 @@ function OwnerCard({
   rank,
   weeklyTotals,
   basis,
+  season,
 }: {
   owner: OwnerResultRow;
   rank: number;
   weeklyTotals?: number[];
   basis: 'realized' | 'mtm';
+  season: number;
 }) {
   const colors = useColors();
   const [expanded, setExpanded] = useState<boolean>(false);
@@ -247,7 +250,14 @@ function OwnerCard({
                   <OwnershipBreakdown
                     segments={ownerSegments}
                     owners={ownerEntries}
+                    season={season}
+                    teamId={t.teamId}
                     compact
+                  />
+                  <PositionLedger
+                    segments={ownerSegments}
+                    owners={ownerEntries}
+                    focusedBidderId={owner.bidderId}
                   />
                   <Text style={[styles.teamListMeta, { color: colors.mutedForeground }]}>
                     {t.conference} {t.division} · {t.wins} W · cost {fmtMoney(t.cost)}
@@ -276,13 +286,18 @@ function formatOwnershipSegmentShare(share: number, isTrade: boolean): string {
 function OwnershipBreakdown({
   segments,
   owners,
+  season,
+  teamId,
   compact = false,
 }: {
   segments: OwnershipSegment[];
   owners: TeamResultRow['owners'];
+  season: number;
+  teamId: number;
   compact?: boolean;
 }) {
   const colors = useColors();
+  const router = useRouter();
   const displaySegments: OwnershipSegment[] =
     segments.length > 0
       ? segments
@@ -299,10 +314,13 @@ function OwnershipBreakdown({
       )}
       {displaySegments.map((segment, index) => {
         const isTrade = segment.source === 'trade';
+        const hasLinkedTradeRecord = isTrade && segment.tradeId != null;
         const isAcquisition = segment.tradeDirection === 'acquired';
         const counterparty = segment.counterpartyBidderName;
         const sourceLabel = !isTrade
           ? 'AUCTION'
+          : !hasLinkedTradeRecord
+            ? 'TRADE · AUCTION SOURCE'
           : isAcquisition
             ? 'TRADE IN'
             : 'TRADE OUT';
@@ -313,11 +331,45 @@ function OwnershipBreakdown({
             : colors.destructive;
 
         return (
-          <View
+          <Pressable
             key={`${segment.source}-${segment.tradeId ?? 'primary'}-${segment.bidderId}-${index}`}
+            testID={
+              hasLinkedTradeRecord
+                ? `source-trade-${segment.tradeId}`
+                : `source-auction-${season}-${segment.bidderId}`
+            }
+            accessibilityRole="link"
+            accessibilityLabel={
+              hasLinkedTradeRecord
+                ? `Open the trade source for ${segment.bidderName}`
+                : isTrade
+                  ? `Open the original auction record for the unlinked trade segment for ${segment.bidderName}`
+                : `Open the auction source for ${segment.bidderName}`
+            }
+            onPress={() => {
+              Haptics.selectionAsync();
+              if (hasLinkedTradeRecord) {
+                router.push({
+                  pathname: '/trades',
+                  params: {
+                    season: String(season),
+                    tradeId: String(segment.tradeId),
+                    from: 'results',
+                  },
+                });
+                return;
+              }
+              router.push({
+                pathname: '/auction',
+                params: { season: String(season), teamId: String(teamId), from: 'results' },
+              });
+            }}
             style={[
               styles.ownershipRow,
-              { backgroundColor: colors.muted, borderColor: rowBorder },
+              {
+                backgroundColor: colors.muted,
+                borderColor: rowBorder,
+              },
             ]}
           >
             <View style={styles.ownershipInfo}>
@@ -344,16 +396,142 @@ function OwnershipBreakdown({
             >
               {formatOwnershipSegmentShare(segment.ownershipShare, isTrade)}
             </Text>
-          </View>
+            <Feather name="external-link" size={12} color={colors.mutedForeground} />
+          </Pressable>
         );
       })}
     </View>
   );
 }
 
+type SignedPosition = {
+  bidderId: number;
+  bidderName: string;
+  ownershipShare: number;
+};
+
+function effectivePositions(
+  segments: OwnershipSegment[],
+  owners: TeamResultRow['owners'],
+): SignedPosition[] {
+  if (segments.length === 0) {
+    return owners.map((owner) => ({
+      bidderId: owner.bidderId,
+      bidderName: owner.bidderName,
+      ownershipShare: owner.ownershipShare,
+    }));
+  }
+
+  const byBidder = new Map<number, SignedPosition>();
+  for (const segment of segments) {
+    const position = byBidder.get(segment.bidderId) ?? {
+      bidderId: segment.bidderId,
+      bidderName: segment.bidderName,
+      ownershipShare: 0,
+    };
+    position.ownershipShare += segment.ownershipShare;
+    byBidder.set(segment.bidderId, position);
+  }
+
+  return [...byBidder.values()]
+    .filter((position) => Math.abs(position.ownershipShare) >= 0.00005)
+    .sort((a, b) => b.ownershipShare - a.ownershipShare);
+}
+
+function signedShare(share: number): string {
+  const value = fmtShare(share);
+  return share > 0 ? `+${value}` : value;
+}
+
+function positionLabel(share: number): string {
+  if (share < 0) return 'SHORT';
+  if (share > 1.00005) return 'LEVERAGED LONG';
+  return 'LONG';
+}
+
+function PositionLedger({
+  segments,
+  owners,
+  focusedBidderId,
+  showReconciliation = false,
+}: {
+  segments: OwnershipSegment[];
+  owners: TeamResultRow['owners'];
+  focusedBidderId?: number;
+  showReconciliation?: boolean;
+}) {
+  const colors = useColors();
+  const positions = effectivePositions(segments, owners).filter(
+    (position) => focusedBidderId == null || position.bidderId === focusedBidderId,
+  );
+  const netShare = effectivePositions(segments, owners).reduce(
+    (total, position) => total + position.ownershipShare,
+    0,
+  );
+
+  if (positions.length === 0) return null;
+
+  return (
+    <View style={styles.positionLedger}>
+      <Text style={[styles.positionHeading, { color: colors.mutedForeground }]}>
+        SIGNED POSITION{positions.length === 1 ? '' : 'S'}
+      </Text>
+      {positions.map((position) => {
+        const isShort = position.ownershipShare < 0;
+        const label = positionLabel(position.ownershipShare);
+        return (
+          <View
+            key={position.bidderId}
+            style={[styles.positionRow, { borderColor: colors.border, backgroundColor: colors.background }]}
+          >
+            <Text
+              style={[styles.positionName, { color: colors.foreground }]}
+              numberOfLines={1}
+            >
+              {position.bidderName}
+            </Text>
+            <View style={styles.positionValue}>
+              <Text
+                style={[
+                  styles.positionType,
+                  { color: isShort ? colors.destructive : colors.success },
+                ]}
+              >
+                {label}
+              </Text>
+              <Text
+                style={[
+                  styles.positionShare,
+                  { color: isShort ? colors.destructive : colors.foreground },
+                ]}
+              >
+                {signedShare(position.ownershipShare)}
+              </Text>
+            </View>
+          </View>
+        );
+      })}
+      {showReconciliation ? (
+        <Text style={[styles.reconciliation, { color: colors.mutedForeground }]}>
+          NET TEAM OWNERSHIP {signedShare(netShare)}
+          {Math.abs(netShare - 1) < 0.00005 ? ' · RECONCILES TO 100%' : ''}
+        </Text>
+      ) : null}
+    </View>
+  );
+}
+
 // ── Team row ─────────────────────────────────────────────────────────────────
 
-function TeamCard({ team, basis }: { team: TeamResultRow; basis: 'realized' | 'mtm' }) {
+function TeamCard({
+  team,
+  basis,
+  season,
+}: {
+  team: TeamResultRow;
+  basis: 'realized' | 'mtm';
+  season: number;
+}) {
   const colors = useColors();
   const value = basis === 'mtm' ? team.markToMarket : team.realizedReturn;
   const net = basis === 'mtm' ? team.markToMarket - team.cost : team.netReturn;
@@ -375,7 +553,17 @@ function TeamCard({ team, basis }: { team: TeamResultRow; basis: 'realized' | 'm
         </View>
         <ConferenceChip conference={team.conference} />
       </View>
-      <OwnershipBreakdown segments={team.ownershipSegments} owners={team.owners} />
+      <OwnershipBreakdown
+        segments={team.ownershipSegments}
+        owners={team.owners}
+        season={season}
+        teamId={team.teamId}
+      />
+      <PositionLedger
+        segments={team.ownershipSegments}
+        owners={team.owners}
+        showReconciliation
+      />
       <View style={[styles.statRow, { borderTopColor: colors.border }]}>
         <View style={styles.stat}>
           <Text style={[styles.statLabel, { color: colors.mutedForeground }]}>COST</Text>
@@ -729,6 +917,7 @@ export default function StandingsScreen() {
               rank={index + 1}
               weeklyTotals={mtmByName[item.bidderName]}
               basis={basis}
+              season={season}
             />
           )}
           contentContainerStyle={[styles.listContent, { paddingBottom: listBottomPad }]}
@@ -752,7 +941,7 @@ export default function StandingsScreen() {
         <FlatList
           data={teamQuery.data ?? []}
           keyExtractor={(item) => String(item.teamId)}
-          renderItem={({ item }) => <TeamCard team={item} basis={basis} />}
+          renderItem={({ item }) => <TeamCard team={item} basis={basis} season={season} />}
           contentContainerStyle={[styles.listContent, { paddingBottom: listBottomPad }]}
           scrollEnabled={(teamQuery.data ?? []).length > 0}
           refreshControl={
@@ -990,5 +1179,46 @@ const styles = StyleSheet.create({
     fontSize: 13,
     lineHeight: 18,
     fontFamily: 'JetBrainsMono_700Bold',
+  },
+  positionLedger: {
+    marginTop: 10,
+    gap: 4,
+  },
+  positionHeading: {
+    fontSize: 9,
+    fontFamily: 'JetBrainsMono_700Bold',
+    letterSpacing: 0.7,
+  },
+  positionRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 8,
+    borderWidth: 1,
+    paddingHorizontal: 7,
+    paddingVertical: 5,
+  },
+  positionName: {
+    flex: 1,
+    fontSize: 11,
+    fontFamily: 'Archivo_600SemiBold',
+  },
+  positionValue: {
+    alignItems: 'flex-end',
+  },
+  positionType: {
+    fontSize: 8,
+    fontFamily: 'JetBrainsMono_700Bold',
+    letterSpacing: 0.5,
+  },
+  positionShare: {
+    fontSize: 12,
+    fontFamily: 'JetBrainsMono_700Bold',
+    marginTop: 1,
+  },
+  reconciliation: {
+    fontSize: 9,
+    fontFamily: 'JetBrainsMono_500Medium',
+    letterSpacing: 0.3,
+    marginTop: 2,
   },
 });

@@ -16,3 +16,5 @@
 - [Cross-Calcutta snapshot coverage](cross-calcutta-snapshot-coverage.md) — comparison cells must report selected-basis coverage so partial period data is never shown as complete.
 - [Atomic season backloads](atomic-season-backloads.md) — derive and validate every auctioned team inside one transaction; pool-scoped staging tables must drop at commit.
 - [Deep-link query parsing](deep-link-query-parsing.md) — Wouter location state may omit the query string; destination targeting must read the browser URL.
+- [Expo Web font loading](expo-web-font-loading.md) — do not block Expo Web’s root on font assets behind the preview proxy; render with system fallbacks.
+- [Expo Web source navigation](expo-web-source-navigation.md) — long-list source links use DOM row reveal on web; nested RN layout offsets are not ScrollView content offsets.

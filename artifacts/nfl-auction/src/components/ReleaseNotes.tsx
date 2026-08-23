@@ -15,6 +15,11 @@ export const releaseNotes: ReleaseNote[] = [
     date: "August 23, 2026",
     updates: [
       {
+        title: "New mobile experience",
+        description:
+          "A dedicated mobile companion brings season-aware Results, auction history, trades, source links, and signed long/short positions to your phone.",
+      },
+      {
         title: "Trade legs stay together",
         description:
           "Multi-leg transactions now appear as one expandable trade summary, with the aggregate value, teams, counterparties, date, and status up front.",

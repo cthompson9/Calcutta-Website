@@ -1,4 +1,4 @@
-import React, { useMemo, useState } from 'react';
+import React, { useEffect, useMemo, useRef, useState } from 'react';
 import {
   ActivityIndicator,
   Alert,
@@ -7,7 +7,6 @@ import {
   Pressable,
   RefreshControl,
   ScrollView,
-  SectionList,
   StyleSheet,
   Text,
   TextInput,
@@ -17,6 +16,7 @@ import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { Feather } from '@expo/vector-icons';
 import * as Haptics from 'expo-haptics';
 import { useQueryClient } from '@tanstack/react-query';
+import { useLocalSearchParams, useRouter } from 'expo-router';
 import {
   setTradeStatus,
   useCreateTrade,
@@ -33,6 +33,7 @@ import {
   EmptyState,
   ErrorState,
   LoadingState,
+  ResultsBacklink,
   ScreenHeader,
   SeasonToggle,
   StatusBadge,
@@ -73,6 +74,122 @@ function decisionAuditLabel(trade: TradeRow): string | null {
     timeZoneName: 'short',
   }).format(new Date(trade.decisionAt));
   return `Decision recorded ${timestamp} · ${channel}`;
+}
+
+type TradeGroup = {
+  key: string;
+  trades: TradeRow[];
+};
+
+function positiveInteger(value: string | string[] | undefined): number | null {
+  const raw = Array.isArray(value) ? value[0] : value;
+  if (!raw) return null;
+  const parsed = Number.parseInt(raw, 10);
+  return Number.isInteger(parsed) && parsed > 0 ? parsed : null;
+}
+
+function sharedTradeDescription(notes: string | null | undefined): string {
+  const description = (notes ?? '')
+    .normalize('NFKC')
+    .trim()
+    .replace(/\s+/g, ' ');
+  const withoutLeadingLeg = description.replace(
+    /^leg\s+\d+\s+(?:of|\/)\s*\d+\s*:\s*/i,
+    '',
+  );
+  const withoutTrailingLeg = withoutLeadingLeg.replace(
+    /\s*[.;,]?\s*leg\s+\d+\s*(?:\/|of)\s*\d+(?:\s*[-–—:]\s*[^.]*)?\.?\s*$/i,
+    '',
+  );
+  const sharedLead = withoutTrailingLeg.match(/^(.+?\bleg\b[^.]*\.)\s+.+$/i);
+  return sharedLead?.[1] ?? withoutTrailingLeg;
+}
+
+function normalizedTradeDescription(notes: string | null | undefined): string {
+  return sharedTradeDescription(notes).toLowerCase();
+}
+
+function tradeGroupKey(trade: TradeRow): string {
+  const counterparties = [trade.fromBidderId, trade.toBidderId].sort((a, b) => a - b);
+  return [
+    normalizedTradeDescription(trade.notes),
+    trade.tradeDate,
+    trade.status,
+    counterparties[0],
+    counterparties[1],
+  ].join('|');
+}
+
+function hasExplicitLegLabel(notes: string | null | undefined): boolean {
+  const rawNotes = (notes ?? '').normalize('NFKC').replace(/\s+/g, ' ');
+  return /\bleg\s+\d+\s*(?:of|\/)\s*\d+\b/i.test(rawNotes);
+}
+
+function teamNamesInDescription(trades: TradeRow[], description: string): boolean {
+  const teams = [...new Set(trades.map((trade) => trade.teamName))];
+  return teams.length > 1 && teams.every((team) => {
+    const normalizedName = team.normalize('NFKC').toLowerCase();
+    const nickname = normalizedName.split(/\s+/).at(-1) ?? normalizedName;
+    return description.includes(normalizedName) || description.includes(nickname);
+  });
+}
+
+function hasTransactionSignal(trades: TradeRow[]): boolean {
+  const description = normalizedTradeDescription(trades[0]?.notes);
+  if (!description) return false;
+  return (
+    trades.every((trade) => hasExplicitLegLabel(trade.notes)) ||
+    /\bcrossbook\b/.test(description) ||
+    teamNamesInDescription(trades, description)
+  );
+}
+
+function buildTradeGroups(trades: TradeRow[]): TradeGroup[] {
+  const candidates = new Map<string, TradeRow[]>();
+  for (const trade of trades) {
+    const key = tradeGroupKey(trade);
+    const group = candidates.get(key);
+    if (group) group.push(trade);
+    else candidates.set(key, [trade]);
+  }
+
+  return [...candidates.entries()].flatMap(([key, tradesForKey]) => {
+    if (tradesForKey.length > 1 && hasTransactionSignal(tradesForKey)) {
+      return [{ key, trades: [...tradesForKey].sort((a, b) => b.id - a.id) }];
+    }
+    return tradesForKey.map((trade) => ({ key: `${key}|${trade.id}`, trades: [trade] }));
+  });
+}
+
+function latestDecisionTime(group: TradeGroup): number {
+  return Math.max(
+    ...group.trades.map((trade) => {
+      const timestamp = trade.decisionAt ? Date.parse(trade.decisionAt) : 0;
+      return Number.isFinite(timestamp) ? timestamp : 0;
+    }),
+  );
+}
+
+function latestTradeDate(group: TradeGroup): string {
+  return group.trades.reduce(
+    (latest, trade) => (trade.tradeDate > latest ? trade.tradeDate : latest),
+    '',
+  );
+}
+
+function sortTradeGroups(a: TradeGroup, b: TradeGroup): number {
+  const statusOrder: Record<string, number> = { pending: 0, approved: 1, rejected: 2 };
+  const aStatus = a.trades[0]?.status ?? 'pending';
+  const bStatus = b.trades[0]?.status ?? 'pending';
+  if (aStatus !== bStatus) return (statusOrder[aStatus] ?? 99) - (statusOrder[bStatus] ?? 99);
+
+  if (aStatus !== 'pending') {
+    const decisionOrder = latestDecisionTime(b) - latestDecisionTime(a);
+    if (decisionOrder !== 0) return decisionOrder;
+  }
+  const dateOrder = latestTradeDate(b).localeCompare(latestTradeDate(a));
+  if (dateOrder !== 0) return dateOrder;
+  return Math.max(...b.trades.map((trade) => trade.id)) - Math.max(...a.trades.map((trade) => trade.id));
 }
 
 // ── Picker sheet (web-safe select replacement) ────────────────────────────────
@@ -681,10 +798,12 @@ function TradeCard({
   trade,
   onDecide,
   deciding,
+  highlighted = false,
 }: {
   trade: TradeRow;
   onDecide: (trade: TradeRow, status: 'approved' | 'rejected') => void;
   deciding: number | null;
+  highlighted?: boolean;
 }) {
   const colors = useColors();
   const isPending = trade.status === 'pending';
@@ -692,11 +811,12 @@ function TradeCard({
 
   return (
     <View
+      testID={`trade-${trade.id}`}
       style={[
         styles.card,
         {
           backgroundColor: colors.card,
-          borderColor: isPending ? colors.warning : colors.border,
+          borderColor: highlighted ? colors.primary : isPending ? colors.warning : colors.border,
         },
       ]}
     >
@@ -779,28 +899,297 @@ function TradeCard({
   );
 }
 
+function TradeLeg({
+  trade,
+  onDecide,
+  deciding,
+  highlighted,
+}: {
+  trade: TradeRow;
+  onDecide: (trade: TradeRow, status: 'approved' | 'rejected') => void;
+  deciding: number | null;
+  highlighted: boolean;
+}) {
+  const colors = useColors();
+  const isPending = trade.status === 'pending';
+  const busy = deciding === trade.id;
+
+  return (
+    <View
+      testID={`trade-${trade.id}`}
+      style={[
+        styles.tradeLeg,
+        {
+          backgroundColor: highlighted ? `${colors.primary}14` : colors.background,
+          borderColor: highlighted ? colors.primary : colors.border,
+        },
+      ]}
+    >
+      <View style={styles.tradeTopRow}>
+        <Text style={[styles.tradeTeam, { color: colors.foreground }]}>{trade.teamName}</Text>
+        <Text style={[styles.legPct, { color: colors.mutedForeground }]}>{trade.percentage}%</Text>
+      </View>
+      <View style={styles.tradeFlowRow}>
+        <Text style={[styles.tradeBidder, { color: colors.foreground }]} numberOfLines={1}>
+          {trade.fromBidderName}
+        </Text>
+        <Feather name="arrow-right" size={14} color={colors.mutedForeground} />
+        <Text style={[styles.tradeBidder, { color: colors.foreground }]} numberOfLines={1}>
+          {trade.toBidderName}
+        </Text>
+      </View>
+      <Text style={[styles.tradeMeta, { color: colors.mutedForeground }]}>
+        {fmtMoney(trade.price)}
+      </Text>
+      {decisionAuditLabel(trade) ? (
+        <Text style={[styles.tradeMeta, { color: colors.mutedForeground, marginTop: 4 }]}>
+          {decisionAuditLabel(trade)}
+        </Text>
+      ) : null}
+      {isPending ? (
+        <View style={[styles.tradeActions, { borderTopColor: colors.border }]}>
+          {busy ? (
+            <ActivityIndicator size="small" color={colors.mutedForeground} />
+          ) : (
+            <>
+              <Pressable
+                testID={`reject-trade-${trade.id}`}
+                onPress={() => onDecide(trade, 'rejected')}
+                disabled={deciding !== null}
+                style={({ pressed }) => [
+                  styles.actionBtn,
+                  {
+                    borderColor: colors.destructive,
+                    borderWidth: 1,
+                    opacity: pressed || deciding !== null ? 0.6 : 1,
+                  },
+                ]}
+              >
+                <Feather name="x" size={15} color={colors.destructive} />
+                <Text style={[styles.actionText, { color: colors.destructive }]}>Reject</Text>
+              </Pressable>
+              <Pressable
+                testID={`approve-trade-${trade.id}`}
+                onPress={() => onDecide(trade, 'approved')}
+                disabled={deciding !== null}
+                style={({ pressed }) => [
+                  styles.actionBtn,
+                  {
+                    backgroundColor: colors.success,
+                    opacity: pressed || deciding !== null ? 0.6 : 1,
+                  },
+                ]}
+              >
+                <Feather name="check" size={15} color={colors.primaryForeground} />
+                <Text style={[styles.actionText, { color: colors.primaryForeground }]}>Approve</Text>
+              </Pressable>
+            </>
+          )}
+        </View>
+      ) : null}
+    </View>
+  );
+}
+
+function TradeGroupCard({
+  group,
+  onDecide,
+  deciding,
+  highlightedTradeId,
+}: {
+  group: TradeGroup;
+  onDecide: (trade: TradeRow, status: 'approved' | 'rejected') => void;
+  deciding: number | null;
+  highlightedTradeId: number | null;
+}) {
+  const colors = useColors();
+  const firstTrade = group.trades[0]!;
+  const isGrouped = group.trades.length > 1;
+  const containsHighlight = highlightedTradeId != null &&
+    group.trades.some((trade) => trade.id === highlightedTradeId);
+  const [expanded, setExpanded] = useState<boolean>(containsHighlight);
+
+  useEffect(() => {
+    if (containsHighlight) setExpanded(true);
+  }, [containsHighlight]);
+
+  if (!isGrouped) {
+    return (
+      <TradeCard
+        trade={firstTrade}
+        onDecide={onDecide}
+        deciding={deciding}
+        highlighted={containsHighlight}
+      />
+    );
+  }
+
+  const description = sharedTradeDescription(firstTrade.notes) || 'Multi-leg transaction';
+  const totalValue = group.trades.reduce((total, trade) => total + trade.price, 0);
+  const teams = [...new Set(group.trades.map((trade) => trade.teamName))];
+  const latestDecision = [...group.trades].sort(
+    (a, b) => (Date.parse(b.decisionAt ?? '') || 0) - (Date.parse(a.decisionAt ?? '') || 0),
+  )[0];
+
+  return (
+    <View
+      testID={`trade-group-${group.trades.map((trade) => trade.id).sort((a, b) => a - b).join('-')}`}
+      style={[
+        styles.groupCard,
+        {
+          backgroundColor: colors.card,
+          borderColor: containsHighlight
+            ? colors.primary
+            : firstTrade.status === 'pending'
+              ? colors.warning
+              : colors.border,
+        },
+      ]}
+    >
+      <Pressable
+        onPress={() => {
+          Haptics.selectionAsync();
+          setExpanded((value) => !value);
+        }}
+        accessibilityRole="button"
+        accessibilityState={{ expanded }}
+        style={({ pressed }) => [styles.groupSummary, { opacity: pressed ? 0.78 : 1 }]}
+      >
+        <View style={styles.tradeTopRow}>
+          <View style={{ flex: 1 }}>
+            <Text style={[styles.groupTitle, { color: colors.foreground }]} numberOfLines={2}>
+              {description}
+            </Text>
+            <Text style={[styles.groupTeams, { color: colors.mutedForeground }]} numberOfLines={2}>
+              {teams.join(' · ')}
+            </Text>
+          </View>
+          <View style={{ alignItems: 'flex-end', gap: 6 }}>
+            <StatusBadge status={firstTrade.status} />
+            <Feather
+              name={expanded ? 'chevron-up' : 'chevron-down'}
+              size={18}
+              color={colors.mutedForeground}
+            />
+          </View>
+        </View>
+        <View style={styles.tradeFlowRow}>
+          <Text style={[styles.tradeBidder, { color: colors.foreground }]} numberOfLines={1}>
+            {firstTrade.fromBidderName}
+          </Text>
+          <Feather name="arrow-right" size={14} color={colors.mutedForeground} />
+          <Text style={[styles.tradeBidder, { color: colors.foreground }]} numberOfLines={1}>
+            {firstTrade.toBidderName}
+          </Text>
+        </View>
+        <Text style={[styles.tradeMeta, { color: colors.mutedForeground }]}>
+          {group.trades.length} legs · {fmtMoney(totalValue)} total · {fmtDate(latestTradeDate(group))}
+        </Text>
+        {latestDecision && decisionAuditLabel(latestDecision) ? (
+          <Text style={[styles.tradeMeta, { color: colors.mutedForeground, marginTop: 4 }]}>
+            {decisionAuditLabel(latestDecision)}
+          </Text>
+        ) : null}
+      </Pressable>
+      {expanded ? (
+        <View style={[styles.groupLegs, { borderTopColor: colors.border }]}>
+          {group.trades.map((trade) => (
+            <TradeLeg
+              key={trade.id}
+              trade={trade}
+              onDecide={onDecide}
+              deciding={deciding}
+              highlighted={trade.id === highlightedTradeId}
+            />
+          ))}
+        </View>
+      ) : null}
+    </View>
+  );
+}
+
 // ── Screen ───────────────────────────────────────────────────────────────────
 
 export default function TradesScreen() {
   const colors = useColors();
   const insets = useSafeAreaInsets();
-  const { season, adminKey } = useApp();
+  const router = useRouter();
+  const params = useLocalSearchParams<{
+    season?: string;
+    tradeId?: string;
+    from?: string;
+  }>();
+  const { season, setSeason, adminKey, hydrated } = useApp();
   const queryClient = useQueryClient();
+  const tradeListRef = useRef<ScrollView>(null);
+  const groupOffsets = useRef<Map<string, number>>(new Map());
+  const revealedTradeTarget = useRef<number | null>(null);
+  const appliedSourceSeason = useRef<number | null>(null);
 
   const tradesQuery = useGetTrades({ season });
   const [keyModalVisible, setKeyModalVisible] = useState<boolean>(false);
   const [submitModalVisible, setSubmitModalVisible] = useState<boolean>(false);
   const [deciding, setDeciding] = useState<number | null>(null);
+  const sourceSeason = positiveInteger(params.season);
+  const sourceTradeId = positiveInteger(params.tradeId);
+  const sourceIsActive = params.from === 'results';
+  const highlightedTradeId =
+    sourceTradeId != null && (sourceSeason == null || sourceSeason === season)
+      ? sourceTradeId
+      : null;
 
   const sections = useMemo(() => {
-    const trades = tradesQuery.data ?? [];
-    const pending = trades.filter((t) => t.status === 'pending');
-    const decided = trades.filter((t) => t.status !== 'pending');
-    const out: { title: string; data: TradeRow[] }[] = [];
+    const groups = buildTradeGroups(tradesQuery.data ?? []).sort(sortTradeGroups);
+    const pending = groups.filter((group) => group.trades[0]?.status === 'pending');
+    const approved = groups.filter((group) => group.trades[0]?.status === 'approved');
+    const rejected = groups.filter((group) => group.trades[0]?.status === 'rejected');
+    const out: { title: string; data: TradeGroup[] }[] = [];
     if (pending.length) out.push({ title: 'Needs approval', data: pending });
-    if (decided.length) out.push({ title: 'History', data: decided });
+    if (approved.length) out.push({ title: 'Approved', data: approved });
+    if (rejected.length) out.push({ title: 'Rejected', data: rejected });
     return out;
   }, [tradesQuery.data]);
+
+  useEffect(() => {
+    // Storage hydration can finish after this screen mounts. Apply a source
+    // season only once that stored preference is settled, so the URL wins.
+    if (hydrated && sourceSeason != null && appliedSourceSeason.current !== sourceSeason) {
+      appliedSourceSeason.current = sourceSeason;
+      if (sourceSeason !== season) {
+        setSeason(sourceSeason);
+      }
+    }
+  }, [hydrated, season, setSeason, sourceSeason]);
+
+  function handleSeasonChange(nextSeason: number) {
+    // Preserve the manually chosen season in the URL. This also intentionally
+    // drops a Results source target, which belongs only to its original season.
+    router.replace({ pathname: '/trades', params: { season: String(nextSeason) } });
+    if (nextSeason !== season) {
+      setSeason(nextSeason);
+    }
+  }
+
+  useEffect(() => {
+    if (highlightedTradeId == null) return;
+    const timer = setTimeout(() => {
+      const group = sections
+        .flatMap((section) => section.data)
+        .find((candidate) =>
+          candidate.trades.some((trade) => trade.id === highlightedTradeId),
+        );
+      const offset = group ? groupOffsets.current.get(group.key) : undefined;
+      if (offset != null) {
+        revealedTradeTarget.current = highlightedTradeId;
+        tradeListRef.current?.scrollTo({ y: Math.max(0, offset - 12), animated: true });
+      }
+    }, 220);
+    return () => clearTimeout(timer);
+  }, [highlightedTradeId, sections]);
+
+  useEffect(() => {
+    revealedTradeTarget.current = null;
+  }, [highlightedTradeId]);
 
   function decide(trade: TradeRow, status: 'approved' | 'rejected') {
     if (!adminKey) {
@@ -882,30 +1271,24 @@ export default function TradesScreen() {
                 color={adminKey ? colors.success : colors.mutedForeground}
               />
             </Pressable>
-            <SeasonToggle />
+            <SeasonToggle onSeasonChange={handleSeasonChange} />
           </View>
         }
       />
+      {sourceIsActive ? (
+        <ResultsBacklink
+          onPress={() => router.replace({ pathname: '/', params: { season: String(season) } })}
+        />
+      ) : null}
 
       {tradesQuery.isLoading ? (
         <LoadingState />
       ) : tradesQuery.error ? (
         <ErrorState onRetry={() => tradesQuery.refetch()} />
       ) : (
-        <SectionList
-          sections={sections}
-          keyExtractor={(item) => String(item.id)}
-          renderItem={({ item }) => (
-            <TradeCard trade={item} onDecide={decide} deciding={deciding} />
-          )}
-          renderSectionHeader={({ section }) => (
-            <Text style={[styles.sectionHeader, { color: colors.mutedForeground }]}>
-              {section.title.toUpperCase()}
-            </Text>
-          )}
+        <ScrollView
+          ref={tradeListRef}
           contentContainerStyle={[styles.listContent, { paddingBottom: listBottomPad }]}
-          stickySectionHeadersEnabled={false}
-          scrollEnabled={sections.length > 0}
           refreshControl={
             <RefreshControl
               refreshing={tradesQuery.isRefetching}
@@ -913,14 +1296,49 @@ export default function TradesScreen() {
               tintColor={colors.mutedForeground}
             />
           }
-          ListEmptyComponent={
+        >
+          {sections.length === 0 ? (
             <EmptyState
               icon="repeat"
               title="No trades yet"
               subtitle={`No trades recorded for the ${season} season.`}
             />
-          }
-        />
+          ) : (
+            sections.map((section) => (
+              <React.Fragment key={section.title}>
+                <Text style={[styles.sectionHeader, { color: colors.mutedForeground }]}>
+                  {section.title.toUpperCase()}
+                </Text>
+                {section.data.map((group) => (
+                  <View
+                    key={group.key}
+                    onLayout={(event) => {
+                      groupOffsets.current.set(group.key, event.nativeEvent.layout.y);
+                      const isTarget = highlightedTradeId != null &&
+                        group.trades.some((trade) => trade.id === highlightedTradeId);
+                      if (isTarget && revealedTradeTarget.current !== highlightedTradeId) {
+                        revealedTradeTarget.current = highlightedTradeId;
+                        requestAnimationFrame(() => {
+                          tradeListRef.current?.scrollTo({
+                            y: Math.max(0, event.nativeEvent.layout.y - 12),
+                            animated: true,
+                          });
+                        });
+                      }
+                    }}
+                  >
+                    <TradeGroupCard
+                      group={group}
+                      onDecide={decide}
+                      deciding={deciding}
+                      highlightedTradeId={highlightedTradeId}
+                    />
+                  </View>
+                ))}
+              </React.Fragment>
+            ))
+          )}
+        </ScrollView>
       )}
 
       <AdminKeyModal
@@ -961,6 +1379,33 @@ const styles = StyleSheet.create({
     padding: 14,
     marginBottom: 10,
   },
+  groupCard: {
+    borderWidth: 1,
+    marginBottom: 10,
+  },
+  groupSummary: {
+    padding: 14,
+  },
+  groupTitle: {
+    fontSize: 15,
+    fontFamily: 'Archivo_700Bold',
+    lineHeight: 20,
+  },
+  groupTeams: {
+    fontSize: 10,
+    fontFamily: 'JetBrainsMono_400Regular',
+    marginTop: 3,
+    lineHeight: 15,
+  },
+  groupLegs: {
+    borderTopWidth: 1,
+    padding: 10,
+    gap: 8,
+  },
+  tradeLeg: {
+    borderWidth: 1,
+    padding: 10,
+  },
   tradeTopRow: {
     flexDirection: 'row',
     alignItems: 'center',
@@ -971,6 +1416,10 @@ const styles = StyleSheet.create({
     fontSize: 16,
     fontFamily: 'Archivo_700Bold',
     flexShrink: 1,
+  },
+  legPct: {
+    fontSize: 12,
+    fontFamily: 'JetBrainsMono_700Bold',
   },
   tradeFlowRow: {
     flexDirection: 'row',

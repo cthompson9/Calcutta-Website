@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useEffect, useRef, useState } from 'react';
 import {
   Platform,
   Pressable,
@@ -10,6 +10,7 @@ import {
   View,
 } from 'react-native';
 import { Feather } from '@expo/vector-icons';
+import { useLocalSearchParams, useRouter } from 'expo-router';
 import { importAuctionData, importDraftOrder, useGetAuctionSummary } from '@workspace/api-client-react';
 import { useColors } from '@/hooks/useColors';
 import { useApp } from '@/context/AppContext';
@@ -18,6 +19,7 @@ import {
   EmptyState,
   ErrorState,
   LoadingState,
+  ResultsBacklink,
   ScreenHeader,
   SeasonToggle,
 } from '@/components/ui';
@@ -57,6 +59,8 @@ function StatTile({
 
 function AuctionResultRow({
   result,
+  highlighted,
+  onLayout,
 }: {
   result: {
     teamId: number;
@@ -65,6 +69,8 @@ function AuctionResultRow({
     bidAmount: number;
     draftOrder: number | null;
   };
+  highlighted: boolean;
+  onLayout: (event: { nativeEvent: { layout: { y: number } } }) => void;
 }) {
   const colors = useColors();
 
@@ -74,8 +80,13 @@ function AuctionResultRow({
         styles.resultRow,
         {
           borderBottomColor: colors.border,
+          backgroundColor: highlighted ? `${colors.primary}14` : 'transparent',
+          borderLeftColor: highlighted ? colors.primary : 'transparent',
+          borderLeftWidth: highlighted ? 3 : 0,
         },
       ]}
+      testID={`auction-result-${result.teamId}`}
+      onLayout={onLayout}
     >
       <View style={[styles.orderBox, { backgroundColor: colors.muted }]}>
         <Text style={[styles.orderText, { color: colors.foreground }]}>
@@ -97,6 +108,13 @@ function AuctionResultRow({
       </View>
     </View>
   );
+}
+
+function positiveInteger(value: string | string[] | undefined): number | null {
+  const raw = Array.isArray(value) ? value[0] : value;
+  if (!raw) return null;
+  const parsed = Number.parseInt(raw, 10);
+  return Number.isInteger(parsed) && parsed > 0 ? parsed : null;
 }
 
 // ── Conference card ───────────────────────────────────────────────────────────
@@ -152,9 +170,26 @@ function ConferenceCard({
 
 export default function AuctionScreen() {
   const colors = useColors();
-  const { season, adminKey, setAdminKey } = useApp();
+  const router = useRouter();
+  const params = useLocalSearchParams<{
+    season?: string;
+    teamId?: string;
+    from?: string;
+  }>();
+  const { season, setSeason, adminKey, setAdminKey, hydrated } = useApp();
   const query = useGetAuctionSummary({ season });
   const [adminKeyDraft, setAdminKeyDraft] = useState(adminKey ?? '');
+  const scrollRef = useRef<ScrollView>(null);
+  const rowOffsets = useRef<Map<number, number>>(new Map());
+  const tableOffset = useRef(0);
+  const appliedSourceSeason = useRef<number | null>(null);
+  const sourceSeason = positiveInteger(params.season);
+  const sourceTeamId = positiveInteger(params.teamId);
+  const sourceIsActive = params.from === 'results';
+  const highlightedTeamId =
+    sourceTeamId != null && (sourceSeason == null || sourceSeason === season)
+      ? sourceTeamId
+      : null;
 
   // AuctionPro (URL-fetch) import state
   const [importMessage, setImportMessage] = useState<string | null>(null);
@@ -167,6 +202,65 @@ export default function AuctionScreen() {
   const [isDraftImporting, setIsDraftImporting] = useState(false);
 
   const listBottomPad = Platform.OS === 'web' ? 84 + 16 : 100;
+
+  useEffect(() => {
+    // Storage hydration can finish after this screen mounts. Apply a source
+    // season only once that stored preference is settled, so the URL wins.
+    if (hydrated && sourceSeason != null && appliedSourceSeason.current !== sourceSeason) {
+      appliedSourceSeason.current = sourceSeason;
+      if (sourceSeason !== season) {
+        setSeason(sourceSeason);
+      }
+    }
+  }, [hydrated, season, setSeason, sourceSeason]);
+
+  useEffect(() => {
+    // A source link can switch between two complete 32-team seasons. Discard
+    // measurements from the previous table before the replacement renders.
+    rowOffsets.current.clear();
+    tableOffset.current = 0;
+  }, [season]);
+
+  function handleSeasonChange(nextSeason: number) {
+    // Preserve the manually chosen season in the URL. This also intentionally
+    // drops a Results source target, which belongs only to its original season.
+    router.replace({ pathname: '/auction', params: { season: String(nextSeason) } });
+    if (nextSeason !== season) {
+      setSeason(nextSeason);
+    }
+  }
+
+  function revealHighlightedResult() {
+    if (highlightedTeamId == null) return;
+
+    if (Platform.OS === 'web') {
+      const target = document.querySelector(
+        `[data-testid="auction-result-${highlightedTeamId}"]`,
+      );
+      if (target instanceof HTMLElement) {
+        // Expo Web uses a nested scroll container. Let the browser reveal the
+        // live row instead of relying on a native-style content offset.
+        target.scrollIntoView({ block: 'center', inline: 'nearest' });
+        return;
+      }
+    }
+
+    const rowOffset = rowOffsets.current.get(highlightedTeamId);
+    if (rowOffset == null) return;
+
+    // Row layouts are relative to the results table, while ScrollView offsets
+    // are relative to the full content (including stat tiles).
+    const contentOffset = tableOffset.current + rowOffset;
+    scrollRef.current?.scrollTo({ y: Math.max(0, contentOffset - 12), animated: true });
+  }
+
+  useEffect(() => {
+    if (highlightedTeamId == null || !query.data?.auctionResults.length) return;
+    const timers = [120, 320, 700, 1200].map((delay) =>
+      setTimeout(revealHighlightedResult, delay),
+    );
+    return () => timers.forEach(clearTimeout);
+  }, [highlightedTeamId, query.data?.auctionResults, season]);
 
   const importDraftOrderData = async () => {
     setDraftImportMessage(null);
@@ -222,14 +316,22 @@ export default function AuctionScreen() {
 
   if (query.isLoading) return (
     <View style={{ flex: 1, backgroundColor: colors.background }}>
-      <ScreenHeader title="Auction" subtitle={`${season} Auction Results`} right={<SeasonToggle />} />
+      <ScreenHeader
+        title="Auction"
+        subtitle={`${season} Auction Results`}
+        right={<SeasonToggle onSeasonChange={handleSeasonChange} />}
+      />
       <LoadingState />
     </View>
   );
 
   if (query.error) return (
     <View style={{ flex: 1, backgroundColor: colors.background }}>
-      <ScreenHeader title="Auction" subtitle={`${season} Auction Results`} right={<SeasonToggle />} />
+      <ScreenHeader
+        title="Auction"
+        subtitle={`${season} Auction Results`}
+        right={<SeasonToggle onSeasonChange={handleSeasonChange} />}
+      />
       <ErrorState onRetry={() => query.refetch()} />
     </View>
   );
@@ -242,8 +344,13 @@ export default function AuctionScreen() {
       <ScreenHeader
         title="Auction"
         subtitle={`${season} Auction Results`}
-        right={<SeasonToggle />}
+        right={<SeasonToggle onSeasonChange={handleSeasonChange} />}
       />
+      {sourceIsActive ? (
+        <ResultsBacklink
+          onPress={() => router.replace({ pathname: '/', params: { season: String(season) } })}
+        />
+      ) : null}
 
       <View style={[styles.importPanel, { borderColor: colors.border, backgroundColor: colors.card }]}>
         <View style={styles.importHeading}>
@@ -368,7 +475,14 @@ export default function AuctionScreen() {
         />
       ) : (
         <ScrollView
+          key={`auction-scroll-${season}`}
+          ref={scrollRef}
           contentContainerStyle={[styles.scroll, { paddingBottom: listBottomPad }]}
+          onContentSizeChange={() => {
+            // Cross-season links can replace a 32-row table with another
+            // 32-row table. Wait for the final content layout, not its count.
+            setTimeout(revealHighlightedResult, 0);
+          }}
           refreshControl={
             <RefreshControl
               refreshing={query.isRefetching}
@@ -391,7 +505,13 @@ export default function AuctionScreen() {
           </View>
 
           <Text style={[styles.sectionTitle, { color: colors.foreground }]}>Auction Results</Text>
-          <View style={[styles.table, { borderColor: colors.border, backgroundColor: colors.card }]}>
+          <View
+            style={[styles.table, { borderColor: colors.border, backgroundColor: colors.card }]}
+            onLayout={(event) => {
+              tableOffset.current = event.nativeEvent.layout.y;
+              setTimeout(revealHighlightedResult, 0);
+            }}
+          >
             {summary!.auctionResults.length === 0 ? (
               <Text style={[styles.emptyText, { color: colors.mutedForeground }]}>
                 No auction results for {season} yet.
@@ -401,6 +521,13 @@ export default function AuctionScreen() {
                 <AuctionResultRow
                   key={result.teamId}
                   result={result}
+                  highlighted={result.teamId === highlightedTeamId}
+                  onLayout={(event) => {
+                    // The destination may not be in the initial viewport; capture offsets
+                    // as native rows lay out so a Results source link can reveal it.
+                    rowOffsets.current.set(result.teamId, event.nativeEvent.layout.y);
+                    if (result.teamId === highlightedTeamId) setTimeout(revealHighlightedResult, 0);
+                  }}
                 />
               ))
             )}
