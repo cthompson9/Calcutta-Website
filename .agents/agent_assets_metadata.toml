@@ -14,3 +14,17 @@ mtime_ms = 1787456353085
 storage_uri = "gcs://replit-rams-assets-picard/rams/assets/repl:20ced4e6-12f6-4285-a30b-9d56cdf8826c/02f8a285-f5f0-4b8f-9a05-1474d8fd1f1f/43f527d3-05a1-41de-ae9f-e848ddc2feba"
 storage_version_token = "1787456353987578"
 content_type = "application/octet-stream"
+
+[[outputs]]
+id = "DYX86eW6hNg6iSHYIJaas"
+uri = "file://exports/nfl-calcutta-claude-export.zip"
+type = "unspecified"
+title = "NFL Calcutta — Claude codebase export"
+description = "Complete source export including app packages, shared libraries, API/database code, assets, data exports, documentation, and Replit configuration. Dependencies, caches, generated builds, agent metadata, and secret-file patterns are excluded."
+logical_id = "ae879f35-ac98-4eeb-8a84-9f0e4850a911"
+content_hash = "sha256:9399ef5780ca301dc54f7e417c94f766d1972b98d834a830d5adf754484fb616"
+size = 21252772
+mtime_ms = 1787491526479
+storage_uri = "gcs://replit-rams-assets-picard/rams/assets/repl:20ced4e6-12f6-4285-a30b-9d56cdf8826c/ae879f35-ac98-4eeb-8a84-9f0e4850a911/1727d826-2bfe-4102-adbb-6f7624317843"
+storage_version_token = "1787491531630167"
+content_type = "application/octet-stream"
