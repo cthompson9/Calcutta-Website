@@ -14,3 +14,9 @@ When a source link selects a season, defer applying that URL season until the ap
 **Why:** asynchronous storage hydration can overwrite an early route-driven state change; marking the source season as already applied then leaves the user on the wrong season with no highlight.
 
 **How to apply:** Gate the one-time source-season sync on the provider’s hydration flag, then perform the record reveal after the selected-season query and layout settle.
+
+For an Expo web artifact mounted below the domain root, configure Expo Router’s `experiments.baseUrl` with that mount path before exporting the production web bundle.
+
+**Why:** serving the HTML and assets under a subpath alone does not make Expo Router remove that prefix from the browser location. Without the configured base URL, `/mobile` is interpreted as an unknown in-app route and renders the not-found screen.
+
+**How to apply:** keep the artifact router path, server `BASE_PATH`, and Expo Router base URL aligned; run the production export and confirm the generated bundle contains the configured base before publishing.
