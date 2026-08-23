@@ -33,24 +33,30 @@ export function ScreenHeader({
       style={[
         styles.header,
         {
-          paddingTop: topInset + 12,
-          backgroundColor: colors.background,
+          paddingTop: topInset + 16,
+          backgroundColor: colors.card,
           borderBottomColor: colors.border,
         },
       ]}
     >
       <View style={styles.headerRow}>
-        <View style={{ flex: 1 }}>
-          <Text style={[styles.headerTitle, { color: colors.foreground }]}>
-            {title}
-          </Text>
-          {subtitle ? (
-            <Text
-              style={[styles.headerSubtitle, { color: colors.mutedForeground }]}
-            >
-              {subtitle}
+        <View style={{ flex: 1, flexDirection: 'row', alignItems: 'center', gap: 10 }}>
+          <View style={[styles.headerCBox, { backgroundColor: colors.primary }]}>
+            <Text style={[styles.headerCBoxText, { color: colors.primaryForeground }]}>C</Text>
+          </View>
+          <View style={{ flex: 1 }}>
+            <Text style={[styles.headerTitle, { color: colors.foreground }]} numberOfLines={1}>
+              {title}
             </Text>
-          ) : null}
+            {subtitle ? (
+              <Text
+                style={[styles.headerSubtitle, { color: colors.mutedForeground }]}
+                numberOfLines={1}
+              >
+                {subtitle}
+              </Text>
+            ) : null}
+          </View>
         </View>
         {right}
       </View>
@@ -67,7 +73,7 @@ export function SeasonToggle() {
   const { season, setSeason } = useApp();
 
   return (
-    <View style={[styles.seasonWrap, { borderColor: colors.border }]}>
+    <View style={[styles.seasonWrap, { borderColor: colors.border, backgroundColor: colors.muted }]}>
       {SEASONS.map((year) => {
         const active = season === year;
         return (
@@ -91,7 +97,7 @@ export function SeasonToggle() {
                 { color: active ? colors.primaryForeground : colors.mutedForeground },
               ]}
             >
-              {year}
+              {year}{year === 2026 && active ? ' •' : ''}
             </Text>
           </Pressable>
         );
@@ -140,7 +146,7 @@ export function SegmentedControl<T extends string>({
                 styles.segmentText,
                 {
                   color: active ? colors.foreground : colors.mutedForeground,
-                  fontFamily: active ? 'Inter_600SemiBold' : 'Inter_500Medium',
+                  fontFamily: active ? 'JetBrainsMono_700Bold' : 'JetBrainsMono_500Medium',
                 },
               ]}
             >
@@ -236,7 +242,7 @@ export function EmptyState({
   return (
     <View style={styles.stateWrap}>
       <Feather name={icon} size={32} color={colors.mutedForeground} />
-      <Text style={[styles.stateTitle, { color: colors.foreground }]}>{title}</Text>
+      <Text style={[styles.stateTitle, { color: colors.foreground }]}>{title.toUpperCase()}</Text>
       {subtitle ? (
         <Text style={[styles.stateText, { color: colors.mutedForeground }]}>
           {subtitle}
@@ -250,34 +256,54 @@ const styles = StyleSheet.create({
   header: {
     paddingHorizontal: 16,
     paddingBottom: 12,
-    borderBottomWidth: StyleSheet.hairlineWidth,
+    borderBottomWidth: 1,
   },
   headerRow: {
     flexDirection: 'row',
     alignItems: 'center',
     gap: 12,
   },
+  headerCBox: {
+    width: 32,
+    height: 32,
+    borderRadius: 2,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  headerCBoxText: {
+    fontFamily: 'Archivo_900Black',
+    fontSize: 18,
+    lineHeight: 20,
+    marginTop: 2,
+  },
   headerTitle: {
-    fontSize: 24,
-    fontFamily: 'Inter_700Bold',
+    fontSize: 20,
+    fontFamily: 'Archivo_900Black',
     letterSpacing: -0.5,
+    textTransform: 'uppercase',
   },
   headerSubtitle: {
-    fontSize: 13,
-    fontFamily: 'Inter_400Regular',
+    fontSize: 10,
+    fontFamily: 'JetBrainsMono_500Medium',
+    textTransform: 'uppercase',
+    letterSpacing: 1.2,
     marginTop: 2,
   },
   seasonWrap: {
     flexDirection: 'row',
     borderWidth: 1,
+    borderRadius: 999,
+    padding: 2,
   },
   seasonBtn: {
-    paddingHorizontal: 14,
-    paddingVertical: 7,
+    paddingHorizontal: 10,
+    paddingVertical: 6,
+    borderRadius: 999,
   },
   seasonText: {
-    fontSize: 13,
-    fontFamily: 'Inter_600SemiBold',
+    fontSize: 10,
+    fontFamily: 'JetBrainsMono_500Medium',
+    letterSpacing: 1.2,
   },
   segmentWrap: {
     flexDirection: 'row',
@@ -289,15 +315,18 @@ const styles = StyleSheet.create({
     paddingVertical: 8,
   },
   segmentText: {
-    fontSize: 13,
+    fontSize: 11,
+    textTransform: 'uppercase',
+    letterSpacing: 1.2,
   },
   badge: {
-    paddingHorizontal: 8,
+    paddingHorizontal: 6,
     paddingVertical: 3,
+    borderRadius: 2,
   },
   badgeText: {
     fontSize: 10,
-    fontFamily: 'Inter_700Bold',
+    fontFamily: 'JetBrainsMono_700Bold',
     letterSpacing: 0.8,
   },
   stateWrap: {
@@ -309,21 +338,26 @@ const styles = StyleSheet.create({
     minHeight: 240,
   },
   stateTitle: {
-    fontSize: 16,
-    fontFamily: 'Inter_600SemiBold',
+    fontSize: 18,
+    fontFamily: 'Archivo_900Black',
+    letterSpacing: 0.5,
   },
   stateText: {
     fontSize: 14,
-    fontFamily: 'Inter_400Regular',
+    fontFamily: 'Inter_500Medium',
     textAlign: 'center',
+    lineHeight: 20,
   },
   retryBtn: {
-    marginTop: 6,
+    marginTop: 12,
     paddingHorizontal: 20,
-    paddingVertical: 10,
+    paddingVertical: 12,
+    borderRadius: 2,
   },
   retryText: {
     fontSize: 14,
-    fontFamily: 'Inter_600SemiBold',
+    fontFamily: 'JetBrainsMono_700Bold',
+    textTransform: 'uppercase',
+    letterSpacing: 1,
   },
 });

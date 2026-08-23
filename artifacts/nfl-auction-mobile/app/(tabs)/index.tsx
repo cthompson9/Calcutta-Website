@@ -569,7 +569,7 @@ export default function StandingsScreen() {
   return (
     <View style={{ flex: 1, backgroundColor: colors.background }}>
       <ScreenHeader
-        title="Standings"
+        title="Results"
         subtitle={`Calcutta Returns · ${season}`}
         right={<SeasonToggle />}
       />
@@ -603,7 +603,7 @@ export default function StandingsScreen() {
                 },
               ]}
             >
-              <Text style={{ color: period === option.value ? colors.primaryForeground : colors.mutedForeground, fontSize: 11, fontFamily: 'Inter_600SemiBold' }}>
+              <Text style={{ color: period === option.value ? colors.primaryForeground : colors.mutedForeground, fontSize: 10, fontFamily: 'JetBrainsMono_500Medium', letterSpacing: 0.5 }}>
                 {option.label}
               </Text>
             </Pressable>
@@ -633,7 +633,7 @@ export default function StandingsScreen() {
                       },
                     ]}
                   >
-                    <Text style={{ color: selected ? colors.primaryForeground : colors.mutedForeground, fontSize: 11, fontFamily: 'Inter_600SemiBold' }}>
+                    <Text style={{ color: selected ? colors.primaryForeground : colors.mutedForeground, fontSize: 10, fontFamily: 'JetBrainsMono_500Medium', letterSpacing: 0.5 }}>
                       {year}
                     </Text>
                   </Pressable>
@@ -653,7 +653,7 @@ export default function StandingsScreen() {
                     },
                   ]}
                 >
-                  <Text style={{ color: comparisonGroupBy === option ? colors.primaryForeground : colors.mutedForeground, fontSize: 11, fontFamily: 'Inter_600SemiBold' }}>
+                  <Text style={{ color: comparisonGroupBy === option ? colors.primaryForeground : colors.mutedForeground, fontSize: 10, fontFamily: 'JetBrainsMono_500Medium', letterSpacing: 0.5 }}>
                     {option === 'bidder' ? 'OWNERS' : 'CONSORTIUMS'}
                   </Text>
                 </Pressable>
@@ -674,7 +674,7 @@ export default function StandingsScreen() {
                 },
               ]}
             >
-              <Text style={{ color: basis === option ? colors.primaryForeground : colors.mutedForeground, fontSize: 11, fontFamily: 'Inter_600SemiBold' }}>
+              <Text style={{ color: basis === option ? colors.primaryForeground : colors.mutedForeground, fontSize: 10, fontFamily: 'JetBrainsMono_500Medium', letterSpacing: 0.5 }}>
                 {option === 'mtm' ? 'MARK TO MARKET' : 'REALIZED'}
               </Text>
             </Pressable>
@@ -809,20 +809,20 @@ const styles = StyleSheet.create({
   },
   rankText: {
     fontSize: 13,
-    fontFamily: 'Inter_700Bold',
+    fontFamily: 'JetBrainsMono_700Bold',
   },
   ownerName: {
     fontSize: 16,
-    fontFamily: 'Inter_600SemiBold',
+    fontFamily: 'Archivo_700Bold',
   },
   ownerConsortium: {
     fontSize: 11,
-    fontFamily: 'Inter_500Medium',
+    fontFamily: 'JetBrainsMono_500Medium',
     marginTop: 3,
   },
   ownerMeta: {
     fontSize: 12,
-    fontFamily: 'Inter_400Regular',
+    fontFamily: 'JetBrainsMono_400Regular',
     marginTop: 2,
   },
   mtmRow: {
@@ -831,12 +831,12 @@ const styles = StyleSheet.create({
     gap: 8,
   },
   mtmValue: {
-    fontSize: 16,
-    fontFamily: 'Inter_700Bold',
+    fontSize: 18,
+    fontFamily: 'Archivo_900Black',
   },
   mtmDelta: {
     fontSize: 12,
-    fontFamily: 'Inter_500Medium',
+    fontFamily: 'JetBrainsMono_700Bold',
     marginTop: 2,
   },
   wowRow: {
@@ -846,29 +846,29 @@ const styles = StyleSheet.create({
   },
   wowText: {
     fontSize: 11,
-    fontFamily: 'Inter_500Medium',
+    fontFamily: 'JetBrainsMono_500Medium',
   },
   statRow: {
     flexDirection: 'row',
     marginTop: 12,
     paddingTop: 10,
-    borderTopWidth: StyleSheet.hairlineWidth,
+    borderTopWidth: 1,
   },
   stat: {
     flex: 1,
   },
   statLabel: {
     fontSize: 10,
-    fontFamily: 'Inter_600SemiBold',
+    fontFamily: 'JetBrainsMono_500Medium',
     letterSpacing: 0.8,
   },
   statValue: {
     fontSize: 14,
-    fontFamily: 'Inter_600SemiBold',
+    fontFamily: 'Archivo_700Bold',
     marginTop: 3,
   },
   teamList: {
-    borderTopWidth: StyleSheet.hairlineWidth,
+    borderTopWidth: 1,
     paddingHorizontal: 14,
     paddingVertical: 6,
   },
@@ -879,17 +879,17 @@ const styles = StyleSheet.create({
     gap: 10,
   },
   teamListName: {
-    fontSize: 14,
-    fontFamily: 'Inter_500Medium',
+    fontSize: 15,
+    fontFamily: 'Archivo_700Bold',
   },
   teamListMeta: {
     fontSize: 11,
-    fontFamily: 'Inter_400Regular',
+    fontFamily: 'JetBrainsMono_400Regular',
     marginTop: 2,
   },
   teamListMtm: {
-    fontSize: 14,
-    fontFamily: 'Inter_600SemiBold',
+    fontSize: 15,
+    fontFamily: 'Archivo_900Black',
   },
   snapshotControls: {
     paddingHorizontal: 16,
@@ -901,8 +901,8 @@ const styles = StyleSheet.create({
     gap: 6,
   },
   snapshotChip: {
-    borderWidth: StyleSheet.hairlineWidth,
-    borderRadius: 999,
+    borderWidth: 1,
+    borderRadius: 2,
     paddingHorizontal: 10,
     paddingVertical: 5,
   },
@@ -911,15 +911,15 @@ const styles = StyleSheet.create({
     justifyContent: 'space-between',
     marginTop: 12,
     paddingTop: 10,
-    borderTopWidth: StyleSheet.hairlineWidth,
+    borderTopWidth: 1,
   },
   comparisonSummaryValue: {
-    fontSize: 13,
-    fontFamily: 'Inter_600SemiBold',
+    fontSize: 15,
+    fontFamily: 'Archivo_700Bold',
     marginTop: 3,
   },
   comparisonDetails: {
-    borderTopWidth: StyleSheet.hairlineWidth,
+    borderTopWidth: 1,
     padding: 12,
     gap: 6,
   },
@@ -927,26 +927,26 @@ const styles = StyleSheet.create({
     flexDirection: 'row',
     alignItems: 'center',
     gap: 8,
-    borderWidth: StyleSheet.hairlineWidth,
+    borderWidth: 1,
     paddingHorizontal: 9,
     paddingVertical: 8,
   },
   comparisonYear: {
     fontSize: 14,
-    fontFamily: 'Inter_700Bold',
+    fontFamily: 'Archivo_700Bold',
   },
   comparisonMeta: {
     fontSize: 10,
-    fontFamily: 'Inter_500Medium',
+    fontFamily: 'JetBrainsMono_500Medium',
     marginTop: 2,
   },
   comparisonValue: {
     fontSize: 14,
-    fontFamily: 'Inter_700Bold',
+    fontFamily: 'Archivo_700Bold',
   },
   comparisonMissing: {
     fontSize: 10,
-    fontFamily: 'Inter_700Bold',
+    fontFamily: 'JetBrainsMono_700Bold',
     letterSpacing: 0.5,
   },
   ownershipBreakdown: {
@@ -954,7 +954,7 @@ const styles = StyleSheet.create({
   },
   ownershipHeading: {
     fontSize: 10,
-    fontFamily: 'Inter_600SemiBold',
+    fontFamily: 'JetBrainsMono_500Medium',
     letterSpacing: 0.8,
     marginBottom: 2,
   },
@@ -964,7 +964,7 @@ const styles = StyleSheet.create({
     gap: 8,
     paddingHorizontal: 7,
     paddingVertical: 5,
-    borderWidth: StyleSheet.hairlineWidth,
+    borderWidth: 1,
   },
   ownershipInfo: {
     flex: 1,
@@ -972,23 +972,23 @@ const styles = StyleSheet.create({
   },
   ownershipSource: {
     fontSize: 9,
-    fontFamily: 'Inter_600SemiBold',
+    fontFamily: 'JetBrainsMono_500Medium',
     letterSpacing: 0.7,
   },
   ownershipParty: {
-    fontSize: 11,
-    fontFamily: 'Inter_500Medium',
+    fontSize: 12,
+    fontFamily: 'Archivo_600SemiBold',
     marginTop: 1,
   },
   ownershipCounterparty: {
     fontSize: 10,
-    fontFamily: 'Inter_400Regular',
+    fontFamily: 'JetBrainsMono_400Regular',
     marginTop: 1,
   },
   ownershipShare: {
     flexShrink: 0,
     fontSize: 13,
     lineHeight: 18,
-    fontFamily: 'Inter_700Bold',
+    fontFamily: 'JetBrainsMono_700Bold',
   },
 });

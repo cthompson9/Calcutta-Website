@@ -385,7 +385,7 @@ export default function MtmScreen() {
 const styles = StyleSheet.create({
   weekScrollWrap: {
     maxHeight: 48,
-    borderBottomWidth: StyleSheet.hairlineWidth,
+    borderBottomWidth: 1,
   },
   weekScroll: {
     paddingHorizontal: 14,
@@ -401,7 +401,7 @@ const styles = StyleSheet.create({
   },
   weekPillText: {
     fontSize: 11,
-    fontFamily: 'Inter_600SemiBold',
+    fontFamily: 'JetBrainsMono_500Medium',
     letterSpacing: 0.5,
   },
   weekSummary: {
@@ -420,16 +420,16 @@ const styles = StyleSheet.create({
   },
   weekSummaryLabel: {
     fontSize: 10,
-    fontFamily: 'Inter_600SemiBold',
+    fontFamily: 'JetBrainsMono_500Medium',
     letterSpacing: 0.8,
   },
   weekSummaryValue: {
-    fontSize: 15,
-    fontFamily: 'Inter_700Bold',
+    fontSize: 18,
+    fontFamily: 'Archivo_900Black',
   },
   weekBadge: {
     fontSize: 11,
-    fontFamily: 'Inter_700Bold',
+    fontFamily: 'JetBrainsMono_700Bold',
     letterSpacing: 0.5,
   },
   segmentContainer: {
@@ -446,7 +446,7 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     paddingHorizontal: 4,
     paddingVertical: 12,
-    borderBottomWidth: StyleSheet.hairlineWidth,
+    borderBottomWidth: 1,
     gap: 10,
   },
   rankBox: {
@@ -458,16 +458,16 @@ const styles = StyleSheet.create({
   },
   rankText: {
     fontSize: 12,
-    fontFamily: 'Inter_700Bold',
+    fontFamily: 'JetBrainsMono_700Bold',
   },
   ownerName: {
     flex: 1,
-    fontSize: 15,
-    fontFamily: 'Inter_600SemiBold',
+    fontSize: 16,
+    fontFamily: 'Archivo_700Bold',
   },
   ownerValue: {
-    fontSize: 15,
-    fontFamily: 'Inter_700Bold',
+    fontSize: 16,
+    fontFamily: 'Archivo_900Black',
     flexShrink: 0,
   },
   // Team card
@@ -481,21 +481,21 @@ const styles = StyleSheet.create({
     gap: 10,
   },
   teamName: {
-    fontSize: 15,
-    fontFamily: 'Inter_600SemiBold',
+    fontSize: 16,
+    fontFamily: 'Archivo_700Bold',
   },
   teamOwner: {
     fontSize: 12,
-    fontFamily: 'Inter_400Regular',
+    fontFamily: 'JetBrainsMono_400Regular',
     marginTop: 2,
   },
   teamValue: {
     fontSize: 16,
-    fontFamily: 'Inter_700Bold',
+    fontFamily: 'Archivo_900Black',
   },
   teamStats: {
     flexDirection: 'row',
-    borderTopWidth: StyleSheet.hairlineWidth,
+    borderTopWidth: 1,
     paddingHorizontal: 14,
     paddingVertical: 10,
     gap: 0,
@@ -506,14 +506,14 @@ const styles = StyleSheet.create({
   },
   teamStatLabel: {
     fontSize: 9,
-    fontFamily: 'Inter_600SemiBold',
+    fontFamily: 'JetBrainsMono_500Medium',
     letterSpacing: 0.8,
     textTransform: 'uppercase',
   },
   teamStatValue: {
-    fontSize: 13,
-    fontFamily: 'Inter_600SemiBold',
-    marginTop: 2,
+    fontSize: 14,
+    fontFamily: 'Archivo_700Bold',
+    marginTop: 3,
   },
   // Status
   statusRow: {
@@ -528,7 +528,7 @@ const styles = StyleSheet.create({
   },
   statusLabel: {
     fontSize: 9,
-    fontFamily: 'Inter_700Bold',
+    fontFamily: 'JetBrainsMono_700Bold',
     letterSpacing: 0.6,
   },
 });

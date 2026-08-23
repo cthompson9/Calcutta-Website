@@ -141,7 +141,7 @@ function PickerModal<T extends { id: number; label: string }>({
                       styles.pickerItemText,
                       {
                         color: active ? colors.primary : colors.foreground,
-                        fontFamily: active ? 'Inter_600SemiBold' : 'Inter_400Regular',
+                        fontFamily: active ? 'Archivo_600SemiBold' : 'JetBrainsMono_400Regular',
                       },
                     ]}
                   >
@@ -336,7 +336,7 @@ function SubmitTradeModal({
                     styles.pickerButtonText,
                     {
                       color: selectedTeam ? colors.foreground : colors.mutedForeground,
-                      fontFamily: selectedTeam ? 'Inter_500Medium' : 'Inter_400Regular',
+                      fontFamily: selectedTeam ? 'JetBrainsMono_500Medium' : 'JetBrainsMono_400Regular',
                     },
                   ]}
                 >
@@ -361,7 +361,7 @@ function SubmitTradeModal({
                     styles.pickerButtonText,
                     {
                       color: selectedSeller ? colors.foreground : colors.mutedForeground,
-                      fontFamily: selectedSeller ? 'Inter_500Medium' : 'Inter_400Regular',
+                      fontFamily: selectedSeller ? 'JetBrainsMono_500Medium' : 'JetBrainsMono_400Regular',
                     },
                   ]}
                 >
@@ -401,7 +401,7 @@ function SubmitTradeModal({
                     styles.pickerButtonText,
                     {
                       color: selectedBuyer ? colors.foreground : colors.mutedForeground,
-                      fontFamily: selectedBuyer ? 'Inter_500Medium' : 'Inter_400Regular',
+                      fontFamily: selectedBuyer ? 'JetBrainsMono_500Medium' : 'JetBrainsMono_400Regular',
                     },
                   ]}
                 >
@@ -497,7 +497,7 @@ function SubmitTradeModal({
 
               {/* Info note */}
               <Text style={[styles.infoText, { color: colors.mutedForeground }]}>
-                Submitted trades start as <Text style={{ fontFamily: 'Inter_600SemiBold' }}>pending</Text> and require commissioner approval before they take effect.
+                Submitted trades start as <Text style={{ fontFamily: 'Archivo_600SemiBold' }}>pending</Text> and require commissioner approval before they take effect.
               </Text>
             </ScrollView>
 
@@ -951,7 +951,7 @@ const styles = StyleSheet.create({
   },
   sectionHeader: {
     fontSize: 11,
-    fontFamily: 'Inter_700Bold',
+    fontFamily: 'Archivo_700Bold',
     letterSpacing: 1,
     marginTop: 18,
     marginBottom: 8,
@@ -969,7 +969,7 @@ const styles = StyleSheet.create({
   },
   tradeTeam: {
     fontSize: 16,
-    fontFamily: 'Inter_600SemiBold',
+    fontFamily: 'Archivo_700Bold',
     flexShrink: 1,
   },
   tradeFlowRow: {
@@ -980,17 +980,17 @@ const styles = StyleSheet.create({
   },
   tradeBidder: {
     fontSize: 14,
-    fontFamily: 'Inter_500Medium',
+    fontFamily: 'Archivo_600SemiBold',
     flexShrink: 1,
   },
   tradeMeta: {
     fontSize: 12,
-    fontFamily: 'Inter_400Regular',
+    fontFamily: 'JetBrainsMono_400Regular',
     marginTop: 6,
   },
   tradeNotes: {
     fontSize: 12,
-    fontFamily: 'Inter_400Regular',
+    fontFamily: 'JetBrainsMono_400Regular',
     fontStyle: 'italic',
     marginTop: 4,
   },
@@ -1000,7 +1000,7 @@ const styles = StyleSheet.create({
     gap: 10,
     marginTop: 12,
     paddingTop: 12,
-    borderTopWidth: StyleSheet.hairlineWidth,
+    borderTopWidth: 1,
     minHeight: 46,
     alignItems: 'center',
   },
@@ -1013,7 +1013,7 @@ const styles = StyleSheet.create({
   },
   actionText: {
     fontSize: 13,
-    fontFamily: 'Inter_600SemiBold',
+    fontFamily: 'Archivo_600SemiBold',
   },
   // ── Shared modal styles ──────────────────────────────────────────────────
   modalOverlay: {
@@ -1034,16 +1034,16 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     gap: 8,
     paddingBottom: 12,
-    borderBottomWidth: StyleSheet.hairlineWidth,
+    borderBottomWidth: 1,
     marginBottom: 4,
   },
   modalTitle: {
     fontSize: 17,
-    fontFamily: 'Inter_700Bold',
+    fontFamily: 'Archivo_700Bold',
   },
   modalText: {
     fontSize: 13,
-    fontFamily: 'Inter_400Regular',
+    fontFamily: 'JetBrainsMono_400Regular',
     lineHeight: 19,
     marginTop: 10,
   },
@@ -1052,7 +1052,7 @@ const styles = StyleSheet.create({
     paddingHorizontal: 12,
     paddingVertical: 10,
     fontSize: 14,
-    fontFamily: 'Inter_400Regular',
+    fontFamily: 'JetBrainsMono_400Regular',
     marginTop: 6,
     marginBottom: 12,
   },
@@ -1068,7 +1068,7 @@ const styles = StyleSheet.create({
   },
   modalBtnText: {
     fontSize: 13,
-    fontFamily: 'Inter_600SemiBold',
+    fontFamily: 'Archivo_600SemiBold',
   },
   // ── Submit Trade modal specifics ─────────────────────────────────────────
   submitModalCard: {
@@ -1091,11 +1091,11 @@ const styles = StyleSheet.create({
     gap: 10,
     paddingHorizontal: 18,
     paddingVertical: 14,
-    borderTopWidth: StyleSheet.hairlineWidth,
+    borderTopWidth: 1,
   },
   fieldLabel: {
     fontSize: 11,
-    fontFamily: 'Inter_700Bold',
+    fontFamily: 'Archivo_700Bold',
     letterSpacing: 0.6,
     textTransform: 'uppercase',
     marginBottom: 4,
@@ -1123,13 +1123,13 @@ const styles = StyleSheet.create({
   },
   noticeText: {
     fontSize: 12,
-    fontFamily: 'Inter_400Regular',
+    fontFamily: 'JetBrainsMono_400Regular',
     lineHeight: 17,
     flex: 1,
   },
   infoText: {
     fontSize: 12,
-    fontFamily: 'Inter_400Regular',
+    fontFamily: 'JetBrainsMono_400Regular',
     lineHeight: 17,
     marginTop: 4,
     marginBottom: 4,
@@ -1155,11 +1155,11 @@ const styles = StyleSheet.create({
     justifyContent: 'space-between',
     paddingHorizontal: 18,
     paddingVertical: 14,
-    borderBottomWidth: StyleSheet.hairlineWidth,
+    borderBottomWidth: 1,
   },
   pickerTitle: {
     fontSize: 16,
-    fontFamily: 'Inter_600SemiBold',
+    fontFamily: 'Archivo_600SemiBold',
   },
   pickerList: {
     flexGrow: 0,
@@ -1170,7 +1170,7 @@ const styles = StyleSheet.create({
     justifyContent: 'space-between',
     paddingHorizontal: 18,
     paddingVertical: 14,
-    borderBottomWidth: StyleSheet.hairlineWidth,
+    borderBottomWidth: 1,
   },
   pickerItemText: {
     fontSize: 15,

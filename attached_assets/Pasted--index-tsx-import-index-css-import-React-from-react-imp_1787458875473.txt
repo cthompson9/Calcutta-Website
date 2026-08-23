@@ -1,0 +1,1943 @@
+```index.tsx
+import "./index.css";
+import React from "react";
+import ReactDOM from "react-dom/client";
+import { App } from "./App";
+
+const rootEl = document.getElementById("root");
+if (rootEl) {
+  ReactDOM.createRoot(rootEl).render(<App />);
+}
+
+```
+```App.tsx
+import React, { useState } from 'react'
+import { AnimatePresence, motion } from 'framer-motion'
+import { PhoneShell } from './components/PhoneShell'
+import { TopBar } from './components/TopBar'
+import { BottomTabs, type TabKey } from './components/BottomTabs'
+import { Results } from './pages/Results'
+import { M2MTracker } from './pages/M2MTracker'
+import { Trades } from './pages/Trades'
+import { AuctionResults } from './pages/AuctionResults'
+import type { Season } from './types/calcutta'
+
+export function App() {
+  const [season, setSeason] = useState<Season>('2026')
+  const [tab, setTab] = useState<TabKey>('results')
+
+  return (
+    <PhoneShell
+      header={<TopBar season={season} onSeasonChange={setSeason} />}
+      tabBar={<BottomTabs active={tab} onChange={setTab} />}
+    >
+      <AnimatePresence mode="wait" initial={false}>
+        <motion.div
+          key={`${tab}-${season}`}
+          initial={{ opacity: 0, y: 8 }}
+          animate={{ opacity: 1, y: 0 }}
+          exit={{ opacity: 0 }}
+          transition={{ duration: 0.2, ease: [0.23, 1, 0.32, 1] }}
+        >
+          {tab === 'results' && <Results season={season} />}
+          {tab === 'tracker' && <M2MTracker season={season} />}
+          {tab === 'trades' && <Trades season={season} />}
+          {tab === 'auction' && <AuctionResults season={season} />}
+        </motion.div>
+      </AnimatePresence>
+    </PhoneShell>
+  )
+}
+
+```
+```package.json
+{
+  "name": "magic-patterns-project",
+  "private": true,
+  "dependencies": {
+    "react": "18.3.1",
+    "react-dom": "18.3.1",
+    "react-router-dom": "6.30.2",
+    "lucide-react": "0.577.0",
+    "framer-motion": "11.18.2",
+    "@radix-ui/react-icons": "1.3.2",
+    "date-fns": "4.1.0",
+    "tailwind-merge": "2.6.1"
+  }
+}
+
+```
+```index.css
+/* @import url() FONT IMPORTS MUST ALWAYS BE AT THE VERY TOP OF THIS FILE, ABOVE THE TAILWIND IMPORTS — DO NOT DELETE THIS COMMENT */
+@import url('https://fonts.googleapis.com/css2?family=Archivo:wght@500;600;700;800;900&family=Inter:wght@400;500;600;700&family=JetBrains+Mono:wght@400;500;700&display=swap');
+
+/* CRITICAL: THE FOLLOWING TAILWIND IMPORTS MUST NEVER BE DELETED OR REORDERED — DO NOT DELETE THIS COMMENT */
+@import 'tailwindcss/base';
+@import 'tailwindcss/components';
+@import 'tailwindcss/utilities';
+
+/* END TAILWIND IMPORTS — ALL OTHER CSS MUST GO BELOW THIS LINE */
+
+html,
+body,
+#root {
+  height: 100%;
+}
+body {
+  font-family: 'Inter', system-ui, sans-serif;
+  -webkit-font-smoothing: antialiased;
+}
+.label-mono {
+  font-family: 'JetBrains Mono', ui-monospace, monospace;
+  text-transform: uppercase;
+  letter-spacing: 0.12em;
+}
+.no-scrollbar::-webkit-scrollbar {
+  display: none;
+}
+.no-scrollbar {
+  -ms-overflow-style: none;
+  scrollbar-width: none;
+}
+@media (prefers-reduced-motion: reduce) {
+  *,
+  *::before,
+  *::after {
+    animation-duration: 0.01ms !important;
+    transition-duration: 0.01ms !important;
+  }
+}
+
+```
+```tailwind.config.js
+export default {
+  theme: {
+    extend: {
+      colors: {
+        ink: '#0B0B0B',
+        paper: '#FAF9F7',
+        surface: '#FFFFFF',
+        line: '#E6E3DD',
+        muted: '#8A867E',
+        subtle: '#F2F0EC',
+        up: '#127A3B',
+        down: '#B93A2B',
+        backdrop: '#1A1917',
+      },
+      fontFamily: {
+        display: ['Archivo', 'system-ui', 'sans-serif'],
+        sans: ['Inter', 'system-ui', 'sans-serif'],
+        mono: ['"JetBrains Mono"', 'ui-monospace', 'monospace'],
+      },
+      fontSize: {
+        '2xs': ['0.625rem', { lineHeight: '0.875rem' }],
+      },
+      transitionTimingFunction: {
+        smooth: 'cubic-bezier(0.23, 1, 0.32, 1)',
+      },
+    },
+  },
+  plugins: [],
+}
+
+```
+```types/calcutta.ts
+export type Season = '2025' | '2026'
+
+export type ReturnMode = 'mtm' | 'realized'
+
+export interface Holding {
+  team: string
+  abbr: string
+  cost: number
+  mark: number
+}
+
+export interface Consortium {
+  id: string
+  rank: number
+  name: string
+  teams: number
+  mtmReturn: number
+  realizedReturn: number
+  exposure: number
+  holdings: Holding[]
+}
+
+export interface TeamRow {
+  id: string
+  abbr: string
+  name: string
+  owner: string
+  cost: number
+  mark: number
+  record: string
+}
+
+export interface PeriodPoint {
+  period: string
+  value: number
+}
+
+export interface TrackerSeries {
+  id: string
+  name: string
+  points: PeriodPoint[]
+}
+
+export interface Trade {
+  id: string
+  date: string
+  from: string
+  to: string
+  asset: string
+  abbr: string
+  price: number
+  status: 'settled' | 'pending'
+}
+
+export interface AuctionLot {
+  id: string
+  abbr: string
+  name: string
+  buyer: string
+  price: number
+  bids: number
+  order: number
+}
+
+```
+```utils/format.ts
+export function currency(value: number, compact = false): string {
+  if (compact && Math.abs(value) >= 1000) {
+    return `$${(value / 1000).toFixed(value % 1000 === 0 ? 0 : 1)}k`
+  }
+  return `$${Math.round(value).toLocaleString('en-US')}`
+}
+
+export function signedCurrency(value: number, compact = false): string {
+  const sign = value > 0 ? '+' : value < 0 ? '-' : ''
+  return `${sign}${currency(Math.abs(value), compact)}`
+}
+
+export function percent(value: number): string {
+  const sign = value > 0 ? '+' : value < 0 ? '−' : ''
+  return `${sign}${Math.abs(value).toFixed(1)}%`
+}
+
+export function decimal(value: number, places = 2): string {
+  return value.toFixed(places)
+}
+
+export function toneClass(value: number): string {
+  if (value > 0) return 'text-up'
+  if (value < 0) return 'text-down'
+  return 'text-muted'
+}
+
+```
+```data/consortiums.ts
+import type { Consortium, Season } from '../types/calcutta'
+
+const season2026: Consortium[] = [
+  {
+    id: 'kurt-joey',
+    rank: 1,
+    name: 'Kurt D. / Joey A.',
+    teams: 4.0,
+    mtmReturn: 18.4,
+    realizedReturn: 11.2,
+    exposure: 19125,
+    holdings: [
+      { team: 'Detroit Lions', abbr: 'DET', cost: 8200, mark: 10400 },
+      { team: 'Baltimore Ravens', abbr: 'BAL', cost: 6100, mark: 7250 },
+      { team: 'Green Bay Packers', abbr: 'GB', cost: 3400, mark: 3900 },
+      { team: 'Arizona Cardinals', abbr: 'ARI', cost: 1425, mark: 1090 },
+    ],
+  },
+  {
+    id: 'tony-b',
+    rank: 2,
+    name: 'Tony B.',
+    teams: 1.33,
+    mtmReturn: 12.1,
+    realizedReturn: 9.4,
+    exposure: 2350,
+    holdings: [
+      { team: 'Houston Texans', abbr: 'HOU', cost: 1900, mark: 2210 },
+      { team: 'Denver Broncos', abbr: 'DEN', cost: 450, mark: 425 },
+    ],
+  },
+  {
+    id: 'greg-c',
+    rank: 3,
+    name: 'Greg C.',
+    teams: 4.32,
+    mtmReturn: 9.7,
+    realizedReturn: 4.1,
+    exposure: 10764,
+    holdings: [
+      { team: 'Buffalo Bills', abbr: 'BUF', cost: 5400, mark: 6180 },
+      { team: 'Seattle Seahawks', abbr: 'SEA', cost: 2600, mark: 2740 },
+      { team: 'Chicago Bears', abbr: 'CHI', cost: 1764, mark: 1600 },
+      { team: 'New York Jets', abbr: 'NYJ', cost: 1000, mark: 1290 },
+    ],
+  },
+  {
+    id: 'zack-ezra',
+    rank: 4,
+    name: 'Zack M. / Ezra P.',
+    teams: 3.2,
+    mtmReturn: 6.2,
+    realizedReturn: 2.8,
+    exposure: 11540,
+    holdings: [
+      { team: 'Philadelphia Eagles', abbr: 'PHI', cost: 7300, mark: 7980 },
+      { team: 'Los Angeles Rams', abbr: 'LAR', cost: 2900, mark: 3010 },
+      { team: 'Carolina Panthers', abbr: 'CAR', cost: 1340, mark: 1160 },
+    ],
+  },
+  {
+    id: 'josh-m',
+    rank: 5,
+    name: 'Josh M.',
+    teams: 1.0,
+    mtmReturn: 4.8,
+    realizedReturn: 4.8,
+    exposure: 525,
+    holdings: [{ team: 'Tennessee Titans', abbr: 'TEN', cost: 525, mark: 550 }],
+  },
+  {
+    id: 'sam-r',
+    rank: 6,
+    name: 'Sam R.',
+    teams: 2.39,
+    mtmReturn: 1.9,
+    realizedReturn: -0.6,
+    exposure: 65013,
+    holdings: [
+      { team: 'Kansas City Chiefs', abbr: 'KC', cost: 41000, mark: 42600 },
+      { team: 'San Francisco 49ers', abbr: 'SF', cost: 18013, mark: 17900 },
+      { team: 'New Orleans Saints', abbr: 'NO', cost: 6000, mark: 6070 },
+    ],
+  },
+  {
+    id: 'ian-c',
+    rank: 7,
+    name: 'Ian C.',
+    teams: 3.34,
+    mtmReturn: -0.4,
+    realizedReturn: 1.1,
+    exposure: 8526,
+    holdings: [
+      { team: 'Minnesota Vikings', abbr: 'MIN', cost: 4200, mark: 4310 },
+      { team: 'Pittsburgh Steelers', abbr: 'PIT', cost: 2826, mark: 2700 },
+      { team: 'Indianapolis Colts', abbr: 'IND', cost: 1500, mark: 1480 },
+    ],
+  },
+  {
+    id: 'zack-greg',
+    rank: 8,
+    name: 'Zack L. / Greg K.',
+    teams: 4.82,
+    mtmReturn: -3.1,
+    realizedReturn: -2.2,
+    exposure: 58710,
+    holdings: [
+      { team: 'Cincinnati Bengals', abbr: 'CIN', cost: 30100, mark: 28800 },
+      { team: 'Dallas Cowboys', abbr: 'DAL', cost: 16200, mark: 15900 },
+      { team: 'Miami Dolphins', abbr: 'MIA', cost: 8410, mark: 8100 },
+      { team: 'Atlanta Falcons', abbr: 'ATL', cost: 4000, mark: 4090 },
+    ],
+  },
+  {
+    id: 'ed-shaun',
+    rank: 9,
+    name: 'Ed Z. / Shaun M.',
+    teams: 3.5,
+    mtmReturn: -5.6,
+    realizedReturn: -3.9,
+    exposure: 11419,
+    holdings: [
+      { team: 'Jacksonville Jaguars', abbr: 'JAX', cost: 5200, mark: 4700 },
+      { team: 'Las Vegas Raiders', abbr: 'LV', cost: 3719, mark: 3520 },
+      { team: 'Washington Commanders', abbr: 'WAS', cost: 2500, mark: 2560 },
+    ],
+  },
+  {
+    id: 'mike-t',
+    rank: 10,
+    name: 'Mike T.',
+    teams: 2.1,
+    mtmReturn: -8.2,
+    realizedReturn: -6.4,
+    exposure: 7300,
+    holdings: [
+      { team: 'Los Angeles Chargers', abbr: 'LAC', cost: 4800, mark: 4300 },
+      { team: 'New England Patriots', abbr: 'NE', cost: 2500, mark: 2400 },
+    ],
+  },
+  {
+    id: 'dan-rob',
+    rank: 11,
+    name: 'Dan W. / Rob F.',
+    teams: 2.75,
+    mtmReturn: -11.9,
+    realizedReturn: -9.1,
+    exposure: 14980,
+    holdings: [
+      { team: 'Tampa Bay Buccaneers', abbr: 'TB', cost: 9100, mark: 7900 },
+      { team: 'Cleveland Browns', abbr: 'CLE', cost: 3880, mark: 3400 },
+      { team: 'New York Giants', abbr: 'NYG', cost: 2000, mark: 1900 },
+    ],
+  },
+  {
+    id: 'chris-p',
+    rank: 12,
+    name: 'Chris P.',
+    teams: 1.6,
+    mtmReturn: -16.4,
+    realizedReturn: -14.0,
+    exposure: 4125,
+    holdings: [
+      { team: 'Rest of Field', abbr: 'FLD', cost: 4125, mark: 3450 },
+    ],
+  },
+]
+
+const season2025: Consortium[] = [
+  {
+    id: 'sam-r',
+    rank: 1,
+    name: 'Sam R.',
+    teams: 2.8,
+    mtmReturn: 41.2,
+    realizedReturn: 41.2,
+    exposure: 52400,
+    holdings: [
+      { team: 'Kansas City Chiefs', abbr: 'KC', cost: 38000, mark: 55600 },
+      { team: 'Buffalo Bills', abbr: 'BUF', cost: 14400, mark: 18300 },
+    ],
+  },
+  {
+    id: 'greg-c',
+    rank: 2,
+    name: 'Greg C.',
+    teams: 3.9,
+    mtmReturn: 22.6,
+    realizedReturn: 22.6,
+    exposure: 9800,
+    holdings: [
+      { team: 'Detroit Lions', abbr: 'DET', cost: 6100, mark: 8200 },
+      { team: 'Houston Texans', abbr: 'HOU', cost: 3700, mark: 3820 },
+    ],
+  },
+  {
+    id: 'kurt-joey',
+    rank: 3,
+    name: 'Kurt D. / Joey A.',
+    teams: 4.1,
+    mtmReturn: 8.0,
+    realizedReturn: 8.0,
+    exposure: 17600,
+    holdings: [
+      { team: 'Baltimore Ravens', abbr: 'BAL', cost: 11200, mark: 12400 },
+      { team: 'Green Bay Packers', abbr: 'GB', cost: 6400, mark: 6600 },
+    ],
+  },
+  {
+    id: 'ian-c',
+    rank: 4,
+    name: 'Ian C.',
+    teams: 3.0,
+    mtmReturn: -2.4,
+    realizedReturn: -2.4,
+    exposure: 7900,
+    holdings: [
+      { team: 'Minnesota Vikings', abbr: 'MIN', cost: 4900, mark: 4700 },
+      { team: 'Pittsburgh Steelers', abbr: 'PIT', cost: 3000, mark: 3010 },
+    ],
+  },
+  {
+    id: 'zack-greg',
+    rank: 5,
+    name: 'Zack L. / Greg K.',
+    teams: 4.4,
+    mtmReturn: -13.7,
+    realizedReturn: -13.7,
+    exposure: 44100,
+    holdings: [
+      { team: 'Cincinnati Bengals', abbr: 'CIN', cost: 26000, mark: 21400 },
+      { team: 'Dallas Cowboys', abbr: 'DAL', cost: 18100, mark: 16600 },
+    ],
+  },
+  {
+    id: 'chris-p',
+    rank: 6,
+    name: 'Chris P.',
+    teams: 1.4,
+    mtmReturn: -28.9,
+    realizedReturn: -28.9,
+    exposure: 3800,
+    holdings: [{ team: 'Rest of Field', abbr: 'FLD', cost: 3800, mark: 2700 }],
+  },
+]
+
+export const consortiumsBySeason: Record<Season, Consortium[]> = {
+  '2026': season2026,
+  '2025': season2025,
+}
+
+export const periods = [
+  'Latest available',
+  'Week 12',
+  'Week 8',
+  'Week 4',
+  'Preseason',
+]
+
+```
+```data/teams.ts
+import type { TeamRow } from '../types/calcutta'
+
+export const teams: TeamRow[] = [
+  { id: 'kc', abbr: 'KC', name: 'Kansas City Chiefs', owner: 'Sam R.', cost: 41000, mark: 42600, record: '9-2' },
+  { id: 'phi', abbr: 'PHI', name: 'Philadelphia Eagles', owner: 'Zack M. / Ezra P.', cost: 7300, mark: 7980, record: '9-2' },
+  { id: 'det', abbr: 'DET', name: 'Detroit Lions', owner: 'Kurt D. / Joey A.', cost: 8200, mark: 10400, record: '10-1' },
+  { id: 'buf', abbr: 'BUF', name: 'Buffalo Bills', owner: 'Greg C.', cost: 5400, mark: 6180, record: '8-3' },
+  { id: 'bal', abbr: 'BAL', name: 'Baltimore Ravens', owner: 'Kurt D. / Joey A.', cost: 6100, mark: 7250, record: '8-3' },
+  { id: 'sf', abbr: 'SF', name: 'San Francisco 49ers', owner: 'Sam R.', cost: 18013, mark: 17900, record: '6-5' },
+  { id: 'cin', abbr: 'CIN', name: 'Cincinnati Bengals', owner: 'Zack L. / Greg K.', cost: 30100, mark: 28800, record: '5-6' },
+  { id: 'dal', abbr: 'DAL', name: 'Dallas Cowboys', owner: 'Zack L. / Greg K.', cost: 16200, mark: 15900, record: '5-6' },
+  { id: 'hou', abbr: 'HOU', name: 'Houston Texans', owner: 'Tony B.', cost: 1900, mark: 2210, record: '7-4' },
+  { id: 'gb', abbr: 'GB', name: 'Green Bay Packers', owner: 'Kurt D. / Joey A.', cost: 3400, mark: 3900, record: '8-3' },
+  { id: 'min', abbr: 'MIN', name: 'Minnesota Vikings', owner: 'Ian C.', cost: 4200, mark: 4310, record: '8-3' },
+  { id: 'sea', abbr: 'SEA', name: 'Seattle Seahawks', owner: 'Greg C.', cost: 2600, mark: 2740, record: '6-5' },
+  { id: 'lar', abbr: 'LAR', name: 'Los Angeles Rams', owner: 'Zack M. / Ezra P.', cost: 2900, mark: 3010, record: '6-5' },
+  { id: 'tb', abbr: 'TB', name: 'Tampa Bay Buccaneers', owner: 'Dan W. / Rob F.', cost: 9100, mark: 7900, record: '4-7' },
+  { id: 'mia', abbr: 'MIA', name: 'Miami Dolphins', owner: 'Zack L. / Greg K.', cost: 8410, mark: 8100, record: '5-6' },
+  { id: 'jax', abbr: 'JAX', name: 'Jacksonville Jaguars', owner: 'Ed Z. / Shaun M.', cost: 5200, mark: 4700, record: '3-8' },
+  { id: 'lac', abbr: 'LAC', name: 'Los Angeles Chargers', owner: 'Mike T.', cost: 4800, mark: 4300, record: '5-6' },
+  { id: 'cle', abbr: 'CLE', name: 'Cleveland Browns', owner: 'Dan W. / Rob F.', cost: 3880, mark: 3400, record: '2-9' },
+  { id: 'nyj', abbr: 'NYJ', name: 'New York Jets', owner: 'Greg C.', cost: 1000, mark: 1290, record: '4-7' },
+  { id: 'ari', abbr: 'ARI', name: 'Arizona Cardinals', owner: 'Kurt D. / Joey A.', cost: 1425, mark: 1090, record: '4-7' },
+]
+
+```
+```data/tracker.ts
+import type { TrackerSeries } from '../types/calcutta'
+
+export const trackerPeriods = ['PRE', 'W2', 'W4', 'W6', 'W8', 'W10', 'W12']
+
+export const trackerSeries: TrackerSeries[] = [
+  {
+    id: 'kurt-joey',
+    name: 'Kurt D. / Joey A.',
+    points: [
+      { period: 'PRE', value: 0 },
+      { period: 'W2', value: 3.1 },
+      { period: 'W4', value: 6.8 },
+      { period: 'W6', value: 5.2 },
+      { period: 'W8', value: 11.4 },
+      { period: 'W10', value: 15.9 },
+      { period: 'W12', value: 18.4 },
+    ],
+  },
+  {
+    id: 'tony-b',
+    name: 'Tony B.',
+    points: [
+      { period: 'PRE', value: 0 },
+      { period: 'W2', value: -1.4 },
+      { period: 'W4', value: 2.6 },
+      { period: 'W6', value: 7.1 },
+      { period: 'W8', value: 8.8 },
+      { period: 'W10', value: 10.2 },
+      { period: 'W12', value: 12.1 },
+    ],
+  },
+  {
+    id: 'greg-c',
+    name: 'Greg C.',
+    points: [
+      { period: 'PRE', value: 0 },
+      { period: 'W2', value: 4.4 },
+      { period: 'W4', value: 3.0 },
+      { period: 'W6', value: 6.6 },
+      { period: 'W8', value: 7.9 },
+      { period: 'W10', value: 8.4 },
+      { period: 'W12', value: 9.7 },
+    ],
+  },
+  {
+    id: 'sam-r',
+    name: 'Sam R.',
+    points: [
+      { period: 'PRE', value: 0 },
+      { period: 'W2', value: 6.2 },
+      { period: 'W4', value: 4.9 },
+      { period: 'W6', value: 1.1 },
+      { period: 'W8', value: -0.8 },
+      { period: 'W10', value: 0.4 },
+      { period: 'W12', value: 1.9 },
+    ],
+  },
+  {
+    id: 'zack-greg',
+    name: 'Zack L. / Greg K.',
+    points: [
+      { period: 'PRE', value: 0 },
+      { period: 'W2', value: -2.2 },
+      { period: 'W4', value: -0.9 },
+      { period: 'W6', value: -4.4 },
+      { period: 'W8', value: -6.1 },
+      { period: 'W10', value: -4.8 },
+      { period: 'W12', value: -3.1 },
+    ],
+  },
+  {
+    id: 'chris-p',
+    name: 'Chris P.',
+    points: [
+      { period: 'PRE', value: 0 },
+      { period: 'W2', value: -5.5 },
+      { period: 'W4', value: -8.1 },
+      { period: 'W6', value: -12.4 },
+      { period: 'W8', value: -14.9 },
+      { period: 'W10', value: -15.6 },
+      { period: 'W12', value: -16.4 },
+    ],
+  },
+]
+
+```
+```data/trades.ts
+import type { Trade } from '../types/calcutta'
+
+export const trades: Trade[] = [
+  {
+    id: 't-014',
+    date: '2026-11-19',
+    from: 'Dan W. / Rob F.',
+    to: 'Greg C.',
+    asset: 'New York Jets',
+    abbr: 'NYJ',
+    price: 1150,
+    status: 'pending',
+  },
+  {
+    id: 't-013',
+    date: '2026-11-12',
+    from: 'Mike T.',
+    to: 'Kurt D. / Joey A.',
+    asset: 'Arizona Cardinals',
+    abbr: 'ARI',
+    price: 1425,
+    status: 'settled',
+  },
+  {
+    id: 't-012',
+    date: '2026-11-04',
+    from: 'Ed Z. / Shaun M.',
+    to: 'Zack L. / Greg K.',
+    asset: 'Atlanta Falcons',
+    abbr: 'ATL',
+    price: 4000,
+    status: 'settled',
+  },
+  {
+    id: 't-011',
+    date: '2026-10-28',
+    from: 'Chris P.',
+    to: 'Sam R.',
+    asset: 'New Orleans Saints',
+    abbr: 'NO',
+    price: 6000,
+    status: 'settled',
+  },
+  {
+    id: 't-010',
+    date: '2026-10-21',
+    from: 'Tony B.',
+    to: 'Ian C.',
+    asset: 'Indianapolis Colts',
+    abbr: 'IND',
+    price: 1500,
+    status: 'settled',
+  },
+  {
+    id: 't-009',
+    date: '2026-10-09',
+    from: 'Josh M.',
+    to: 'Zack M. / Ezra P.',
+    asset: 'Carolina Panthers',
+    abbr: 'CAR',
+    price: 1340,
+    status: 'settled',
+  },
+  {
+    id: 't-008',
+    date: '2026-09-30',
+    from: 'Greg C.',
+    to: 'Dan W. / Rob F.',
+    asset: 'Cleveland Browns',
+    abbr: 'CLE',
+    price: 3880,
+    status: 'settled',
+  },
+  {
+    id: 't-007',
+    date: '2026-09-22',
+    from: 'Zack L. / Greg K.',
+    to: 'Mike T.',
+    asset: 'New England Patriots',
+    abbr: 'NE',
+    price: 2500,
+    status: 'settled',
+  },
+]
+
+```
+```data/auction.ts
+import type { AuctionLot } from '../types/calcutta'
+
+export const auctionLots: AuctionLot[] = [
+  { id: 'a1', abbr: 'KC', name: 'Kansas City Chiefs', buyer: 'Sam R.', price: 41000, bids: 34, order: 1 },
+  { id: 'a2', abbr: 'CIN', name: 'Cincinnati Bengals', buyer: 'Zack L. / Greg K.', price: 30100, bids: 28, order: 2 },
+  { id: 'a3', abbr: 'SF', name: 'San Francisco 49ers', buyer: 'Sam R.', price: 18013, bids: 26, order: 3 },
+  { id: 'a4', abbr: 'DAL', name: 'Dallas Cowboys', buyer: 'Zack L. / Greg K.', price: 16200, bids: 31, order: 4 },
+  { id: 'a5', abbr: 'TB', name: 'Tampa Bay Buccaneers', buyer: 'Dan W. / Rob F.', price: 9100, bids: 19, order: 5 },
+  { id: 'a6', abbr: 'MIA', name: 'Miami Dolphins', buyer: 'Zack L. / Greg K.', price: 8410, bids: 22, order: 6 },
+  { id: 'a7', abbr: 'DET', name: 'Detroit Lions', buyer: 'Kurt D. / Joey A.', price: 8200, bids: 25, order: 7 },
+  { id: 'a8', abbr: 'PHI', name: 'Philadelphia Eagles', buyer: 'Zack M. / Ezra P.', price: 7300, bids: 21, order: 8 },
+  { id: 'a9', abbr: 'BAL', name: 'Baltimore Ravens', buyer: 'Kurt D. / Joey A.', price: 6100, bids: 18, order: 9 },
+  { id: 'a10', abbr: 'BUF', name: 'Buffalo Bills', buyer: 'Greg C.', price: 5400, bids: 20, order: 10 },
+  { id: 'a11', abbr: 'JAX', name: 'Jacksonville Jaguars', buyer: 'Ed Z. / Shaun M.', price: 5200, bids: 12, order: 11 },
+  { id: 'a12', abbr: 'LAC', name: 'Los Angeles Chargers', buyer: 'Mike T.', price: 4800, bids: 15, order: 12 },
+  { id: 'a13', abbr: 'MIN', name: 'Minnesota Vikings', buyer: 'Ian C.', price: 4200, bids: 17, order: 13 },
+  { id: 'a14', abbr: 'CLE', name: 'Cleveland Browns', buyer: 'Dan W. / Rob F.', price: 3880, bids: 9, order: 14 },
+  { id: 'a15', abbr: 'LV', name: 'Las Vegas Raiders', buyer: 'Ed Z. / Shaun M.', price: 3719, bids: 11, order: 15 },
+  { id: 'a16', abbr: 'GB', name: 'Green Bay Packers', buyer: 'Kurt D. / Joey A.', price: 3400, bids: 16, order: 16 },
+  { id: 'a17', abbr: 'LAR', name: 'Los Angeles Rams', buyer: 'Zack M. / Ezra P.', price: 2900, bids: 13, order: 17 },
+  { id: 'a18', abbr: 'PIT', name: 'Pittsburgh Steelers', buyer: 'Ian C.', price: 2826, bids: 14, order: 18 },
+  { id: 'a19', abbr: 'SEA', name: 'Seattle Seahawks', buyer: 'Greg C.', price: 2600, bids: 10, order: 19 },
+  { id: 'a20', abbr: 'NE', name: 'New England Patriots', buyer: 'Mike T.', price: 2500, bids: 8, order: 20 },
+]
+
+export const auctionSummary = {
+  totalPot: 214_000,
+  lots: 32,
+  averagePrice: 6688,
+  topLot: 'KC',
+  date: 'Sept 4, 2026',
+}
+
+```
+```components/PhoneShell.tsx
+import React from 'react'
+
+interface PhoneShellProps {
+  header: React.ReactNode
+  tabBar: React.ReactNode
+  children: React.ReactNode
+}
+
+export function PhoneShell({ header, tabBar, children }: PhoneShellProps) {
+  return (
+    <div className="flex min-h-full w-full justify-center bg-backdrop">
+      <div className="flex h-[100dvh] w-full max-w-[430px] flex-col overflow-hidden bg-paper shadow-2xl sm:my-0">
+        {header}
+        <main className="no-scrollbar flex-1 overflow-y-auto overscroll-contain">
+          {children}
+        </main>
+        {tabBar}
+      </div>
+    </div>
+  )
+}
+
+```
+```components/TopBar.tsx
+import React from 'react'
+import type { Season } from '../types/calcutta'
+
+interface TopBarProps {
+  season: Season
+  onSeasonChange: (season: Season) => void
+}
+
+const seasons: Season[] = ['2025', '2026']
+
+export function TopBar({ season, onSeasonChange }: TopBarProps) {
+  return (
+    <header className="flex items-center justify-between border-b border-line bg-surface px-4 pb-3 pt-4">
+      <div className="flex items-center gap-2.5">
+        <div className="flex h-8 w-8 items-center justify-center rounded-sm bg-ink">
+          <span className="font-display text-sm font-black leading-none text-paper">C</span>
+        </div>
+        <div>
+          <p className="font-display text-[15px] font-extrabold uppercase leading-none tracking-tight text-ink">
+            The Calcutta
+          </p>
+          <p className="label-mono mt-1 text-2xs text-muted">NFL · {season} Season</p>
+        </div>
+      </div>
+
+      <div
+        role="radiogroup"
+        aria-label="Season"
+        className="flex items-center rounded-full border border-line bg-subtle p-0.5"
+      >
+        {seasons.map((value) => {
+          const active = value === season
+          return (
+            <button
+              key={value}
+              role="radio"
+              aria-checked={active}
+              onClick={() => onSeasonChange(value)}
+              className={`label-mono rounded-full px-2.5 py-1.5 text-2xs transition-colors duration-150 ease-smooth ${
+                active ? 'bg-ink text-paper' : 'text-muted'
+              }`}
+            >
+              {value}
+              {value === '2026' && active ? ' •' : ''}
+            </button>
+          )
+        })}
+      </div>
+    </header>
+  )
+}
+
+```
+```components/BottomTabs.tsx
+import React from 'react'
+import { motion } from 'framer-motion'
+import {
+  TrophyIcon,
+  TrendingUpIcon,
+  ArrowLeftRightIcon,
+  GavelIcon,
+} from 'lucide-react'
+
+export type TabKey = 'results' | 'tracker' | 'trades' | 'auction'
+
+interface BottomTabsProps {
+  active: TabKey
+  onChange: (tab: TabKey) => void
+}
+
+const tabs: { key: TabKey; label: string; Icon: typeof TrophyIcon }[] = [
+  { key: 'results', label: 'Results', Icon: TrophyIcon },
+  { key: 'tracker', label: 'M2M', Icon: TrendingUpIcon },
+  { key: 'trades', label: 'Trades', Icon: ArrowLeftRightIcon },
+  { key: 'auction', label: 'Auction', Icon: GavelIcon },
+]
+
+export function BottomTabs({ active, onChange }: BottomTabsProps) {
+  return (
+    <nav
+      aria-label="Primary"
+      className="grid shrink-0 grid-cols-4 border-t border-line bg-surface pb-[max(env(safe-area-inset-bottom),0.5rem)] pt-1"
+    >
+      {tabs.map(({ key, label, Icon }) => {
+        const isActive = key === active
+        return (
+          <button
+            key={key}
+            onClick={() => onChange(key)}
+            aria-current={isActive ? 'page' : undefined}
+            className="relative flex flex-col items-center gap-1 py-2"
+          >
+            {isActive && (
+              <motion.span
+                layoutId="tab-indicator"
+                transition={{ duration: 0.22, ease: [0.23, 1, 0.32, 1] }}
+                className="absolute inset-x-4 -top-1 h-0.5 rounded-full bg-ink"
+              />
+            )}
+            <Icon
+              size={19}
+              strokeWidth={isActive ? 2.2 : 1.7}
+              className={isActive ? 'text-ink' : 'text-muted'}
+            />
+            <span
+              className={`label-mono text-2xs ${isActive ? 'text-ink' : 'text-muted'}`}
+            >
+              {label}
+            </span>
+          </button>
+        )
+      })}
+    </nav>
+  )
+}
+
+```
+```components/PageHeading.tsx
+import React from 'react'
+
+interface PageHeadingProps {
+  title: string
+  meta: string
+  children?: React.ReactNode
+}
+
+export function PageHeading({ title, meta, children }: PageHeadingProps) {
+  return (
+    <div className="px-4 pb-4 pt-5">
+      <h1 className="font-display text-[30px] font-black uppercase leading-[0.95] tracking-[-0.02em] text-ink">
+        {title}
+      </h1>
+      <p className="label-mono mt-2 text-2xs text-muted">{meta}</p>
+      {children}
+    </div>
+  )
+}
+
+```
+```components/Segmented.tsx
+import React from 'react'
+import { motion } from 'framer-motion'
+
+interface SegmentedOption<T extends string> {
+  value: T
+  label: string
+}
+
+interface SegmentedProps<T extends string> {
+  options: SegmentedOption<T>[]
+  value: T
+  onChange: (value: T) => void
+  ariaLabel: string
+  layoutId: string
+}
+
+export function Segmented<T extends string>({
+  options,
+  value,
+  onChange,
+  ariaLabel,
+  layoutId,
+}: SegmentedProps<T>) {
+  return (
+    <div
+      role="radiogroup"
+      aria-label={ariaLabel}
+      className="grid w-full grid-flow-col rounded-md border border-line bg-subtle p-0.5"
+    >
+      {options.map((option) => {
+        const active = option.value === value
+        return (
+          <button
+            key={option.value}
+            role="radio"
+            aria-checked={active}
+            onClick={() => onChange(option.value)}
+            className="relative rounded-[5px] px-2 py-2"
+          >
+            {active && (
+              <motion.span
+                layoutId={layoutId}
+                transition={{ duration: 0.2, ease: [0.23, 1, 0.32, 1] }}
+                className="absolute inset-0 rounded-[5px] bg-ink"
+              />
+            )}
+            <span
+              className={`label-mono relative text-2xs ${
+                active ? 'text-paper' : 'text-muted'
+              }`}
+            >
+              {option.label}
+            </span>
+          </button>
+        )
+      })}
+    </div>
+  )
+}
+
+```
+```components/SheetSelect.tsx
+import React, { useState } from 'react'
+import { AnimatePresence, motion } from 'framer-motion'
+import { CheckIcon, ChevronDownIcon } from 'lucide-react'
+
+interface SheetSelectProps {
+  label: string
+  value: string
+  options: string[]
+  onChange: (value: string) => void
+}
+
+export function SheetSelect({ label, value, options, onChange }: SheetSelectProps) {
+  const [open, setOpen] = useState(false)
+
+  return (
+    <>
+      <button
+        onClick={() => setOpen(true)}
+        aria-haspopup="dialog"
+        aria-expanded={open}
+        className="flex w-full items-center justify-between rounded-md border border-line bg-surface px-3 py-2.5 text-left transition-colors duration-150 ease-smooth active:bg-subtle"
+      >
+        <span className="label-mono shrink-0 text-2xs text-muted">{label}</span>
+        <span className="flex min-w-0 items-center gap-1.5 pl-2">
+          <span className="truncate text-[13px] font-semibold text-ink">
+            {value}
+          </span>
+          <ChevronDownIcon size={14} className="text-muted" />
+        </span>
+      </button>
+
+      <AnimatePresence>
+        {open && (
+          <div className="fixed inset-0 z-50 flex flex-col items-center justify-end">
+            <motion.button
+              aria-label="Close"
+              initial={{ opacity: 0 }}
+              animate={{ opacity: 1 }}
+              exit={{ opacity: 0 }}
+              transition={{ duration: 0.18, ease: [0.23, 1, 0.32, 1] }}
+              onClick={() => setOpen(false)}
+              className="absolute inset-0 bg-ink/50"
+            />
+            <motion.div
+              role="dialog"
+              aria-label={label}
+              initial={{ y: 24, opacity: 0 }}
+              animate={{ y: 0, opacity: 1 }}
+              exit={{ y: 24, opacity: 0 }}
+              transition={{ duration: 0.24, ease: [0.23, 1, 0.32, 1] }}
+              className="relative max-h-[70vh] w-full max-w-[430px] overflow-y-auto rounded-t-2xl border-t border-line bg-surface pb-6 pt-2"
+            >
+              <div className="mx-auto h-1 w-9 rounded-full bg-line" />
+              <p className="label-mono px-4 pb-1 pt-4 text-2xs text-muted">{label}</p>
+              <ul>
+                {options.map((option) => {
+                  const active = option === value
+                  return (
+                    <li key={option}>
+                      <button
+                        onClick={() => {
+                          onChange(option)
+                          setOpen(false)
+                        }}
+                        className="flex w-full items-center justify-between border-t border-line px-4 py-3.5 text-left"
+                      >
+                        <span
+                          className={`text-[15px] ${
+                            active ? 'font-semibold text-ink' : 'text-ink/80'
+                          }`}
+                        >
+                          {option}
+                        </span>
+                        {active && <CheckIcon size={16} className="text-ink" />}
+                      </button>
+                    </li>
+                  )
+                })}
+              </ul>
+            </motion.div>
+          </div>
+        )}
+      </AnimatePresence>
+    </>
+  )
+}
+
+```
+```components/ConsortiumRow.tsx
+import React from 'react'
+import { AnimatePresence, motion } from 'framer-motion'
+import { ChevronDownIcon } from 'lucide-react'
+import type { Consortium, ReturnMode } from '../types/calcutta'
+import { currency, percent, decimal, toneClass } from '../utils/format'
+
+interface ConsortiumRowProps {
+  consortium: Consortium
+  mode: ReturnMode
+  expanded: boolean
+  onToggle: () => void
+}
+
+export function ConsortiumRow({
+  consortium,
+  mode,
+  expanded,
+  onToggle,
+}: ConsortiumRowProps) {
+  const value =
+    mode === 'mtm' ? consortium.mtmReturn : consortium.realizedReturn
+  const isLeader = consortium.rank === 1
+
+  return (
+    <li className="border-b border-line">
+      <button
+        onClick={onToggle}
+        aria-expanded={expanded}
+        className="flex w-full items-center gap-3 px-4 py-3 text-left transition-colors duration-150 ease-smooth active:bg-subtle"
+      >
+        <span
+          className={`label-mono w-5 shrink-0 text-right text-xs ${
+            isLeader ? 'text-ink' : 'text-muted'
+          }`}
+        >
+          {consortium.rank}
+        </span>
+        <span className="min-w-0 flex-1">
+          <span
+            className={`block truncate text-[15px] leading-tight ${
+              isLeader ? 'font-bold text-ink' : 'font-semibold text-ink'
+            }`}
+          >
+            {consortium.name}
+          </span>
+          <span className="label-mono mt-0.5 block text-2xs text-muted">
+            {decimal(consortium.teams)} teams · {currency(consortium.exposure, true)}
+          </span>
+        </span>
+        <span
+          className={`font-mono text-[15px] font-medium tabular-nums ${toneClass(value)}`}
+        >
+          {percent(value)}
+        </span>
+        <ChevronDownIcon
+          size={15}
+          aria-hidden="true"
+          className={`shrink-0 text-muted transition-transform duration-200 ease-smooth ${
+            expanded ? 'rotate-180' : ''
+          }`}
+        />
+      </button>
+
+      <AnimatePresence initial={false}>
+        {expanded && (
+          <motion.div
+            key="detail"
+            initial={{ height: 0, opacity: 0 }}
+            animate={{ height: 'auto', opacity: 1 }}
+            exit={{ height: 0, opacity: 0 }}
+            transition={{ duration: 0.24, ease: [0.23, 1, 0.32, 1] }}
+            className="overflow-hidden bg-subtle"
+          >
+            <div className="px-4 pb-4 pt-3">
+              <dl className="grid grid-cols-3 gap-3">
+                <div>
+                  <dt className="label-mono text-2xs text-muted">Exposure</dt>
+                  <dd className="mt-1 font-mono text-[13px] tabular-nums text-ink">
+                    {currency(consortium.exposure)}
+                  </dd>
+                </div>
+                <div>
+                  <dt className="label-mono text-2xs text-muted">MTM</dt>
+                  <dd
+                    className={`mt-1 font-mono text-[13px] tabular-nums ${toneClass(consortium.mtmReturn)}`}
+                  >
+                    {percent(consortium.mtmReturn)}
+                  </dd>
+                </div>
+                <div>
+                  <dt className="label-mono text-2xs text-muted">Realized</dt>
+                  <dd
+                    className={`mt-1 font-mono text-[13px] tabular-nums ${toneClass(consortium.realizedReturn)}`}
+                  >
+                    {percent(consortium.realizedReturn)}
+                  </dd>
+                </div>
+              </dl>
+
+              <p className="label-mono mt-4 text-2xs text-muted">Holdings</p>
+              <ul className="mt-1.5 divide-y divide-line">
+                {consortium.holdings.map((holding) => {
+                  const delta = holding.mark - holding.cost
+                  return (
+                    <li
+                      key={holding.abbr}
+                      className="flex items-center gap-3 py-2"
+                    >
+                      <span className="label-mono w-9 shrink-0 text-2xs text-ink">
+                        {holding.abbr}
+                      </span>
+                      <span className="min-w-0 flex-1 truncate text-[13px] text-ink/80">
+                        {holding.team}
+                      </span>
+                      <span className="font-mono text-[12px] tabular-nums text-muted">
+                        {currency(holding.cost, true)}
+                      </span>
+                      <span
+                        className={`w-14 text-right font-mono text-[12px] tabular-nums ${toneClass(delta)}`}
+                      >
+                        {percent((delta / holding.cost) * 100)}
+                      </span>
+                    </li>
+                  )
+                })}
+              </ul>
+            </div>
+          </motion.div>
+        )}
+      </AnimatePresence>
+    </li>
+  )
+}
+
+```
+```components/TeamList.tsx
+import React, { useState } from 'react'
+import { AnimatePresence, motion } from 'framer-motion'
+import { teams } from '../data/teams'
+import { currency, percent, toneClass } from '../utils/format'
+
+export function TeamList() {
+  const [openId, setOpenId] = useState<string | null>(null)
+
+  const ranked = [...teams].sort(
+    (a, b) => (b.mark - b.cost) / b.cost - (a.mark - a.cost) / a.cost,
+  )
+
+  return (
+    <ul>
+      {ranked.map((team, index) => {
+        const delta = ((team.mark - team.cost) / team.cost) * 100
+        const expanded = openId === team.id
+        return (
+          <li key={team.id} className="border-b border-line">
+            <button
+              onClick={() => setOpenId(expanded ? null : team.id)}
+              aria-expanded={expanded}
+              className="flex w-full items-center gap-3 px-4 py-3 text-left transition-colors duration-150 ease-smooth active:bg-subtle"
+            >
+              <span className="label-mono w-5 shrink-0 text-right text-xs text-muted">
+                {index + 1}
+              </span>
+              <span className="label-mono w-9 shrink-0 text-2xs text-ink">
+                {team.abbr}
+              </span>
+              <span className="min-w-0 flex-1">
+                <span className="block truncate text-[15px] font-semibold leading-tight text-ink">
+                  {team.name}
+                </span>
+                <span className="label-mono mt-0.5 block truncate text-2xs text-muted">
+                  {team.owner}
+                </span>
+              </span>
+              <span
+                className={`font-mono text-[15px] font-medium tabular-nums ${toneClass(delta)}`}
+              >
+                {percent(delta)}
+              </span>
+            </button>
+
+            <AnimatePresence initial={false}>
+              {expanded && (
+                <motion.div
+                  initial={{ height: 0, opacity: 0 }}
+                  animate={{ height: 'auto', opacity: 1 }}
+                  exit={{ height: 0, opacity: 0 }}
+                  transition={{ duration: 0.24, ease: [0.23, 1, 0.32, 1] }}
+                  className="overflow-hidden bg-subtle"
+                >
+                  <dl className="grid grid-cols-3 gap-3 px-4 pb-4 pt-3">
+                    <div>
+                      <dt className="label-mono text-2xs text-muted">Auction</dt>
+                      <dd className="mt-1 font-mono text-[13px] tabular-nums text-ink">
+                        {currency(team.cost)}
+                      </dd>
+                    </div>
+                    <div>
+                      <dt className="label-mono text-2xs text-muted">Mark</dt>
+                      <dd className="mt-1 font-mono text-[13px] tabular-nums text-ink">
+                        {currency(team.mark)}
+                      </dd>
+                    </div>
+                    <div>
+                      <dt className="label-mono text-2xs text-muted">Record</dt>
+                      <dd className="mt-1 font-mono text-[13px] tabular-nums text-ink">
+                        {team.record}
+                      </dd>
+                    </div>
+                  </dl>
+                </motion.div>
+              )}
+            </AnimatePresence>
+          </li>
+        )
+      })}
+    </ul>
+  )
+}
+
+```
+```components/CompareView.tsx
+import React, { useState } from 'react'
+import type { Consortium } from '../types/calcutta'
+import { SheetSelect } from './SheetSelect'
+import { currency, percent, decimal, toneClass } from '../utils/format'
+
+interface CompareViewProps {
+  consortiums: Consortium[]
+}
+
+interface Metric {
+  label: string
+  render: (c: Consortium) => string
+  tone?: (c: Consortium) => string
+  weight: (c: Consortium) => number
+}
+
+const metrics: Metric[] = [
+  {
+    label: 'MTM return',
+    render: (c) => percent(c.mtmReturn),
+    tone: (c) => toneClass(c.mtmReturn),
+    weight: (c) => Math.abs(c.mtmReturn),
+  },
+  {
+    label: 'Realized',
+    render: (c) => percent(c.realizedReturn),
+    tone: (c) => toneClass(c.realizedReturn),
+    weight: (c) => Math.abs(c.realizedReturn),
+  },
+  {
+    label: 'Exposure',
+    render: (c) => currency(c.exposure),
+    weight: (c) => c.exposure,
+  },
+  {
+    label: 'Teams',
+    render: (c) => decimal(c.teams),
+    weight: (c) => c.teams,
+  },
+]
+
+export function CompareView({ consortiums }: CompareViewProps) {
+  const [leftName, setLeftName] = useState(consortiums[0]?.name ?? '')
+  const [rightName, setRightName] = useState(consortiums[1]?.name ?? '')
+
+  const names = consortiums.map((c) => c.name)
+  const left = consortiums.find((c) => c.name === leftName) ?? consortiums[0]
+  const right = consortiums.find((c) => c.name === rightName) ?? consortiums[1]
+
+  if (!left || !right) {
+    return (
+      <p className="px-4 py-10 text-center text-sm text-muted">
+        Not enough consortiums in this season to compare.
+      </p>
+    )
+  }
+
+  return (
+    <div className="px-4 pb-6 pt-4">
+      <div className="grid grid-cols-2 gap-2">
+        <SheetSelect
+          label="A"
+          value={left.name}
+          options={names}
+          onChange={setLeftName}
+        />
+        <SheetSelect
+          label="B"
+          value={right.name}
+          options={names}
+          onChange={setRightName}
+        />
+      </div>
+
+      <dl className="mt-5">
+        {metrics.map((metric) => {
+          const l = metric.weight(left)
+          const r = metric.weight(right)
+          const total = l + r || 1
+          const leftPct = Math.max(6, Math.min(94, (l / total) * 100))
+          return (
+            <div key={metric.label} className="border-t border-line py-3.5">
+              <dt className="label-mono text-2xs text-muted">{metric.label}</dt>
+              <dd className="mt-2">
+                <div className="flex items-baseline justify-between gap-3">
+                  <span
+                    className={`font-mono text-[15px] tabular-nums ${metric.tone ? metric.tone(left) : 'text-ink'}`}
+                  >
+                    {metric.render(left)}
+                  </span>
+                  <span
+                    className={`font-mono text-[15px] tabular-nums ${metric.tone ? metric.tone(right) : 'text-ink'}`}
+                  >
+                    {metric.render(right)}
+                  </span>
+                </div>
+                <div className="mt-2 flex h-1.5 gap-1 overflow-hidden rounded-full">
+                  <span
+                    className="h-full rounded-full bg-ink transition-[width] duration-300 ease-smooth"
+                    style={{ width: `${leftPct}%` }}
+                  />
+                  <span
+                    className="h-full flex-1 rounded-full bg-line"
+                  />
+                </div>
+              </dd>
+            </div>
+          )
+        })}
+      </dl>
+    </div>
+  )
+}
+
+```
+```pages/Results.tsx
+import React, { useState } from 'react'
+import { PageHeading } from '../components/PageHeading'
+import { Segmented } from '../components/Segmented'
+import { SheetSelect } from '../components/SheetSelect'
+import { ConsortiumRow } from '../components/ConsortiumRow'
+import { TeamList } from '../components/TeamList'
+import { CompareView } from '../components/CompareView'
+import { consortiumsBySeason, periods } from '../data/consortiums'
+import { currency } from '../utils/format'
+import type { ReturnMode, Season } from '../types/calcutta'
+
+type ResultsView = 'consortium' | 'team' | 'compare'
+
+interface ResultsProps {
+  season: Season
+}
+
+export function Results({ season }: ResultsProps) {
+  const [mode, setMode] = useState<ReturnMode>('mtm')
+  const [period, setPeriod] = useState(periods[0])
+  const [view, setView] = useState<ResultsView>('consortium')
+  const [openId, setOpenId] = useState<string | null>(null)
+
+  const consortiums = consortiumsBySeason[season]
+  const potSize = consortiums.reduce((sum, c) => sum + c.exposure, 0)
+  const leader = consortiums[0]
+
+  return (
+    <div className="pb-8">
+      <PageHeading
+        title="Calcutta Returns"
+        meta={`${mode === 'mtm' ? 'Mark-to-market' : 'Realized'} · ${period} · ${season}`}
+      >
+        <div className="mt-4 flex items-baseline gap-2">
+          <span className="font-display text-2xl font-black tabular-nums tracking-tight text-ink">
+            {currency(potSize)}
+          </span>
+          <span className="label-mono text-2xs text-muted">
+            total exposure · {consortiums.length} consortiums
+          </span>
+        </div>
+        {leader && (
+          <p className="mt-1 text-[13px] text-muted">
+            Leading:{' '}
+            <span className="font-semibold text-ink">{leader.name}</span>
+          </p>
+        )}
+      </PageHeading>
+
+      <div className="space-y-2 px-4 pb-4">
+        <Segmented
+          ariaLabel="Return basis"
+          layoutId="results-mode"
+          value={mode}
+          onChange={setMode}
+          options={[
+            { value: 'mtm', label: 'Mark to market' },
+            { value: 'realized', label: 'Realized' },
+          ]}
+        />
+        <SheetSelect
+          label="Through period"
+          value={period}
+          options={periods}
+          onChange={setPeriod}
+        />
+      </div>
+
+      <div className="sticky top-0 z-10 grid grid-cols-3 border-y border-line bg-surface">
+        {(
+          [
+            ['consortium', 'Consortium'],
+            ['team', 'Team'],
+            ['compare', 'Compare'],
+          ] as [ResultsView, string][]
+        ).map(([key, label]) => {
+          const active = view === key
+          return (
+            <button
+              key={key}
+              onClick={() => setView(key)}
+              aria-current={active ? 'true' : undefined}
+              className={`label-mono relative py-3 text-2xs transition-colors duration-150 ease-smooth ${
+                active ? 'text-ink' : 'text-muted'
+              }`}
+            >
+              {label}
+              {active && (
+                <span className="absolute inset-x-5 bottom-0 h-0.5 bg-ink" />
+              )}
+            </button>
+          )
+        })}
+      </div>
+
+      {view === 'consortium' && (
+        <ul>
+          {consortiums.map((consortium) => (
+            <ConsortiumRow
+              key={consortium.id}
+              consortium={consortium}
+              mode={mode}
+              expanded={openId === consortium.id}
+              onToggle={() =>
+                setOpenId(openId === consortium.id ? null : consortium.id)
+              }
+            />
+          ))}
+        </ul>
+      )}
+
+      {view === 'team' && <TeamList />}
+
+      {view === 'compare' && <CompareView consortiums={consortiums} />}
+    </div>
+  )
+}
+
+```
+```components/TrackerChart.tsx
+import React from 'react'
+import type { TrackerSeries } from '../types/calcutta'
+import { trackerPeriods } from '../data/tracker'
+
+interface TrackerChartProps {
+  series: TrackerSeries[]
+  activeId: string
+}
+
+const WIDTH = 320
+const HEIGHT = 150
+const PAD_X = 4
+const PAD_Y = 10
+
+export function TrackerChart({ series, activeId }: TrackerChartProps) {
+  const all = series.flatMap((s) => s.points.map((p) => p.value))
+  const max = Math.max(...all, 5)
+  const min = Math.min(...all, -5)
+
+  const x = (index: number) =>
+    PAD_X + (index / (trackerPeriods.length - 1)) * (WIDTH - PAD_X * 2)
+  const y = (value: number) =>
+    PAD_Y + ((max - value) / (max - min)) * (HEIGHT - PAD_Y * 2)
+
+  const path = (s: TrackerSeries) =>
+    s.points.map((p, i) => `${i === 0 ? 'M' : 'L'}${x(i)},${y(p.value)}`).join(' ')
+
+  const active = series.find((s) => s.id === activeId)
+
+  return (
+    <figure className="px-4">
+      <svg
+        viewBox={`0 0 ${WIDTH} ${HEIGHT}`}
+        className="w-full"
+        role="img"
+        aria-label={`Cumulative mark-to-market return by period. ${active?.name ?? ''} highlighted.`}
+      >
+        <line
+          x1={PAD_X}
+          x2={WIDTH - PAD_X}
+          y1={y(0)}
+          y2={y(0)}
+          stroke="#E6E3DD"
+          strokeWidth="1"
+        />
+        {series
+          .filter((s) => s.id !== activeId)
+          .map((s) => (
+            <path
+              key={s.id}
+              d={path(s)}
+              fill="none"
+              stroke="#DDD9D2"
+              strokeWidth="1.25"
+              strokeLinecap="round"
+            />
+          ))}
+        {active && (
+          <>
+            <path
+              d={path(active)}
+              fill="none"
+              stroke="#0B0B0B"
+              strokeWidth="2"
+              strokeLinecap="round"
+              strokeLinejoin="round"
+            />
+            {active.points.map((p, i) => (
+              <circle
+                key={p.period}
+                cx={x(i)}
+                cy={y(p.value)}
+                r={i === active.points.length - 1 ? 3.5 : 2}
+                fill="#0B0B0B"
+              />
+            ))}
+          </>
+        )}
+      </svg>
+      <figcaption className="mt-1 flex justify-between">
+        {trackerPeriods.map((p) => (
+          <span key={p} className="label-mono text-2xs text-muted">
+            {p}
+          </span>
+        ))}
+      </figcaption>
+    </figure>
+  )
+}
+
+```
+```pages/M2MTracker.tsx
+import React, { useState } from 'react'
+import { PageHeading } from '../components/PageHeading'
+import { TrackerChart } from '../components/TrackerChart'
+import { trackerSeries, trackerPeriods } from '../data/tracker'
+import { percent, toneClass } from '../utils/format'
+import type { Season } from '../types/calcutta'
+
+interface M2MTrackerProps {
+  season: Season
+}
+
+export function M2MTracker({ season }: M2MTrackerProps) {
+  const [activeId, setActiveId] = useState(trackerSeries[0].id)
+  const active = trackerSeries.find((s) => s.id === activeId) ?? trackerSeries[0]
+  const latest = active.points[active.points.length - 1].value
+  const previous = active.points[active.points.length - 2].value
+  const swing = latest - previous
+
+  return (
+    <div className="pb-8">
+      <PageHeading
+        title="M2M Tracker"
+        meta={`Cumulative return by period · ${season}`}
+      >
+        <div className="mt-4 flex items-baseline gap-2">
+          <span
+            className={`font-display text-3xl font-black tabular-nums tracking-tight ${toneClass(latest)}`}
+          >
+            {percent(latest)}
+          </span>
+          <span className="label-mono text-2xs text-muted">
+            {active.name} · {trackerPeriods[trackerPeriods.length - 1]}
+          </span>
+        </div>
+        <p className="mt-1 text-[13px] text-muted">
+          <span className={toneClass(swing)}>{percent(swing)}</span> since last
+          period
+        </p>
+      </PageHeading>
+
+      <TrackerChart series={trackerSeries} activeId={activeId} />
+
+      <div className="no-scrollbar mt-5 flex gap-2 overflow-x-auto px-4">
+        {trackerSeries.map((s) => {
+          const isActive = s.id === activeId
+          return (
+            <button
+              key={s.id}
+              onClick={() => setActiveId(s.id)}
+              aria-pressed={isActive}
+              className={`shrink-0 whitespace-nowrap rounded-full border px-3 py-1.5 text-[12px] font-semibold transition-colors duration-150 ease-smooth ${
+                isActive
+                  ? 'border-ink bg-ink text-paper'
+                  : 'border-line bg-surface text-muted'
+              }`}
+            >
+              {s.name}
+            </button>
+          )
+        })}
+      </div>
+
+      <h2 className="label-mono mt-6 border-b border-line px-4 pb-2 text-2xs text-muted">
+        Period detail · {active.name}
+      </h2>
+      <ul>
+        {active.points.map((point, index) => {
+          const delta =
+            index === 0 ? 0 : point.value - active.points[index - 1].value
+          return (
+            <li
+              key={point.period}
+              className="flex items-center gap-3 border-b border-line px-4 py-2.5"
+            >
+              <span className="label-mono w-10 shrink-0 text-2xs text-ink">
+                {point.period}
+              </span>
+              <span className="flex-1">
+                <span className="block h-1 rounded-full bg-subtle">
+                  <span
+                    className={`block h-1 rounded-full ${point.value >= 0 ? 'bg-up' : 'bg-down'}`}
+                    style={{
+                      width: `${Math.min(100, (Math.abs(point.value) / 20) * 100)}%`,
+                    }}
+                  />
+                </span>
+              </span>
+              <span
+                className={`w-14 text-right font-mono text-[13px] tabular-nums ${toneClass(delta)}`}
+              >
+                {index === 0 ? '—' : percent(delta)}
+              </span>
+              <span
+                className={`w-14 text-right font-mono text-[13px] font-medium tabular-nums ${toneClass(point.value)}`}
+              >
+                {percent(point.value)}
+              </span>
+            </li>
+          )
+        })}
+      </ul>
+    </div>
+  )
+}
+
+```
+```pages/Trades.tsx
+import React, { useState } from 'react'
+import { ArrowRightIcon } from 'lucide-react'
+import { PageHeading } from '../components/PageHeading'
+import { Segmented } from '../components/Segmented'
+import { trades } from '../data/trades'
+import { currency } from '../utils/format'
+import type { Season } from '../types/calcutta'
+
+type TradeFilter = 'all' | 'settled' | 'pending'
+
+interface TradesProps {
+  season: Season
+}
+
+function formatDate(iso: string): string {
+  const date = new Date(`${iso}T00:00:00`)
+  return date.toLocaleDateString('en-US', { month: 'short', day: 'numeric' })
+}
+
+export function Trades({ season }: TradesProps) {
+  const [filter, setFilter] = useState<TradeFilter>('all')
+
+  const visible = trades.filter((t) => filter === 'all' || t.status === filter)
+  const volume = trades.reduce((sum, t) => sum + t.price, 0)
+  const pending = trades.filter((t) => t.status === 'pending').length
+
+  return (
+    <div className="pb-8">
+      <PageHeading title="Trades" meta={`Secondary market · ${season}`}>
+        <div className="mt-4 flex items-baseline gap-2">
+          <span className="font-display text-2xl font-black tabular-nums tracking-tight text-ink">
+            {currency(volume)}
+          </span>
+          <span className="label-mono text-2xs text-muted">
+            volume · {trades.length} trades
+          </span>
+        </div>
+        {pending > 0 && (
+          <p className="mt-1 text-[13px] text-muted">
+            <span className="font-semibold text-ink">{pending} pending</span>{' '}
+            awaiting commissioner approval
+          </p>
+        )}
+      </PageHeading>
+
+      <div className="px-4 pb-4">
+        <Segmented
+          ariaLabel="Trade status"
+          layoutId="trades-filter"
+          value={filter}
+          onChange={setFilter}
+          options={[
+            { value: 'all', label: 'All' },
+            { value: 'settled', label: 'Settled' },
+            { value: 'pending', label: 'Pending' },
+          ]}
+        />
+      </div>
+
+      {visible.length === 0 ? (
+        <p className="border-t border-line px-4 py-12 text-center text-sm text-muted">
+          No {filter} trades this season.
+        </p>
+      ) : (
+        <ul className="border-t border-line">
+          {visible.map((trade) => (
+            <li key={trade.id} className="border-b border-line px-4 py-3">
+              <div className="flex items-center justify-between gap-3">
+                <div className="flex min-w-0 items-center gap-2">
+                  <span className="label-mono shrink-0 rounded-sm bg-ink px-1.5 py-1 text-2xs text-paper">
+                    {trade.abbr}
+                  </span>
+                  <span className="truncate text-[15px] font-semibold text-ink">
+                    {trade.asset}
+                  </span>
+                </div>
+                <span className="shrink-0 font-mono text-[15px] tabular-nums text-ink">
+                  {currency(trade.price)}
+                </span>
+              </div>
+
+              <div className="mt-2 flex items-center gap-2">
+                <span className="min-w-0 flex-1 truncate text-[13px] text-muted">
+                  {trade.from}
+                </span>
+                <ArrowRightIcon
+                  size={13}
+                  aria-hidden="true"
+                  className="shrink-0 text-muted"
+                />
+                <span className="min-w-0 flex-1 truncate text-right text-[13px] text-ink">
+                  {trade.to}
+                </span>
+              </div>
+
+              <div className="mt-2 flex items-center gap-2">
+                <span className="label-mono text-2xs text-muted">
+                  {formatDate(trade.date)}
+                </span>
+                <span
+                  className={`label-mono rounded-full px-2 py-0.5 text-2xs ${
+                    trade.status === 'pending'
+                      ? 'bg-subtle text-ink'
+                      : 'text-muted'
+                  }`}
+                >
+                  {trade.status}
+                </span>
+              </div>
+            </li>
+          ))}
+        </ul>
+      )}
+    </div>
+  )
+}
+
+```
+```pages/AuctionResults.tsx
+import React, { useState } from 'react'
+import { SearchIcon } from 'lucide-react'
+import { PageHeading } from '../components/PageHeading'
+import { Segmented } from '../components/Segmented'
+import { auctionLots, auctionSummary } from '../data/auction'
+import { currency } from '../utils/format'
+import type { Season } from '../types/calcutta'
+
+type AuctionSort = 'price' | 'order' | 'buyer'
+
+interface AuctionResultsProps {
+  season: Season
+}
+
+export function AuctionResults({ season }: AuctionResultsProps) {
+  const [sort, setSort] = useState<AuctionSort>('price')
+  const [query, setQuery] = useState('')
+
+  const filtered = auctionLots.filter((lot) => {
+    const q = query.trim().toLowerCase()
+    if (!q) return true
+    return (
+      lot.name.toLowerCase().includes(q) ||
+      lot.abbr.toLowerCase().includes(q) ||
+      lot.buyer.toLowerCase().includes(q)
+    )
+  })
+
+  const sorted = [...filtered].sort((a, b) => {
+    if (sort === 'price') return b.price - a.price
+    if (sort === 'order') return a.order - b.order
+    return a.buyer.localeCompare(b.buyer)
+  })
+
+  const maxPrice = Math.max(...auctionLots.map((l) => l.price))
+
+  return (
+    <div className="pb-8">
+      <PageHeading
+        title="Auction Results"
+        meta={`${auctionSummary.date} · ${auctionSummary.lots} lots · ${season}`}
+      >
+        <div className="mt-4 flex items-baseline gap-2">
+          <span className="font-display text-2xl font-black tabular-nums tracking-tight text-ink">
+            {currency(auctionSummary.totalPot)}
+          </span>
+          <span className="label-mono text-2xs text-muted">
+            total pot · avg {currency(auctionSummary.averagePrice, true)}
+          </span>
+        </div>
+      </PageHeading>
+
+      <div className="space-y-2 px-4 pb-4">
+        <label className="flex items-center gap-2 rounded-md border border-line bg-surface px-3 py-2.5">
+          <SearchIcon size={15} className="shrink-0 text-muted" />
+          <span className="sr-only">Search lots</span>
+          <input
+            value={query}
+            onChange={(event) => setQuery(event.target.value)}
+            placeholder="Search team or buyer"
+            className="w-full bg-transparent text-[14px] text-ink outline-none placeholder:text-muted"
+          />
+        </label>
+        <Segmented
+          ariaLabel="Sort auction lots"
+          layoutId="auction-sort"
+          value={sort}
+          onChange={setSort}
+          options={[
+            { value: 'price', label: 'Price' },
+            { value: 'order', label: 'Order' },
+            { value: 'buyer', label: 'Buyer' },
+          ]}
+        />
+      </div>
+
+      {sorted.length === 0 ? (
+        <p className="border-t border-line px-4 py-12 text-center text-sm text-muted">
+          No lots match “{query}”.
+        </p>
+      ) : (
+        <ul className="border-t border-line">
+          {sorted.map((lot) => (
+            <li
+              key={lot.id}
+              className="flex items-center gap-3 border-b border-line px-4 py-3"
+            >
+              <span className="label-mono w-9 shrink-0 text-2xs text-ink">
+                {lot.abbr}
+              </span>
+              <span className="min-w-0 flex-1">
+                <span className="block truncate text-[15px] font-semibold leading-tight text-ink">
+                  {lot.name}
+                </span>
+                <span className="mt-1 block h-0.5 w-full bg-subtle">
+                  <span
+                    className="block h-0.5 bg-ink"
+                    style={{ width: `${(lot.price / maxPrice) * 100}%` }}
+                  />
+                </span>
+                <span className="label-mono mt-1 block truncate text-2xs text-muted">
+                  {lot.buyer} · {lot.bids} bids
+                </span>
+              </span>
+              <span className="shrink-0 font-mono text-[15px] tabular-nums text-ink">
+                {currency(lot.price)}
+              </span>
+            </li>
+          ))}
+        </ul>
+      )}
+    </div>
+  )
+}
+
+```

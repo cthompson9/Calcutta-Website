@@ -4,6 +4,7 @@ import {
   Trophy,
   ArrowLeftRight,
   TrendingUp,
+  Sparkles,
 } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { ReactNode } from "react";
@@ -23,6 +24,7 @@ export function Shell({ children }: ShellProps) {
     { href: "/mtm", label: "M2M Tracker", icon: TrendingUp },
     { href: "/trades", label: "Trades", icon: ArrowLeftRight },
     { href: "/dashboard", label: "Auction Results", icon: LayoutDashboard },
+    { href: "/whats-new", label: "What's New", icon: Sparkles },
   ];
 
   return (

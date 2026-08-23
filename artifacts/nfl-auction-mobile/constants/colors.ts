@@ -1,71 +1,71 @@
 /**
- * Semantic design tokens synced from the sibling web artifact
- * (artifacts/nfl-auction/src/index.css). Sharp corners (radius 0),
- * monochrome base with gold / AFC red / NFC blue accents.
+ * Semantic design tokens synced from the sibling web artifact.
+ * Vibe: editorial field notebook for live pool data—confident, information-dense, tactile.
  */
 
 const colors = {
   light: {
-    // Legacy aliases
-    text: '#171717',
-    tint: '#171717',
+    text: '#0B0B0B',
+    tint: '#0B0B0B',
 
-    background: '#ffffff',
-    foreground: '#171717',
+    background: '#FAF9F7', // paper
+    foreground: '#0B0B0B', // ink
 
-    card: '#ffffff',
-    cardForeground: '#171717',
+    card: '#FFFFFF', // surface
+    cardForeground: '#0B0B0B',
 
-    primary: '#171717',
-    primaryForeground: '#fafafa',
+    primary: '#0B0B0B', // ink
+    primaryForeground: '#FAF9F7', // paper
 
-    secondary: '#f5f5f5',
-    secondaryForeground: '#171717',
+    secondary: '#E6E3DD', // line
+    secondaryForeground: '#0B0B0B',
 
-    muted: '#f5f5f5',
-    mutedForeground: '#737373',
+    muted: '#F2F0EC', // subtle
+    mutedForeground: '#8A867E', // muted
 
-    accent: '#f5f5f5',
-    accentForeground: '#171717',
+    accent: '#F2F0EC',
+    accentForeground: '#0B0B0B',
 
-    destructive: '#ef4444',
-    destructiveForeground: '#ffffff',
+    destructive: '#B93A2B', // down
+    destructiveForeground: '#FFFFFF',
 
-    border: '#e0e0e0',
-    input: '#e0e0e0',
+    success: '#127A3B', // up
 
-    // Brand extras (from web tokens)
+    border: '#E6E3DD', // line
+    input: '#E6E3DD',
+
     gold: '#ffb700',
-    afc: '#dc143f',
-    nfc: '#0075f5',
-    success: '#16a34a',
+    afc: '#B93A2B',
+    nfc: '#0075F5',
     warning: '#d97706',
   },
 
   dark: {
-    text: '#fafafa',
-    tint: '#fafafa',
+    text: '#FAF9F7',
+    tint: '#FAF9F7',
 
-    background: '#0a0a0a',
-    foreground: '#fafafa',
+    background: '#0B0B0B',
+    foreground: '#FAF9F7',
 
-    card: '#0f0f0f',
-    cardForeground: '#fafafa',
+    card: '#1A1917',
+    cardForeground: '#FAF9F7',
 
-    primary: '#fafafa',
-    primaryForeground: '#171717',
+    primary: '#FAF9F7',
+    primaryForeground: '#0B0B0B',
 
-    secondary: '#262626',
-    secondaryForeground: '#fafafa',
+    secondary: '#333333',
+    secondaryForeground: '#FAF9F7',
 
-    muted: '#262626',
-    mutedForeground: '#a3a3a3',
+    muted: '#2A2928',
+    mutedForeground: '#8A867E',
 
-    accent: '#262626',
-    accentForeground: '#fafafa',
+    accent: '#2A2928',
+    accentForeground: '#FAF9F7',
 
-    destructive: '#b91c1c',
-    destructiveForeground: '#fafafa',
+    destructive: '#ef4444',
+    destructiveForeground: '#ffffff',
+
+    success: '#22c55e',
 
     border: '#333333',
     input: '#333333',
@@ -73,11 +73,9 @@ const colors = {
     gold: '#ffb700',
     afc: '#ef3b60',
     nfc: '#3390ff',
-    success: '#22c55e',
     warning: '#f59e0b',
   },
 
-  // Synced from web --radius: 0 (sharp, editorial look)
   radius: 0,
 };
 

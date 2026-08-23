@@ -444,12 +444,12 @@ const styles = StyleSheet.create({
   },
   importTitle: {
     fontSize: 13,
-    fontFamily: 'Inter_700Bold',
+    fontFamily: 'Archivo_700Bold',
     letterSpacing: 0.4,
   },
   importHint: {
     fontSize: 11,
-    fontFamily: 'Inter_400Regular',
+    fontFamily: 'JetBrainsMono_400Regular',
     lineHeight: 16,
     marginTop: 2,
   },
@@ -458,7 +458,7 @@ const styles = StyleSheet.create({
     paddingHorizontal: 10,
     paddingVertical: 9,
     fontSize: 13,
-    fontFamily: 'Inter_400Regular',
+    fontFamily: 'JetBrainsMono_400Regular',
   },
   keyLoadedRow: {
     flexDirection: 'row',
@@ -467,11 +467,11 @@ const styles = StyleSheet.create({
   },
   keyLoadedText: {
     fontSize: 12,
-    fontFamily: 'Inter_600SemiBold',
+    fontFamily: 'Archivo_600SemiBold',
   },
   clearKeyText: {
     fontSize: 12,
-    fontFamily: 'Inter_600SemiBold',
+    fontFamily: 'Archivo_600SemiBold',
   },
   importButton: {
     minHeight: 40,
@@ -483,11 +483,11 @@ const styles = StyleSheet.create({
   },
   importButtonText: {
     fontSize: 13,
-    fontFamily: 'Inter_700Bold',
+    fontFamily: 'Archivo_700Bold',
   },
   importMessage: {
     fontSize: 12,
-    fontFamily: 'Inter_500Medium',
+    fontFamily: 'JetBrainsMono_500Medium',
     lineHeight: 17,
   },
   scroll: {
@@ -514,16 +514,16 @@ const styles = StyleSheet.create({
   },
   statTileLabel: {
     fontSize: 10,
-    fontFamily: 'Inter_600SemiBold',
+    fontFamily: 'JetBrainsMono_700Bold',
     letterSpacing: 0.8,
   },
   statTileValue: {
     fontSize: 22,
-    fontFamily: 'Inter_700Bold',
+    fontFamily: 'Archivo_900Black',
   },
   sectionTitle: {
     fontSize: 13,
-    fontFamily: 'Inter_700Bold',
+    fontFamily: 'JetBrainsMono_700Bold',
     letterSpacing: 1,
     textTransform: 'uppercase',
     marginBottom: 10,
@@ -538,7 +538,7 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     paddingHorizontal: 12,
     paddingVertical: 12,
-    borderBottomWidth: StyleSheet.hairlineWidth,
+    borderBottomWidth: 1,
     gap: 10,
   },
   orderBox: {
@@ -550,7 +550,7 @@ const styles = StyleSheet.create({
   },
   orderText: {
     fontSize: 12,
-    fontFamily: 'Inter_700Bold',
+    fontFamily: 'Archivo_700Bold',
   },
   resultDetails: {
     flex: 1,
@@ -563,18 +563,18 @@ const styles = StyleSheet.create({
     gap: 8,
   },
   resultTeam: {
-    fontSize: 15,
-    fontFamily: 'Inter_600SemiBold',
+    fontSize: 16,
+    fontFamily: 'Archivo_700Bold',
     flexShrink: 1,
   },
   resultWinner: {
     fontSize: 11,
-    fontFamily: 'Inter_400Regular',
+    fontFamily: 'JetBrainsMono_400Regular',
     marginTop: 3,
   },
   resultBid: {
-    fontSize: 15,
-    fontFamily: 'Inter_700Bold',
+    fontSize: 16,
+    fontFamily: 'Archivo_900Black',
     flexShrink: 0,
   },
   confRow: {
@@ -596,28 +596,28 @@ const styles = StyleSheet.create({
   },
   confName: {
     fontSize: 32,
-    fontFamily: 'Inter_700Bold',
+    fontFamily: 'Archivo_900Black',
   },
   confLabel: {
     fontSize: 9,
-    fontFamily: 'Inter_600SemiBold',
+    fontFamily: 'JetBrainsMono_700Bold',
     letterSpacing: 0.8,
     textTransform: 'uppercase',
   },
   confValue: {
     fontSize: 16,
-    fontFamily: 'Inter_700Bold',
+    fontFamily: 'Archivo_900Black',
     marginTop: 2,
   },
   confStats: {
     flexDirection: 'row',
     justifyContent: 'space-between',
-    borderTopWidth: StyleSheet.hairlineWidth,
+    borderTopWidth: 1,
     paddingTop: 12,
   },
   confStatVal: {
     fontSize: 16,
-    fontFamily: 'Inter_600SemiBold',
+    fontFamily: 'Archivo_700Bold',
     marginTop: 3,
   },
   emptyConf: {
@@ -629,7 +629,7 @@ const styles = StyleSheet.create({
   },
   emptyText: {
     fontSize: 12,
-    fontFamily: 'Inter_400Regular',
+    fontFamily: 'JetBrainsMono_400Regular',
     textAlign: 'center',
     padding: 16,
   },

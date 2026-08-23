@@ -1,19 +1,41 @@
 import { Sparkles } from "lucide-react";
 
-const updates = [
+export type ReleaseUpdate = {
+  title: string;
+  description: string;
+};
+
+export type ReleaseNote = {
+  date: string;
+  updates: ReleaseUpdate[];
+};
+
+export const releaseNotes: ReleaseNote[] = [
   {
-    title: "Trace every ownership position",
-    description:
-      "Select any Primary or trade-derived Type in Results to jump to the original Auction Results row or exact trade record.",
-  },
-  {
-    title: "Return to Results faster",
-    description:
-      "After following a source link, press Ctrl + [ to return to the Results view you came from.",
+    date: "August 23, 2026",
+    updates: [
+      {
+        title: "Trade legs stay together",
+        description:
+          "Multi-leg transactions now appear as one expandable trade summary, with the aggregate value, teams, counterparties, date, and status up front.",
+      },
+      {
+        title: "Short positions are shown accurately",
+        description:
+          "Every Results view now preserves signed long and short ownership so exposure and returns reflect the actual position.",
+      },
+      {
+        title: "Switch return views more easily",
+        description:
+          "Use Ctrl + [ to return to Results after following a source link, while a streamlined returns engine makes it easier to toggle between live Mark-to-Market and realized results.",
+      },
+    ],
   },
 ];
 
 export function ReleaseNotes() {
+  const latest = releaseNotes[0]!;
+
   return (
     <section
       aria-labelledby="release-notes-title"
@@ -32,11 +54,11 @@ export function ReleaseNotes() {
               What&apos;s new
             </h2>
             <span className="border border-primary/30 bg-background px-2 py-0.5 font-mono text-[10px] font-bold uppercase tracking-widest text-primary">
-              Last 12 hours
+              {latest.date}
             </span>
           </div>
           <ul className="mt-3 space-y-2">
-            {updates.map((update) => (
+            {latest.updates.map((update) => (
               <li key={update.title} className="text-sm leading-relaxed">
                 <span className="font-bold text-foreground">{update.title}.</span>{" "}
                 <span className="text-muted-foreground">{update.description}</span>

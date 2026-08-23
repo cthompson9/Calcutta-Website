@@ -13,20 +13,20 @@ function NativeTabLayout() {
   return (
     <NativeTabs>
       <NativeTabs.Trigger name="index">
-        <Icon sf={{ default: 'chart.bar', selected: 'chart.bar.fill' }} />
-        <Label>Standings</Label>
+        <Icon sf={{ default: 'trophy', selected: 'trophy.fill' }} />
+        <Label>Results</Label>
       </NativeTabs.Trigger>
       <NativeTabs.Trigger name="mtm">
         <Icon sf={{ default: 'chart.line.uptrend.xyaxis', selected: 'chart.line.uptrend.xyaxis' }} />
         <Label>M2M</Label>
       </NativeTabs.Trigger>
-      <NativeTabs.Trigger name="auction">
-        <Icon sf={{ default: 'hammer', selected: 'hammer.fill' }} />
-        <Label>Auction</Label>
-      </NativeTabs.Trigger>
       <NativeTabs.Trigger name="trades">
         <Icon sf={{ default: 'arrow.left.arrow.right', selected: 'arrow.left.arrow.right' }} />
         <Label>Trades</Label>
+      </NativeTabs.Trigger>
+      <NativeTabs.Trigger name="auction">
+        <Icon sf={{ default: 'hammer', selected: 'hammer.fill' }} />
+        <Label>Auction</Label>
       </NativeTabs.Trigger>
     </NativeTabs>
   );
@@ -45,6 +45,12 @@ function ClassicTabLayout() {
         tabBarActiveTintColor: colors.foreground,
         tabBarInactiveTintColor: colors.mutedForeground,
         headerShown: false,
+        tabBarLabelStyle: {
+          fontFamily: 'JetBrainsMono_500Medium',
+          fontSize: 10,
+          textTransform: 'uppercase',
+          letterSpacing: 0.5,
+        },
         tabBarStyle: {
           position: 'absolute',
           backgroundColor: isIOS ? 'transparent' : colors.background,
@@ -73,12 +79,12 @@ function ClassicTabLayout() {
       <Tabs.Screen
         name="index"
         options={{
-          title: 'Standings',
+          title: 'Results',
           tabBarIcon: ({ color }) =>
             isIOS ? (
-              <SymbolView name="chart.bar" tintColor={color} size={24} />
+              <SymbolView name="trophy" tintColor={color} size={24} />
             ) : (
-              <Feather name="bar-chart-2" size={22} color={color} />
+              <Feather name="award" size={22} color={color} />
             ),
         }}
       />
@@ -95,18 +101,6 @@ function ClassicTabLayout() {
         }}
       />
       <Tabs.Screen
-        name="auction"
-        options={{
-          title: 'Auction',
-          tabBarIcon: ({ color }) =>
-            isIOS ? (
-              <SymbolView name="hammer" tintColor={color} size={24} />
-            ) : (
-              <Feather name="shopping-bag" size={22} color={color} />
-            ),
-        }}
-      />
-      <Tabs.Screen
         name="trades"
         options={{
           title: 'Trades',
@@ -115,6 +109,18 @@ function ClassicTabLayout() {
               <SymbolView name="arrow.left.arrow.right" tintColor={color} size={24} />
             ) : (
               <Feather name="repeat" size={22} color={color} />
+            ),
+        }}
+      />
+      <Tabs.Screen
+        name="auction"
+        options={{
+          title: 'Auction',
+          tabBarIcon: ({ color }) =>
+            isIOS ? (
+              <SymbolView name="hammer" tintColor={color} size={24} />
+            ) : (
+              <Feather name="shopping-bag" size={22} color={color} />
             ),
         }}
       />

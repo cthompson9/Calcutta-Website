@@ -18,6 +18,7 @@ import Bidders from '@/pages/Bidders';
 import Results from '@/pages/Results';
 import Trades from '@/pages/Trades';
 import MtmTracker from '@/pages/MtmTracker';
+import WhatsNew from '@/pages/WhatsNew';
 import { SeasonProvider } from '@/hooks/useSeason';
 
 const queryClient = new QueryClient();
@@ -33,6 +34,7 @@ function Router() {
           <Route path="/teams" component={Teams} />
           <Route path="/bidders" component={Bidders} />
           <Route path="/dashboard" component={Dashboard} />
+          <Route path="/whats-new" component={WhatsNew} />
           <Route component={NotFound} />
         </Switch>
       </RoutedErrorBoundary>
