@@ -27,6 +27,7 @@ import { Link } from "wouter";
 import { bidderConsortiums, ownerLabelById } from "@/lib/ownerDisplay";
 import { ConsortiumLabel } from "@/components/ConsortiumLabel";
 import { auctionResultHref, tradeHref } from "@/lib/resultSourceLinks";
+import { ReleaseNotes } from "@/components/ReleaseNotes";
 
 type TabId = "byOwner" | "byTeam" | "compare";
 
@@ -103,6 +104,8 @@ export default function Results() {
           </p>
         </div>
       </header>
+
+      <ReleaseNotes />
 
       <div className="flex flex-col gap-3 rounded-lg border border-border bg-card p-3 sm:flex-row sm:items-center sm:justify-between">
         <label className="flex items-center gap-2 text-xs font-mono font-bold uppercase tracking-widest text-muted-foreground">
