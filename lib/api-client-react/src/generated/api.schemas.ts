@@ -402,6 +402,19 @@ export interface OwnerResultRow {
   teams: TeamResultRow[];
 }
 
+export interface ResultsAvailability {
+  /**
+     * Latest period with at least one snapshot for the requested basis.
+     * @nullable
+     */
+  latestPeriod: number | null;
+  /**
+     * Immediately preceding recorded period for the requested basis.
+     * @nullable
+     */
+  previousPeriod: number | null;
+}
+
 export interface CalcuttaComparisonCell {
   calcuttaId: number;
   seasonId: number;
@@ -942,6 +955,22 @@ export type GetResultsByOwnerMembershipView = typeof GetResultsByOwnerMembership
 export const GetResultsByOwnerMembershipView = {
   historical: 'historical',
   current: 'current',
+} as const;
+
+export type GetResultsAvailabilityParams = {
+season: number;
+/**
+ * Snapshot basis used to identify recorded reporting periods.
+ */
+basis?: GetResultsAvailabilityBasis;
+};
+
+export type GetResultsAvailabilityBasis = typeof GetResultsAvailabilityBasis[keyof typeof GetResultsAvailabilityBasis];
+
+
+export const GetResultsAvailabilityBasis = {
+  realized: 'realized',
+  mtm: 'mtm',
 } as const;
 
 export type GetResultsCompareParams = {

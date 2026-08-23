@@ -14,6 +14,7 @@ import {
 import {
   GetResultsQueryParams,
   GetResultsByOwnerQueryParams,
+  GetResultsAvailabilityQueryParams,
   GetResultsCompareQueryParams,
   UpsertTeamResultBody,
 } from "@workspace/api-zod";
@@ -26,6 +27,7 @@ import { OWNERSHIP_SEASON_LOCK_NAMESPACE } from "../lib/ownershipShares";
 import {
   hasConfiguredPayoutRules,
   loadCalculatedTeamReturns,
+  loadReturnSnapshotPeriods,
   type CalculatedTeamReturns,
 } from "../lib/calcuttaReturns";
 import { loadSeasonConsortiums } from "../lib/consortiumMemberships";
@@ -624,6 +626,32 @@ router.get("/results/by-owner", async (req, res): Promise<void> => {
     );
 
   res.json(ownerRows);
+});
+
+// GET /results/availability?season=YYYY&basis=mtm
+// Exposes actual stored reporting periods instead of relying on the full NFL
+// template, which includes future periods during an in-progress season.
+router.get("/results/availability", async (req, res): Promise<void> => {
+  const parsed = GetResultsAvailabilityQueryParams.safeParse(req.query);
+  if (!parsed.success) {
+    res.status(400).json({ error: parsed.error.message });
+    return;
+  }
+
+  const seasonId = await resolveSeasonId(parsed.data.season);
+  if (!seasonId) {
+    res.json({ latestPeriod: null, previousPeriod: null });
+    return;
+  }
+
+  const periods = await loadReturnSnapshotPeriods(
+    seasonId,
+    parsed.data.basis ?? "realized",
+  );
+  res.json({
+    latestPeriod: periods.at(-1) ?? null,
+    previousPeriod: periods.at(-2) ?? null,
+  });
 });
 
 // GET /results/compare?seasons=2025,2026

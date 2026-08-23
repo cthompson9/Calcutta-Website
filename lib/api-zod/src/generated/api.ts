@@ -396,6 +396,20 @@ export const GetResultsByOwnerResponse = zod.array(GetResultsByOwnerResponseItem
 
 
 /**
+ * @summary Latest recorded reporting periods for a season and basis
+ */
+export const GetResultsAvailabilityQueryParams = zod.object({
+  "season": zod.coerce.number(),
+  "basis": zod.enum(['realized', 'mtm']).optional().describe('Snapshot basis used to identify recorded reporting periods.')
+})
+
+export const GetResultsAvailabilityResponse = zod.object({
+  "latestPeriod": zod.number().nullable().describe('Latest period with at least one snapshot for the requested basis.'),
+  "previousPeriod": zod.number().nullable().describe('Immediately preceding recorded period for the requested basis.')
+})
+
+
+/**
  * @summary Compare bidder or consortium returns across selected Calcuttas
  */
 export const getResultsCompareQueryPeriodMin = 0;

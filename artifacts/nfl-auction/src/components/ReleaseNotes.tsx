@@ -1,4 +1,5 @@
-import { Sparkles } from "lucide-react";
+import { useState } from "react";
+import { Sparkles, X } from "lucide-react";
 
 export type ReleaseUpdate = {
   title: string;
@@ -15,9 +16,9 @@ export const releaseNotes: ReleaseNote[] = [
     date: "August 23, 2026",
     updates: [
       {
-        title: "New mobile experience",
+        title: "Results command center",
         description:
-          "A dedicated mobile companion brings season-aware Results, auction history, trades, source links, and signed long/short positions to your phone.",
+          "The desktop Results report now has sortable signed standings, movement, portfolio detail, trends, and direct source links.",
       },
       {
         title: "Trade legs stay together",
@@ -40,38 +41,33 @@ export const releaseNotes: ReleaseNote[] = [
 
 export function ReleaseNotes() {
   const latest = releaseNotes[0]!;
+  const [dismissed, setDismissed] = useState(false);
+
+  if (dismissed) return null;
 
   return (
     <section
       aria-labelledby="release-notes-title"
-      className="border border-primary/30 bg-primary/5 p-4 md:p-5"
+      className="flex items-center gap-3 border border-primary/30 bg-primary/5 px-4 py-2.5"
     >
-      <div className="flex items-start gap-3">
-        <div className="mt-0.5 flex h-8 w-8 shrink-0 items-center justify-center border border-primary/30 bg-background text-primary">
-          <Sparkles className="h-4 w-4" aria-hidden="true" />
-        </div>
-        <div className="min-w-0 flex-1">
-          <div className="flex flex-wrap items-center gap-x-3 gap-y-1">
-            <h2
-              id="release-notes-title"
-              className="font-mono text-sm font-bold uppercase tracking-widest text-foreground"
-            >
-              What&apos;s new
-            </h2>
-            <span className="border border-primary/30 bg-background px-2 py-0.5 font-mono text-[10px] font-bold uppercase tracking-widest text-primary">
-              {latest.date}
-            </span>
-          </div>
-          <ul className="mt-3 space-y-2">
-            {latest.updates.map((update) => (
-              <li key={update.title} className="text-sm leading-relaxed">
-                <span className="font-bold text-foreground">{update.title}.</span>{" "}
-                <span className="text-muted-foreground">{update.description}</span>
-              </li>
-            ))}
-          </ul>
-        </div>
+      <Sparkles className="h-4 w-4 shrink-0 text-primary" aria-hidden="true" />
+      <div className="min-w-0 flex-1">
+        <h2 id="release-notes-title" className="sr-only">What&apos;s new</h2>
+        <p className="truncate text-sm">
+          <span className="mr-2 font-mono text-[10px] font-bold uppercase tracking-widest text-primary">What&apos;s new</span>
+          <span className="font-semibold text-foreground">{latest.updates[0]?.title}.</span>{" "}
+          <span className="text-muted-foreground">{latest.updates[0]?.description}</span>
+        </p>
       </div>
+      <span className="shrink-0 font-mono text-[10px] uppercase tracking-widest text-muted-foreground">{latest.date}</span>
+      <button
+        type="button"
+        onClick={() => setDismissed(true)}
+        aria-label="Dismiss what's new notice"
+        className="inline-flex h-7 w-7 shrink-0 items-center justify-center text-muted-foreground transition-colors hover:bg-primary/10 hover:text-foreground focus:outline-none focus:ring-2 focus:ring-primary"
+      >
+        <X className="h-4 w-4" />
+      </button>
     </section>
   );
 }

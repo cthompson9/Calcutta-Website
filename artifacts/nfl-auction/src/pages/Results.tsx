@@ -1,4 +1,4 @@
-import { useEffect, useState, useMemo } from "react";
+import { useEffect, useState, useMemo, useRef } from "react";
 import {
   useGetResults,
   getGetResultsQueryKey,
@@ -9,6 +9,14 @@ import {
   useGetSeasons,
   useGetResultsCompare,
   getGetResultsCompareQueryKey,
+  useGetResultsAvailability,
+  getGetResultsAvailabilityQueryKey,
+  useGetAuctionSummary,
+  getGetAuctionSummaryQueryKey,
+  useGetMtmSnapshots,
+  getGetMtmSnapshotsQueryKey,
+  useGetTrades,
+  getGetTradesQueryKey,
 } from "@workspace/api-client-react";
 import type {
   OwnershipSegment,
@@ -18,11 +26,24 @@ import type {
   CalcuttaComparisonRow,
   CalcuttaComparisonCell,
   CalcuttaComparisonAggregate,
+  AuctionSummary,
+  MtmData,
+  TradeRow,
 } from "@workspace/api-client-react";
 import { formatCurrency } from "@/lib/utils";
 import { cn } from "@/lib/utils";
 import { useSeason } from "@/hooks/useSeason";
-import { ChevronDown, Trophy, Star } from "lucide-react";
+import {
+  ArrowDownRight,
+  ArrowUpRight,
+  ChevronDown,
+  ExternalLink,
+  History,
+  Minus,
+  Search,
+  Trophy,
+  X,
+} from "lucide-react";
 import { Link } from "wouter";
 import { bidderConsortiums, ownerLabelById } from "@/lib/ownerDisplay";
 import { ConsortiumLabel } from "@/components/ConsortiumLabel";
@@ -42,6 +63,16 @@ export default function Results() {
 
   const { data: periods } = useGetSportPeriods({ sport: "NFL" });
   const { data: allSeasons } = useGetSeasons();
+  const availabilityParams = { season: year, basis };
+  const { data: availability } = useGetResultsAvailability(
+    availabilityParams,
+    {
+      query: {
+        enabled: tab === "byOwner",
+        queryKey: getGetResultsAvailabilityQueryKey(availabilityParams),
+      },
+    },
+  );
 
   useEffect(() => {
     if (allSeasons && compareSeasons.length === 0) {
@@ -61,8 +92,67 @@ export default function Results() {
     { query: { enabled: tab === "byTeam", queryKey: getGetResultsQueryKey({ season: year, period, basis }) } }
   );
   const { data: ownerResults, isLoading: loadingOwners } = useGetResultsByOwner(
-    { season: year, period, basis },
-    { query: { enabled: tab === "byOwner", queryKey: getGetResultsByOwnerQueryKey({ season: year, period, basis }) } }
+    {
+      season: year,
+      period: period ?? availability?.latestPeriod ?? undefined,
+      basis,
+    },
+    {
+      query: {
+        enabled: tab === "byOwner",
+        queryKey: getGetResultsByOwnerQueryKey({
+          season: year,
+          period: period ?? availability?.latestPeriod ?? undefined,
+          basis,
+        }),
+      },
+    },
+  );
+  const previousPeriod =
+    period != null
+      ? period > 0
+        ? period - 1
+        : undefined
+      : availability?.previousPeriod ?? undefined;
+  const { data: previousOwnerResults } = useGetResultsByOwner(
+    { season: year, period: previousPeriod, basis },
+    {
+      query: {
+        enabled: tab === "byOwner" && previousPeriod != null,
+        queryKey: getGetResultsByOwnerQueryKey({
+          season: year,
+          period: previousPeriod,
+          basis,
+        }),
+      },
+    },
+  );
+  const { data: auctionSummary } = useGetAuctionSummary(
+    { season: year },
+    {
+      query: {
+        enabled: tab === "byOwner",
+        queryKey: getGetAuctionSummaryQueryKey({ season: year }),
+      },
+    },
+  );
+  const { data: mtmData } = useGetMtmSnapshots(
+    { season: year },
+    {
+      query: {
+        enabled: tab === "byOwner",
+        queryKey: getGetMtmSnapshotsQueryKey({ season: year }),
+      },
+    },
+  );
+  const { data: trades } = useGetTrades(
+    { season: year },
+    {
+      query: {
+        enabled: tab === "byOwner",
+        queryKey: getGetTradesQueryKey({ season: year }),
+      },
+    },
   );
 
   const compareParams = {
@@ -229,14 +319,30 @@ export default function Results() {
         {isLoading ? (
           <LoadingSkeleton />
         ) : tab === "byOwner" ? (
-          <ByOwnerView
-            rows={ownerResults ?? []}
-            isComplete={isComplete}
-            expandedOwner={expandedOwner}
-            setExpandedOwner={setExpandedOwner}
-            consortiumByBidderId={consortiumByBidderId}
-            seasonYear={year}
-          />
+          <>
+            <div className="hidden md:block">
+              <DesktopResultsCommandCenter
+                rows={ownerResults ?? []}
+                previousRows={previousOwnerResults ?? []}
+                isComplete={isComplete}
+                seasonYear={year}
+                summary={auctionSummary}
+                mtmData={mtmData}
+                trades={trades}
+                consortiumByBidderId={consortiumByBidderId}
+              />
+            </div>
+            <div className="md:hidden">
+              <ByOwnerView
+                rows={ownerResults ?? []}
+                isComplete={isComplete}
+                expandedOwner={expandedOwner}
+                setExpandedOwner={setExpandedOwner}
+                consortiumByBidderId={consortiumByBidderId}
+                seasonYear={year}
+              />
+            </div>
+          </>
         ) : tab === "compare" ? (
           compareSeasons.length < 2 ? (
             <div className="flex flex-col items-center justify-center rounded-none md:rounded-lg border-y md:border border-dashed border-border bg-card/50 p-12 text-center text-muted-foreground mx-4 md:mx-0">
@@ -259,6 +365,763 @@ export default function Results() {
           />
         )}
       </div>
+    </div>
+  );
+}
+
+// ─── Desktop command center ───────────────────────────────────────────────────
+
+type CommandSortKey =
+  | "return"
+  | "returnPct"
+  | "cost"
+  | "marketValue"
+  | "teams"
+  | "movement";
+
+function commandReturn(row: OwnerResultRow, isComplete: boolean): number {
+  return isComplete ? row.totalNetReturn : row.totalMtm - row.totalCost;
+}
+
+function commandMarketValue(row: OwnerResultRow, isComplete: boolean): number {
+  return isComplete ? row.totalRealizedReturn : row.totalMtm;
+}
+
+function commandReturnPct(row: OwnerResultRow, isComplete: boolean): number {
+  if (isComplete) return row.netPctReturn * 100;
+  return Math.abs(row.totalCost) > 0.005
+    ? (commandReturn(row, false) / Math.abs(row.totalCost)) * 100
+    : 0;
+}
+
+function signedCurrency(value: number): string {
+  return `${value >= 0 ? "+" : ""}${formatCurrency(value)}`;
+}
+
+function signedPercent(value: number): string {
+  return `${value >= 0 ? "+" : ""}${value.toFixed(1)}%`;
+}
+
+function RelativeReturnBar({
+  value,
+  max,
+}: {
+  value: number;
+  max: number;
+}) {
+  const width = max > 0 ? Math.max(4, Math.min(100, (Math.abs(value) / max) * 100)) : 0;
+  return (
+    <div
+      className="flex h-1.5 w-20 items-center justify-end bg-muted/70"
+      aria-hidden="true"
+    >
+      <div
+        className={cn(
+          "h-full transition-all",
+          value >= 0 ? "bg-emerald-500" : "bg-rose-500",
+        )}
+        style={{ width: `${width}%` }}
+      />
+    </div>
+  );
+}
+
+function TrendSparkline({ values }: { values: Array<number | null> }) {
+  const validValues = values.filter((value): value is number => value != null);
+  if (validValues.length < 2) {
+    return (
+      <div className="flex h-16 items-center justify-center border border-dashed border-border/70 text-[10px] font-mono uppercase tracking-widest text-muted-foreground">
+        No complete weekly snapshot data
+      </div>
+    );
+  }
+
+  const min = Math.min(...validValues);
+  const max = Math.max(...validValues);
+  const span = max - min || 1;
+  const pointAt = (value: number, index: number) => {
+      const x = (index / (values.length - 1)) * 220;
+      const y = 54 - ((value - min) / span) * 44;
+      return `${x.toFixed(1)},${y.toFixed(1)}`;
+    };
+  const lineSegments: string[] = [];
+  let currentSegment: string[] = [];
+  values.forEach((value, index) => {
+    if (value == null) {
+      if (currentSegment.length > 1) lineSegments.push(currentSegment.join(" "));
+      currentSegment = [];
+      return;
+    }
+    currentSegment.push(pointAt(value, index));
+  });
+  if (currentSegment.length > 1) lineSegments.push(currentSegment.join(" "));
+  const firstValue = validValues[0]!;
+  const lastValue = validValues[validValues.length - 1]!;
+
+  return (
+    <svg
+      viewBox="0 0 220 64"
+      className="h-16 w-full overflow-visible"
+      role="img"
+      aria-label="Eight week mark-to-market trend"
+    >
+      <line x1="0" y1="54" x2="220" y2="54" stroke="currentColor" opacity="0.15" />
+      {lineSegments.map((points, index) => (
+        <polyline
+          key={`${points}-${index}`}
+          points={points}
+          fill="none"
+          stroke="currentColor"
+          strokeWidth="2.5"
+          strokeLinejoin="round"
+          strokeLinecap="round"
+          className={lastValue >= firstValue ? "text-emerald-500" : "text-rose-500"}
+        />
+      ))}
+      {values.map((value, index) => {
+        if (value == null) return null;
+        const x = (index / (values.length - 1)) * 220;
+        const y = 54 - ((value - min) / span) * 44;
+        return <circle key={`${value}-${index}`} cx={x} cy={y} r="2.5" className="fill-current" />;
+      })}
+    </svg>
+  );
+}
+
+function DesktopResultsCommandCenter({
+  rows,
+  previousRows,
+  isComplete,
+  seasonYear,
+  summary,
+  mtmData,
+  trades,
+  consortiumByBidderId,
+}: {
+  rows: OwnerResultRow[];
+  previousRows: OwnerResultRow[];
+  isComplete: boolean;
+  seasonYear: number;
+  summary?: AuctionSummary;
+  mtmData?: MtmData;
+  trades?: TradeRow[];
+  consortiumByBidderId: Map<number, string>;
+}) {
+  const [sortKey, setSortKey] = useState<CommandSortKey>("return");
+  const [sortAsc, setSortAsc] = useState(false);
+  const [search, setSearch] = useState("");
+  const [selectedOwnerId, setSelectedOwnerId] = useState<number | null>(null);
+  const closeButtonRef = useRef<HTMLButtonElement>(null);
+  const openerRowRef = useRef<HTMLTableRowElement | null>(null);
+
+  const previousById = useMemo(
+    () => new Map(previousRows.map((row) => [row.bidderId, row])),
+    [previousRows],
+  );
+  const query = search.trim().toLowerCase();
+  const filteredRows = query
+    ? rows.filter((row) =>
+        [
+          row.bidderName,
+          row.consortium ?? "",
+          ownerLabelById(row.bidderId, row.bidderName, consortiumByBidderId),
+        ].some((value) => value.toLowerCase().includes(query)),
+      )
+    : rows;
+  const rankedRows = useMemo(
+    () =>
+      [...rows].sort(
+        (a, b) => commandReturn(b, isComplete) - commandReturn(a, isComplete),
+      ),
+    [rows, isComplete],
+  );
+  const ranks = useMemo(
+    () => new Map(rankedRows.map((row, index) => [row.bidderId, index + 1])),
+    [rankedRows],
+  );
+  const maxReturn = Math.max(
+    1,
+    ...rows.map((row) => Math.abs(commandReturn(row, isComplete))),
+  );
+  const sortedRows = [...filteredRows].sort((a, b) => {
+    const previousA = previousById.get(a.bidderId);
+    const previousB = previousById.get(b.bidderId);
+    const movementA = previousA
+      ? commandReturn(a, isComplete) - commandReturn(previousA, isComplete)
+      : 0;
+    const movementB = previousB
+      ? commandReturn(b, isComplete) - commandReturn(previousB, isComplete)
+      : 0;
+    const values: Record<CommandSortKey, [number, number]> = {
+      return: [commandReturn(a, isComplete), commandReturn(b, isComplete)],
+      returnPct: [commandReturnPct(a, isComplete), commandReturnPct(b, isComplete)],
+      cost: [a.totalCost, b.totalCost],
+      marketValue: [
+        commandMarketValue(a, isComplete),
+        commandMarketValue(b, isComplete),
+      ],
+      teams: [a.teamCount, b.teamCount],
+      movement: [movementA, movementB],
+    };
+    const difference = values[sortKey][0] - values[sortKey][1];
+    return sortAsc ? difference : -difference;
+  });
+  const leader = rankedRows[0];
+  const worst = rankedRows[rankedRows.length - 1];
+  const biggestMover = [...rows]
+    .map((row) => ({
+      row,
+      movement: previousById.has(row.bidderId)
+        ? commandReturn(row, isComplete) -
+          commandReturn(previousById.get(row.bidderId)!, isComplete)
+        : 0,
+    }))
+    .sort((a, b) => Math.abs(b.movement) - Math.abs(a.movement))[0];
+  const selectedOwner = rows.find((row) => row.bidderId === selectedOwnerId) ?? null;
+
+  useEffect(() => {
+    if (selectedOwner) closeButtonRef.current?.focus();
+  }, [selectedOwner]);
+
+  function handleSort(key: CommandSortKey) {
+    if (sortKey === key) setSortAsc((value) => !value);
+    else {
+      setSortKey(key);
+      setSortAsc(false);
+    }
+  }
+
+  function openOwner(
+    ownerId: number,
+    row: HTMLTableRowElement,
+  ) {
+    openerRowRef.current = row;
+    setSelectedOwnerId(ownerId);
+  }
+
+  function closeOwner() {
+    setSelectedOwnerId(null);
+    window.requestAnimationFrame(() => openerRowRef.current?.focus());
+  }
+
+  function SortButton({
+    label,
+    sort,
+  }: {
+    label: string;
+    sort: CommandSortKey;
+  }) {
+    const active = sortKey === sort;
+    return (
+      <button
+        type="button"
+        onClick={() => handleSort(sort)}
+        className={cn(
+          "inline-flex items-center gap-1 font-mono text-[10px] font-bold uppercase tracking-widest transition-colors hover:text-foreground",
+          active ? "text-primary" : "text-muted-foreground",
+        )}
+      >
+        {label}
+        {active && <span aria-hidden="true">{sortAsc ? "↑" : "↓"}</span>}
+      </button>
+    );
+  }
+
+  if (!rows.length) return <Empty />;
+
+  return (
+    <div className="space-y-5">
+      <section className="border border-border bg-card shadow-sm">
+        <div className="flex flex-col gap-6 border-b border-border p-6 lg:flex-row lg:items-end lg:justify-between">
+          <div>
+            <p className="font-mono text-[10px] font-bold uppercase tracking-[0.22em] text-primary">
+              Results command center · {seasonYear}
+            </p>
+            <div className="mt-2 flex items-end gap-3">
+              <h2 className="font-mono text-5xl font-bold tracking-tighter text-foreground">
+                {summary ? formatCurrency(summary.potSize) : "—"}
+              </h2>
+              <span className="pb-1 font-mono text-xs uppercase tracking-widest text-muted-foreground">
+                total pot
+              </span>
+            </div>
+            <p className="mt-2 max-w-xl text-sm text-muted-foreground">
+              {isComplete
+                ? "Realized standings from the completed payout ledger."
+                : "Live mark-to-market standings based on the latest available snapshots."}
+            </p>
+          </div>
+          <div className="grid grid-cols-2 gap-x-8 gap-y-4 sm:grid-cols-4 lg:min-w-[44rem]">
+            <CommandMetric label="Teams auctioned" value={String(summary?.teamsAuctioned ?? "—")} />
+            <CommandMetric label="Average bid" value={summary ? formatCurrency(summary.avgBidPerTeam) : "—"} />
+            <CommandMetric
+              label="Leader"
+              value={leader ? ownerLabelById(leader.bidderId, leader.bidderName, consortiumByBidderId) : "—"}
+              subvalue={leader ? signedCurrency(commandReturn(leader, isComplete)) : undefined}
+            />
+            <CommandMetric
+              label="Biggest mover"
+              value={
+                biggestMover
+                  ? ownerLabelById(
+                      biggestMover.row.bidderId,
+                      biggestMover.row.bidderName,
+                      consortiumByBidderId,
+                    )
+                  : "—"
+              }
+              subvalue={biggestMover ? signedCurrency(biggestMover.movement) : undefined}
+            />
+          </div>
+        </div>
+        <div className="grid gap-0 divide-y border-t border-border sm:grid-cols-3 sm:divide-x sm:divide-y-0">
+          <CommandCallout
+            label="Top return"
+            owner={leader}
+            value={leader ? commandReturn(leader, isComplete) : 0}
+            isComplete={isComplete}
+            consortiumByBidderId={consortiumByBidderId}
+          />
+          <CommandCallout
+            label="Worst return"
+            owner={worst}
+            value={worst ? commandReturn(worst, isComplete) : 0}
+            isComplete={isComplete}
+            consortiumByBidderId={consortiumByBidderId}
+          />
+          <div className="p-4">
+            <p className="font-mono text-[10px] font-bold uppercase tracking-widest text-muted-foreground">
+              Coverage
+            </p>
+            <p className="mt-1 font-mono text-sm font-bold">
+              {isComplete ? "Realized ledger" : "MTM snapshots"}
+            </p>
+            <p className="mt-1 text-xs text-muted-foreground">
+              {isComplete
+                ? "Payout rules and approved trades applied."
+                : "Values may remain unavailable until a snapshot is captured."}
+            </p>
+          </div>
+        </div>
+      </section>
+
+      <div className="grid gap-5 xl:grid-cols-[minmax(0,1fr)_22rem]">
+        <section className="min-w-0 border border-border bg-card shadow-sm">
+          <div className="flex flex-col gap-3 border-b border-border p-4 sm:flex-row sm:items-center sm:justify-between">
+            <div>
+              <p className="font-mono text-[10px] font-bold uppercase tracking-widest text-primary">
+                Live standings
+              </p>
+              <p className="mt-1 text-xs text-muted-foreground">
+                Select a row to inspect positions, trend, and trade history.
+              </p>
+            </div>
+            <label className="relative block sm:w-64">
+              <Search className="pointer-events-none absolute left-2.5 top-2.5 h-3.5 w-3.5 text-muted-foreground" aria-hidden="true" />
+              <span className="sr-only">Filter standings</span>
+              <input
+                type="search"
+                value={search}
+                onChange={(event) => setSearch(event.target.value)}
+                placeholder="Filter consortiums…"
+                className="w-full border border-border/70 bg-background py-2 pl-8 pr-3 font-mono text-xs outline-none focus:border-primary focus:ring-1 focus:ring-primary"
+              />
+            </label>
+          </div>
+          <div className="overflow-x-auto">
+            <table className="w-full min-w-[760px] border-collapse text-sm">
+              <caption className="sr-only">Sortable consortium returns standings</caption>
+              <thead className="border-b border-border bg-muted/30">
+                <tr>
+                  <th className="w-12 px-4 py-3 text-center"><span className="sr-only">Rank</span>#</th>
+                  <th className="px-3 py-3 text-left"><SortButton label="Consortium" sort="return" /></th>
+                  <th className="px-3 py-3 text-right"><SortButton label="Cost basis" sort="cost" /></th>
+                  <th className="px-3 py-3 text-right"><SortButton label="Market value" sort="marketValue" /></th>
+                  <th className="px-3 py-3 text-right"><SortButton label="Return" sort="return" /></th>
+                  <th className="px-3 py-3 text-right"><SortButton label="Return %" sort="returnPct" /></th>
+                  <th className="px-3 py-3 text-right"><SortButton label="Move" sort="movement" /></th>
+                  <th className="w-10 px-3 py-3 text-right"><span className="sr-only">Details</span></th>
+                </tr>
+              </thead>
+              <tbody className="divide-y divide-border/70">
+                {sortedRows.map((row) => {
+                  const rank = ranks.get(row.bidderId) ?? sortedRows.indexOf(row) + 1;
+                  const previous = previousById.get(row.bidderId);
+                  const movement = previous
+                    ? commandReturn(row, isComplete) -
+                      commandReturn(previous, isComplete)
+                    : null;
+                  const returnValue = commandReturn(row, isComplete);
+                  const ownerName = ownerLabelById(
+                    row.bidderId,
+                    row.bidderName,
+                    consortiumByBidderId,
+                  );
+                  return (
+                    <tr
+                      key={row.bidderId}
+                      tabIndex={0}
+                      role="button"
+                      aria-selected={selectedOwnerId === row.bidderId}
+                      data-testid={`results-owner-row-${row.bidderId}`}
+                      onClick={(event) => openOwner(row.bidderId, event.currentTarget)}
+                      onKeyDown={(event) => {
+                        if (event.key === "Enter" || event.key === " ") {
+                          event.preventDefault();
+                          openOwner(row.bidderId, event.currentTarget);
+                        }
+                      }}
+                      className={cn(
+                        "cursor-pointer outline-none transition-colors hover:bg-primary/5 focus:bg-primary/5 focus:ring-2 focus:ring-inset focus:ring-primary",
+                        selectedOwnerId === row.bidderId && "bg-primary/5",
+                      )}
+                    >
+                      <td className="px-4 py-3 text-center">
+                        <span
+                          className={cn(
+                            "inline-flex h-7 w-7 items-center justify-center rounded-full font-mono text-xs font-bold",
+                            rank === 1 && "bg-amber-400 text-amber-950",
+                            rank === 2 && "bg-slate-300 text-slate-800",
+                            rank === 3 && "bg-orange-300 text-orange-950",
+                            rank > 3 && "border border-border text-muted-foreground",
+                          )}
+                        >
+                          {rank}
+                        </span>
+                      </td>
+                      <td className="max-w-[15rem] px-3 py-3">
+                        <div className="truncate font-bold" title={ownerName}>{ownerName}</div>
+                        <div className="mt-1 flex items-center gap-2">
+                          <RelativeReturnBar value={returnValue} max={maxReturn} />
+                          <span className="font-mono text-[10px] text-muted-foreground">
+                            {row.teamCount.toFixed(2)} teams
+                          </span>
+                        </div>
+                      </td>
+                      <td className="px-3 py-3 text-right font-mono text-xs text-muted-foreground">
+                        {formatCurrency(row.totalCost)}
+                      </td>
+                      <td className="px-3 py-3 text-right font-mono text-xs">
+                        {formatCurrency(commandMarketValue(row, isComplete))}
+                      </td>
+                      <td className={cn(
+                        "px-3 py-3 text-right font-mono text-sm font-bold",
+                        returnValue >= 0 ? "text-emerald-600 dark:text-emerald-400" : "text-rose-600 dark:text-rose-400",
+                      )}>
+                        {signedCurrency(returnValue)}
+                      </td>
+                      <td className={cn(
+                        "px-3 py-3 text-right font-mono text-xs font-bold",
+                        commandReturnPct(row, isComplete) >= 0 ? "text-emerald-600 dark:text-emerald-400" : "text-rose-600 dark:text-rose-400",
+                      )}>
+                        {signedPercent(commandReturnPct(row, isComplete))}
+                      </td>
+                      <td className="px-3 py-3 text-right font-mono text-xs">
+                        {movement == null ? (
+                          <span className="text-muted-foreground">—</span>
+                        ) : movement === 0 ? (
+                          <span className="inline-flex items-center gap-1 text-muted-foreground"><Minus className="h-3 w-3" />—</span>
+                        ) : (
+                          <span className={cn("inline-flex items-center gap-1 font-bold", movement > 0 ? "text-emerald-600 dark:text-emerald-400" : "text-rose-600 dark:text-rose-400")}>
+                            {movement > 0 ? <ArrowUpRight className="h-3.5 w-3.5" /> : <ArrowDownRight className="h-3.5 w-3.5" />}
+                            {signedCurrency(movement)}
+                          </span>
+                        )}
+                      </td>
+                      <td className="px-3 py-3 text-right text-muted-foreground">
+                        <span aria-hidden="true">›</span>
+                      </td>
+                    </tr>
+                  );
+                })}
+              </tbody>
+            </table>
+          </div>
+          <div className="border-t border-border px-4 py-3 font-mono text-[10px] uppercase tracking-widest text-muted-foreground">
+            {sortedRows.length} of {rows.length} consortiums · values are signed and season-scoped
+          </div>
+        </section>
+
+        {selectedOwner ? (
+          <DesktopOwnerDetail
+            owner={selectedOwner}
+            seasonYear={seasonYear}
+            isComplete={isComplete}
+            mtmData={mtmData}
+            trades={trades ?? []}
+            consortiumByBidderId={consortiumByBidderId}
+            onClose={closeOwner}
+            closeButtonRef={closeButtonRef}
+          />
+        ) : (
+          <aside className="hidden border border-dashed border-border bg-card/50 p-6 xl:block">
+            <History className="h-5 w-5 text-primary" aria-hidden="true" />
+            <p className="mt-4 font-mono text-xs font-bold uppercase tracking-widest">
+              Detail panel
+            </p>
+            <p className="mt-2 text-sm leading-relaxed text-muted-foreground">
+              Choose any consortium in the standings to open its positions, eight-week trend, and approved trade history.
+            </p>
+          </aside>
+        )}
+      </div>
+    </div>
+  );
+}
+
+function CommandMetric({
+  label,
+  value,
+  subvalue,
+}: {
+  label: string;
+  value: string;
+  subvalue?: string;
+}) {
+  return (
+    <div className="min-w-0">
+      <p className="font-mono text-[10px] font-bold uppercase tracking-widest text-muted-foreground">{label}</p>
+      <p className="mt-1 truncate font-mono text-sm font-bold">{value}</p>
+      {subvalue && <p className="mt-0.5 font-mono text-[11px] text-primary">{subvalue}</p>}
+    </div>
+  );
+}
+
+function CommandCallout({
+  label,
+  owner,
+  value,
+  isComplete,
+  consortiumByBidderId,
+}: {
+  label: string;
+  owner?: OwnerResultRow;
+  value: number;
+  isComplete: boolean;
+  consortiumByBidderId: Map<number, string>;
+}) {
+  return (
+    <div className="p-4">
+      <p className="font-mono text-[10px] font-bold uppercase tracking-widest text-muted-foreground">{label}</p>
+      <div className="mt-1 flex items-baseline justify-between gap-2">
+        <p className="truncate text-sm font-bold">
+          {owner ? ownerLabelById(owner.bidderId, owner.bidderName, consortiumByBidderId) : "—"}
+        </p>
+        <p className={cn(
+          "shrink-0 font-mono text-sm font-bold",
+          value >= 0 ? "text-emerald-600 dark:text-emerald-400" : "text-rose-600 dark:text-rose-400",
+        )}>
+          {owner ? signedCurrency(value) : "—"}
+        </p>
+      </div>
+      <p className="mt-1 text-xs text-muted-foreground">
+        {owner ? signedPercent(commandReturnPct(owner, isComplete)) : "Awaiting data"}
+      </p>
+    </div>
+  );
+}
+
+function DesktopOwnerDetail({
+  owner,
+  seasonYear,
+  isComplete,
+  mtmData,
+  trades,
+  consortiumByBidderId,
+  onClose,
+  closeButtonRef,
+}: {
+  owner: OwnerResultRow;
+  seasonYear: number;
+  isComplete: boolean;
+  mtmData?: MtmData;
+  trades: TradeRow[];
+  consortiumByBidderId: Map<number, string>;
+  onClose: () => void;
+  closeButtonRef: React.RefObject<HTMLButtonElement | null>;
+}) {
+  useEffect(() => {
+    function onKeyDown(event: KeyboardEvent) {
+      if (event.key === "Escape") onClose();
+    }
+    window.addEventListener("keydown", onKeyDown);
+    return () => window.removeEventListener("keydown", onKeyDown);
+  }, [onClose]);
+
+  const ownerName = ownerLabelById(owner.bidderId, owner.bidderName, consortiumByBidderId);
+  const series = mtmData?.owners.find((item) => item.bidderName === owner.bidderName);
+  const currentPositionTeamIds = owner.teams
+    .filter((team) => {
+      const position = effectivePositionsForTeam(team).find(
+        (entry) => entry.bidderId === owner.bidderId,
+      )?.ownershipShare ?? 0;
+      return Math.abs(position) >= 0.00005;
+    })
+    .map((team) => team.teamId);
+  const trendWeeks = mtmData?.weeks.slice(-8) ?? [];
+  const trendStartIndex = (mtmData?.weeks.length ?? 0) - trendWeeks.length;
+  const trendValues = trendWeeks.map((week, index) => {
+    const hasEveryPosition = currentPositionTeamIds.every((teamId) =>
+      week.teamValues.some((team) => team.teamId === teamId),
+    );
+    return hasEveryPosition
+      ? series?.weeklyTotals[trendStartIndex + index] ?? null
+      : null;
+  });
+  const ownerTrades = trades
+    .filter((trade) => trade.fromBidderId === owner.bidderId || trade.toBidderId === owner.bidderId)
+    .sort((a, b) => b.tradeDate.localeCompare(a.tradeDate))
+    .slice(0, 6);
+
+  return (
+    <aside
+      className="border border-primary/30 bg-card shadow-sm xl:sticky xl:top-6 xl:self-start"
+      role="region"
+      aria-labelledby="results-detail-title"
+      data-testid="results-detail-panel"
+    >
+      <div className="flex items-start justify-between gap-3 border-b border-border bg-primary/5 p-4">
+        <div className="min-w-0">
+          <p className="font-mono text-[10px] font-bold uppercase tracking-widest text-primary">Selected portfolio</p>
+          <h3 id="results-detail-title" className="mt-1 truncate text-lg font-bold">{ownerName}</h3>
+          <p className="mt-1 font-mono text-xs text-muted-foreground">{owner.teamCount.toFixed(2)} net teams</p>
+        </div>
+        <button
+          ref={closeButtonRef}
+          type="button"
+          onClick={onClose}
+          aria-label="Close portfolio details"
+          className="inline-flex h-8 w-8 shrink-0 items-center justify-center border border-border bg-background text-muted-foreground transition-colors hover:text-foreground focus:outline-none focus:ring-2 focus:ring-primary"
+        >
+          <X className="h-4 w-4" />
+        </button>
+      </div>
+
+      <div className="space-y-5 p-4">
+        <div className="grid grid-cols-2 gap-3">
+          <DetailMetric label="Cost basis" value={formatCurrency(owner.totalCost)} />
+          <DetailMetric
+            label={isComplete ? "Net return" : "M2M return"}
+            value={signedCurrency(commandReturn(owner, isComplete))}
+            tone={commandReturn(owner, isComplete) >= 0 ? "positive" : "negative"}
+          />
+          <DetailMetric label="Market value" value={formatCurrency(commandMarketValue(owner, isComplete))} />
+          <DetailMetric label="Return %" value={signedPercent(commandReturnPct(owner, isComplete))} tone={commandReturnPct(owner, isComplete) >= 0 ? "positive" : "negative"} />
+        </div>
+
+        <section>
+          <div className="flex items-center justify-between">
+            <p className="font-mono text-[10px] font-bold uppercase tracking-widest text-muted-foreground">Eight-week revaluation</p>
+            <span className="font-mono text-[10px] text-muted-foreground">Current portfolio</span>
+          </div>
+          <div className="mt-2 border border-border/70 p-2 text-primary">
+            <TrendSparkline values={trendValues} />
+          </div>
+          {trendWeeks.length > 0 && (
+            <div className="mt-1 flex justify-between font-mono text-[9px] text-muted-foreground">
+              <span>{trendWeeks[0]?.label}</span>
+              <span>{trendWeeks[trendWeeks.length - 1]?.label}</span>
+            </div>
+          )}
+          <p className="mt-2 text-[10px] leading-relaxed text-muted-foreground">
+            Revalues today&apos;s positions at each snapshot; incomplete weeks are left as gaps rather than shown as zero.
+          </p>
+        </section>
+
+        <section>
+          <div className="flex items-center justify-between">
+            <p className="font-mono text-[10px] font-bold uppercase tracking-widest text-muted-foreground">Positions</p>
+            <span className="font-mono text-[10px] text-muted-foreground">{owner.teams.length} teams</span>
+          </div>
+          <div className="mt-2 divide-y divide-border/70 border-y border-border/70">
+            {[...owner.teams]
+              .sort((a, b) => b.markToMarket - a.markToMarket)
+              .map((team) => {
+                const position = team.owners.find((entry) => entry.bidderId === owner.bidderId)?.ownershipShare ?? 0;
+                return (
+                  <div key={team.teamId} className="py-2.5">
+                    <div className="flex items-center justify-between gap-2">
+                      <span className="truncate text-xs font-bold">{team.teamName}</span>
+                      <span className={cn("shrink-0 font-mono text-xs font-bold", position >= 0 ? "text-sky-700 dark:text-sky-400" : "text-rose-600 dark:text-rose-400")}>
+                        {formatOwnershipPercent(position, true)}
+                      </span>
+                    </div>
+                    <div className="mt-1 flex items-center justify-between gap-2 font-mono text-[10px]">
+                      <span className="text-muted-foreground">Basis {formatCurrency(team.cost)}</span>
+                      <span className={team.markToMarket >= 0 ? "text-emerald-600 dark:text-emerald-400" : "text-rose-600 dark:text-rose-400"}>
+                        {formatCurrency(team.markToMarket)} mark
+                      </span>
+                    </div>
+                    <div className="mt-1 flex gap-3 font-mono text-[10px]">
+                      <Link
+                        href={auctionResultHref(seasonYear, team.teamId)}
+                        className="inline-flex items-center gap-1 text-primary hover:underline focus:outline-none focus:ring-1 focus:ring-primary"
+                      >
+                        Auction <ExternalLink className="h-2.5 w-2.5" />
+                      </Link>
+                      {team.ownershipSegments.some((segment) => segment.source === "trade" && segment.tradeId != null) && (
+                        <span className="text-muted-foreground">Trade source linked in ownership</span>
+                      )}
+                    </div>
+                  </div>
+                );
+              })}
+          </div>
+        </section>
+
+        <section>
+          <div className="flex items-center justify-between">
+            <p className="font-mono text-[10px] font-bold uppercase tracking-widest text-muted-foreground">Trade history</p>
+            <History className="h-3.5 w-3.5 text-muted-foreground" aria-hidden="true" />
+          </div>
+          {ownerTrades.length === 0 ? (
+            <p className="mt-2 border border-dashed border-border p-3 text-xs text-muted-foreground">No trades recorded for this portfolio.</p>
+          ) : (
+            <div className="mt-2 divide-y divide-border/70 border-y border-border/70">
+              {ownerTrades.map((trade) => {
+                const acquired = trade.toBidderId === owner.bidderId;
+                return (
+                  <Link
+                    key={trade.id}
+                    href={tradeHref(seasonYear, trade.id)}
+                    className="block py-2.5 transition-colors hover:bg-muted/40 focus:outline-none focus:ring-1 focus:ring-primary"
+                  >
+                    <div className="flex items-center justify-between gap-2 text-xs">
+                      <span className="font-bold">{acquired ? "Acquired" : "Sold"} · {trade.teamName}</span>
+                      <span className={cn("font-mono text-[10px] uppercase", trade.status === "approved" ? "text-emerald-600 dark:text-emerald-400" : "text-muted-foreground")}>{trade.status}</span>
+                    </div>
+                    <div className="mt-1 flex justify-between font-mono text-[10px] text-muted-foreground">
+                      <span>{trade.tradeDate} · {trade.percentage.toFixed(0)}%</span>
+                      <span>{formatCurrency(trade.price)}</span>
+                    </div>
+                  </Link>
+                );
+              })}
+            </div>
+          )}
+        </section>
+      </div>
+    </aside>
+  );
+}
+
+function DetailMetric({
+  label,
+  value,
+  tone,
+}: {
+  label: string;
+  value: string;
+  tone?: "positive" | "negative";
+}) {
+  return (
+    <div className="border border-border/70 bg-muted/20 p-2.5">
+      <p className="font-mono text-[9px] font-bold uppercase tracking-widest text-muted-foreground">{label}</p>
+      <p className={cn(
+        "mt-1 font-mono text-sm font-bold",
+        tone === "positive" && "text-emerald-600 dark:text-emerald-400",
+        tone === "negative" && "text-rose-600 dark:text-rose-400",
+      )}>{value}</p>
     </div>
   );
 }

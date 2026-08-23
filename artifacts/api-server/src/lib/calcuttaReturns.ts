@@ -306,6 +306,51 @@ export async function loadCalculatedTeamReturns(
 }
 
 /**
+ * Returns every distinct period that has a stored return snapshot for the
+ * canonical Calcutta and selected basis. This is intentionally independent of
+ * the template: an in-progress season must never imply future zero-movement
+ * periods simply because they exist on the NFL calendar.
+ */
+export async function loadReturnSnapshotPeriods(
+  seasonId: number,
+  basis: SnapshotBasis,
+): Promise<number[]> {
+  const calcutta = await db
+    .select({ id: calcuttasTable.id })
+    .from(calcuttasTable)
+    .where(
+      and(
+        eq(calcuttasTable.seasonId, seasonId),
+        eq(calcuttasTable.sport, NFL_SPORT),
+        eq(calcuttasTable.isCanonical, true),
+      ),
+    )
+    .limit(1);
+  if (!calcutta[0]) return [];
+
+  const rows = await db
+    .select({ sequence: sportPeriodsTable.sequence })
+    .from(calcuttaEntriesTable)
+    .innerJoin(
+      teamPeriodSnapshotsTable,
+      eq(teamPeriodSnapshotsTable.entryId, calcuttaEntriesTable.id),
+    )
+    .innerJoin(
+      sportPeriodsTable,
+      eq(sportPeriodsTable.id, teamPeriodSnapshotsTable.periodId),
+    )
+    .where(
+      and(
+        eq(calcuttaEntriesTable.calcuttaId, calcutta[0].id),
+        eq(teamPeriodSnapshotsTable.basis, basis),
+      ),
+    )
+    .orderBy(asc(sportPeriodsTable.sequence));
+
+  return [...new Set(rows.map((row) => row.sequence))];
+}
+
+/**
  * Loads calculated returns for one Calcutta entry set. This intentionally
  * accepts non-canonical Calcuttas so cross-pool reporting uses each pool's
  * own rules and snapshots.

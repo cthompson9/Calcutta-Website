@@ -396,6 +396,31 @@ paths:
                 items:
                   $ref: "#/components/schemas/OwnerResultRow"
 
+  /results/availability:
+    get:
+      operationId: getResultsAvailability
+      tags: [results]
+      summary: Latest recorded reporting periods for a season and basis
+      parameters:
+        - name: season
+          in: query
+          required: true
+          schema:
+            type: number
+        - name: basis
+          in: query
+          description: Snapshot basis used to identify recorded reporting periods.
+          schema:
+            type: string
+            enum: [realized, mtm]
+      responses:
+        "200":
+          description: Most recent and immediately preceding recorded reporting periods.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ResultsAvailability"
+
   /results/compare:
     get:
       operationId: getResultsCompare
@@ -1478,6 +1503,17 @@ components:
         - netPctReturn
         - totalMtm
         - teams
+
+    ResultsAvailability:
+      type: object
+      properties:
+        latestPeriod:
+          type: ["number", "null"]
+          description: Latest period with at least one snapshot for the requested basis.
+        previousPeriod:
+          type: ["number", "null"]
+          description: Immediately preceding recorded period for the requested basis.
+      required: [latestPeriod, previousPeriod]
 
     CalcuttaComparisonCell:
       type: object

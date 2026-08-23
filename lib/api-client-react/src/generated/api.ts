@@ -34,6 +34,7 @@ import type {
   GetBiddersParams,
   GetMtmSnapshotsParams,
   GetPayoutRulesParams,
+  GetResultsAvailabilityParams,
   GetResultsByOwnerParams,
   GetResultsCompareParams,
   GetResultsParams,
@@ -47,6 +48,7 @@ import type {
   OwnerResultRow,
   PayoutRuleRow,
   PayoutRulesUpdate,
+  ResultsAvailability,
   Season,
   SeasonInput,
   SportPeriod,
@@ -1223,6 +1225,90 @@ export function useGetResultsByOwner<TData = Awaited<ReturnType<typeof getResult
  ):  UseQueryResult<TData, TError> & { queryKey: QueryKey } {
 
   const queryOptions = getGetResultsByOwnerQueryOptions(params,options)
+
+  const query = useQuery(queryOptions) as  UseQueryResult<TData, TError> & { queryKey: QueryKey };
+
+  return withQueryKey(query, queryOptions.queryKey);
+}
+
+
+
+
+
+
+
+export const getGetResultsAvailabilityUrl = (params: GetResultsAvailabilityParams,) => {
+  const normalizedParams = new URLSearchParams();
+
+  Object.entries(params || {}).forEach(([key, value]) => {
+
+    if (value !== undefined) {
+      normalizedParams.append(key, value === null ? 'null' : String(value))
+    }
+  });
+
+  const stringifiedParams = normalizedParams.toString();
+
+  return stringifiedParams.length > 0 ? `/api/results/availability?${stringifiedParams}` : `/api/results/availability`
+}
+
+/**
+ * @summary Latest recorded reporting periods for a season and basis
+ */
+export const getResultsAvailability = async (params: GetResultsAvailabilityParams, options?: Parameters<typeof customFetch>[1]): Promise<ResultsAvailability> => {
+
+  return customFetch<ResultsAvailability>(getGetResultsAvailabilityUrl(params),
+  {
+    ...options,
+    method: 'GET'
+
+
+  }
+);}
+
+
+
+
+
+export const getGetResultsAvailabilityQueryKey = (params?: GetResultsAvailabilityParams,) => {
+    return [
+    `/api/results/availability`, ...(params ? [params] : [])
+    ] as const;
+    }
+
+
+export const getGetResultsAvailabilityQueryOptions = <TData = Awaited<ReturnType<typeof getResultsAvailability>>, TError = ErrorType<unknown>>(params: GetResultsAvailabilityParams, options?: { query?:UseQueryOptions<Awaited<ReturnType<typeof getResultsAvailability>>, TError, TData>, request?: SecondParameter<typeof customFetch>}
+) => {
+
+const {query: queryOptions, request: requestOptions} = options ?? {};
+
+  const queryKey =  queryOptions?.queryKey ?? getGetResultsAvailabilityQueryKey(params);
+
+
+
+    const queryFn: QueryFunction<Awaited<ReturnType<typeof getResultsAvailability>>> = ({ signal }) => getResultsAvailability(params, { signal, ...requestOptions });
+
+
+
+
+
+   return  { queryKey, queryFn, ...queryOptions} as UseQueryOptions<Awaited<ReturnType<typeof getResultsAvailability>>, TError, TData> & { queryKey: QueryKey }
+}
+
+export type GetResultsAvailabilityQueryResult = NonNullable<Awaited<ReturnType<typeof getResultsAvailability>>>
+export type GetResultsAvailabilityQueryError = ErrorType<unknown>
+
+
+/**
+ * @summary Latest recorded reporting periods for a season and basis
+ */
+
+export function useGetResultsAvailability<TData = Awaited<ReturnType<typeof getResultsAvailability>>, TError = ErrorType<unknown>>(
+ params: GetResultsAvailabilityParams, options?: { query?:UseQueryOptions<Awaited<ReturnType<typeof getResultsAvailability>>, TError, TData>, request?: SecondParameter<typeof customFetch>}
+
+ ):  UseQueryResult<TData, TError> & { queryKey: QueryKey } {
+
+  const queryOptions = getGetResultsAvailabilityQueryOptions(params,options)
 
   const query = useQuery(queryOptions) as  UseQueryResult<TData, TError> & { queryKey: QueryKey };
 
