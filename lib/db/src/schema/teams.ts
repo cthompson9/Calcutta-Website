@@ -1,4 +1,4 @@
-import { pgTable, serial, text, numeric } from "drizzle-orm/pg-core";
+import { pgTable, serial, text } from "drizzle-orm/pg-core";
 import { createInsertSchema } from "drizzle-zod";
 import { z } from "zod/v4";
 
@@ -7,7 +7,6 @@ export const teamsTable = pgTable("teams", {
   name: text("name").notNull().unique(),
   conference: text("conference").notNull(), // AFC | NFC
   division: text("division").notNull(),     // East | North | South | West
-  bidAmount: numeric("bid_amount", { precision: 10, scale: 2 }).notNull().default("0"),
 });
 
 export const insertTeamSchema = createInsertSchema(teamsTable).omit({ id: true });

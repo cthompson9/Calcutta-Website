@@ -253,10 +253,9 @@ router.post("/teams", async (req, res): Promise<void> => {
       return { kind: "unknown_owner" as const };
     }
 
-    // Insert into teams table — legacy bidAmount remains unused at runtime.
     const [team] = await tx
       .insert(teamsTable)
-      .values({ name, conference, division, bidAmount: "0" })
+      .values({ name, conference, division })
       .returning({ id: teamsTable.id });
     await tx.insert(teamSeasonAuctionsTable).values({
       teamId: team.id,
