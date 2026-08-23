@@ -1,0 +1,16 @@
+uploads = []
+generated = []
+
+[[outputs]]
+id = "3jmihxcVpbTwTQs31vxKO"
+uri = "file://exports/nfl-calcutta-production.json"
+type = "unspecified"
+title = "NFL Calcutta production database JSON export"
+description = "Read-only export of 19 production tables (692 total rows), including consortium memberships."
+logical_id = "02f8a285-f5f0-4b8f-9a05-1474d8fd1f1f"
+content_hash = "sha256:72ea0865882281bf849a03f2a8fea301852d013695a04acbddfb0c226737cafa"
+size = 531038
+mtime_ms = 1787456353085
+storage_uri = "gcs://replit-rams-assets-picard/rams/assets/repl:20ced4e6-12f6-4285-a30b-9d56cdf8826c/02f8a285-f5f0-4b8f-9a05-1474d8fd1f1f/43f527d3-05a1-41de-ae9f-e848ddc2feba"
+storage_version_token = "1787456353987578"
+content_type = "application/octet-stream"
