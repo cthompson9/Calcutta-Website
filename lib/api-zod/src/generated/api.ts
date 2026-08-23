@@ -309,6 +309,7 @@ export const GetResultsResponseItem = zod.object({
   "losses": zod.number(),
   "ties": zod.number(),
   "ptDiff": zod.number(),
+  "playoffStatus": zod.enum(['unknown', 'alive', 'clinched', 'eliminated']),
   "startingPoints": zod.number(),
   "draftOrder": zod.number().nullish(),
   "playoffBerth": zod.boolean(),
@@ -377,6 +378,7 @@ export const GetResultsByOwnerResponseItem = zod.object({
   "losses": zod.number(),
   "ties": zod.number(),
   "ptDiff": zod.number(),
+  "playoffStatus": zod.enum(['unknown', 'alive', 'clinched', 'eliminated']),
   "startingPoints": zod.number(),
   "draftOrder": zod.number().nullish(),
   "playoffBerth": zod.boolean(),
@@ -393,6 +395,69 @@ export const GetResultsByOwnerResponseItem = zod.object({
 }))
 })
 export const GetResultsByOwnerResponse = zod.array(GetResultsByOwnerResponseItem)
+
+
+/**
+ * Requires the ADMIN_API_KEY bearer token. The NFL source URL is fixed server-side.
+ * @summary Fetch and validate the current NFL standings without writing results
+ */
+export const previewNflStandingsImportBodySeasonYearMin = 2000;
+export const previewNflStandingsImportBodySeasonYearMax = 2100;
+
+
+
+export const PreviewNflStandingsImportBody = zod.object({
+  "seasonYear": zod.number().min(previewNflStandingsImportBodySeasonYearMin).max(previewNflStandingsImportBodySeasonYearMax)
+})
+
+export const PreviewNflStandingsImportResponse = zod.object({
+  "seasonYear": zod.number(),
+  "phase": zod.enum(['REG']),
+  "sourceUrl": zod.string(),
+  "sourceHash": zod.string(),
+  "fetchedAt": zod.string(),
+  "teamCount": zod.number(),
+  "replay": zod.boolean(),
+  "teams": zod.array(zod.object({
+  "abbreviation": zod.string(),
+  "teamId": zod.number(),
+  "teamName": zod.string(),
+  "registeredTeamName": zod.string(),
+  "conference": zod.string(),
+  "division": zod.string(),
+  "wins": zod.number(),
+  "losses": zod.number(),
+  "ties": zod.number(),
+  "ptDiff": zod.number(),
+  "rank": zod.number(),
+  "playoffStatus": zod.enum(['unknown', 'alive', 'clinched', 'eliminated']),
+  "changed": zod.boolean()
+}))
+})
+
+
+/**
+ * Requires the ADMIN_API_KEY bearer token. The NFL source URL is fixed server-side.
+ * @summary Atomically import the current NFL standings
+ */
+export const applyNflStandingsImportBodySeasonYearMin = 2000;
+export const applyNflStandingsImportBodySeasonYearMax = 2100;
+
+
+
+export const ApplyNflStandingsImportBody = zod.object({
+  "seasonYear": zod.number().min(applyNflStandingsImportBodySeasonYearMin).max(applyNflStandingsImportBodySeasonYearMax)
+})
+
+export const ApplyNflStandingsImportResponse = zod.object({
+  "seasonYear": zod.number(),
+  "source": zod.string(),
+  "sourceUrl": zod.string(),
+  "sourceHash": zod.string(),
+  "fetchedAt": zod.string(),
+  "importedTeams": zod.number(),
+  "replay": zod.boolean()
+})
 
 
 /**
@@ -496,6 +561,7 @@ export const UpsertTeamResultBody = zod.object({
   "losses": zod.number().min(upsertTeamResultBodyLossesMin).optional(),
   "ties": zod.number().min(upsertTeamResultBodyTiesMin).optional(),
   "ptDiff": zod.number().optional(),
+  "playoffStatus": zod.enum(['unknown', 'alive', 'clinched', 'eliminated']).optional(),
   "startingPoints": zod.number().optional(),
   "draftOrder": zod.number().nullish(),
   "playoffBerth": zod.boolean().optional(),
@@ -535,6 +601,7 @@ export const UpsertTeamResultResponse = zod.object({
   "losses": zod.number(),
   "ties": zod.number(),
   "ptDiff": zod.number(),
+  "playoffStatus": zod.enum(['unknown', 'alive', 'clinched', 'eliminated']),
   "startingPoints": zod.number(),
   "draftOrder": zod.number().nullish(),
   "playoffBerth": zod.boolean(),

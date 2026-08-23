@@ -5,6 +5,7 @@
  * NFL Auction Manager API
  * OpenAPI spec version: 0.1.0
  */
+import type { TeamResultInputPlayoffStatus } from './teamResultInputPlayoffStatus';
 
 export interface TeamResultInput {
   teamId: number;
@@ -16,6 +17,7 @@ export interface TeamResultInput {
   /** @minimum 0 */
   ties?: number;
   ptDiff?: number;
+  playoffStatus?: TeamResultInputPlayoffStatus;
   startingPoints?: number;
   /** @nullable */
   draftOrder?: number | null;

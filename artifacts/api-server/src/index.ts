@@ -3,6 +3,7 @@ import { logger } from "./lib/logger";
 import {
   closeDatabasePool,
   ensureOwnerPositionRollout,
+  runDatabaseMigrations,
 } from "@workspace/db";
 
 const rawPort = process.env["PORT"];
@@ -21,6 +22,7 @@ if (Number.isNaN(port) || port <= 0) {
 
 const server = await (async () => {
   try {
+    await runDatabaseMigrations();
     await ensureOwnerPositionRollout();
   } catch (err) {
     logger.error({ err }, "Owner position rollout failed");

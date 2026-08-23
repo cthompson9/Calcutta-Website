@@ -210,6 +210,16 @@ export interface TeamUpdate {
   owners?: OwnerInput[];
 }
 
+export type TeamResultRowPlayoffStatus = typeof TeamResultRowPlayoffStatus[keyof typeof TeamResultRowPlayoffStatus];
+
+
+export const TeamResultRowPlayoffStatus = {
+  unknown: 'unknown',
+  alive: 'alive',
+  clinched: 'clinched',
+  eliminated: 'eliminated',
+} as const;
+
 export interface TeamResultRow {
   teamId: number;
   teamName: string;
@@ -222,6 +232,7 @@ export interface TeamResultRow {
   losses: number;
   ties: number;
   ptDiff: number;
+  playoffStatus: TeamResultRowPlayoffStatus;
   startingPoints: number;
   /** @nullable */
   draftOrder?: number | null;
@@ -240,6 +251,68 @@ export interface TeamResultRow {
      * @nullable
      */
   seed?: number | null;
+}
+
+export interface NflStandingsImportInput {
+  /**
+     * @minimum 2000
+     * @maximum 2100
+     */
+  seasonYear: number;
+}
+
+export type NflStandingsImportTeamPreviewPlayoffStatus = typeof NflStandingsImportTeamPreviewPlayoffStatus[keyof typeof NflStandingsImportTeamPreviewPlayoffStatus];
+
+
+export const NflStandingsImportTeamPreviewPlayoffStatus = {
+  unknown: 'unknown',
+  alive: 'alive',
+  clinched: 'clinched',
+  eliminated: 'eliminated',
+} as const;
+
+export interface NflStandingsImportTeamPreview {
+  abbreviation: string;
+  teamId: number;
+  teamName: string;
+  registeredTeamName: string;
+  conference: string;
+  division: string;
+  wins: number;
+  losses: number;
+  ties: number;
+  ptDiff: number;
+  rank: number;
+  playoffStatus: NflStandingsImportTeamPreviewPlayoffStatus;
+  changed: boolean;
+}
+
+export type NflStandingsImportPreviewPhase = typeof NflStandingsImportPreviewPhase[keyof typeof NflStandingsImportPreviewPhase];
+
+
+export const NflStandingsImportPreviewPhase = {
+  REG: 'REG',
+} as const;
+
+export interface NflStandingsImportPreview {
+  seasonYear: number;
+  phase: NflStandingsImportPreviewPhase;
+  sourceUrl: string;
+  sourceHash: string;
+  fetchedAt: string;
+  teamCount: number;
+  replay: boolean;
+  teams: NflStandingsImportTeamPreview[];
+}
+
+export interface NflStandingsImportResponse {
+  seasonYear: number;
+  source: string;
+  sourceUrl: string;
+  sourceHash: string;
+  fetchedAt: string;
+  importedTeams: number;
+  replay: boolean;
 }
 
 export interface SportPeriod {
@@ -494,6 +567,16 @@ export interface CalcuttaComparisonResponse {
   rows: CalcuttaComparisonRow[];
 }
 
+export type TeamResultInputPlayoffStatus = typeof TeamResultInputPlayoffStatus[keyof typeof TeamResultInputPlayoffStatus];
+
+
+export const TeamResultInputPlayoffStatus = {
+  unknown: 'unknown',
+  alive: 'alive',
+  clinched: 'clinched',
+  eliminated: 'eliminated',
+} as const;
+
 export interface TeamResultInput {
   teamId: number;
   seasonYear: number;
@@ -504,6 +587,7 @@ export interface TeamResultInput {
   /** @minimum 0 */
   ties?: number;
   ptDiff?: number;
+  playoffStatus?: TeamResultInputPlayoffStatus;
   startingPoints?: number;
   /** @nullable */
   draftOrder?: number | null;

@@ -396,6 +396,74 @@ paths:
                 items:
                   $ref: "#/components/schemas/OwnerResultRow"
 
+  /results/nfl-standings/preview:
+    post:
+      operationId: previewNflStandingsImport
+      tags: [results]
+      summary: Fetch and validate the current NFL standings without writing results
+      description: Requires the ADMIN_API_KEY bearer token. The NFL source URL is fixed server-side.
+      security:
+        - AdminBearerAuth: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/NflStandingsImportInput"
+      responses:
+        "200":
+          description: Validated standings preview
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/NflStandingsImportPreview"
+        "4XX":
+          description: Source or validation error
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+        "401":
+          description: ADMIN_API_KEY bearer token required
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+
+  /results/nfl-standings/apply:
+    post:
+      operationId: applyNflStandingsImport
+      tags: [results]
+      summary: Atomically import the current NFL standings
+      description: Requires the ADMIN_API_KEY bearer token. The NFL source URL is fixed server-side.
+      security:
+        - AdminBearerAuth: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/NflStandingsImportInput"
+      responses:
+        "200":
+          description: Import result
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/NflStandingsImportResponse"
+        "4XX":
+          description: Source or validation error
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+        "401":
+          description: ADMIN_API_KEY bearer token required
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+
   /results/availability:
     get:
       operationId: getResultsAvailability
@@ -972,6 +1040,11 @@ paths:
                 $ref: "#/components/schemas/ErrorResponse"
 
 components:
+  securitySchemes:
+    AdminBearerAuth:
+      type: http
+      scheme: bearer
+      description: Administrative bearer token supplied through ADMIN_API_KEY.
   schemas:
     HealthStatus:
       type: object
@@ -1243,6 +1316,9 @@ components:
           type: number
         ptDiff:
           type: number
+        playoffStatus:
+          type: string
+          enum: [unknown, alive, clinched, eliminated]
         startingPoints:
           type: number
         draftOrder:
@@ -1282,6 +1358,7 @@ components:
         - losses
         - ties
         - ptDiff
+        - playoffStatus
         - startingPoints
         - playoffBerth
         - divRound
@@ -1293,6 +1370,90 @@ components:
         - netReturn
         - netPctReturn
         - markToMarket
+
+    NflStandingsImportInput:
+      type: object
+      properties:
+        seasonYear:
+          type: number
+          minimum: 2000
+          maximum: 2100
+      required: [seasonYear]
+
+    NflStandingsImportTeamPreview:
+      type: object
+      properties:
+        abbreviation:
+          type: string
+        teamId:
+          type: number
+        teamName:
+          type: string
+        registeredTeamName:
+          type: string
+        conference:
+          type: string
+        division:
+          type: string
+        wins:
+          type: number
+        losses:
+          type: number
+        ties:
+          type: number
+        ptDiff:
+          type: number
+        rank:
+          type: number
+        playoffStatus:
+          type: string
+          enum: [unknown, alive, clinched, eliminated]
+        changed:
+          type: boolean
+      required: [abbreviation, teamId, teamName, registeredTeamName, conference, division, wins, losses, ties, ptDiff, rank, playoffStatus, changed]
+
+    NflStandingsImportPreview:
+      type: object
+      properties:
+        seasonYear:
+          type: number
+        phase:
+          type: string
+          enum: [REG]
+        sourceUrl:
+          type: string
+        sourceHash:
+          type: string
+        fetchedAt:
+          type: string
+        teamCount:
+          type: number
+        replay:
+          type: boolean
+        teams:
+          type: array
+          items:
+            $ref: "#/components/schemas/NflStandingsImportTeamPreview"
+      required: [seasonYear, phase, sourceUrl, sourceHash, fetchedAt, teamCount, replay, teams]
+
+    NflStandingsImportResponse:
+      type: object
+      properties:
+        seasonYear:
+          type: number
+        source:
+          type: string
+        sourceUrl:
+          type: string
+        sourceHash:
+          type: string
+        fetchedAt:
+          type: string
+        importedTeams:
+          type: number
+        replay:
+          type: boolean
+      required: [seasonYear, source, sourceUrl, sourceHash, fetchedAt, importedTeams, replay]
 
     SportPeriod:
       type: object
@@ -1692,6 +1853,9 @@ components:
           minimum: 0
         ptDiff:
           type: number
+        playoffStatus:
+          type: string
+          enum: [unknown, alive, clinched, eliminated]
         startingPoints:
           type: number
         draftOrder:

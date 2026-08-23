@@ -5,6 +5,7 @@ import {
   integer,
   boolean,
   numeric,
+  text,
   primaryKey,
   check,
   index,
@@ -28,6 +29,9 @@ export const teamResultsTable = pgTable(
     losses: integer("losses").notNull().default(0),
     ties: integer("ties").notNull().default(0),
     ptDiff: integer("pt_diff").notNull().default(0),
+    // Current postseason status from a standings provider. This is deliberately
+    // separate from the final playoff-round booleans below.
+    playoffStatus: text("playoff_status").notNull().default("unknown"),
     startingPoints: numeric("starting_points", { precision: 8, scale: 4 })
       .notNull()
       .default("150"),
@@ -71,6 +75,10 @@ export const teamResultsTable = pgTable(
     check("team_results_wins_nonneg", sql`${t.wins} >= 0`),
     check("team_results_losses_nonneg", sql`${t.losses} >= 0`),
     check("team_results_ties_nonneg", sql`${t.ties} >= 0`),
+    check(
+      "team_results_playoff_status_values",
+      sql`${t.playoffStatus} IN ('unknown', 'alive', 'clinched', 'eliminated')`,
+    ),
     // Playoff seed is either NULL (unset) or a valid 1–7 value
     check(
       "team_results_seed_range",

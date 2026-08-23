@@ -11,6 +11,7 @@ import mtmRouter from "./mtm";
 import mcpRouter from "./mcp";
 import auctionImportRouter from "./auctionImport";
 import periodsRouter from "./periods";
+import nflStandingsImportRouter from "./nflStandingsImport";
 
 const router = Router();
 
@@ -26,5 +27,6 @@ router.use(mtmRouter);
 router.use(mcpRouter);
 router.use(auctionImportRouter);
 router.use(periodsRouter);
+router.use(nflStandingsImportRouter);
 
 export default router;

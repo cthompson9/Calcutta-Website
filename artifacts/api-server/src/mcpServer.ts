@@ -50,6 +50,7 @@ import {
   loadCalculatedTeamReturns,
 } from "./lib/calcuttaReturns";
 import { loadCurrentBidderConsortiums } from "./lib/consortiumMemberships";
+import { applyNflStandingsImport, NflStandingsImportError } from "./lib/nflStandingsImport";
 
 // ─── DB helpers ─────────────────────────────────────────────────────────────
 const CONSORTIUM_MEMBERSHIP_LOCK_NAMESPACE = 841204;
@@ -71,6 +72,15 @@ async function defaultSeasonYear(): Promise<number> {
     .orderBy(seasonsTable.year)
     .limit(1);
   return rows[0]?.year ?? 2025;
+}
+
+async function activeSeasonYear(): Promise<number | null> {
+  const rows = await db
+    .select({ year: seasonsTable.year })
+    .from(seasonsTable)
+    .where(eq(seasonsTable.isActive, true))
+    .limit(1);
+  return rows[0]?.year ?? null;
 }
 
 async function findTeam(name: string) {
@@ -344,6 +354,35 @@ function buildMcpServer() {
       if (!sid) return text(null);
       const r = await getTeamResult(t.id, sid);
       return text(r ? parseFloat(r.wins) : null);
+    },
+  );
+
+  server.tool(
+    "import_nfl_standings",
+    "Fetch, validate, and atomically import all 32 teams' current NFL regular-season W/L/T, point differential, and current playoff status from nfl.com. It does not infer weekly reporting snapshots or playoff-round results. Requires ADMIN_API_KEY and confirmed: true.",
+    {
+      season: z.number().optional().describe("Season year. Defaults to the active season."),
+      confirmed: z.literal(true).describe("Must be true to confirm the standings update."),
+      adminKey: z.string().describe("Admin API key"),
+    },
+    async ({ season, confirmed: _confirmed, adminKey }) => {
+      if (!process.env["ADMIN_API_KEY"] || adminKey !== process.env["ADMIN_API_KEY"]) {
+        return text("Error: Invalid admin key. Only the pool admin can import NFL standings.");
+      }
+      const year = season ?? await activeSeasonYear();
+      if (!year) return text("Error: No active season is configured for the NFL standings import.");
+      try {
+        const outcome = await applyNflStandingsImport({
+          seasonYear: year,
+          requestedBy: "mcp",
+        });
+        return text(JSON.stringify(outcome));
+      } catch (error) {
+        if (error instanceof NflStandingsImportError) {
+          return text(`Error: ${error.message}`);
+        }
+        return text("Error: NFL standings import failed unexpectedly.");
+      }
     },
   );
 

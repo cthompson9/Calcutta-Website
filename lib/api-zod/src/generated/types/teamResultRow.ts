@@ -7,6 +7,7 @@
  */
 import type { OwnershipSegment } from './ownershipSegment';
 import type { TeamOwner } from './teamOwner';
+import type { TeamResultRowPlayoffStatus } from './teamResultRowPlayoffStatus';
 
 export interface TeamResultRow {
   teamId: number;
@@ -20,6 +21,7 @@ export interface TeamResultRow {
   losses: number;
   ties: number;
   ptDiff: number;
+  playoffStatus: TeamResultRowPlayoffStatus;
   startingPoints: number;
   /** @nullable */
   draftOrder?: number | null;

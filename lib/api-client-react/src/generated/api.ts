@@ -45,6 +45,9 @@ import type {
   MtmData,
   MtmSnapshot,
   MtmSnapshotInput,
+  NflStandingsImportInput,
+  NflStandingsImportPreview,
+  NflStandingsImportResponse,
   OwnerResultRow,
   PayoutRuleRow,
   PayoutRulesUpdate,
@@ -1236,6 +1239,150 @@ export function useGetResultsByOwner<TData = Awaited<ReturnType<typeof getResult
 
 
 
+
+export const getPreviewNflStandingsImportUrl = () => {
+
+
+
+
+  return `/api/results/nfl-standings/preview`
+}
+
+/**
+ * Requires the ADMIN_API_KEY bearer token. The NFL source URL is fixed server-side.
+ * @summary Fetch and validate the current NFL standings without writing results
+ */
+export const previewNflStandingsImport = async (nflStandingsImportInput: NflStandingsImportInput, options?: Parameters<typeof customFetch>[1]): Promise<NflStandingsImportPreview> => {
+
+  return customFetch<NflStandingsImportPreview>(getPreviewNflStandingsImportUrl(),
+  {
+    ...options,
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json', ...options?.headers },
+    body: JSON.stringify(nflStandingsImportInput)
+  }
+);}
+
+
+
+
+
+export const getPreviewNflStandingsImportMutationOptions = <TError = ErrorType<ErrorResponse>,
+    TContext = unknown>(options?: { mutation?:UseMutationOptions<Awaited<ReturnType<typeof previewNflStandingsImport>>, TError,{data: BodyType<NflStandingsImportInput>}, TContext>, request?: SecondParameter<typeof customFetch>}
+): UseMutationOptions<Awaited<ReturnType<typeof previewNflStandingsImport>>, TError,{data: BodyType<NflStandingsImportInput>}, TContext> => {
+
+const mutationKey = ['previewNflStandingsImport'];
+const {mutation: mutationOptions, request: requestOptions} = options ?
+      options.mutation && 'mutationKey' in options.mutation && options.mutation.mutationKey ?
+      options
+      : {...options, mutation: {...options.mutation, mutationKey}}
+      : {mutation: { mutationKey, }, request: undefined};
+
+
+
+
+      const mutationFn: MutationFunction<Awaited<ReturnType<typeof previewNflStandingsImport>>, {data: BodyType<NflStandingsImportInput>}> = (props) => {
+          const {data} = props ?? {};
+
+          return  previewNflStandingsImport(data,requestOptions)
+        }
+
+
+
+
+
+
+  return  { mutationFn, ...mutationOptions }}
+
+    export type PreviewNflStandingsImportMutationResult = NonNullable<Awaited<ReturnType<typeof previewNflStandingsImport>>>
+    export type PreviewNflStandingsImportMutationBody = BodyType<NflStandingsImportInput>
+    export type PreviewNflStandingsImportMutationError = ErrorType<ErrorResponse>
+
+    /**
+ * @summary Fetch and validate the current NFL standings without writing results
+ */
+export const usePreviewNflStandingsImport = <TError = ErrorType<ErrorResponse>,
+    TContext = unknown>(options?: { mutation?:UseMutationOptions<Awaited<ReturnType<typeof previewNflStandingsImport>>, TError,{data: BodyType<NflStandingsImportInput>}, TContext>, request?: SecondParameter<typeof customFetch>}
+ ): UseMutationResult<
+        Awaited<ReturnType<typeof previewNflStandingsImport>>,
+        TError,
+        {data: BodyType<NflStandingsImportInput>},
+        TContext
+      > => {
+      return useMutation(getPreviewNflStandingsImportMutationOptions(options));
+    }
+
+export const getApplyNflStandingsImportUrl = () => {
+
+
+
+
+  return `/api/results/nfl-standings/apply`
+}
+
+/**
+ * Requires the ADMIN_API_KEY bearer token. The NFL source URL is fixed server-side.
+ * @summary Atomically import the current NFL standings
+ */
+export const applyNflStandingsImport = async (nflStandingsImportInput: NflStandingsImportInput, options?: Parameters<typeof customFetch>[1]): Promise<NflStandingsImportResponse> => {
+
+  return customFetch<NflStandingsImportResponse>(getApplyNflStandingsImportUrl(),
+  {
+    ...options,
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json', ...options?.headers },
+    body: JSON.stringify(nflStandingsImportInput)
+  }
+);}
+
+
+
+
+
+export const getApplyNflStandingsImportMutationOptions = <TError = ErrorType<ErrorResponse>,
+    TContext = unknown>(options?: { mutation?:UseMutationOptions<Awaited<ReturnType<typeof applyNflStandingsImport>>, TError,{data: BodyType<NflStandingsImportInput>}, TContext>, request?: SecondParameter<typeof customFetch>}
+): UseMutationOptions<Awaited<ReturnType<typeof applyNflStandingsImport>>, TError,{data: BodyType<NflStandingsImportInput>}, TContext> => {
+
+const mutationKey = ['applyNflStandingsImport'];
+const {mutation: mutationOptions, request: requestOptions} = options ?
+      options.mutation && 'mutationKey' in options.mutation && options.mutation.mutationKey ?
+      options
+      : {...options, mutation: {...options.mutation, mutationKey}}
+      : {mutation: { mutationKey, }, request: undefined};
+
+
+
+
+      const mutationFn: MutationFunction<Awaited<ReturnType<typeof applyNflStandingsImport>>, {data: BodyType<NflStandingsImportInput>}> = (props) => {
+          const {data} = props ?? {};
+
+          return  applyNflStandingsImport(data,requestOptions)
+        }
+
+
+
+
+
+
+  return  { mutationFn, ...mutationOptions }}
+
+    export type ApplyNflStandingsImportMutationResult = NonNullable<Awaited<ReturnType<typeof applyNflStandingsImport>>>
+    export type ApplyNflStandingsImportMutationBody = BodyType<NflStandingsImportInput>
+    export type ApplyNflStandingsImportMutationError = ErrorType<ErrorResponse>
+
+    /**
+ * @summary Atomically import the current NFL standings
+ */
+export const useApplyNflStandingsImport = <TError = ErrorType<ErrorResponse>,
+    TContext = unknown>(options?: { mutation?:UseMutationOptions<Awaited<ReturnType<typeof applyNflStandingsImport>>, TError,{data: BodyType<NflStandingsImportInput>}, TContext>, request?: SecondParameter<typeof customFetch>}
+ ): UseMutationResult<
+        Awaited<ReturnType<typeof applyNflStandingsImport>>,
+        TError,
+        {data: BodyType<NflStandingsImportInput>},
+        TContext
+      > => {
+      return useMutation(getApplyNflStandingsImportMutationOptions(options));
+    }
 
 export const getGetResultsAvailabilityUrl = (params: GetResultsAvailabilityParams,) => {
   const normalizedParams = new URLSearchParams();

@@ -71,6 +71,7 @@ type ResultDisplay = {
   losses: number;
   ties: number;
   ptDiff: number;
+  playoffStatus: string;
   startingPoints: string | number;
   draftOrder: number | null;
   seed: number | null;
@@ -102,6 +103,7 @@ function resultFromCalculatedSnapshots(
       losses: 0,
       ties: 0,
       ptDiff: 0,
+      playoffStatus: legacy?.playoffStatus ?? "unknown",
       startingPoints: legacy?.startingPoints ?? "150",
       draftOrder: legacy?.draftOrder ?? null,
       seed: legacy?.seed ?? null,
@@ -135,6 +137,7 @@ function resultFromCalculatedSnapshots(
     losses: latest.losses,
     ties: latest.ties,
     ptDiff: latest.ptDiff,
+    playoffStatus: legacy?.playoffStatus ?? "unknown",
     startingPoints: legacy?.startingPoints ?? "150",
     draftOrder: legacy?.draftOrder ?? null,
     seed: legacy?.seed ?? null,
@@ -180,6 +183,7 @@ function buildTeamResult(
       losses: 0,
       ties: 0,
       ptDiff: 0,
+      playoffStatus: "unknown" as const,
       startingPoints: 150,
       draftOrder: null,
       seed: null,
@@ -205,6 +209,7 @@ function buildTeamResult(
     losses: record.losses,
     ties: record.ties,
     ptDiff: result.ptDiff,
+    playoffStatus: result.playoffStatus,
     startingPoints: Number(result.startingPoints),
     draftOrder: result.draftOrder,
     seed: result.seed,
@@ -265,6 +270,7 @@ function buildOwnerTeamResult(
       losses: 0,
       ties: 0,
       ptDiff: 0,
+      playoffStatus: "unknown" as const,
       startingPoints: 150,
       draftOrder: null,
       seed: null,
@@ -298,6 +304,7 @@ function buildOwnerTeamResult(
     losses: record.losses,
     ties: record.ties,
     ptDiff: result.ptDiff,
+    playoffStatus: result.playoffStatus,
     startingPoints: Number(result.startingPoints),
     draftOrder: result.draftOrder,
     seed: result.seed,
@@ -773,6 +780,7 @@ router.post("/results/upsert", async (req, res): Promise<void> => {
       losses,
       ties,
       ptDiff: data.ptDiff ?? 0,
+      playoffStatus: data.playoffStatus ?? "unknown",
       draftOrder: data.draftOrder ?? null,
       playoffBerth: data.playoffBerth ?? false,
       divRound: data.divRound ?? false,
