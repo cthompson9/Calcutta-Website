@@ -92,115 +92,129 @@ export default function Results() {
     : periods?.find((item) => item.sequence === period)?.label ?? `Period ${period}`;
 
   return (
-    <div className="p-4 md:p-8 space-y-6 max-w-[1400px] mx-auto">
+    <div className="md:p-8 space-y-4 md:space-y-6 max-w-[1400px] mx-auto pb-6">
       {/* Header */}
-      <header>
+      <header className="px-4 md:px-0 pt-4 md:pt-0">
         <div>
-          <h1 className="text-3xl md:text-5xl font-extrabold uppercase tracking-tighter mb-1">
+          <h1 className="text-3xl md:text-5xl font-extrabold uppercase tracking-tighter mb-1" data-testid="text-report-title">
             Calcutta Returns
           </h1>
-          <p className="text-muted-foreground font-mono text-sm uppercase tracking-widest">
+          <p className="text-muted-foreground font-mono text-xs md:text-sm uppercase tracking-widest" data-testid="text-report-subtitle">
             {basis === "mtm" ? "Mark-to-market" : "Realized returns"} · {selectedPeriodLabel} · {year} season
           </p>
         </div>
       </header>
 
-      <ReleaseNotes />
+      <div className="hidden px-4 md:block md:px-0">
+        <ReleaseNotes />
+      </div>
 
-      <div className="flex flex-col gap-3 rounded-lg border border-border bg-card p-3 sm:flex-row sm:items-center sm:justify-between">
-        <label className="flex items-center gap-2 text-xs font-mono font-bold uppercase tracking-widest text-muted-foreground">
-          Through period
-          <select
-            value={period ?? ""}
-            onChange={(event) => setPeriod(event.target.value === "" ? undefined : Number(event.target.value))}
-            className="rounded border border-input bg-background px-2 py-1.5 text-foreground outline-none focus:ring-2 focus:ring-ring"
-          >
-            <option value="">Latest available</option>
-            {(periods ?? []).map((item) => (
-              <option key={item.sequence} value={item.sequence}>
-                {item.label}
-              </option>
-            ))}
-          </select>
-        </label>
-        <div className="flex rounded-md border border-input p-0.5">
-          {(["mtm", "realized"] as const).map((value) => (
-            <button
-              key={value}
-              onClick={() => setBasis(value)}
-              className={cn(
-                "rounded px-3 py-1.5 text-xs font-mono font-bold uppercase tracking-widest transition-colors",
-                basis === value
-                  ? "bg-primary text-primary-foreground"
-                  : "text-muted-foreground hover:text-foreground",
-              )}
-            >
-              {value === "mtm" ? "Mark to market" : "Realized"}
-            </button>
-          ))}
-        </div>
-        {tab === "compare" && (
-          <div className="flex rounded-md border border-input p-0.5">
-            {(["consortium", "bidder"] as const).map((value) => (
+      <div className="px-4 md:px-0">
+        <div className="flex flex-col gap-4 rounded-none md:rounded-lg border-y md:border border-border bg-card p-4 sm:flex-row sm:items-center sm:justify-between -mx-4 md:mx-0 shadow-sm">
+          <label className="flex flex-col sm:flex-row sm:items-center gap-1.5 text-xs font-mono font-bold uppercase tracking-widest text-muted-foreground">
+            <span className="text-[10px]">Through period</span>
+            <div className="relative">
+              <select
+                data-testid="select-period"
+                value={period ?? ""}
+                onChange={(event) => setPeriod(event.target.value === "" ? undefined : Number(event.target.value))}
+                className="w-full sm:w-auto appearance-none rounded-sm border border-border/60 bg-muted/30 px-3 py-1.5 pr-8 text-foreground outline-none focus:border-primary focus:ring-1 focus:ring-primary text-xs"
+              >
+                <option value="">Latest available</option>
+                {(periods ?? []).map((item) => (
+                  <option key={item.sequence} value={item.sequence}>
+                    {item.label}
+                  </option>
+                ))}
+              </select>
+              <div className="pointer-events-none absolute inset-y-0 right-0 flex items-center pr-2 text-muted-foreground">
+                <ChevronDown className="h-4 w-4" />
+              </div>
+            </div>
+          </label>
+          <div className="flex rounded-md border border-border/60 p-0.5 bg-muted/50" data-testid="controls-basis">
+            {(["mtm", "realized"] as const).map((value) => (
               <button
                 key={value}
-                onClick={() => setCompareGroupBy(value)}
+                data-testid={`button-basis-${value}`}
+                onClick={() => setBasis(value)}
                 className={cn(
-                  "rounded px-3 py-1.5 text-xs font-mono font-bold uppercase tracking-widest transition-colors",
-                  compareGroupBy === value
-                    ? "bg-primary text-primary-foreground"
+                  "flex-1 sm:flex-none rounded-sm px-3 py-1.5 text-[10px] md:text-xs font-mono font-bold uppercase tracking-widest transition-colors",
+                  basis === value
+                    ? "bg-background text-foreground shadow-sm border border-border/50"
                     : "text-muted-foreground hover:text-foreground",
                 )}
               >
-                {value === "consortium" ? "By Consortium" : "By Bidder"}
+                {value === "mtm" ? "Mark to market" : "Realized"}
               </button>
             ))}
           </div>
-        )}
+          {tab === "compare" && (
+            <div className="flex rounded-md border border-border/60 p-0.5 bg-muted/50">
+              {(["consortium", "bidder"] as const).map((value) => (
+                <button
+                  key={value}
+                  onClick={() => setCompareGroupBy(value)}
+                  className={cn(
+                    "flex-1 sm:flex-none rounded-sm px-3 py-1.5 text-[10px] md:text-xs font-mono font-bold uppercase tracking-widest transition-colors",
+                    compareGroupBy === value
+                      ? "bg-background text-foreground shadow-sm border border-border/50"
+                      : "text-muted-foreground hover:text-foreground",
+                  )}
+                >
+                  {value === "consortium" ? "By Consortium" : "By Bidder"}
+                </button>
+              ))}
+            </div>
+          )}
+        </div>
       </div>
 
       {tab === "compare" && allSeasons && (
-        <div className="flex flex-wrap items-center gap-1.5 rounded-lg border border-border bg-card p-3">
-          <span className="text-xs font-mono font-bold uppercase tracking-widest text-muted-foreground mr-2">
-            Compare Seasons
-          </span>
-          {allSeasons.map((s) => {
-            const isSelected = compareSeasons.includes(s.year);
-            const disabled = !isSelected && compareSeasons.length >= 6;
-            return (
-              <button
-                key={s.id}
-                disabled={disabled}
-                onClick={() => {
-                  setCompareSeasons((prev) =>
+        <div className="px-4 md:px-0">
+          <div className="flex flex-wrap items-center gap-1.5 rounded-none md:rounded-lg border-y md:border border-border bg-card p-3 -mx-4 md:mx-0 shadow-sm">
+            <span className="text-xs font-mono font-bold uppercase tracking-widest text-muted-foreground mr-2">
+              Compare Seasons
+            </span>
+            {allSeasons.map((s) => {
+              const isSelected = compareSeasons.includes(s.year);
+              const disabled = !isSelected && compareSeasons.length >= 6;
+              return (
+                <button
+                  key={s.id}
+                  disabled={disabled}
+                  onClick={() => {
+                    setCompareSeasons((prev) =>
+                      isSelected
+                        ? prev.filter((y) => y !== s.year)
+                        : [...prev, s.year].sort((a, b) => b - a)
+                    );
+                  }}
+                  className={cn(
+                    "rounded px-3 py-1.5 text-xs font-mono font-bold transition-colors border",
                     isSelected
-                      ? prev.filter((y) => y !== s.year)
-                      : [...prev, s.year].sort((a, b) => b - a)
-                  );
-                }}
-                className={cn(
-                  "rounded px-3 py-1.5 text-xs font-mono font-bold transition-colors",
-                  isSelected
-                    ? "bg-foreground text-background"
-                    : "bg-muted text-muted-foreground hover:bg-muted/80",
-                  disabled && "opacity-50 cursor-not-allowed"
-                )}
-              >
-                {s.year}
-              </button>
-            );
-          })}
+                      ? "bg-primary text-primary-foreground border-primary"
+                      : "bg-muted text-muted-foreground border-border/50 hover:bg-muted/80",
+                    disabled && "opacity-50 cursor-not-allowed"
+                  )}
+                >
+                  {s.year}
+                </button>
+              );
+            })}
+          </div>
         </div>
       )}
 
       {/* Tabs */}
-      <div className="flex border-b border-border">
+      <div className="flex border-b border-border overflow-x-auto no-scrollbar mx-4 md:mx-0">
         {(["byOwner", "byTeam", "compare"] as TabId[]).map((t) => (
           <button
             key={t}
+            data-testid={`tab-${t}`}
             onClick={() => setTab(t)}
             className={cn(
-              "px-5 py-2.5 text-sm font-mono font-bold uppercase tracking-widest transition-colors border-b-2 -mb-px",
+              "whitespace-nowrap px-4 md:px-5 py-3 text-[11px] md:text-sm font-mono font-bold uppercase tracking-widest transition-colors border-b-2 -mb-px",
               tab === t
                 ? "border-primary text-primary"
                 : "border-transparent text-muted-foreground hover:text-foreground",
@@ -211,38 +225,40 @@ export default function Results() {
         ))}
       </div>
 
-      {isLoading ? (
-        <LoadingSkeleton />
-      ) : tab === "byOwner" ? (
-        <ByOwnerView
-          rows={ownerResults ?? []}
-          isComplete={isComplete}
-          expandedOwner={expandedOwner}
-          setExpandedOwner={setExpandedOwner}
-          consortiumByBidderId={consortiumByBidderId}
-          seasonYear={year}
-        />
-      ) : tab === "compare" ? (
-        compareSeasons.length < 2 ? (
-          <div className="flex flex-col items-center justify-center rounded-lg border border-dashed border-border bg-card/50 p-12 text-center text-muted-foreground">
-            <Trophy className="h-8 w-8 mb-4 opacity-50" />
-            <p className="font-mono text-sm uppercase tracking-widest font-bold">Select seasons to compare</p>
-            <p className="mt-1 text-sm">Choose at least two seasons from the list above to view a comparison.</p>
-          </div>
-        ) : (
-          <CompareView
-            response={compareResults}
+      <div className="px-0 md:px-0">
+        {isLoading ? (
+          <LoadingSkeleton />
+        ) : tab === "byOwner" ? (
+          <ByOwnerView
+            rows={ownerResults ?? []}
             isComplete={isComplete}
+            expandedOwner={expandedOwner}
+            setExpandedOwner={setExpandedOwner}
+            consortiumByBidderId={consortiumByBidderId}
+            seasonYear={year}
           />
-        )
-      ) : (
-        <ByTeamView
-          rows={teamResults ?? []}
-          isComplete={isComplete}
-          consortiumByBidderId={consortiumByBidderId}
-          seasonYear={year}
-        />
-      )}
+        ) : tab === "compare" ? (
+          compareSeasons.length < 2 ? (
+            <div className="flex flex-col items-center justify-center rounded-none md:rounded-lg border-y md:border border-dashed border-border bg-card/50 p-12 text-center text-muted-foreground mx-4 md:mx-0">
+              <Trophy className="h-8 w-8 mb-4 opacity-50" />
+              <p className="font-mono text-sm uppercase tracking-widest font-bold">Select seasons to compare</p>
+              <p className="mt-1 text-sm">Choose at least two seasons from the list above to view a comparison.</p>
+            </div>
+          ) : (
+            <CompareView
+              response={compareResults}
+              isComplete={isComplete}
+            />
+          )
+        ) : (
+          <ByTeamView
+            rows={teamResults ?? []}
+            isComplete={isComplete}
+            consortiumByBidderId={consortiumByBidderId}
+            seasonYear={year}
+          />
+        )}
+      </div>
     </div>
   );
 }
@@ -316,11 +332,11 @@ function effectivePositionsForTeam(
 }
 
 const OWNER_SUMMARY_GRID =
-  "grid-cols-[2.5rem_minmax(0,1fr)_4.5rem_7rem_2.5rem] md:grid-cols-[2.5rem_minmax(14rem,22rem)_minmax(0,1fr)_4.5rem_8rem_8rem_2.5rem]";
+  "grid-cols-[2rem_minmax(0,1fr)_auto_2rem] md:grid-cols-[2.5rem_minmax(14rem,22rem)_minmax(0,1fr)_4.5rem_8rem_8rem_2.5rem]";
 const OWNER_SUMMARY_COMPLETE_GRID =
-  "grid-cols-[2.5rem_minmax(0,1fr)_4.5rem_7rem_2.5rem] md:grid-cols-[2.5rem_minmax(14rem,22rem)_minmax(0,1fr)_4.5rem_8rem_8rem_8rem_2.5rem]";
+  "grid-cols-[2rem_minmax(0,1fr)_auto_2rem] md:grid-cols-[2.5rem_minmax(14rem,22rem)_minmax(0,1fr)_4.5rem_8rem_8rem_8rem_2.5rem]";
 const OWNER_TEAM_GRID =
-  "grid-cols-[minmax(0,1fr)_minmax(7rem,auto)] md:grid-cols-[minmax(0,1.2fr)_minmax(0,1fr)_6.5rem_8rem_8rem]";
+  "grid-cols-[1fr_auto] md:grid-cols-[minmax(0,1.2fr)_minmax(0,1fr)_6.5rem_8rem_8rem]";
 
 function ByOwnerView({
   rows,
@@ -346,7 +362,7 @@ function ByOwnerView({
 
   return (
     <div className="space-y-3">
-      <div className="flex flex-col gap-1 border border-sky-200 bg-sky-50 px-4 py-3 text-xs dark:border-sky-900 dark:bg-sky-950/30 sm:flex-row sm:items-center sm:justify-between">
+      <div className="flex flex-col gap-1 border-y md:border border-sky-200 bg-sky-50 px-4 py-3 text-xs dark:border-sky-900 dark:bg-sky-950/30 sm:flex-row sm:items-center sm:justify-between mx-0">
         <span className="font-mono font-bold uppercase tracking-widest text-sky-900 dark:text-sky-100">
           Signed position ledger
         </span>
@@ -354,14 +370,15 @@ function ByOwnerView({
           Leveraged longs and negative shorts are both included; every team nets to 100% ownership.
         </span>
       </div>
+
       {/* Summary header */}
       <div
         className={cn(
-          "hidden md:grid bg-muted/60 text-muted-foreground text-xs font-mono font-bold uppercase tracking-widest px-4 py-3 border border-border",
+          "hidden md:grid bg-muted/60 text-muted-foreground text-[10px] md:text-xs font-mono font-bold uppercase tracking-widest px-4 py-3 border border-border sticky top-0 z-10 backdrop-blur rounded-t-lg",
           isComplete ? OWNER_SUMMARY_COMPLETE_GRID : OWNER_SUMMARY_GRID,
         )}
       >
-        <div className="text-left">#</div>
+        <div className="text-center">#</div>
         <div>Consortium</div>
         <div className="hidden md:block" />
         <div className="text-right">Net Teams</div>
@@ -380,171 +397,176 @@ function ByOwnerView({
         <div />
       </div>
 
-      {sorted.map((row, idx) => {
-        const isExpanded = expandedOwner === row.bidderId;
-        const isLeader = idx === 0;
-        const isWinner = isLeader && isComplete && row.totalNetReturn > 0;
-        return (
-          <div
-            key={row.bidderId}
-            className="border border-border bg-card overflow-hidden"
-          >
-            {/* Owner row */}
-            <button
-              type="button"
-              onClick={() => setExpandedOwner(isExpanded ? null : row.bidderId)}
-              aria-expanded={isExpanded}
-              className={cn(
-                "w-full grid items-center px-4 py-4 hover:bg-muted/40 transition-colors text-left",
-                isComplete ? OWNER_SUMMARY_COMPLETE_GRID : OWNER_SUMMARY_GRID,
-                isWinner && "bg-yellow-50 dark:bg-yellow-900/10",
-              )}
+      <div className="flex flex-col gap-0 md:gap-3">
+        {sorted.map((row, idx) => {
+          const isExpanded = expandedOwner === row.bidderId;
+          const isLeader = idx === 0;
+          const isWinner = isLeader && isComplete && row.totalNetReturn > 0;
+          return (
+            <div
+              key={row.bidderId}
+              className="border-b border-border bg-card overflow-hidden last:border-b-0 md:border md:rounded-lg shadow-sm"
             >
-              <div className="flex items-center gap-1 font-mono font-bold text-lg">
-                <span>{idx + 1}</span>
-                {isLeader && (
-                  <img
-                    src="/sleigh-monkey.png"
-                    alt="leader"
-                    className="w-6 h-6 object-contain shrink-0"
-                  />
+              {/* Owner row */}
+              <button
+                type="button"
+                data-testid={`button-expand-owner-${row.bidderId}`}
+                onClick={() => setExpandedOwner(isExpanded ? null : row.bidderId)}
+                aria-expanded={isExpanded}
+                className={cn(
+                  "w-full grid items-center px-4 py-4 md:px-4 md:py-4 hover:bg-muted/40 transition-colors text-left",
+                  isComplete ? OWNER_SUMMARY_COMPLETE_GRID : OWNER_SUMMARY_GRID,
+                  isWinner && "bg-yellow-50 dark:bg-yellow-900/10",
                 )}
-              </div>
-              <div className="min-w-0 font-bold">
-                <ConsortiumLabel
-                  label={
-                    row.consortium ??
-                    ownerLabelById(
-                      row.bidderId,
-                      row.bidderName,
-                      consortiumByBidderId,
-                    )
-                  }
-                />
-              </div>
-              <div className="hidden md:block" />
-              <div className="text-right text-muted-foreground font-mono">
-                {row.teamCount > 0 ? "+" : ""}
-                {row.teamCount.toFixed(2)}
-              </div>
-              {isComplete ? (
-                <>
-                  {/* Exposure — net long cost minus signed short cost */}
-                  <div className="hidden md:block text-right font-mono text-sm text-muted-foreground">
-                    {formatCurrency(calculateExposure(row))}
-                  </div>
-                  {/* Gross return */}
-                  <div className="hidden md:block text-right font-mono text-sm text-muted-foreground">
-                    {formatCurrency(row.totalRealizedReturn)}
-                  </div>
-                  {/* Net — primary sort key, highlighted */}
-                  <div
-                    className={cn(
-                      "text-right font-mono font-bold text-sm",
-                      row.totalNetReturn >= 0
-                        ? "text-green-600"
-                        : "text-red-600",
-                    )}
-                  >
-                    {row.totalNetReturn >= 0 ? "+" : ""}
-                    {formatCurrency(row.totalNetReturn)}
-                  </div>
-                </>
-              ) : (
-                <>
-                  {/* MTM Return — primary / sort key */}
-                  <div
-                    className={cn(
-                      "text-right font-mono font-bold text-sm",
-                      row.totalMtm >= 0 ? "text-green-600" : "text-red-600",
-                    )}
-                  >
-                    {row.totalMtm !== 0
-                      ? (row.totalMtm >= 0 ? "+" : "") +
-                        formatCurrency(row.totalMtm)
-                      : "—"}
-                  </div>
-                  <div className="hidden md:block text-right font-mono text-sm text-muted-foreground">
-                    {formatCurrency(calculateExposure(row))}
-                  </div>
-                </>
-              )}
-              <div className="flex justify-end text-muted-foreground">
-                <span className="inline-flex h-6 w-6 items-center justify-center border border-border bg-background transition-colors group-hover:border-foreground/40">
-                  <ChevronDown
-                    className={cn(
-                      "h-3.5 w-3.5 transition-transform",
-                      !isExpanded && "-rotate-90",
-                    )}
-                  />
-                </span>
-              </div>
-            </button>
+              >
+                <div className="flex items-center justify-center font-mono font-bold text-base md:text-lg">
+                  <span>{idx + 1}</span>
+                </div>
 
-            {/* Mobile stats */}
-            {isComplete && (
-              <div className="md:hidden grid grid-cols-3 text-xs font-mono border-t border-border bg-muted/30 px-4 py-2">
-                <div>
-                  <div className="text-muted-foreground uppercase tracking-widest text-[10px]">
-                      Exposure
-                  </div>
-                    <div>{formatCurrency(calculateExposure(row))}</div>
-                </div>
-                <div>
-                  <div className="text-muted-foreground uppercase tracking-widest text-[10px]">
-                    Gross
-                  </div>
-                  <div>{formatCurrency(row.totalRealizedReturn)}</div>
-                </div>
-                <div>
-                  <div className="text-muted-foreground uppercase tracking-widest text-[10px]">
-                    Net
-                  </div>
-                  <div
-                    className={
-                      row.totalNetReturn >= 0
-                        ? "text-green-600"
-                        : "text-red-600"
-                    }
-                  >
-                    {row.totalNetReturn >= 0 ? "+" : ""}
-                    {formatCurrency(row.totalNetReturn)}
-                  </div>
-                </div>
-              </div>
-            )}
-
-            {/* Expanded team list */}
-            {isExpanded && (
-              <div className="border-t border-border">
-                <div
-                  className={cn(
-                    "hidden md:grid bg-muted/30 text-muted-foreground text-[10px] font-mono font-bold uppercase tracking-widest px-6 py-2 border-b border-border",
-                    OWNER_TEAM_GRID,
-                  )}
-                >
-                  <div>Team</div>
-                  <div>Type</div>
-                  <div className="text-right">Net Position</div>
-                  <div className="text-right">MTM Return</div>
-                  <div className="text-right">Exposure</div>
-                </div>
-                {[...row.teams]
-                  .sort((a, b) => b.markToMarket - a.markToMarket)
-                  .map((t) => (
-                    <TeamSubRow
-                      key={t.teamId}
-                      team={t}
-                      ownerId={row.bidderId}
-                      consortiumByBidderId={consortiumByBidderId}
-                      seasonYear={seasonYear}
+                {/* Name & Subtext */}
+                <div className="min-w-0 pr-2 flex flex-col justify-center">
+                  <div className="font-bold truncate text-sm md:text-base flex items-center gap-1.5">
+                    <ConsortiumLabel
+                      label={
+                        row.consortium ??
+                        ownerLabelById(
+                          row.bidderId,
+                          row.bidderName,
+                          consortiumByBidderId,
+                        )
+                      }
                     />
-                  ))}
-              </div>
-            )}
-          </div>
-        );
-      })}
+                    {isLeader && (
+                      <img src="/sleigh-monkey.png" alt="leader" className="w-4 h-4 object-contain shrink-0" />
+                    )}
+                  </div>
+                  <div className="md:hidden text-[10px] text-muted-foreground font-mono uppercase tracking-widest mt-0.5">
+                    {row.teamCount > 0 ? "+" : ""}{row.teamCount.toFixed(2)} Teams
+                  </div>
+                </div>
+
+                <div className="hidden md:block" />
+                <div className="hidden md:block text-right text-muted-foreground font-mono self-center">
+                  {row.teamCount > 0 ? "+" : ""}
+                  {row.teamCount.toFixed(2)}
+                </div>
+
+                {isComplete ? (
+                  <>
+                    <div className="hidden md:block text-right font-mono text-sm text-muted-foreground self-center">
+                      {formatCurrency(calculateExposure(row))}
+                    </div>
+                    <div className="hidden md:block text-right font-mono text-sm text-muted-foreground self-center">
+                      {formatCurrency(row.totalRealizedReturn)}
+                    </div>
+                    <div
+                      className={cn(
+                        "text-right font-mono font-bold text-sm md:text-base self-center",
+                        row.totalNetReturn >= 0
+                          ? "text-green-600 dark:text-green-400"
+                          : "text-red-600 dark:text-red-400",
+                      )}
+                    >
+                      {row.totalNetReturn >= 0 ? "+" : ""}
+                      {formatCurrency(row.totalNetReturn)}
+                    </div>
+                  </>
+                ) : (
+                  <>
+                    <div
+                      className={cn(
+                        "text-right font-mono font-bold text-sm md:text-base self-center",
+                        row.totalMtm >= 0 ? "text-green-600 dark:text-green-400" : "text-red-600 dark:text-red-400",
+                      )}
+                    >
+                      {row.totalMtm !== 0
+                        ? (row.totalMtm >= 0 ? "+" : "") +
+                          formatCurrency(row.totalMtm)
+                        : "—"}
+                    </div>
+                    <div className="hidden md:block text-right font-mono text-sm text-muted-foreground self-center">
+                      {formatCurrency(calculateExposure(row))}
+                    </div>
+                  </>
+                )}
+
+                <div className="flex justify-end items-center text-muted-foreground">
+                  <span className="inline-flex h-6 w-6 items-center justify-center rounded-full transition-colors group-hover:bg-muted">
+                    <ChevronDown
+                      className={cn(
+                        "h-4 w-4 transition-transform",
+                        !isExpanded && "-rotate-90",
+                      )}
+                    />
+                  </span>
+                </div>
+              </button>
+
+              {/* Mobile stats */}
+              {isExpanded && (
+                <div className="md:hidden grid grid-cols-2 text-xs font-mono border-t border-border bg-muted/30 px-4 py-3 gap-y-3">
+                  {isComplete ? (
+                    <>
+                      <div>
+                        <div className="text-muted-foreground uppercase tracking-widest text-[10px]">Exposure</div>
+                        <div className="font-bold">{formatCurrency(calculateExposure(row))}</div>
+                      </div>
+                      <div>
+                        <div className="text-muted-foreground uppercase tracking-widest text-[10px]">Gross</div>
+                        <div className="font-bold">{formatCurrency(row.totalRealizedReturn)}</div>
+                      </div>
+                    </>
+                  ) : (
+                    <>
+                      <div>
+                        <div className="text-muted-foreground uppercase tracking-widest text-[10px]">Exposure</div>
+                        <div className="font-bold">{formatCurrency(calculateExposure(row))}</div>
+                      </div>
+                      <div>
+                        <div className="text-muted-foreground uppercase tracking-widest text-[10px]">Proj. ROI</div>
+                        <div className="font-bold">
+                          {calculateExposure(row) !== 0
+                            ? ((row.totalMtm / Math.abs(calculateExposure(row))) * 100).toFixed(1) + "%"
+                            : "—"}
+                        </div>
+                      </div>
+                    </>
+                  )}
+                </div>
+              )}
+
+              {/* Expanded team list */}
+              {isExpanded && (
+                <div className="border-t border-border">
+                  <div
+                    className={cn(
+                      "hidden md:grid bg-muted/50 text-muted-foreground text-[10px] font-mono font-bold uppercase tracking-widest px-6 py-2 border-b border-border",
+                      OWNER_TEAM_GRID,
+                    )}
+                  >
+                    <div>Team</div>
+                    <div>Type</div>
+                    <div className="text-right">Net Position</div>
+                    <div className="text-right">MTM Return</div>
+                    <div className="text-right">Exposure</div>
+                  </div>
+                  {[...row.teams]
+                    .sort((a, b) => b.markToMarket - a.markToMarket)
+                    .map((t) => (
+                      <TeamSubRow
+                        key={t.teamId}
+                        team={t}
+                        ownerId={row.bidderId}
+                        consortiumByBidderId={consortiumByBidderId}
+                        seasonYear={seasonYear}
+                      />
+                    ))}
+                </div>
+              )}
+            </div>
+          );
+        })}
+      </div>
     </div>
   );
 }
@@ -629,8 +651,8 @@ function OwnershipBreakdown({
             aria-label={sourceDescription}
             title={sourceDescription}
             className={cn(
-              "grid grid-cols-[minmax(0,1fr)_auto] items-start gap-x-2 border px-2 py-1 text-[11px] font-mono leading-tight transition-colors hover:brightness-95 focus:outline-none focus:ring-2 focus:ring-primary focus:ring-inset",
-              !isTrade && "border-border bg-muted/50 text-muted-foreground",
+              "grid grid-cols-[minmax(0,1fr)_auto] items-start gap-x-2 border px-2 py-1 text-[11px] font-mono leading-tight transition-colors hover:brightness-95 focus:outline-none focus:ring-2 focus:ring-primary focus:ring-inset rounded-sm",
+              !isTrade && "border-border/50 bg-muted/30 text-muted-foreground",
               isTrade &&
                 isAcquisition &&
                 "border-sky-200 bg-sky-50 text-sky-900 dark:border-sky-900 dark:bg-sky-950/40 dark:text-sky-100",
@@ -673,22 +695,30 @@ function TeamSubRow({
   return (
     <div
       className={cn(
-        "grid items-center px-6 py-3 border-b border-border last:border-0 hover:bg-muted/20 transition-colors",
+        "grid items-center px-4 md:px-6 py-3 border-b border-border/50 last:border-0 hover:bg-muted/30 transition-colors gap-y-1",
         OWNER_TEAM_GRID,
       )}
     >
-      <div className="min-w-0">
-        <div className="flex items-center gap-2">
-          <span className="font-medium text-sm">{team.teamName}</span>
-          <span className="hidden md:inline text-[10px] text-muted-foreground font-mono shrink-0">
+      <div className="min-w-0 pr-2">
+        <div className="flex flex-col md:flex-row md:items-center gap-0 md:gap-2">
+          <span className="font-bold text-sm md:font-medium">{team.teamName}</span>
+          <span className="text-[10px] text-muted-foreground font-mono shrink-0 uppercase tracking-widest">
             {team.conference}
           </span>
         </div>
       </div>
-      <div className="min-w-0 font-mono text-xs">
-        <span className="mr-2 text-[10px] uppercase tracking-widest text-muted-foreground md:hidden">
-          Type
-        </span>
+
+      {/* Mobile right-aligned stack */}
+      <div className="text-right md:hidden">
+        <div className={cn("font-mono text-sm font-bold", netPosition >= 0 ? "text-sky-700 dark:text-sky-400" : "text-rose-600 dark:text-rose-400")}>
+          {formatOwnershipPercent(netPosition, true)}
+        </div>
+        <div className={cn("font-mono text-xs mt-0.5", team.markToMarket >= 0 ? "text-green-600 dark:text-green-400" : "text-red-600 dark:text-red-400")}>
+          {team.markToMarket >= 0 ? "+" : ""}{formatCurrency(team.markToMarket)}
+        </div>
+      </div>
+
+      <div className="min-w-0 font-mono text-[10px] md:text-xs col-span-2 md:col-span-1 mt-1 md:mt-0">
         <OwnershipBreakdown
           segments={ownerSegments}
           owners={ownerEntries}
@@ -700,35 +730,27 @@ function TeamSubRow({
           compact
         />
       </div>
+
       <div
         className={cn(
-          "text-right font-mono text-sm font-bold",
-          netPosition >= 0 ? "text-sky-700 dark:text-sky-300" : "text-rose-600 dark:text-rose-300",
+          "hidden md:block text-right font-mono text-sm font-bold",
+          netPosition >= 0 ? "text-sky-700 dark:text-sky-400" : "text-rose-600 dark:text-rose-400",
         )}
       >
-        <span className="mr-2 text-[10px] uppercase tracking-widest text-muted-foreground md:hidden">
-          Net Position
-        </span>
         {formatOwnershipPercent(netPosition, true)}
       </div>
       <div
         className={cn(
-          "text-right font-mono text-sm",
-          team.markToMarket >= 0 ? "text-green-600" : "text-red-600",
+          "hidden md:block text-right font-mono text-sm",
+          team.markToMarket >= 0 ? "text-green-600 dark:text-green-400" : "text-red-600 dark:text-red-400",
         )}
       >
-        <span className="mr-2 text-[10px] uppercase tracking-widest text-muted-foreground md:hidden">
-          MTM Return
-        </span>
         {team.markToMarket !== 0
           ? (team.markToMarket >= 0 ? "+" : "") +
             formatCurrency(team.markToMarket)
           : "—"}
       </div>
-      <div className="text-right font-mono text-sm text-muted-foreground">
-        <span className="mr-2 text-[10px] uppercase tracking-widest md:hidden">
-          Exposure
-        </span>
+      <div className="hidden md:block text-right font-mono text-sm text-muted-foreground">
         {formatCurrency(calculateTeamExposure(team))}
       </div>
     </div>
@@ -917,7 +939,7 @@ function ByTeamView({
       <button
         onClick={() => handleSort(k)}
         className={cn(
-          "font-mono font-bold uppercase tracking-widest text-xs whitespace-nowrap hover:text-foreground transition-colors w-full",
+          "font-mono font-bold uppercase tracking-widest text-[10px] md:text-xs whitespace-nowrap hover:text-foreground transition-colors w-full",
           active ? "text-primary" : "text-muted-foreground",
           align === "left"
             ? "text-left"
@@ -940,7 +962,7 @@ function ByTeamView({
         className={cn(
           "font-bold font-mono text-sm",
           seed <= 2
-            ? "text-yellow-600"
+            ? "text-yellow-600 dark:text-yellow-500"
             : seed <= 4
               ? "text-foreground"
               : "text-muted-foreground",
@@ -955,10 +977,10 @@ function ByTeamView({
     return (
       <span
         className={cn(
-          "text-[10px] font-mono font-bold px-1.5 py-0.5",
+          "text-[10px] font-mono font-bold px-1.5 py-0.5 rounded-sm",
           conf === "AFC"
-            ? "bg-blue-100 text-blue-700 dark:bg-blue-900 dark:text-blue-300"
-            : "bg-red-100 text-red-700 dark:bg-red-900 dark:text-red-300",
+            ? "bg-red-50 text-red-700 border border-red-200 dark:bg-red-950/40 dark:text-red-300 dark:border-red-900"
+            : "bg-sky-50 text-sky-700 border border-sky-200 dark:bg-sky-950/40 dark:text-sky-300 dark:border-sky-900",
         )}
       >
         {conf}
@@ -1134,51 +1156,51 @@ function ByTeamView({
   const rowCount = splitByOwner ? ownerSorted.length : teamSorted.length;
 
   return (
-    <div className="space-y-3">
+    <div className="space-y-3 px-4 md:px-0">
       {/* Controls */}
-      <div className="flex flex-wrap items-center gap-2">
+      <div className="flex flex-col md:flex-row items-stretch md:items-center gap-2">
         <input
           type="search"
           value={search}
           onChange={(e) => setSearch(e.target.value)}
           placeholder="Filter by team, consortium, conference, division…"
-          className="w-full min-w-0 md:w-[28rem] md:flex-none border border-border bg-background px-3 py-1.5 text-sm font-mono placeholder:text-muted-foreground focus:outline-none focus:ring-1 focus:ring-primary"
+          className="w-full min-w-0 md:w-[28rem] md:flex-none rounded-md border border-border/60 bg-card px-3 py-2 text-sm font-mono placeholder:text-muted-foreground focus:outline-none focus:ring-1 focus:ring-primary shadow-sm"
         />
         <button
           onClick={() => setSplitByOwner((v) => !v)}
           className={cn(
-            "border px-3 py-1.5 text-xs font-mono font-bold uppercase tracking-widest transition-colors",
+            "rounded-md border px-4 py-2 text-xs font-mono font-bold uppercase tracking-widest transition-colors text-center shadow-sm",
             splitByOwner
               ? "bg-primary text-primary-foreground border-primary"
-              : "border-border text-muted-foreground hover:bg-muted hover:text-foreground",
+              : "border-border/60 bg-card text-muted-foreground hover:bg-muted/50 hover:text-foreground",
           )}
         >
           Split by Consortium
         </button>
       </div>
-      <p className="border border-sky-200 bg-sky-50 px-3 py-2 text-xs text-sky-900 dark:border-sky-900 dark:bg-sky-950/30 dark:text-sky-100">
+      <p className="border-y md:border border-sky-200 bg-sky-50 px-4 py-3 text-xs text-sky-900 dark:border-sky-900 dark:bg-sky-950/30 dark:text-sky-100 md:rounded-lg -mx-4 md:mx-0">
         Ownership is signed: leveraged long positions can exceed 100%, short positions are negative, and each team’s combined positions reconcile to 100%.
       </p>
 
       {/* Table */}
-      <div className="border border-border bg-card overflow-x-auto">
-        <table className="text-sm whitespace-nowrap">
+      <div className="border-y md:border border-border bg-card overflow-x-auto -mx-4 md:mx-0 md:rounded-lg shadow-sm">
+        <table className="text-sm whitespace-nowrap w-full">
           <thead>
-            <tr className="border-b border-border bg-muted/60">
+            <tr className="border-b border-border/60 bg-muted/30">
               {/* Team — always leftmost sticky */}
-              <th className="px-3 py-2.5 text-left sticky left-0 bg-muted/60 z-10 min-w-[160px]">
+              <th className="px-4 md:px-5 py-3 text-left sticky left-0 bg-muted/95 backdrop-blur z-10 min-w-[160px] border-r border-border/50">
                 <SH label="Team" k="team" align="left" />
               </th>
-              <th className="px-3 py-2.5 text-center">
+              <th className="px-3 py-3 text-center">
                 <SH label="Conf" k="conf" align="center" />
               </th>
-              <th className="px-3 py-2.5 text-left">
+              <th className="px-3 py-3 text-left">
                 <SH label="Div" k="div" align="left" />
               </th>
-              <th className="px-3 py-2.5 text-center">
+              <th className="px-3 py-3 text-center">
                 <SH label="Playoff Seed" k="seed" align="center" />
               </th>
-              <th className="px-3 py-2.5 text-left">
+              <th className="px-4 py-3 text-left">
                 <SH
                    label={splitByOwner ? "Consortium" : "Consortium(s)"}
                   k="owner"
@@ -1186,26 +1208,26 @@ function ByTeamView({
                 />
               </th>
               {splitByOwner && (
-                <th className="px-3 py-2.5 text-center">
+                <th className="px-3 py-3 text-center">
                   <SH label="Net Position" k="pct" align="center" />
                 </th>
               )}
-              <th className="px-3 py-2.5 text-center">
+              <th className="px-3 py-3 text-center">
                 <SH label="Record" k="record" align="center" />
               </th>
-              <th className="px-3 py-2.5 text-right">
+              <th className="px-4 py-3 text-right">
                 <SH label="Net Diff" k="pd" />
               </th>
-              <th className="px-3 py-2.5 text-right">
+              <th className="px-4 py-3 text-right">
                 <SH label="Cost" k="cost" />
               </th>
-              <th className="px-3 py-2.5 text-right">
+              <th className="px-4 py-3 text-right">
                 <SH label="Gross" k="gross" />
               </th>
-              <th className="px-3 py-2.5 text-right">
+              <th className="px-4 py-3 text-right">
                 <SH label="Net" k="net" />
               </th>
-              <th className="px-3 py-2.5 text-right">
+              <th className="px-4 md:px-5 py-3 text-right">
                 <SH label="MTM" k="mtm" />
               </th>
             </tr>
@@ -1216,13 +1238,13 @@ function ByTeamView({
                   <tr
                     key={`${row.teamId}-${row.bidderId}`}
                     className={cn(
-                      "border-b border-border last:border-0 hover:bg-muted/30 transition-colors",
+                      "border-b border-border/60 last:border-0 hover:bg-muted/30 transition-colors",
                       row.winSuperBowl &&
                         "bg-yellow-50/40 dark:bg-yellow-900/10",
                     )}
                   >
-                    <td className="px-3 py-2.5 font-medium sticky left-0 bg-card z-10 border-r border-border/50">
-                      <div className="flex items-center gap-1.5">
+                    <td className="px-4 md:px-5 py-3 font-medium sticky left-0 bg-card z-10 border-r border-border/50">
+                      <div className="flex items-center gap-2">
                         {row.winSuperBowl && (
                           <img
                             src="/sleigh-monkey.png"
@@ -1233,16 +1255,16 @@ function ByTeamView({
                         {row.teamName}
                       </div>
                     </td>
-                    <td className="px-3 py-2.5 text-center">
+                    <td className="px-3 py-3 text-center">
                       <ConfBadge conf={row.conference} />
                     </td>
-                    <td className="px-3 py-2.5 text-muted-foreground font-mono text-xs">
+                    <td className="px-3 py-3 text-muted-foreground font-mono text-xs">
                       {row.division}
                     </td>
-                    <td className="px-3 py-2.5 text-center">
+                    <td className="px-3 py-3 text-center">
                       <SeedCell seed={row.seed} />
                     </td>
-                    <td className="px-3 py-2.5 text-sm min-w-[220px]">
+                    <td className="px-4 py-3 text-sm min-w-[220px]">
                       <OwnershipBreakdown
                         segments={row.ownershipSegments}
                         owners={row.owners}
@@ -1254,36 +1276,36 @@ function ByTeamView({
                     </td>
                     <td
                       className={cn(
-                        "px-3 py-2.5 text-center font-mono text-xs font-bold",
+                        "px-3 py-3 text-center font-mono text-xs font-bold",
                         row.ownershipShare >= 0
-                          ? "text-sky-700 dark:text-sky-300"
-                          : "text-rose-600 dark:text-rose-300",
+                          ? "text-sky-700 dark:text-sky-400"
+                          : "text-rose-600 dark:text-rose-400",
                       )}
                     >
                       {formatOwnershipPercent(row.ownershipShare, true)}
                     </td>
-                    <td className="px-3 py-2.5 text-center font-mono text-xs">
+                    <td className="px-3 py-3 text-center font-mono text-xs">
                       {formatRecord(row.wins, row.losses, row.ties)}
                     </td>
                     <td
                       className={cn(
-                        "px-3 py-2.5 text-right font-mono text-xs",
-                        row.ptDiff >= 0 ? "text-green-600" : "text-red-500",
+                        "px-4 py-3 text-right font-mono text-xs",
+                        row.ptDiff >= 0 ? "text-green-600 dark:text-green-400" : "text-red-500 dark:text-red-400",
                       )}
                     >
                       {row.ptDiff >= 0 ? "+" : ""}
                       {row.ptDiff}
                     </td>
-                    <td className="px-3 py-2.5 text-right font-mono text-sm text-muted-foreground">
+                    <td className="px-4 py-3 text-right font-mono text-sm text-muted-foreground">
                       {formatCurrency(row.cost)}
                     </td>
-                    <td className="px-3 py-2.5 text-right font-mono text-sm text-muted-foreground">
+                    <td className="px-4 py-3 text-right font-mono text-sm text-muted-foreground">
                       {isComplete ? formatCurrency(row.gross) : "—"}
                     </td>
                     <td
                       className={cn(
-                        "px-3 py-2.5 text-right font-mono font-bold text-sm",
-                        row.net >= 0 ? "text-green-600" : "text-red-600",
+                        "px-4 py-3 text-right font-mono font-bold text-sm",
+                        row.net >= 0 ? "text-green-600 dark:text-green-400" : "text-red-600 dark:text-red-400",
                       )}
                     >
                       {isComplete
@@ -1292,8 +1314,8 @@ function ByTeamView({
                     </td>
                     <td
                       className={cn(
-                        "px-3 py-2.5 text-right font-mono font-bold text-sm",
-                        row.mtm >= 0 ? "text-green-600" : "text-red-600",
+                        "px-4 md:px-5 py-3 text-right font-mono font-bold text-sm",
+                        row.mtm >= 0 ? "text-green-600 dark:text-green-400" : "text-red-600 dark:text-red-400",
                       )}
                     >
                       {row.mtm !== 0
@@ -1308,14 +1330,14 @@ function ByTeamView({
                     <tr
                       key={row.teamId}
                       className={cn(
-                        "border-b border-border last:border-0 hover:bg-muted/30 transition-colors",
+                        "border-b border-border/60 last:border-0 hover:bg-muted/30 transition-colors",
                         row.winSuperBowl &&
                           "bg-yellow-50/40 dark:bg-yellow-900/10",
                       )}
                     >
                       {/* Team — sticky */}
-                      <td className="px-3 py-2.5 font-medium sticky left-0 bg-card z-10 border-r border-border/50">
-                        <div className="flex items-center gap-1.5">
+                      <td className="px-4 md:px-5 py-3 font-medium sticky left-0 bg-card z-10 border-r border-border/50">
+                        <div className="flex items-center gap-2">
                           {row.winSuperBowl && (
                             <img
                               src="/sleigh-monkey.png"
@@ -1326,16 +1348,16 @@ function ByTeamView({
                           {row.teamName}
                         </div>
                       </td>
-                      <td className="px-3 py-2.5 text-center">
+                      <td className="px-3 py-3 text-center">
                         <ConfBadge conf={row.conference} />
                       </td>
-                      <td className="px-3 py-2.5 text-muted-foreground font-mono text-xs">
+                      <td className="px-3 py-3 text-muted-foreground font-mono text-xs">
                         {row.division}
                       </td>
-                      <td className="px-3 py-2.5 text-center">
+                      <td className="px-3 py-3 text-center">
                         <SeedCell seed={seed} />
                       </td>
-                      <td className="px-3 py-2.5 text-sm min-w-[260px]">
+                      <td className="px-4 py-3 text-sm min-w-[260px]">
                         <OwnershipBreakdown
                           segments={row.ownershipSegments}
                           owners={row.owners}
@@ -1345,30 +1367,30 @@ function ByTeamView({
                           consortiumByBidderId={consortiumByBidderId}
                         />
                       </td>
-                      <td className="px-3 py-2.5 text-center font-mono text-xs">
+                      <td className="px-3 py-3 text-center font-mono text-xs">
                         {formatRecord(row.wins, row.losses, row.ties)}
                       </td>
                       <td
                         className={cn(
-                          "px-3 py-2.5 text-right font-mono text-xs",
-                          row.ptDiff >= 0 ? "text-green-600" : "text-red-500",
+                          "px-4 py-3 text-right font-mono text-xs",
+                          row.ptDiff >= 0 ? "text-green-600 dark:text-green-400" : "text-red-500 dark:text-red-400",
                         )}
                       >
                         {row.ptDiff >= 0 ? "+" : ""}
                         {row.ptDiff}
                       </td>
-                      <td className="px-3 py-2.5 text-right font-mono text-sm text-muted-foreground">
+                      <td className="px-4 py-3 text-right font-mono text-sm text-muted-foreground">
                         {formatCurrency(row.cost)}
                       </td>
-                      <td className="px-3 py-2.5 text-right font-mono text-sm text-muted-foreground">
+                      <td className="px-4 py-3 text-right font-mono text-sm text-muted-foreground">
                         {isComplete ? formatCurrency(row.realizedReturn) : "—"}
                       </td>
                       <td
                         className={cn(
-                          "px-3 py-2.5 text-right font-mono font-bold text-sm",
+                          "px-4 py-3 text-right font-mono font-bold text-sm",
                           row.netReturn >= 0
-                            ? "text-green-600"
-                            : "text-red-600",
+                            ? "text-green-600 dark:text-green-400"
+                            : "text-red-600 dark:text-red-400",
                         )}
                       >
                         {isComplete
@@ -1378,10 +1400,10 @@ function ByTeamView({
                       </td>
                       <td
                         className={cn(
-                          "px-3 py-2.5 text-right font-mono font-bold text-sm",
+                          "px-4 md:px-5 py-3 text-right font-mono font-bold text-sm",
                           row.markToMarket >= 0
-                            ? "text-green-600"
-                            : "text-red-600",
+                            ? "text-green-600 dark:text-green-400"
+                            : "text-red-600 dark:text-red-400",
                         )}
                       >
                         {row.markToMarket !== 0
@@ -1396,7 +1418,7 @@ function ByTeamView({
         </table>
       </div>
 
-      <p className="text-xs text-muted-foreground font-mono">
+      <p className="text-[10px] md:text-xs text-muted-foreground font-mono">
         {rowCount} {splitByOwner ? "owner-team rows" : "teams"} ·{" "}
         Return values follow this Calcutta's configured payout rules.
       </p>
@@ -1421,32 +1443,32 @@ function CompareView({
   );
 
   return (
-    <div className="overflow-x-auto rounded-lg border border-border bg-card shadow-sm">
+    <div className="overflow-x-auto border-y md:border border-border md:rounded-lg bg-card shadow-sm -mx-4 md:mx-0">
       <table className="w-full text-left text-sm font-mono whitespace-nowrap border-collapse min-w-max">
-        <thead className="bg-muted/60 text-muted-foreground text-xs uppercase tracking-widest">
+        <thead className="bg-muted/30 text-muted-foreground text-[10px] md:text-xs uppercase tracking-widest">
           <tr>
-            <th className="px-4 py-3 font-bold border-b border-border sticky left-0 z-20 bg-muted/95 backdrop-blur border-r">
+            <th className="px-4 py-3 font-bold border-b border-border/60 sticky left-0 z-20 bg-muted/95 backdrop-blur border-r">
               {response.groupBy === "consortium" ? "Consortium" : "Bidder"}
             </th>
             {response.calcuttas.map((c) => (
-              <th key={c.id} className="px-4 py-3 font-bold border-b border-r border-border text-right">
+              <th key={c.id} className="px-4 py-3 font-bold border-b border-border/60 border-r text-right">
                 <div className="text-foreground">{c.year}</div>
                 <div className="text-[10px] text-muted-foreground font-normal normal-case tracking-normal">{c.label}</div>
               </th>
             ))}
-            <th className="px-4 py-3 font-bold border-b border-border text-right bg-muted/60">
+            <th className="px-4 py-3 font-bold border-b border-border/60 text-right bg-muted/50">
               Aggregate
             </th>
           </tr>
         </thead>
-        <tbody className="divide-y divide-border">
+        <tbody className="divide-y divide-border/60">
           {sorted.map((row) => (
-            <tr key={row.id} className="group hover:bg-muted/40 transition-colors">
-              <td className="px-4 py-4 font-bold sticky left-0 z-10 bg-card group-hover:bg-muted/80 transition-colors border-r border-border">
+            <tr key={row.id} className="group hover:bg-muted/30 transition-colors">
+              <td className="px-4 py-4 font-bold sticky left-0 z-10 bg-card group-hover:bg-muted/80 transition-colors border-r border-border/50">
                 <ConsortiumLabel label={row.name} />
               </td>
               {row.calcuttas.map((cell, idx) => (
-                <td key={idx} className="px-4 py-4 border-r border-border text-right align-top">
+                <td key={idx} className="px-4 py-4 border-r border-border/50 text-right align-top">
                   {cell ? <CompareCell cell={cell} isComplete={isComplete} /> : <span className="text-muted-foreground/40">—</span>}
                 </td>
               ))}
@@ -1464,7 +1486,10 @@ function CompareView({
 function CompareCell({ cell, isComplete }: { cell: CalcuttaComparisonCell; isComplete: boolean }) {
   if (!cell.snapshotAvailable) {
     return (
-      <div className="text-xs text-muted-foreground/60 italic flex flex-col items-end">
+      <div
+        className="flex flex-col items-end text-right text-xs italic text-muted-foreground/70"
+        title="This Calcutta does not have a complete snapshot for the selected reporting period."
+      >
         <span>
           {cell.snapshotTeamCount > 0
             ? `Partial snapshots (${cell.snapshotTeamCount}/${cell.teamCount})`
@@ -1475,21 +1500,27 @@ function CompareCell({ cell, isComplete }: { cell: CalcuttaComparisonCell; isCom
     );
   }
 
-  const value = isComplete ? cell.totalNetReturn : cell.totalMtm;
-  const isPositive = value >= 0;
-
   return (
     <div className="flex flex-col items-end gap-1">
-      <div className={cn("font-bold text-sm", isPositive ? "text-green-600 dark:text-green-500" : "text-red-600 dark:text-red-500")}>
-        {isPositive ? "+" : ""}{formatCurrency(value)}
-      </div>
-      <div className="flex flex-col items-end gap-0.5 text-[10px] text-muted-foreground">
-        {cell.signedShare < 0 && (
-          <span className="bg-rose-100 text-rose-700 dark:bg-rose-950 dark:text-rose-300 px-1 py-0.5 rounded font-bold">
-            SHORT
-          </span>
+      <div
+        className={cn(
+          "font-bold text-sm",
+          isComplete
+            ? cell.totalNetReturn >= 0
+              ? "text-green-600 dark:text-green-400"
+              : "text-red-600 dark:text-red-400"
+            : cell.totalMtm >= 0
+              ? "text-green-600 dark:text-green-400"
+              : "text-red-600 dark:text-red-400",
         )}
-        <span title="Exposure">Exp: {formatCurrency(cell.exposure)}</span>
+      >
+        {isComplete
+          ? (cell.totalNetReturn >= 0 ? "+" : "") + formatCurrency(cell.totalNetReturn)
+          : (cell.totalMtm >= 0 ? "+" : "") + formatCurrency(cell.totalMtm)}
+      </div>
+      <div className="text-[10px] text-muted-foreground flex gap-2">
+        <span title="Exposure / Cost Basis">Exp: {formatCurrency(cell.exposure)}</span>
+        <span title="Net Teams">Tms: {cell.teamCount > 0 ? "+" : ""}{cell.teamCount.toFixed(2)}</span>
       </div>
     </div>
   );
@@ -1498,7 +1529,10 @@ function CompareCell({ cell, isComplete }: { cell: CalcuttaComparisonCell; isCom
 function CompareAggregate({ aggregate, isComplete }: { aggregate: CalcuttaComparisonAggregate; isComplete: boolean }) {
   if (!aggregate.snapshotAvailable) {
     return (
-      <div className="text-xs text-muted-foreground/60 italic flex flex-col items-end">
+      <div
+        className="flex flex-col items-end text-right text-xs italic text-muted-foreground/70"
+        title="One or more Calcutta positions do not have complete snapshots for the selected reporting period."
+      >
         <span>Partial snapshots</span>
         <span className="text-[10px]">
           {aggregate.snapshotTeamCount}/{aggregate.teamCount} positions covered
@@ -1507,42 +1541,50 @@ function CompareAggregate({ aggregate, isComplete }: { aggregate: CalcuttaCompar
     );
   }
 
-  const value = isComplete ? aggregate.totalNetReturn : aggregate.totalMtm;
-  const isPositive = value >= 0;
-
   return (
     <div className="flex flex-col items-end gap-1">
-      <div className={cn("font-bold text-sm", isPositive ? "text-green-600 dark:text-green-500" : "text-red-600 dark:text-red-500")}>
-        {isPositive ? "+" : ""}{formatCurrency(value)}
+      <div
+        className={cn(
+          "font-bold text-sm",
+          isComplete
+            ? aggregate.totalNetReturn >= 0
+              ? "text-green-600 dark:text-green-400"
+              : "text-red-600 dark:text-red-400"
+            : aggregate.totalMtm >= 0
+              ? "text-green-600 dark:text-green-400"
+              : "text-red-600 dark:text-red-400",
+        )}
+      >
+        {isComplete
+          ? (aggregate.totalNetReturn >= 0 ? "+" : "") + formatCurrency(aggregate.totalNetReturn)
+          : (aggregate.totalMtm >= 0 ? "+" : "") + formatCurrency(aggregate.totalMtm)}
       </div>
-      <div className="flex flex-col items-end gap-0.5 text-[10px] text-muted-foreground font-normal">
-        <span title="Exposure">Exp: {formatCurrency(aggregate.exposure)}</span>
+      <div className="text-[10px] text-muted-foreground flex gap-2">
+        <span title="Total Exposure">Exp: {formatCurrency(aggregate.exposure)}</span>
+        <span title="Total Teams">Tms: {aggregate.teamCount.toFixed(2)}</span>
       </div>
     </div>
   );
 }
 
-// ─── Helpers ─────────────────────────────────────────────────────────────────
-
-function Empty() {
-  return (
-    <div className="border border-dashed border-border rounded-none flex flex-col items-center justify-center py-24 text-center">
-      <p className="text-muted-foreground font-mono text-sm uppercase tracking-widest">
-        No results for this season yet
-      </p>
-      <p className="text-xs text-muted-foreground mt-2">
-        Results will appear here once the season data is entered
-      </p>
-    </div>
-  );
-}
+// ─── Loading / Empty ──────────────────────────────────────────────────────────
 
 function LoadingSkeleton() {
   return (
-    <div className="space-y-4 animate-pulse">
-      {[1, 2, 3, 4, 5, 6, 7].map((i) => (
-        <div key={i} className="h-16 bg-muted border border-border" />
+    <div className="space-y-4 animate-pulse px-4 md:px-0">
+      {[1, 2, 3].map((i) => (
+        <div key={i} className="h-16 bg-muted/50 rounded-md border border-border" />
       ))}
+    </div>
+  );
+}
+
+function Empty() {
+  return (
+    <div className="flex flex-col items-center justify-center rounded-none md:rounded-lg border-y md:border border-dashed border-border/60 bg-card/50 p-12 text-center text-muted-foreground mx-4 md:mx-0">
+      <Trophy className="h-8 w-8 mb-4 opacity-30" />
+      <p className="font-mono text-sm uppercase tracking-widest font-bold text-foreground">No results available</p>
+      <p className="mt-1 text-sm">Results will appear here once the season starts.</p>
     </div>
   );
 }

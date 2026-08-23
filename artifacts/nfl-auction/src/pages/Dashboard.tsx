@@ -192,11 +192,11 @@ export default function Dashboard() {
   if (!summary) return null;
 
   return (
-    <div className="p-4 md:p-8 space-y-8 max-w-7xl mx-auto">
+    <div className="space-y-5 px-4 pb-6 pt-4 md:space-y-8 md:p-8 max-w-7xl mx-auto">
       <header className="flex flex-col md:flex-row md:items-end justify-between gap-4">
         <div>
-          <h1 className="text-3xl md:text-5xl font-extrabold uppercase tracking-tighter mb-2">Auction Results</h1>
-          <p className="text-muted-foreground font-mono text-sm uppercase tracking-widest">
+          <h1 className="text-3xl md:text-5xl font-extrabold uppercase tracking-tighter mb-2" data-testid="text-auction-title">Auction Results</h1>
+          <p className="text-muted-foreground font-mono text-xs md:text-sm uppercase tracking-widest">
             {year} auction results
           </p>
         </div>
@@ -237,7 +237,7 @@ export default function Dashboard() {
       )}
 
       {/* Headline Stats */}
-        <div className="grid grid-cols-1 md:grid-cols-3 gap-0 border border-border bg-card">
+         <div className="grid grid-cols-1 md:grid-cols-3 gap-0 border border-border bg-card rounded-md overflow-hidden">
          <StatCard title="Total Pot" value={formatCurrency(summary.potSize)} icon={DollarSign} className="border-b md:border-b-0 md:border-r" />
          <StatCard title="Avg Bid / Team" value={formatCurrency(summary.avgBidPerTeam)} icon={Activity} className="border-b md:border-b-0 md:border-r" />
          <StatCard
@@ -257,7 +257,7 @@ export default function Dashboard() {
          {/* Auction results */}
         <div className="md:col-span-2 space-y-4">
           <div className="border border-border bg-card overflow-hidden">
-             <div className="grid grid-cols-12 bg-muted text-muted-foreground text-xs font-mono font-bold uppercase tracking-widest px-4 py-3 border-b border-border">
+             <div className="hidden md:grid grid-cols-12 bg-muted text-muted-foreground text-xs font-mono font-bold uppercase tracking-widest px-4 py-3 border-b border-border">
                <div className="col-span-2 text-center">Order</div>
                <div className="col-span-4">Team</div>
                <div className="col-span-3">Winner</div>
@@ -268,18 +268,19 @@ export default function Dashboard() {
                  key={result.teamId}
                   id={`auction-result-${result.teamId}`}
                   tabIndex={-1}
-                  className={`grid grid-cols-12 items-center px-4 py-4 border-b border-border last:border-0 scroll-mt-6 hover:bg-muted/50 transition-colors focus:outline-none ${
+                  data-testid={`row-auction-result-${result.teamId}`}
+                  className={`grid grid-cols-[2rem_minmax(0,1fr)_auto] md:grid-cols-12 items-center px-4 py-3 md:py-4 border-b border-border last:border-0 scroll-mt-6 hover:bg-muted/50 transition-colors focus:outline-none ${
                     sourceTarget.teamId === result.teamId
                       ? "bg-primary/10 ring-2 ring-primary ring-inset"
                       : ""
                   }`}
                >
-                 <div className="col-span-2 text-center font-mono font-bold">
+                  <div className="col-span-1 row-span-2 md:col-span-2 md:row-span-1 text-center font-mono font-bold">
                    {result.draftOrder ?? "—"}
                  </div>
-                 <div className="col-span-4 font-bold truncate pr-2">{result.teamName}</div>
-                 <div className="col-span-3 font-medium truncate pr-2">{result.winnerName}</div>
-                 <div className="col-span-3 text-right font-mono font-bold text-lg">
+                  <div className="col-span-1 md:col-span-4 font-bold truncate pr-2">{result.teamName}</div>
+                  <div className="col-span-1 md:col-span-3 text-xs md:text-base font-medium truncate pr-2 text-muted-foreground md:text-foreground">{result.winnerName}</div>
+                  <div className="col-span-1 col-start-3 row-span-2 md:col-span-3 md:col-start-auto md:row-span-1 text-right font-mono font-bold text-base md:text-lg">
                    {formatCurrency(result.bidAmount)}
                  </div>
                </div>

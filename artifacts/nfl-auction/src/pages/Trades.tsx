@@ -1085,19 +1085,20 @@ export default function Trades() {
   ]);
 
   return (
-    <div className="p-4 md:p-8 space-y-6 max-w-4xl mx-auto">
+    <div className="space-y-5 px-4 pb-6 pt-4 md:space-y-6 md:p-8 max-w-4xl mx-auto">
       <header className="flex flex-col md:flex-row md:items-end justify-between gap-4">
         <div>
-          <h1 className="text-3xl md:text-5xl font-extrabold uppercase tracking-tighter mb-1">Trades</h1>
-          <p className="text-muted-foreground font-mono text-sm uppercase tracking-widest">
+          <h1 className="text-3xl md:text-5xl font-extrabold uppercase tracking-tighter mb-1" data-testid="text-trades-title">Trades</h1>
+          <p className="text-muted-foreground font-mono text-xs md:text-sm uppercase tracking-widest">
             Team trades & settlements · {year}
           </p>
         </div>
-        <div className="flex items-center gap-3 flex-wrap">
+        <div className="flex w-full items-center gap-2 sm:w-auto sm:gap-3 flex-wrap">
           <AdminPanel adminKey={adminKey} onSetKey={saveAdminKey} onClearKey={clearAdminKey} />
           <button
+            data-testid="button-submit-trade"
             onClick={() => { setSubmissionError(""); setShowForm(true); }}
-            className="flex items-center gap-2 px-4 py-2 bg-primary text-primary-foreground font-mono font-bold uppercase tracking-widest text-sm hover:bg-primary/90 transition-colors h-9"
+            className="flex flex-1 items-center justify-center gap-2 px-4 py-2 bg-primary text-primary-foreground font-mono font-bold uppercase tracking-widest text-xs hover:bg-primary/90 transition-colors h-10 sm:flex-none"
           >
             <Plus className="w-4 h-4" /> Submit Trade
           </button>
@@ -1112,7 +1113,7 @@ export default function Trades() {
 
       {adminKey && (
         <div className="border border-green-300 bg-green-50 px-4 py-2 text-xs font-mono text-green-800">
-          🔓 Admin mode active for this page only — every approval or rejection requires confirmation.
+          Admin mode is active for this page only — every approval or rejection requires confirmation.
         </div>
       )}
 
@@ -1154,6 +1155,7 @@ export default function Trades() {
             <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-muted-foreground pointer-events-none" />
             <input
               type="search"
+              data-testid="input-trade-filter"
               value={search}
               onChange={(event) => setSearch(event.target.value)}
               placeholder="Filter by team, bidder, consortium, status…"

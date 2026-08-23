@@ -74,32 +74,33 @@ export default function Teams() {
   }, [teams, search, confFilter, divFilter, sortCol, sortAsc]);
 
   return (
-    <div className="p-4 md:p-8 space-y-6 max-w-7xl mx-auto">
-      <header className="flex flex-col md:flex-row md:items-end justify-between gap-4">
+    <div className="p-4 md:p-8 space-y-5 md:space-y-6 max-w-7xl mx-auto">
+      <header className="flex flex-col md:flex-row md:items-end justify-between gap-3 md:gap-4">
         <div>
-          <h1 className="text-3xl md:text-5xl font-extrabold uppercase tracking-tighter mb-2">Teams</h1>
-          <p className="text-muted-foreground font-mono text-sm uppercase tracking-widest">
+          <h1 className="text-2xl md:text-5xl font-extrabold uppercase tracking-tighter mb-1 md:mb-2">Teams</h1>
+          <p className="text-muted-foreground font-mono text-xs md:text-sm uppercase tracking-wider md:tracking-widest">
             Browse & manage {year} auction roster
           </p>
         </div>
-        <Button onClick={() => setIsCreateOpen(true)} className="uppercase font-bold tracking-wider font-mono">
+        <Button data-testid="button-add-team" onClick={() => setIsCreateOpen(true)} className="min-h-11 uppercase font-bold tracking-wider font-mono">
           <Plus className="w-4 h-4 mr-2" /> Add Team
         </Button>
       </header>
 
       {/* Filters */}
-      <div className="grid grid-cols-1 md:grid-cols-4 gap-4 p-4 border border-border bg-card">
-        <div className="relative">
+      <div className="grid grid-cols-2 md:grid-cols-4 gap-3 md:gap-4 p-3 md:p-4 border border-border bg-card">
+        <div className="relative col-span-2 md:col-span-1">
           <Search className="absolute left-3 top-3 h-4 w-4 text-muted-foreground" />
           <Input 
             placeholder="Search teams..." 
             value={search}
             onChange={(e) => setSearch(e.target.value)}
-            className="pl-9 bg-background font-mono rounded-none"
+            className="min-h-11 pl-9 bg-background font-mono rounded-none"
+            data-testid="input-search-teams"
           />
         </div>
         <Select value={confFilter} onValueChange={(v: any) => setConfFilter(v)}>
-          <SelectTrigger className="font-mono rounded-none">
+          <SelectTrigger className="min-h-11 font-mono rounded-none" data-testid="select-team-conference">
             <SelectValue placeholder="Conference" />
           </SelectTrigger>
           <SelectContent className="rounded-none">
@@ -109,7 +110,7 @@ export default function Teams() {
           </SelectContent>
         </Select>
         <Select value={divFilter} onValueChange={(v: any) => setDivFilter(v)}>
-          <SelectTrigger className="font-mono rounded-none">
+          <SelectTrigger className="min-h-11 font-mono rounded-none" data-testid="select-team-division">
             <SelectValue placeholder="Division" />
           </SelectTrigger>
           <SelectContent className="rounded-none">
@@ -123,14 +124,51 @@ export default function Teams() {
         <Button 
           variant="outline" 
           onClick={() => { setSearch(""); setConfFilter("ALL"); setDivFilter("ALL"); }}
-          className="font-mono uppercase tracking-wider rounded-none"
+          className="min-h-11 font-mono uppercase tracking-wider rounded-none"
+          data-testid="button-clear-team-filters"
         >
           <FilterX className="w-4 h-4 mr-2" /> Clear
         </Button>
       </div>
 
       {/* Table */}
-      <div className="border border-border bg-card overflow-x-auto">
+      <div className="md:hidden space-y-2">
+        {isLoading ? (
+          <div className="p-6 text-center animate-pulse border border-border bg-card">Loading teams...</div>
+        ) : filteredTeams.length === 0 ? (
+          <div className="p-6 text-center text-muted-foreground font-mono border border-border bg-card">No teams found.</div>
+        ) : (
+          filteredTeams.map((team) => (
+            <button
+              key={team.id}
+              type="button"
+              onClick={() => setEditingTeam(team)}
+              data-testid={`row-team-${team.id}`}
+              className="w-full border border-border bg-card p-4 text-left transition-colors hover:bg-muted/50 focus:outline-none focus:ring-2 focus:ring-primary"
+            >
+              <div className="flex items-start justify-between gap-3">
+                <div className="min-w-0">
+                  <div className="font-bold leading-tight">{team.name}</div>
+                  <div className="mt-2 flex items-center gap-2 font-mono text-xs">
+                    <span className={`px-2 py-0.5 text-[10px] font-bold uppercase tracking-widest border ${team.conference === "AFC" ? "text-afc border-afc/30 bg-afc/5" : "text-nfc border-nfc/30 bg-nfc/5"}`}>{team.conference}</span>
+                    <span className="text-muted-foreground">{team.division}</span>
+                  </div>
+                </div>
+                <div className="shrink-0 text-right">
+                  <div className="text-[10px] font-mono uppercase tracking-widest text-muted-foreground">Bid</div>
+                  <div className="font-mono text-lg font-bold">{team.bidAmount > 0 ? formatCurrency(team.bidAmount) : "-"}</div>
+                </div>
+              </div>
+              <div className="mt-3 border-t border-border pt-2 font-mono text-xs text-muted-foreground">
+                {team.owners.length === 0 ? "Unsold" : team.owners.map(o => o.bidderName).join(" / ")}
+                {team.owners.length > 1 && <span className="ml-2 border border-border bg-accent px-1 py-0.5 text-[10px] text-accent-foreground">SPLIT</span>}
+              </div>
+            </button>
+          ))
+        )}
+      </div>
+
+      <div className="hidden md:block border border-border bg-card overflow-x-auto">
         <div className="min-w-[800px]">
           <div className="grid grid-cols-12 bg-muted text-muted-foreground text-xs font-mono font-bold uppercase tracking-widest px-4 py-3 border-b border-border">
             <div className="col-span-3 cursor-pointer hover:text-foreground flex items-center" onClick={() => handleSort("name")}>
@@ -160,6 +198,7 @@ export default function Teams() {
                 key={team.id} 
                 onClick={() => setEditingTeam(team)}
                 className="grid grid-cols-12 items-center px-4 py-3 border-b border-border last:border-0 hover:bg-muted/50 transition-colors cursor-pointer"
+                data-testid={`row-team-${team.id}`}
               >
                 <div className="col-span-3 font-bold truncate pr-2">
                   {team.name}

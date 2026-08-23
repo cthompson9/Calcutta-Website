@@ -79,11 +79,11 @@ export default function MtmTracker() {
   const hasData = data && data.weeks.length > 0;
 
   return (
-    <div className="p-4 md:p-8 space-y-6 max-w-5xl mx-auto">
+    <div className="space-y-5 px-4 pb-6 pt-4 md:space-y-6 md:p-8 max-w-5xl mx-auto">
       <header className="flex flex-col md:flex-row md:items-end justify-between gap-4">
         <div>
-          <h1 className="text-3xl md:text-5xl font-extrabold uppercase tracking-tighter mb-1">M2M Tracker</h1>
-          <p className="text-muted-foreground font-mono text-sm uppercase tracking-widest">
+          <h1 className="text-3xl md:text-5xl font-extrabold uppercase tracking-tighter mb-1" data-testid="text-mtm-title">M2M Tracker</h1>
+          <p className="text-muted-foreground font-mono text-xs md:text-sm uppercase tracking-widest">
             Mark-to-market · week by week · {year}
           </p>
         </div>
@@ -815,7 +815,7 @@ function MtmContent({
                   Weekly Breakdown — By Consortium
                 </h3>
               </div>
-              <table className="w-full text-sm">
+              <table className="w-full min-w-[640px] text-sm">
                 <thead>
                   <tr className="border-b border-border bg-muted/60">
                     <th className="px-4 py-2 text-left text-xs font-mono font-bold uppercase tracking-widest text-muted-foreground">

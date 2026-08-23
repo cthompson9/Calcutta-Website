@@ -42,27 +42,28 @@ export default function Bidders() {
   filteredBidders.sort((a, b) => b.totalPaid - a.totalPaid);
 
   return (
-    <div className="p-4 md:p-8 space-y-6 max-w-5xl mx-auto">
-      <header className="flex flex-col md:flex-row md:items-end justify-between gap-4">
+    <div className="p-4 md:p-8 space-y-5 md:space-y-6 max-w-5xl mx-auto">
+      <header className="flex flex-col md:flex-row md:items-end justify-between gap-3 md:gap-4">
         <div>
-          <h1 className="text-3xl md:text-5xl font-extrabold uppercase tracking-tighter mb-2">Bidders</h1>
-          <p className="text-muted-foreground font-mono text-sm uppercase tracking-widest">
+          <h1 className="text-2xl md:text-5xl font-extrabold uppercase tracking-tighter mb-1 md:mb-2">Bidders</h1>
+          <p className="text-muted-foreground font-mono text-xs md:text-sm uppercase tracking-wider md:tracking-widest">
             Review {year} participants and portfolios
           </p>
         </div>
-        <Button onClick={() => setIsCreateOpen(true)} className="uppercase font-bold tracking-wider font-mono rounded-none">
+        <Button data-testid="button-add-bidder" onClick={() => setIsCreateOpen(true)} className="min-h-11 uppercase font-bold tracking-wider font-mono rounded-none">
           <Plus className="w-4 h-4 mr-2" /> Add Bidder
         </Button>
       </header>
 
-      <div className="flex gap-4 p-4 border border-border bg-card">
+      <div className="flex gap-4 p-3 md:p-4 border border-border bg-card">
         <div className="relative flex-1">
           <Search className="absolute left-3 top-3 h-4 w-4 text-muted-foreground" />
           <Input 
             placeholder="Search bidders..." 
             value={search}
             onChange={(e) => setSearch(e.target.value)}
-            className="pl-9 bg-background font-mono rounded-none"
+            className="min-h-11 pl-9 bg-background font-mono rounded-none"
+            data-testid="input-search-bidders"
           />
         </div>
       </div>
@@ -76,16 +77,17 @@ export default function Bidders() {
           filteredBidders.map(bidder => {
             const isExpanded = expandedIds.has(bidder.id);
             return (
-              <div key={bidder.id} className="border border-border bg-card">
+              <div key={bidder.id} className="border border-border bg-card" data-testid={`row-bidder-${bidder.id}`}>
                 <div 
-                  className="flex items-center justify-between p-4 cursor-pointer hover:bg-muted/30 transition-colors"
+                  className="flex flex-col gap-3 p-4 cursor-pointer hover:bg-muted/30 transition-colors md:flex-row md:items-center md:justify-between"
                   onClick={() => toggleExpand(bidder.id)}
+                  data-testid={`button-toggle-bidder-${bidder.id}`}
                 >
-                  <div className="flex items-center gap-4">
+                  <div className="flex min-w-0 items-center gap-3 md:gap-4">
                     <div className="w-10 h-10 bg-muted border border-border flex items-center justify-center shrink-0">
                       <User className="w-5 h-5 text-muted-foreground" />
                     </div>
-                    <div>
+                    <div className="min-w-0">
                       <h3 className="font-bold text-lg leading-none mb-1">{bidder.name}</h3>
                       <div className="flex items-center gap-2 mb-1">
                         <span className="text-[10px] font-mono uppercase tracking-widest text-muted-foreground">
@@ -106,8 +108,8 @@ export default function Bidders() {
                       </div>
                     </div>
                   </div>
-                  <div className="flex items-center gap-6">
-                    <div className="text-right">
+                  <div className="flex w-full items-center justify-between gap-3 border-t border-border pt-3 md:w-auto md:justify-end md:gap-6 md:border-0 md:pt-0">
+                    <div className="text-left md:text-right">
                       <div className="text-[10px] font-mono font-bold text-muted-foreground uppercase tracking-widest">Total Spent</div>
                       <div className="font-mono text-xl font-bold">{formatCurrency(bidder.totalPaid)}</div>
                     </div>
@@ -116,10 +118,11 @@ export default function Bidders() {
                       size="icon" 
                       className="rounded-none hover:bg-muted"
                       onClick={(e) => { e.stopPropagation(); setEditingBidder(bidder); }}
+                      data-testid={`button-edit-bidder-${bidder.id}`}
                     >
                       <Edit2 className="w-4 h-4" />
                     </Button>
-                    <div className="w-8 flex justify-center text-muted-foreground">
+                    <div className="w-8 flex justify-center text-muted-foreground" aria-hidden="true">
                       {isExpanded ? <ChevronDown className="w-5 h-5" /> : <ChevronRight className="w-5 h-5" />}
                     </div>
                   </div>
