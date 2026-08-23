@@ -23,8 +23,10 @@ import { formatCurrency } from "@/lib/utils";
 import { cn } from "@/lib/utils";
 import { useSeason } from "@/hooks/useSeason";
 import { ChevronDown, Trophy, Star } from "lucide-react";
+import { Link } from "wouter";
 import { bidderConsortiums, ownerLabelById } from "@/lib/ownerDisplay";
 import { ConsortiumLabel } from "@/components/ConsortiumLabel";
+import { auctionResultHref, tradeHref } from "@/lib/resultSourceLinks";
 
 type TabId = "byOwner" | "byTeam" | "compare";
 
@@ -215,6 +217,7 @@ export default function Results() {
           expandedOwner={expandedOwner}
           setExpandedOwner={setExpandedOwner}
           consortiumByBidderId={consortiumByBidderId}
+          seasonYear={year}
         />
       ) : tab === "compare" ? (
         compareSeasons.length < 2 ? (
@@ -234,6 +237,7 @@ export default function Results() {
           rows={teamResults ?? []}
           isComplete={isComplete}
           consortiumByBidderId={consortiumByBidderId}
+          seasonYear={year}
         />
       )}
     </div>
@@ -321,12 +325,14 @@ function ByOwnerView({
   expandedOwner,
   setExpandedOwner,
   consortiumByBidderId,
+  seasonYear,
 }: {
   rows: OwnerResultRow[];
   isComplete: boolean;
   expandedOwner: number | null;
   setExpandedOwner: (id: number | null) => void;
   consortiumByBidderId: Map<number, string>;
+  seasonYear: number;
 }) {
   if (!rows.length) return <Empty />;
 
@@ -528,6 +534,7 @@ function ByOwnerView({
                       team={t}
                       ownerId={row.bidderId}
                       consortiumByBidderId={consortiumByBidderId}
+                      seasonYear={seasonYear}
                     />
                   ))}
               </div>
@@ -552,6 +559,9 @@ function formatOwnershipPercent(share: number, showPlus = false): string {
 function OwnershipBreakdown({
   segments,
   owners,
+  teamId,
+  teamName,
+  seasonYear,
   consortiumByBidderId,
   showOwner = true,
   compact = false,
@@ -562,6 +572,9 @@ function OwnershipBreakdown({
     bidderName: string;
     ownershipShare: number;
   }>;
+  teamId: number;
+  teamName: string;
+  seasonYear: number;
   consortiumByBidderId: Map<number, string>;
   showOwner?: boolean;
   compact?: boolean;
@@ -595,12 +608,25 @@ function OwnershipBreakdown({
             : isAcquisition
               ? `Trade in${counterparty ? ` from ${counterparty}` : ""}`
               : `Trade out${counterparty ? ` to ${counterparty}` : ""}`;
+        const hasTradeSource = isTrade && segment.tradeId != null;
+        const href = hasTradeSource
+          ? tradeHref(seasonYear, segment.tradeId!)
+          : auctionResultHref(seasonYear, teamId);
+        const sourceDescription =
+          hasTradeSource
+            ? `View trade #${segment.tradeId} for ${teamName}`
+            : isTrade
+              ? `Trade source unavailable; view original auction result for ${teamName}`
+            : `View original auction result for ${teamName}`;
 
         return (
-          <div
+          <Link
             key={`${segment.source}-${segment.tradeId ?? "primary"}-${segment.bidderId}-${index}`}
+            href={href}
+            aria-label={sourceDescription}
+            title={sourceDescription}
             className={cn(
-              "grid grid-cols-[minmax(0,1fr)_auto] items-start gap-x-2 border px-2 py-1 text-[11px] font-mono leading-tight",
+              "grid grid-cols-[minmax(0,1fr)_auto] items-start gap-x-2 border px-2 py-1 text-[11px] font-mono leading-tight transition-colors hover:brightness-95 focus:outline-none focus:ring-2 focus:ring-primary focus:ring-inset",
               !isTrade && "border-border bg-muted/50 text-muted-foreground",
               isTrade &&
                 isAcquisition &&
@@ -617,7 +643,7 @@ function OwnershipBreakdown({
             <span className="shrink-0 font-bold">
               {formatOwnershipPercent(segment.ownershipShare, isTrade)}
             </span>
-          </div>
+          </Link>
         );
       })}
     </div>
@@ -628,10 +654,12 @@ function TeamSubRow({
   team,
   ownerId,
   consortiumByBidderId,
+  seasonYear,
 }: {
   team: TeamResultRow;
   ownerId: number;
   consortiumByBidderId: Map<number, string>;
+  seasonYear: number;
 }) {
   const ownerSegments = team.ownershipSegments.filter(
     (segment) => segment.bidderId === ownerId,
@@ -661,6 +689,9 @@ function TeamSubRow({
         <OwnershipBreakdown
           segments={ownerSegments}
           owners={ownerEntries}
+          teamId={team.teamId}
+          teamName={team.teamName}
+          seasonYear={seasonYear}
           consortiumByBidderId={consortiumByBidderId}
           showOwner={false}
           compact
@@ -842,10 +873,12 @@ function ByTeamView({
   rows,
   isComplete,
   consortiumByBidderId,
+  seasonYear,
 }: {
   rows: TeamResultRow[];
   isComplete: boolean;
   consortiumByBidderId: Map<number, string>;
+  seasonYear: number;
 }) {
   const [splitByOwner, setSplitByOwner] = useState(true);
   const [sortKey, setSortKey] = useState<BTSortKey>(isComplete ? "net" : "mtm");
@@ -1210,6 +1243,9 @@ function ByTeamView({
                       <OwnershipBreakdown
                         segments={row.ownershipSegments}
                         owners={row.owners}
+                        teamId={row.teamId}
+                        teamName={row.teamName}
+                        seasonYear={seasonYear}
                         consortiumByBidderId={consortiumByBidderId}
                       />
                     </td>
@@ -1300,6 +1336,9 @@ function ByTeamView({
                         <OwnershipBreakdown
                           segments={row.ownershipSegments}
                           owners={row.owners}
+                          teamId={row.teamId}
+                          teamName={row.teamName}
+                          seasonYear={seasonYear}
                           consortiumByBidderId={consortiumByBidderId}
                         />
                       </td>

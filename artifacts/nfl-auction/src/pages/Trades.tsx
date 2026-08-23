@@ -11,6 +11,8 @@ import { formatCurrency } from "@/lib/utils";
 import { cn } from "@/lib/utils";
 import { todayInNewYork } from "@/lib/newYorkTime";
 import { useSeason } from "@/hooks/useSeason";
+import { useLocation } from "wouter";
+import { parseResultSourceTarget } from "@/lib/resultSourceLinks";
 import { ArrowRight, Plus, Trash2, X, Lock, Unlock, Check, Ban, Search } from "lucide-react";
 import { bidderConsortiums, ownerLabelById } from "@/lib/ownerDisplay";
 import { ConsortiumLabel } from "@/components/ConsortiumLabel";
@@ -85,12 +87,14 @@ function TradeCard({
   adminKey,
   onStatusChange,
   consortiumByBidderId,
+  isHighlighted = false,
 }: {
   trade: TradeRow;
   onDelete: (id: number) => void;
   adminKey: string | null;
   onStatusChange: () => void;
   consortiumByBidderId: Map<number, string>;
+  isHighlighted?: boolean;
 }) {
   const [acting, setActing] = useState(false);
   const [adminError, setAdminError] = useState("");
@@ -118,10 +122,13 @@ function TradeCard({
 
   return (
     <div
+      id={`trade-${trade.id}`}
+      tabIndex={-1}
       className={cn(
-        "border border-border p-4 space-y-3",
+        "scroll-mt-6 border border-border p-4 space-y-3 focus:outline-none",
         trade.status === "pending" && "border-amber-200 bg-amber-50/30",
         trade.status === "rejected" && "opacity-60",
+        isHighlighted && "ring-2 ring-primary ring-offset-2 bg-primary/10",
       )}
     >
       <div className="flex items-start justify-between gap-3">
@@ -495,7 +502,11 @@ function Field({ label, children }: { label: string; children: React.ReactNode }
 // ── Page ──────────────────────────────────────────────────────────────────────
 
 export default function Trades() {
-  const { year } = useSeason();
+  const { year, setYear } = useSeason();
+  const [location] = useLocation();
+  const sourceTarget = parseResultSourceTarget(
+    typeof window === "undefined" ? location : window.location.href,
+  );
   const [showForm, setShowForm]     = useState(false);
   const [submissionError, setSubmissionError] = useState("");
   const [adminKey, setAdminKey]     = useState<string | null>(null);
@@ -550,6 +561,38 @@ export default function Trades() {
   const pending = filteredTrades.filter((t) => t.status === "pending");
   const approved = filteredTrades.filter((t) => t.status === "approved");
   const rejected = filteredTrades.filter((t) => t.status === "rejected");
+
+  useEffect(() => {
+    if (sourceTarget.seasonYear != null && sourceTarget.seasonYear !== year) {
+      setYear(sourceTarget.seasonYear);
+    }
+  }, [setYear, sourceTarget.seasonYear, year]);
+
+  useEffect(() => {
+    if (
+      sourceTarget.tradeId == null ||
+      sourceTarget.seasonYear != null && sourceTarget.seasonYear !== year ||
+      isLoading ||
+      !allTrades.some((trade) => trade.id === sourceTarget.tradeId)
+    ) {
+      return;
+    }
+
+    const frame = window.requestAnimationFrame(() => {
+      const card = document.getElementById(`trade-${sourceTarget.tradeId}`);
+      if (!card) return;
+      card.scrollIntoView({ behavior: "smooth", block: "center" });
+      card.focus({ preventScroll: true });
+    });
+    return () => window.cancelAnimationFrame(frame);
+  }, [
+    allTrades,
+    isLoading,
+    location,
+    sourceTarget.seasonYear,
+    sourceTarget.tradeId,
+    year,
+  ]);
 
   return (
     <div className="p-4 md:p-8 space-y-6 max-w-4xl mx-auto">
@@ -669,6 +712,7 @@ export default function Trades() {
                     adminKey={adminKey}
                     onStatusChange={refetch}
                     consortiumByBidderId={consortiumByBidderId}
+                    isHighlighted={sourceTarget.tradeId === t.id}
                   />
                 ))}
               </div>
@@ -690,6 +734,7 @@ export default function Trades() {
                     adminKey={adminKey}
                     onStatusChange={refetch}
                     consortiumByBidderId={consortiumByBidderId}
+                    isHighlighted={sourceTarget.tradeId === t.id}
                   />
                 ))}
               </div>
@@ -711,6 +756,7 @@ export default function Trades() {
                     adminKey={adminKey}
                     onStatusChange={refetch}
                     consortiumByBidderId={consortiumByBidderId}
+                    isHighlighted={sourceTarget.tradeId === t.id}
                   />
                 ))}
               </div>

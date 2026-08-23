@@ -1,4 +1,4 @@
-import { useState, type ReactNode } from "react";
+import { useEffect, useState, type ReactNode } from "react";
 import {
   useGetAuctionSummary,
   importDraftOrder,
@@ -8,6 +8,8 @@ import { formatCurrency } from "@/lib/utils";
 import { DollarSign, Activity, Download, Lock, Unlock, Loader2, ReceiptText } from "lucide-react";
 import { useSeason } from "@/hooks/useSeason";
 import { useQueryClient } from "@tanstack/react-query";
+import { useLocation } from "wouter";
+import { parseResultSourceTarget } from "@/lib/resultSourceLinks";
 import {
   AlertDialog,
   AlertDialogAction,
@@ -91,9 +93,13 @@ function AdminPanel({
 // ── Page ──────────────────────────────────────────────────────────────────────
 
 export default function Dashboard() {
-  const { year } = useSeason();
+  const { year, setYear } = useSeason();
+  const [location] = useLocation();
   const queryClient = useQueryClient();
   const { data: summary, isLoading: loadingSummary, refetch } = useGetAuctionSummary({ season: year });
+  const sourceTarget = parseResultSourceTarget(
+    typeof window === "undefined" ? location : window.location.href,
+  );
 
   const [adminKey, setAdminKey] = useState<string | null>(
     () => sessionStorage.getItem("nfl_admin_key"),
@@ -101,6 +107,39 @@ export default function Dashboard() {
   const [confirmOpen, setConfirmOpen] = useState(false);
   const [importing, setImporting] = useState(false);
   const [importResult, setImportResult] = useState<{ ok: true; msg: string } | { ok: false; msg: string } | null>(null);
+
+  useEffect(() => {
+    if (sourceTarget.seasonYear != null && sourceTarget.seasonYear !== year) {
+      setYear(sourceTarget.seasonYear);
+    }
+  }, [setYear, sourceTarget.seasonYear, year]);
+
+  useEffect(() => {
+    if (
+      sourceTarget.teamId == null ||
+      sourceTarget.seasonYear != null && sourceTarget.seasonYear !== year ||
+      loadingSummary ||
+      !summary ||
+      !summary.auctionResults.some((result) => result.teamId === sourceTarget.teamId)
+    ) {
+      return;
+    }
+
+    const frame = window.requestAnimationFrame(() => {
+      const row = document.getElementById(`auction-result-${sourceTarget.teamId}`);
+      if (!row) return;
+      row.scrollIntoView({ behavior: "smooth", block: "center" });
+      row.focus({ preventScroll: true });
+    });
+    return () => window.cancelAnimationFrame(frame);
+  }, [
+    loadingSummary,
+    location,
+    sourceTarget.seasonYear,
+    sourceTarget.teamId,
+    summary,
+    year,
+  ]);
 
   function saveAdminKey(key: string) {
     sessionStorage.setItem("nfl_admin_key", key);
@@ -219,7 +258,13 @@ export default function Dashboard() {
              {summary.auctionResults.map((result) => (
                <div
                  key={result.teamId}
-                 className="grid grid-cols-12 items-center px-4 py-4 border-b border-border last:border-0 hover:bg-muted/50 transition-colors"
+                  id={`auction-result-${result.teamId}`}
+                  tabIndex={-1}
+                  className={`grid grid-cols-12 items-center px-4 py-4 border-b border-border last:border-0 scroll-mt-6 hover:bg-muted/50 transition-colors focus:outline-none ${
+                    sourceTarget.teamId === result.teamId
+                      ? "bg-primary/10 ring-2 ring-primary ring-inset"
+                      : ""
+                  }`}
                >
                  <div className="col-span-2 text-center font-mono font-bold">
                    {result.draftOrder ?? "—"}

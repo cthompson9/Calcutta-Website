@@ -15,3 +15,4 @@
 - [Dated consortium reporting](dated-consortium-reporting.md) — historical reports use each Calcutta’s fixed as-of roster; current roster is always an explicit alternate view.
 - [Cross-Calcutta snapshot coverage](cross-calcutta-snapshot-coverage.md) — comparison cells must report selected-basis coverage so partial period data is never shown as complete.
 - [Atomic season backloads](atomic-season-backloads.md) — derive and validate every auctioned team inside one transaction; pool-scoped staging tables must drop at commit.
+- [Deep-link query parsing](deep-link-query-parsing.md) — Wouter location state may omit the query string; destination targeting must read the browser URL.
