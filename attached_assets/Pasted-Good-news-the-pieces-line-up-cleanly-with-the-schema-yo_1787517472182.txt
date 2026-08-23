@@ -1,0 +1,35 @@
+Good news: the pieces line up cleanly with the schema you already built. Here's the gameplan.
+
+## 1) Realized pipeline
+
+**Source: ESPN's public JSON endpoints** (`site.api.espn.com` scoreboard + standings). Free, no key, reliable, and gives you game state ("Final"), scores, and standings clincher codes (clinched berth/division/bye, eliminated). nflverse is the fallback but only updates nightly.
+
+**The marquee 2x rule forces a design decision:** you can't scrape team point differential from standings, because your adjusted pt diff ≠ NFL pt diff. You need a `games` table — one row per game with scores, week/period, `is_marquee`, and multiplier — and compute each team's adjusted pt diff by aggregating games. This is better anyway: game-level data gives you audit trail, playoff round results (winner of a divisional-round game → `div_round` flag), and idempotent re-scrapes. Send me the marquee rubric; if it's rule-based (primetime slots, division games, whatever) the scraper labels automatically, and if it's commissioner-judgment there's a small override flag on the game row.
+
+So the realized flow per run: fetch scoreboard → upsert `games` → recompute per-team aggregates (W/L/T, adjusted pt diff, playoff flags from clinchers + playoff game winners) → write `team_period_snapshots` with `basis='realized'` for the current period. Wins are period-cumulative, which the snapshot model handles naturally.
+
+## 2) MTM pipeline
+
+You've already built 80% of this — the Week 0 Kalshi capture with win ladders, playoff/conf/SB probabilities, and the log-interpolation for intermediate rounds is exactly right. What's left is: (a) schedule it, (b) write results into `team_period_snapshots` with `basis='mtm'` instead of (or alongside) `mtm_snapshots`, and (c) un-freeze the two components your Week 0 method note says are "held at 0" — MTM pt diff and 2x equity. Pt diff MTM is genuinely hard to get from Kalshi (no pt diff markets); simplest defensible approach is expected pt diff ≈ f(expected wins) fit from historical win/pt-diff correlation, or just hold it at realized-to-date + 0 expected future. Decide cheap vs. clever here — it's a small dollar component.
+
+One MTM per period is the canonical mark (e.g., Tuesday 6am ET after MNF closes the week). Intraweek marks are nice-to-have display data, not schema truth.
+
+## 3) Calc engine
+
+Your data already reveals the formula: `points = 150 banked + 10 × wins + pt-diff points + stage bonuses`, then `normalized_share = team points / Σ league points`, then `gross $ = share × pot` (Week 0 checks out: 4344.78 / .04450 ≈ $97.6k ≈ sum of 2026 bids). Net = gross − cost basis, rolled up through positions → bidders → consortiums as pure joins, exactly as designed.
+
+The engine is one function: `points(entry, period, basis)` reading snapshots, with realized flags as 0/1 and MTM probabilities as fractions — same math, two bases. Populate `payout_rules` with the per-unit rates (win = 10, pt diff rate, each stage bonus, the 2x multiplier) so March Madness reuses the engine with different rules. This also finally kills uploaded `realized_return`. I need the full points rubric from you to seed `payout_rules` — especially pt diff → points and the stage bonus values (I can partially reverse-engineer bonuses from the Week 0 `bonus_equity_points`, but confirm rather than infer).
+
+## Scheduling
+
+Your proposed windows miss Thursday night, Monday night, Saturday late-season, and the 9:30am ET international games. Better pattern, still simple: **one Replit Scheduled Deployment on `*/5` all week that exits in ~50ms unless work exists.** Each tick: check cached week schedule (refreshed nightly) → if no game is live or recently ended, exit; if yes, run the realized scrape. Games self-detect via ESPN's status field, so "scrape ~as soon as games end" happens automatically within 5 minutes of any final, any day — no window list to maintain. Add the nightly 3am full reconcile (catches stat corrections, which the NFL issues midweek) and the Tuesday 6am MTM mark. Idempotency comes free from your `import_runs` fingerprint pattern plus upsert keys on `(entry, period, basis)`.
+
+## Build order
+
+1. Points rubric → seed `payout_rules` + `sport_periods` (the backfill script already seeds periods)
+2. Calc engine + backfill 2025 into snapshots → **validate: engine output must match all 32 uploaded 2025 `realized_return` values exactly** — that's your regression gate before trusting it for 2026
+3. `games` table + realized scraper
+4. Scheduler
+5. MTM writer repointed at snapshots
+
+Step 2 is the keystone — it proves the derived model against known-good history before any live money flows through it. Send the marquee rubric and points rubric and I'll draft the Replit handoff for phases 1–2.
