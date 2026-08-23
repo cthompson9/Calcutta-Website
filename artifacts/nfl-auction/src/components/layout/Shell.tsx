@@ -9,7 +9,7 @@ import {
 import { cn } from "@/lib/utils";
 import { ReactNode } from "react";
 import { SeasonToggle } from "@/components/SeasonToggle";
-import { useSeason } from "@/hooks/useSeason";
+import { formatCalcuttaLabel, useSeason } from "@/hooks/useSeason";
 
 interface ShellProps {
   children: ReactNode;
@@ -17,7 +17,7 @@ interface ShellProps {
 
 export function Shell({ children }: ShellProps) {
   const [location] = useLocation();
-  const { year } = useSeason();
+  const { selectedCalcutta } = useSeason();
 
   const navItems = [
     { href: "/", label: "Results", icon: Trophy },
@@ -46,10 +46,10 @@ export function Shell({ children }: ShellProps) {
         <div className="px-3 py-4 border-b border-sidebar-border space-y-2">
           <div className="flex items-center justify-between px-1">
             <span className="text-[10px] text-muted-foreground font-mono font-bold uppercase tracking-widest">
-              Season
+              Calcutta
             </span>
-            <span className="text-[10px] text-muted-foreground font-mono">
-              {year}
+            <span className="min-w-0 truncate text-[10px] text-muted-foreground font-mono" title={selectedCalcutta ? formatCalcuttaLabel(selectedCalcutta) : undefined}>
+              {selectedCalcutta?.name ?? "—"}
             </span>
           </div>
           <SeasonToggle />
@@ -82,7 +82,7 @@ export function Shell({ children }: ShellProps) {
       <main className="flex-1 pb-16 md:pb-0 min-h-[100dvh] max-w-[100vw]">
         <div className="md:hidden sticky top-0 z-40 flex items-center justify-between gap-3 border-b border-border bg-background/95 px-4 py-3 backdrop-blur">
           <span className="shrink-0 text-[10px] text-muted-foreground font-mono font-bold uppercase tracking-widest">
-            Season
+            Calcutta
           </span>
           <SeasonToggle />
         </div>

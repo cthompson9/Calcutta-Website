@@ -12,6 +12,7 @@ tags:
   - name: teams
   - name: bidders
   - name: seasons
+  - name: calcuttas
   - name: results
   - name: trades
   - name: mtm
@@ -245,6 +246,21 @@ paths:
             application/json:
               schema:
                 $ref: "#/components/schemas/ErrorResponse"
+
+  /calcuttas:
+    get:
+      operationId: getCalcuttas
+      tags: [calcuttas]
+      summary: List all canonical NFL Calcuttas
+      responses:
+        "200":
+          description: Canonical NFL Calcuttas ordered newest first
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: "#/components/schemas/CalcuttaOption"
 
   /bidders/{id}:
     patch:
@@ -973,6 +989,25 @@ components:
         label:
           type: string
       required: [year, label]
+
+    CalcuttaOption:
+      type: object
+      properties:
+        id:
+          type: number
+        seasonId:
+          type: number
+        name:
+          type: string
+        sport:
+          type: string
+        year:
+          type: number
+        isActive:
+          type: boolean
+        isComplete:
+          type: boolean
+      required: [id, seasonId, name, sport, year, isActive, isComplete]
 
     Bidder:
       type: object

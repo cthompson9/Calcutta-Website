@@ -20,6 +20,7 @@ export * from './calcuttaComparisonResponse';
 export * from './calcuttaComparisonResponseCalcuttasItem';
 export * from './calcuttaComparisonResponseGroupBy';
 export * from './calcuttaComparisonRow';
+export * from './calcuttaOption';
 export * from './conferenceBreakdown';
 export * from './errorResponse';
 export * from './getAuctionSummaryParams';

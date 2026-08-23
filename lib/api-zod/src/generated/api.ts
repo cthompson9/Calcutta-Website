@@ -222,6 +222,21 @@ export const CreateBidderResponse = zod.object({
 
 
 /**
+ * @summary List all canonical NFL Calcuttas
+ */
+export const GetCalcuttasResponseItem = zod.object({
+  "id": zod.number(),
+  "seasonId": zod.number(),
+  "name": zod.string(),
+  "sport": zod.string(),
+  "year": zod.number(),
+  "isActive": zod.boolean(),
+  "isComplete": zod.boolean()
+})
+export const GetCalcuttasResponse = zod.array(GetCalcuttasResponseItem)
+
+
+/**
  * @summary Update a bidder
  */
 export const UpdateBidderParams = zod.object({

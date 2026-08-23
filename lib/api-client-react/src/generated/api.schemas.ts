@@ -28,6 +28,16 @@ export interface SeasonInput {
   label: string;
 }
 
+export interface CalcuttaOption {
+  id: number;
+  seasonId: number;
+  name: string;
+  sport: string;
+  year: number;
+  isActive: boolean;
+  isComplete: boolean;
+}
+
 export interface Bidder {
   id: number;
   name: string;

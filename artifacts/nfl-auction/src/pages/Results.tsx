@@ -32,7 +32,7 @@ import { ReleaseNotes } from "@/components/ReleaseNotes";
 type TabId = "byOwner" | "byTeam" | "compare";
 
 export default function Results() {
-  const { year, selectedSeason } = useSeason();
+  const { year } = useSeason();
   const [tab, setTab] = useState<TabId>("byOwner");
   const [expandedOwner, setExpandedOwner] = useState<number | null>(null);
   const [period, setPeriod] = useState<number | undefined>(undefined);

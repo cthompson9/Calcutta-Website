@@ -28,6 +28,7 @@ import type {
   BidderSummary,
   BidderUpdate,
   CalcuttaComparisonResponse,
+  CalcuttaOption,
   ErrorResponse,
   GetAuctionSummaryParams,
   GetBiddersParams,
@@ -845,6 +846,83 @@ export const useCreateBidder = <TError = ErrorType<ErrorResponse>,
       > => {
       return useMutation(getCreateBidderMutationOptions(options));
     }
+
+export const getGetCalcuttasUrl = () => {
+
+
+
+
+  return `/api/calcuttas`
+}
+
+/**
+ * @summary List all canonical NFL Calcuttas
+ */
+export const getCalcuttas = async ( options?: Parameters<typeof customFetch>[1]): Promise<CalcuttaOption[]> => {
+
+  return customFetch<CalcuttaOption[]>(getGetCalcuttasUrl(),
+  {
+    ...options,
+    method: 'GET'
+
+
+  }
+);}
+
+
+
+
+
+export const getGetCalcuttasQueryKey = () => {
+    return [
+    `/api/calcuttas`
+    ] as const;
+    }
+
+
+export const getGetCalcuttasQueryOptions = <TData = Awaited<ReturnType<typeof getCalcuttas>>, TError = ErrorType<unknown>>( options?: { query?:UseQueryOptions<Awaited<ReturnType<typeof getCalcuttas>>, TError, TData>, request?: SecondParameter<typeof customFetch>}
+) => {
+
+const {query: queryOptions, request: requestOptions} = options ?? {};
+
+  const queryKey =  queryOptions?.queryKey ?? getGetCalcuttasQueryKey();
+
+
+
+    const queryFn: QueryFunction<Awaited<ReturnType<typeof getCalcuttas>>> = ({ signal }) => getCalcuttas({ signal, ...requestOptions });
+
+
+
+
+
+   return  { queryKey, queryFn, ...queryOptions} as UseQueryOptions<Awaited<ReturnType<typeof getCalcuttas>>, TError, TData> & { queryKey: QueryKey }
+}
+
+export type GetCalcuttasQueryResult = NonNullable<Awaited<ReturnType<typeof getCalcuttas>>>
+export type GetCalcuttasQueryError = ErrorType<unknown>
+
+
+/**
+ * @summary List all canonical NFL Calcuttas
+ */
+
+export function useGetCalcuttas<TData = Awaited<ReturnType<typeof getCalcuttas>>, TError = ErrorType<unknown>>(
+  options?: { query?:UseQueryOptions<Awaited<ReturnType<typeof getCalcuttas>>, TError, TData>, request?: SecondParameter<typeof customFetch>}
+
+ ):  UseQueryResult<TData, TError> & { queryKey: QueryKey } {
+
+  const queryOptions = getGetCalcuttasQueryOptions(options)
+
+  const query = useQuery(queryOptions) as  UseQueryResult<TData, TError> & { queryKey: QueryKey };
+
+  return withQueryKey(query, queryOptions.queryKey);
+}
+
+
+
+
+
+
 
 export const getUpdateBidderUrl = (id: number,) => {
 
