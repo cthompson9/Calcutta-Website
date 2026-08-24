@@ -22,3 +22,4 @@
 - [Cross-sport Calcutta catalog](cross-sport-calcutta-catalog.md) — selector lists every sport; non-NFL selections deliberately show an NFL-only report state.
 - [NFL standings source adapter](nfl-standings-source-adapter.md) — nfl.com may embed playoff markers inside club-name markup; remove marker tags before name matching.
 - [External refresh scheduling](deployment-scheduling.md) — GitHub Actions triggers a guarded refresh endpoint so the Autoscale website stays as the only Replit deployment.
+- [GitHub sync authorization](github-sync-authorization.md) — use Replit’s Git pane for normal pushes when the GitHub connector cannot update refs or merge branches.
