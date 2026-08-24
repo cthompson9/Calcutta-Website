@@ -1,22 +1,27 @@
 import { timingSafeEqual } from "node:crypto";
 import { randomUUID } from "node:crypto";
 import { Router, type IRouter, type Request } from "express";
-import { and, desc, eq } from "drizzle-orm";
+import { and, eq } from "drizzle-orm";
 import { z } from "zod/v4";
 import {
   db,
-  importRunsTable,
   pool,
+  refreshJobStatesTable,
   seasonsTable,
 } from "@workspace/db";
-import { NFL_STANDINGS_SOURCE } from "../lib/nflStandingsImport";
 import {
   resolveNflStandingsRefreshSeasonYear,
   runNflStandingsRefresh,
 } from "../lib/nflStandingsRefresh";
 import {
-  loadCachedNflSchedule,
+  fetchNflSchedule,
+  isNflGameInLiveStatusWindow,
+  needsFreshNflGameStatus,
+  nflGameStatusSignature,
+  parseCachedNflSchedule,
+  shouldRefreshNflScheduleCache,
   shouldRunStandingsRefresh,
+  type NflScheduledGame,
 } from "../lib/nflSchedule";
 
 const router: IRouter = Router();
@@ -45,22 +50,91 @@ export function isJobRunnerRequest(req: Pick<Request, "headers">): boolean {
   );
 }
 
-async function lastSuccessfulStandingsRunAt(
-  seasonYear: number,
-): Promise<Date | null> {
+async function loadRefreshJobState(seasonId: number) {
   const rows = await db
-    .select({ createdAt: importRunsTable.createdAt })
-    .from(importRunsTable)
-    .innerJoin(seasonsTable, eq(seasonsTable.id, importRunsTable.seasonId))
+    .select({
+      scheduleCache: refreshJobStatesTable.scheduleCache,
+      scheduleFetchedAt: refreshJobStatesTable.scheduleFetchedAt,
+      lastGameStatusSignature: refreshJobStatesTable.lastGameStatusSignature,
+      lastSucceededAt: refreshJobStatesTable.lastSucceededAt,
+    })
+    .from(refreshJobStatesTable)
     .where(
       and(
-        eq(seasonsTable.year, seasonYear),
-        eq(importRunsTable.source, NFL_STANDINGS_SOURCE),
+        eq(refreshJobStatesTable.seasonId, seasonId),
+        eq(refreshJobStatesTable.job, "standings"),
       ),
     )
-    .orderBy(desc(importRunsTable.createdAt))
     .limit(1);
-  return rows[0]?.createdAt ?? null;
+  return rows[0] ?? null;
+}
+
+async function saveScheduleCache(
+  seasonId: number,
+  games: NflScheduledGame[],
+): Promise<void> {
+  const now = new Date();
+  await db
+    .insert(refreshJobStatesTable)
+    .values({
+      seasonId,
+      job: "standings",
+      scheduleCache: games,
+      scheduleFetchedAt: now,
+      updatedAt: now,
+    })
+    .onConflictDoUpdate({
+      target: [refreshJobStatesTable.seasonId, refreshJobStatesTable.job],
+      set: {
+        scheduleCache: games,
+        scheduleFetchedAt: now,
+        updatedAt: now,
+      },
+    });
+}
+
+async function recordSuccessfulStandingsRefresh(seasonId: number): Promise<void> {
+  const now = new Date();
+  await db
+    .insert(refreshJobStatesTable)
+    .values({
+      seasonId,
+      job: "standings",
+      lastSucceededAt: now,
+      updatedAt: now,
+    })
+    .onConflictDoUpdate({
+      target: [refreshJobStatesTable.seasonId, refreshJobStatesTable.job],
+      set: {
+        lastSucceededAt: now,
+        updatedAt: now,
+      },
+    });
+}
+
+async function recordObservedGameStatus(
+  seasonId: number,
+  statusSignature: string,
+  succeededAt: boolean,
+): Promise<void> {
+  const now = new Date();
+  await db
+    .insert(refreshJobStatesTable)
+    .values({
+      seasonId,
+      job: "standings",
+      lastGameStatusSignature: statusSignature,
+      lastSucceededAt: succeededAt ? now : undefined,
+      updatedAt: now,
+    })
+    .onConflictDoUpdate({
+      target: [refreshJobStatesTable.seasonId, refreshJobStatesTable.job],
+      set: {
+        lastGameStatusSignature: statusSignature,
+        ...(succeededAt ? { lastSucceededAt: now } : {}),
+        updatedAt: now,
+      },
+    });
 }
 
 async function withRefreshJobLock<T>(
@@ -102,19 +176,56 @@ router.post("/jobs/refresh", async (req, res): Promise<void> => {
   try {
     const locked = await withRefreshJobLock(async () => {
       const seasonYear = await resolveNflStandingsRefreshSeasonYear();
-      const lastSuccessfulRunAt = await lastSuccessfulStandingsRunAt(seasonYear);
-      const games = parsed.data.force
+      const seasonRows = await db
+        .select({ id: seasonsTable.id })
+        .from(seasonsTable)
+        .where(eq(seasonsTable.year, seasonYear))
+        .limit(1);
+      const season = seasonRows[0];
+      if (!season) throw new Error(`Season ${seasonYear} not found.`);
+
+      const refreshState = await loadRefreshJobState(season.id);
+      let cachedGames = parsed.data.force
         ? []
-        : await loadCachedNflSchedule(seasonYear, startedAtMs);
+        : parseCachedNflSchedule(refreshState?.scheduleCache);
+      let refreshedSchedule = false;
+      if (
+        !parsed.data.force &&
+        (!cachedGames ||
+          shouldRefreshNflScheduleCache(
+            refreshState?.scheduleFetchedAt ?? null,
+            startedAtMs,
+          ))
+      ) {
+        cachedGames = await fetchNflSchedule(seasonYear);
+        await saveScheduleCache(season.id, cachedGames);
+        refreshedSchedule = true;
+      }
+      const freshStatusGames =
+        !parsed.data.force && needsFreshNflGameStatus(cachedGames ?? [], startedAtMs)
+          ? refreshedSchedule
+            ? cachedGames ?? []
+            : await fetchNflSchedule(seasonYear)
+          : [];
+      const games = freshStatusGames.filter((game) =>
+        isNflGameInLiveStatusWindow(game, startedAtMs),
+      );
+      const statusSignature =
+        freshStatusGames.length > 0 ? nflGameStatusSignature(games) : null;
 
       if (
         !shouldRunStandingsRefresh({
           force: parsed.data.force,
           games,
-          lastSuccessfulRunAt,
+          lastSuccessfulRunAt: refreshState?.lastSucceededAt ?? null,
+          lastGameStatusSignature:
+            refreshState?.lastGameStatusSignature ?? null,
           nowMs: startedAtMs,
         })
       ) {
+        if (statusSignature !== null) {
+          await recordObservedGameStatus(season.id, statusSignature, false);
+        }
         return {
           job: "standings" as const,
           ran: false,
@@ -127,6 +238,11 @@ router.post("/jobs/refresh", async (req, res): Promise<void> => {
         requestedBy: "external_job_runner",
         requestId: req.headers["x-request-id"] as string | undefined ?? randomUUID(),
       });
+      if (statusSignature !== null) {
+        await recordObservedGameStatus(season.id, statusSignature, true);
+      } else {
+        await recordSuccessfulStandingsRefresh(season.id);
+      }
       return {
         job: "standings" as const,
         ran: true,

@@ -20,7 +20,8 @@ Authorization: Bearer <JOB_RUNNER_SECRET>
 {"job":"standings"}
 ```
 
-The endpoint exits quickly while no NFL game is live or recently final, unless
-the last successful standings refresh is older than 24 hours. It uses a
-non-blocking PostgreSQL advisory lock, so overlapping external ticks return
-`already-running` rather than queuing work.
+The endpoint keeps the season schedule and last successful refresh timestamp in
+shared database state. It fetches a fresh scoreboard only while a scheduled
+game can be live or recently final; otherwise it exits quickly unless standings
+have been stale for 24 hours. A non-blocking PostgreSQL advisory lock makes
+overlapping external ticks return `already-running` rather than queueing work.

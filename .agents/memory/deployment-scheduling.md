@@ -1,10 +1,10 @@
 ---
-name: Scheduled deployment separation
-description: Replit currently does not allow Autoscale and Scheduled Deployments in the same project.
+name: External refresh scheduling
+description: The Autoscale app uses an external GitHub Actions tick instead of a second Replit deployment.
 ---
 
-The NFL standings refresh must be hosted in a separate scheduled-deployment project; changing the existing NFL Auction app's deployment type would take the live website offline.
+The NFL standings refresh is request-driven: GitHub Actions calls the dedicated job endpoint every five minutes while the live NFL Auction app stays on Autoscale.
 
-**Why:** Replit's current Publishing model permits one deployment type per project, so the existing Autoscale website cannot also own the scheduled worker.
+**Why:** Replit's Publishing model cannot co-host an Autoscale website and a Scheduled Deployment in one project. An external tick preserves the live app and lets Autoscale wake only when needed.
 
-**How to apply:** Keep the web app Autoscale. Put the refresh command in a separate project with the same database and required production secrets, then configure the Eastern-Time schedules there.
+**How to apply:** Keep scheduling outside Replit. Preserve the dedicated job authorization and overlap protection; never substitute the commissioner key or reintroduce a second Replit deployment.
