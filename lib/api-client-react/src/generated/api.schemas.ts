@@ -13,6 +13,42 @@ export interface ErrorResponse {
   error: string;
 }
 
+export type NflStandingsRefreshJobInputJob = typeof NflStandingsRefreshJobInputJob[keyof typeof NflStandingsRefreshJobInputJob];
+
+
+export const NflStandingsRefreshJobInputJob = {
+  standings: 'standings',
+} as const;
+
+export interface NflStandingsRefreshJobInput {
+  job?: NflStandingsRefreshJobInputJob;
+  force?: boolean;
+}
+
+export type NflStandingsRefreshJobResponseJob = typeof NflStandingsRefreshJobResponseJob[keyof typeof NflStandingsRefreshJobResponseJob];
+
+
+export const NflStandingsRefreshJobResponseJob = {
+  standings: 'standings',
+} as const;
+
+export type NflStandingsRefreshJobResponseReason = typeof NflStandingsRefreshJobResponseReason[keyof typeof NflStandingsRefreshJobResponseReason];
+
+
+export const NflStandingsRefreshJobResponseReason = {
+  'no-games-live': 'no-games-live',
+  'already-running': 'already-running',
+  'already-current': 'already-current',
+} as const;
+
+export interface NflStandingsRefreshJobResponse {
+  job: NflStandingsRefreshJobResponseJob;
+  ran: boolean;
+  reason?: NflStandingsRefreshJobResponseReason;
+  teamsUpdated?: number;
+  durationMs: number;
+}
+
 export interface Season {
   id: number;
   year: number;

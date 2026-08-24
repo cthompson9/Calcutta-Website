@@ -1,25 +1,26 @@
-# NFL standings refresh schedule
+# NFL standings refresh via GitHub Actions
 
-The refresh command is:
+The live NFL Auction app remains an Autoscale deployment. It receives a small
+authenticated refresh request from GitHub Actions every five minutes, wakes only
+for the request, and returns to idle afterwards. This replaces the earlier
+separate-Replit-worker suggestion.
+
+The checked-in workflow is `.github/workflows/refresh.yml`. Before enabling it
+in GitHub, add these repository secrets:
+
+- `CALCUTTA_APP_URL`: the published app's base URL, without a trailing slash
+- `CALCUTTA_JOB_SECRET`: the same long random value stored as this app's
+  `JOB_RUNNER_SECRET` Replit Secret
+
+The endpoint is:
 
 ```sh
-pnpm --filter @workspace/api-server run refresh:nfl-standings
+POST /api/jobs/refresh
+Authorization: Bearer <JOB_RUNNER_SECRET>
+{"job":"standings"}
 ```
 
-The live NFL Auction app is already published as an Autoscale deployment. Replit
-does not allow an Autoscale app and Scheduled Deployments to coexist in the same
-project, so do **not** use “Change deployment type” on the live app. That would
-replace the website deployment.
-
-Create a separate Replit project for this short-lived worker, with access to the
-same database and required production secrets, and configure the worker to run
-this exact command:
-
-1. “Every day at 12:00 AM America/New_York”
-2. “Every Sunday from 12:00 PM through 11:30 PM America/New_York, every 30 minutes”
-
-Use the America/New_York wording in the scheduler so its schedule remains aligned
-with Eastern Time across daylight-saving transitions. The command resolves the
-active season, takes the same season advisory lock as an admin import, and exits
-after a successful, replay-safe fetch. A source failure exits non-zero without
-changing stored standings.
+The endpoint exits quickly while no NFL game is live or recently final, unless
+the last successful standings refresh is older than 24 hours. It uses a
+non-blocking PostgreSQL advisory lock, so overlapping external ticks return
+`already-running` rather than queuing work.

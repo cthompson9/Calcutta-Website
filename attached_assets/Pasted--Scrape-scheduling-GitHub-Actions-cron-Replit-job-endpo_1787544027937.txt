@@ -1,0 +1,188 @@
+# Scrape scheduling: GitHub Actions cron → Replit job endpoint
+
+Two parts. Part A is what you (Craig) do on GitHub — ~10 minutes, one time.
+Part B is the paste-to-Replit-agent spec for the endpoint that receives the ticks.
+Build order: Part B first (endpoint must exist before the cron has anything to hit).
+
+---
+
+## Part A — GitHub setup (you)
+
+### A1. Create the repo
+
+Create a new GitHub repo, e.g. `calcutta-cron`. It holds ONE file — no app code,
+no secrets in the file itself.
+
+**Make it PUBLIC.** This is the one counterintuitive step. On private repos,
+every workflow run bills a minimum of 1 minute against your 2,000 free
+minutes/month; a 5-minute cron is ~8,640 runs/month and blows through the free
+tier in week one. Public repos get unlimited Actions minutes. The workflow
+below contains nothing sensitive — the URL and secret live in GitHub's
+encrypted Secrets store, never in the file.
+
+### A2. Add the two secrets
+
+Repo → Settings → Secrets and variables → Actions → New repository secret:
+
+| Name | Value |
+|---|---|
+| `CALCUTTA_APP_URL` | Your published app's base URL, no trailing slash (e.g. `https://nfl-calcutta.yourname.repl.co` or custom domain) |
+| `CALCUTTA_JOB_SECRET` | A long random string. Generate with `openssl rand -hex 32`. The SAME value goes into Replit as a secret in Part B. |
+
+### A3. Add the workflow file
+
+Create `.github/workflows/refresh.yml` with exactly:
+
+```yaml
+name: Calcutta refresh
+
+on:
+  schedule:
+    # Every 5 minutes, all week. The endpoint exits in ~50ms when no games
+    # are live or recently final, so 99% of these ticks are no-ops.
+    - cron: "*/5 * * * *"
+    # Tuesday canonical MTM mark. Cron is UTC and DST shifts ET, so fire at
+    # both 10:00 and 11:00 UTC; the endpoint's per-period upsert makes the
+    # duplicate harmless year-round.
+    - cron: "0 10,11 * * 2"
+  workflow_dispatch:
+    inputs:
+      job:
+        description: "Job to run (standings | mtm)"
+        default: "standings"
+
+jobs:
+  tick:
+    runs-on: ubuntu-latest
+    timeout-minutes: 3
+    steps:
+      - name: Determine job type
+        id: job
+        run: |
+          if [ "${{ github.event_name }}" = "workflow_dispatch" ]; then
+            echo "name=${{ inputs.job }}" >> "$GITHUB_OUTPUT"
+          elif [ "${{ github.event.schedule }}" = "0 10,11 * * 2" ]; then
+            echo "name=mtm" >> "$GITHUB_OUTPUT"
+          else
+            echo "name=standings" >> "$GITHUB_OUTPUT"
+          fi
+      - name: Hit refresh endpoint
+        run: |
+          curl -fsS --max-time 120 --retry 2 --retry-delay 10 \
+            -X POST "${{ secrets.CALCUTTA_APP_URL }}/api/jobs/refresh" \
+            -H "Authorization: Bearer ${{ secrets.CALCUTTA_JOB_SECRET }}" \
+            -H "Content-Type: application/json" \
+            -d "{\"job\":\"${{ steps.job.outputs.name }}\"}"
+```
+
+### A4. Two GitHub gotchas to know about
+
+1. **Cron is approximate.** GitHub queues scheduled runs and they can start a
+   few minutes late (occasionally skipped under platform load). For "results
+   within ~5–10 minutes of a final," that's fine. It is not a metronome.
+2. **60-day auto-disable.** GitHub disables scheduled workflows in repos with
+   no activity for 60 days, and workflow runs themselves don't count as
+   activity. Any commit re-enables it. Practical fix: when you commit rubric
+   or schedule tweaks during the season you'll reset the clock naturally; set
+   a calendar reminder for the long offseason gap, or just re-enable from the
+   Actions tab if it trips. (If this annoys you, cron-job.org does the same
+   POST with zero maintenance — the endpoint doesn't care who calls it.)
+
+### A5. Verify
+
+After Part B is deployed: Actions tab → "Calcutta refresh" → Run workflow
+(manual dispatch). A green run whose curl output shows `{"ran":false,
+"reason":"no-games-live"}` (or `"ran":true` on a game day) means the whole
+chain works. Then confirm the 5-minute schedule produces runs on its own.
+
+---
+
+## Part B — Endpoint spec (paste to the Replit agent)
+
+Implement a job-trigger endpoint in the existing api-server so an external
+cron can invoke the standings refresh that already exists as the
+`refresh:nfl-standings` script (Task 64). No separate Replit project, no
+Scheduled Deployment. Code changes only; this deploys through the normal
+Publish flow once.
+
+### B1. Secret
+
+Add a new Replit secret `JOB_RUNNER_SECRET` (value supplied by Craig — same
+string as the GitHub secret). Do NOT reuse the commissioner/admin key: this
+secret must only be able to trigger refreshes, nothing else. If it ever leaks,
+the blast radius is "someone can make us re-scrape public data."
+
+### B2. Route
+
+`POST /api/jobs/refresh` in a new `artifacts/api-server/src/routes/jobs.ts`,
+mounted alongside the existing routes.
+
+- **Auth:** require `Authorization: Bearer <JOB_RUNNER_SECRET>`, constant-time
+  comparison, 401 otherwise. Follow the existing bearer-middleware pattern but
+  as a distinct middleware checking the new secret.
+- **Body:** `{ "job": "standings" | "mtm", "force"?: boolean }`. Default
+  `standings`. Unknown job → 400.
+- **Response:** always 200 on handled requests, JSON:
+  `{ job, ran, reason, periodSeq?, teamsUpdated?, durationMs }` where `ran:false`
+  carries `reason` of `"no-games-live"`, `"already-running"`, or
+  `"already-marked"`. Failures inside the scrape → 500 with the error message
+  (so the GitHub run shows red and is visible).
+
+### B3. `standings` job behavior (the every-5-minutes tick)
+
+1. **Concurrency guard first:** take a pg advisory lock (same pattern as the
+   migration runner, distinct lock key). If already held → `{ran:false,
+   reason:"already-running"}` immediately. Never queue behind a running job.
+2. **Fast exit:** consult a cached NFL week schedule (refresh the cache if
+   older than 24h) and determine whether any game is currently live or went
+   final within the last 15 minutes. If not — and the last successful
+   standings run is under 24h old — return `{ran:false,
+   reason:"no-games-live"}`. Target under ~200ms for this path; it is 99% of
+   ticks. `force:true` bypasses this check only, never the concurrency guard.
+3. **Otherwise run the refresh:** invoke the same function the
+   `refresh:nfl-standings` script uses — import and call it in-process, do NOT
+   shell out to pnpm. If that logic currently lives only in a script
+   entrypoint, extract it into an exported function the script and the route
+   both call.
+4. **Record the run** using the existing import_runs/audit pattern: timestamp,
+   job name, outcome, counts. The 24h staleness check in step 2 reads this.
+5. All writes go through the existing season-lock/transaction boundary and
+   upsert keys, exactly like every other write path. A tick that fires twice
+   must be a no-op the second time.
+
+### B4. `mtm` job behavior (the Tuesday mark)
+
+Runs the existing Kalshi MTM capture for the current period as the canonical
+weekly mark. Idempotency requirement: if a canonical mark for this period
+already exists, return `{ran:false, reason:"already-marked"}` — this is what
+makes the double-fired 10:00/11:00 UTC cron safe. Determine "current period"
+from the sport_periods calendar, not from wall-clock guesswork.
+
+### B5. Constraints
+
+- Keep any single invocation comfortably under 60 seconds end-to-end
+  (Autoscale request limits; the scoreboard fetch + upserts should be a few
+  seconds). If the nightly-style full reconcile ever grows past that, split it
+  into per-period chunks — do not raise timeouts.
+- Do not add new npm dependencies for this. Fetch, pg advisory locks, and the
+  existing Drizzle layer cover everything.
+- Do not create a Replit Scheduled Deployment or a separate project; the
+  external cron replaces both. Remove/ignore any pending instructions to that
+  effect from Task 64.
+- Tests: unit-test the auth middleware (valid/invalid/missing bearer) and the
+  fast-exit decision function (live game / recent final / stale cache / force).
+  The scrape logic itself is already covered by Task 64's tests.
+
+### B6. Verify (gates, in order)
+
+1. `pnpm run typecheck` green; new tests pass.
+2. With the API running in dev: `curl -X POST .../api/jobs/refresh` with no
+   auth → 401; with wrong bearer → 401; with correct bearer and no games live
+   → 200 `{ran:false, reason:"no-games-live"}` in well under a second.
+3. `{"job":"standings","force":true}` → 200 `{ran:true,...}`, standings rows
+   visibly updated, an import_runs/audit row written, and a second immediate
+   force call still succeeds cleanly (idempotent).
+4. Two concurrent force calls → one runs, one returns `already-running`.
+5. `{"job":"mtm"}` twice → first marks (or reports already-marked if this
+   period is marked), second returns `already-marked`.
+6. Publish, then re-run check 2 against the production URL. Report all outputs.

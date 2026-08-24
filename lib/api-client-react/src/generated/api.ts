@@ -48,6 +48,8 @@ import type {
   NflStandingsImportInput,
   NflStandingsImportPreview,
   NflStandingsImportResponse,
+  NflStandingsRefreshJobInput,
+  NflStandingsRefreshJobResponse,
   OwnerResultRow,
   PayoutRuleRow,
   PayoutRulesUpdate,
@@ -1382,6 +1384,78 @@ export const useApplyNflStandingsImport = <TError = ErrorType<ErrorResponse>,
         TContext
       > => {
       return useMutation(getApplyNflStandingsImportMutationOptions(options));
+    }
+
+export const getRefreshNflStandingsJobUrl = () => {
+
+
+
+
+  return `/api/jobs/refresh`
+}
+
+/**
+ * Requires the dedicated JOB_RUNNER_SECRET bearer token. The endpoint exits without fetching standings when no NFL game is live or recently final and the stored standings are fresh.
+ * @summary Trigger a guarded, request-driven NFL standings refresh
+ */
+export const refreshNflStandingsJob = async (nflStandingsRefreshJobInput?: NflStandingsRefreshJobInput, options?: Parameters<typeof customFetch>[1]): Promise<NflStandingsRefreshJobResponse> => {
+
+  return customFetch<NflStandingsRefreshJobResponse>(getRefreshNflStandingsJobUrl(),
+  {
+    ...options,
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json', ...options?.headers },
+    body: JSON.stringify(nflStandingsRefreshJobInput)
+  }
+);}
+
+
+
+
+
+export const getRefreshNflStandingsJobMutationOptions = <TError = ErrorType<ErrorResponse>,
+    TContext = unknown>(options?: { mutation?:UseMutationOptions<Awaited<ReturnType<typeof refreshNflStandingsJob>>, TError,{data?: BodyType<NflStandingsRefreshJobInput>}, TContext>, request?: SecondParameter<typeof customFetch>}
+): UseMutationOptions<Awaited<ReturnType<typeof refreshNflStandingsJob>>, TError,{data?: BodyType<NflStandingsRefreshJobInput>}, TContext> => {
+
+const mutationKey = ['refreshNflStandingsJob'];
+const {mutation: mutationOptions, request: requestOptions} = options ?
+      options.mutation && 'mutationKey' in options.mutation && options.mutation.mutationKey ?
+      options
+      : {...options, mutation: {...options.mutation, mutationKey}}
+      : {mutation: { mutationKey, }, request: undefined};
+
+
+
+
+      const mutationFn: MutationFunction<Awaited<ReturnType<typeof refreshNflStandingsJob>>, {data?: BodyType<NflStandingsRefreshJobInput>}> = (props) => {
+          const {data} = props ?? {};
+
+          return  refreshNflStandingsJob(data,requestOptions)
+        }
+
+
+
+
+
+
+  return  { mutationFn, ...mutationOptions }}
+
+    export type RefreshNflStandingsJobMutationResult = NonNullable<Awaited<ReturnType<typeof refreshNflStandingsJob>>>
+    export type RefreshNflStandingsJobMutationBody = BodyType<NflStandingsRefreshJobInput> | undefined
+    export type RefreshNflStandingsJobMutationError = ErrorType<ErrorResponse>
+
+    /**
+ * @summary Trigger a guarded, request-driven NFL standings refresh
+ */
+export const useRefreshNflStandingsJob = <TError = ErrorType<ErrorResponse>,
+    TContext = unknown>(options?: { mutation?:UseMutationOptions<Awaited<ReturnType<typeof refreshNflStandingsJob>>, TError,{data?: BodyType<NflStandingsRefreshJobInput>}, TContext>, request?: SecondParameter<typeof customFetch>}
+ ): UseMutationResult<
+        Awaited<ReturnType<typeof refreshNflStandingsJob>>,
+        TError,
+        {data?: BodyType<NflStandingsRefreshJobInput>},
+        TContext
+      > => {
+      return useMutation(getRefreshNflStandingsJobMutationOptions(options));
     }
 
 export const getGetResultsAvailabilityUrl = (params: GetResultsAvailabilityParams,) => {

@@ -18,6 +18,7 @@ tags:
   - name: mtm
   - name: summary
   - name: auction
+  - name: jobs
 
 paths:
   /healthz:
@@ -459,6 +460,46 @@ paths:
                 $ref: "#/components/schemas/ErrorResponse"
         "401":
           description: ADMIN_API_KEY bearer token required
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+
+  /jobs/refresh:
+    post:
+      operationId: refreshNflStandingsJob
+      tags: [jobs]
+      summary: Trigger a guarded, request-driven NFL standings refresh
+      description: Requires the dedicated JOB_RUNNER_SECRET bearer token. The endpoint exits without fetching standings when no NFL game is live or recently final and the stored standings are fresh.
+      security:
+        - JobRunnerBearerAuth: []
+      requestBody:
+        required: false
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/NflStandingsRefreshJobInput"
+      responses:
+        "200":
+          description: Completed refresh or an intentional no-op
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/NflStandingsRefreshJobResponse"
+        "400":
+          description: Invalid job request
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+        "401":
+          description: JOB_RUNNER_SECRET bearer token required
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+        "500":
+          description: Schedule or standings source failure
           content:
             application/json:
               schema:
@@ -1045,6 +1086,10 @@ components:
       type: http
       scheme: bearer
       description: Administrative bearer token supplied through ADMIN_API_KEY.
+    JobRunnerBearerAuth:
+      type: http
+      scheme: bearer
+      description: Restricted job trigger token supplied through JOB_RUNNER_SECRET.
   schemas:
     HealthStatus:
       type: object
@@ -1059,6 +1104,35 @@ components:
         error:
           type: string
       required: [error]
+
+    NflStandingsRefreshJobInput:
+      type: object
+      additionalProperties: false
+      properties:
+        job:
+          type: string
+          enum: [standings]
+          default: standings
+        force:
+          type: boolean
+          default: false
+
+    NflStandingsRefreshJobResponse:
+      type: object
+      properties:
+        job:
+          type: string
+          enum: [standings]
+        ran:
+          type: boolean
+        reason:
+          type: string
+          enum: [no-games-live, already-running, already-current]
+        teamsUpdated:
+          type: number
+        durationMs:
+          type: number
+      required: [job, ran, durationMs]
 
     Season:
       type: object

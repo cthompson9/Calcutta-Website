@@ -461,6 +461,27 @@ export const ApplyNflStandingsImportResponse = zod.object({
 
 
 /**
+ * Requires the dedicated JOB_RUNNER_SECRET bearer token. The endpoint exits without fetching standings when no NFL game is live or recently final and the stored standings are fresh.
+ * @summary Trigger a guarded, request-driven NFL standings refresh
+ */
+export const refreshNflStandingsJobBodyJobDefault = `standings`;
+export const refreshNflStandingsJobBodyForceDefault = false;
+
+export const RefreshNflStandingsJobBody = zod.object({
+  "job": zod.enum(['standings']).default(refreshNflStandingsJobBodyJobDefault),
+  "force": zod.boolean().default(refreshNflStandingsJobBodyForceDefault)
+})
+
+export const RefreshNflStandingsJobResponse = zod.object({
+  "job": zod.enum(['standings']),
+  "ran": zod.boolean(),
+  "reason": zod.enum(['no-games-live', 'already-running', 'already-current']).optional(),
+  "teamsUpdated": zod.number().optional(),
+  "durationMs": zod.number()
+})
+
+
+/**
  * @summary Latest recorded reporting periods for a season and basis
  */
 export const GetResultsAvailabilityQueryParams = zod.object({
