@@ -22,6 +22,12 @@ export interface TeamPeriodSnapshotRow {
   wins: number;
   losses: number;
   ties: number;
+  ordinaryWins: number;
+  marqueeWins: number;
+  ordinaryTies: number;
+  marqueeTies: number;
+  ordinaryPtDiff: number;
+  marqueePtDiff: number;
   ptDiff: number;
   playoffBerth: number;
   divRound: number;

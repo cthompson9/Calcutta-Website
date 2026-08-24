@@ -15,6 +15,7 @@ export * from "./sportPeriods";
 export * from "./calcuttaEntries";
 export * from "./payoutRules";
 export * from "./teamPeriodSnapshots";
+export * from "./nflGames";
 export * from "./consortiumMemberships";
 export * from "./positions";
 export * from "./refreshJobStates";

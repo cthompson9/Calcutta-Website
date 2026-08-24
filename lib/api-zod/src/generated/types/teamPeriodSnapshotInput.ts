@@ -23,6 +23,16 @@ export interface TeamPeriodSnapshotInput {
   losses?: number;
   /** @minimum 0 */
   ties?: number;
+  /** @minimum 0 */
+  ordinaryWins?: number;
+  /** @minimum 0 */
+  marqueeWins?: number;
+  /** @minimum 0 */
+  ordinaryTies?: number;
+  /** @minimum 0 */
+  marqueeTies?: number;
+  ordinaryPtDiff?: number;
+  marqueePtDiff?: number;
   ptDiff?: number;
   /**
      * @minimum 0

@@ -362,6 +362,7 @@ export type PayoutMetric = typeof PayoutMetric[keyof typeof PayoutMetric];
 
 export const PayoutMetric = {
   win: 'win',
+  tie: 'tie',
   pt_diff: 'pt_diff',
   playoff_berth: 'playoff_berth',
   div_round: 'div_round',
@@ -423,6 +424,16 @@ export interface TeamPeriodSnapshotInput {
   losses?: number;
   /** @minimum 0 */
   ties?: number;
+  /** @minimum 0 */
+  ordinaryWins?: number;
+  /** @minimum 0 */
+  marqueeWins?: number;
+  /** @minimum 0 */
+  ordinaryTies?: number;
+  /** @minimum 0 */
+  marqueeTies?: number;
+  ordinaryPtDiff?: number;
+  marqueePtDiff?: number;
   ptDiff?: number;
   /**
      * @minimum 0
@@ -484,6 +495,12 @@ export interface TeamPeriodSnapshotRow {
   wins: number;
   losses: number;
   ties: number;
+  ordinaryWins: number;
+  marqueeWins: number;
+  ordinaryTies: number;
+  marqueeTies: number;
+  ordinaryPtDiff: number;
+  marqueePtDiff: number;
   ptDiff: number;
   playoffBerth: number;
   divRound: number;

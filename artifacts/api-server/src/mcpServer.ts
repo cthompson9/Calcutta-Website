@@ -266,13 +266,13 @@ async function getOwnerAgg(bidderId: number, seasonId: number) {
         .from(teamResultsTable)
         .where(and(eq(teamResultsTable.teamId, teamId), eq(teamResultsTable.seasonId, seasonId)))
         .limit(1);
-      if (resultRows[0]) {
+      if (resultRows[0] || payoutRulesConfigured) {
         const calculated = calculatedReturns.get(teamId);
-        const realized = payoutRulesConfigured
-          ? (calculated?.realized?.grossReturn ?? 0)
+        const realized = payoutRulesConfigured && calculated?.realized
+          ? calculated.realized.grossReturn
           : parseFloat(resultRows[0].realizedReturn);
-        const mtm = payoutRulesConfigured
-          ? (calculated?.mtm?.grossReturn ?? 0)
+        const mtm = payoutRulesConfigured && calculated?.mtm
+          ? calculated.mtm.grossReturn
           : parseFloat(resultRows[0].markToMarket);
         totalReturn += realized * effectiveShare;
         totalMtm += mtm * effectiveShare;
@@ -430,8 +430,8 @@ function buildMcpServer() {
       const calculated = (await loadCalculatedTeamReturns(sid)).get(t.id);
       const payoutRulesConfigured = await hasConfiguredPayoutRules(sid);
       return text(
-        payoutRulesConfigured
-          ? (calculated?.realized?.grossReturn ?? 0)
+        payoutRulesConfigured && calculated?.realized
+          ? calculated.realized.grossReturn
           : r
             ? parseFloat(r.realizedReturn)
             : null,
@@ -453,8 +453,8 @@ function buildMcpServer() {
       const calculated = (await loadCalculatedTeamReturns(sid)).get(t.id);
       const payoutRulesConfigured = await hasConfiguredPayoutRules(sid);
       return text(
-        payoutRulesConfigured
-          ? (calculated?.mtm?.grossReturn ?? 0)
+        payoutRulesConfigured && calculated?.mtm
+          ? calculated.mtm.grossReturn
           : r
             ? parseFloat(r.markToMarket)
             : null,

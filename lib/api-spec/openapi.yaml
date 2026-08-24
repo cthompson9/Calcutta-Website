@@ -1545,6 +1545,7 @@ components:
       type: string
       enum:
         - win
+        - tie
         - pt_diff
         - playoff_berth
         - div_round
@@ -1613,6 +1614,22 @@ components:
         ties:
           type: number
           minimum: 0
+        ordinaryWins:
+          type: number
+          minimum: 0
+        marqueeWins:
+          type: number
+          minimum: 0
+        ordinaryTies:
+          type: number
+          minimum: 0
+        marqueeTies:
+          type: number
+          minimum: 0
+        ordinaryPtDiff:
+          type: number
+        marqueePtDiff:
+          type: number
         ptDiff:
           type: number
         playoffBerth:
@@ -1665,6 +1682,18 @@ components:
           type: number
         ties:
           type: number
+        ordinaryWins:
+          type: number
+        marqueeWins:
+          type: number
+        ordinaryTies:
+          type: number
+        marqueeTies:
+          type: number
+        ordinaryPtDiff:
+          type: number
+        marqueePtDiff:
+          type: number
         ptDiff:
           type: number
         playoffBerth:
@@ -1692,6 +1721,12 @@ components:
         - wins
         - losses
         - ties
+        - ordinaryWins
+        - marqueeWins
+        - ordinaryTies
+        - marqueeTies
+        - ordinaryPtDiff
+        - marqueePtDiff
         - ptDiff
         - playoffBerth
         - divRound

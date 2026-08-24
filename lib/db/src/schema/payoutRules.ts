@@ -23,7 +23,7 @@ export const payoutRulesTable = pgTable(
     uniqueIndex("payout_rules_calcutta_metric_idx").on(t.calcuttaId, t.metric),
     check(
       "payout_rules_metric_supported",
-      sql`${t.metric} IN ('win', 'pt_diff', 'playoff_berth', 'div_round', 'conf_round', 'sb_berth', 'win_super_bowl')`,
+      sql`${t.metric} IN ('win', 'tie', 'pt_diff', 'playoff_berth', 'div_round', 'conf_round', 'sb_berth', 'win_super_bowl')`,
     ),
     check("payout_rules_multiplier_non_negative", sql`${t.playoffMultiplier} >= 0`),
   ],

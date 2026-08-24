@@ -11,6 +11,7 @@ export type PayoutMetric = typeof PayoutMetric[keyof typeof PayoutMetric];
 
 export const PayoutMetric = {
   win: 'win',
+  tie: 'tie',
   pt_diff: 'pt_diff',
   playoff_berth: 'playoff_berth',
   div_round: 'div_round',

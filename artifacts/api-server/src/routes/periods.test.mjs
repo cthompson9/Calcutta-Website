@@ -133,7 +133,16 @@ describe("period snapshot reporting", { skip: !DATABASE_URL || !ADMIN_KEY }, () 
       headers,
       body: JSON.stringify({
         seasonYear,
-        rules: [{ metric: "win", dollarsPerUnit: 10, playoffMultiplier: 2 }],
+        rules: [
+          { metric: "win", dollarsPerUnit: 10, playoffMultiplier: 1 },
+          { metric: "tie", dollarsPerUnit: 5, playoffMultiplier: 1 },
+          { metric: "pt_diff", dollarsPerUnit: 1, playoffMultiplier: 1 },
+          { metric: "playoff_berth", dollarsPerUnit: 50, playoffMultiplier: 1 },
+          { metric: "div_round", dollarsPerUnit: 100, playoffMultiplier: 1 },
+          { metric: "conf_round", dollarsPerUnit: 200, playoffMultiplier: 1 },
+          { metric: "sb_berth", dollarsPerUnit: 400, playoffMultiplier: 1 },
+          { metric: "win_super_bowl", dollarsPerUnit: 800, playoffMultiplier: 1 },
+        ],
       }),
     });
     assert.equal(ruleResponse.status, 200);
@@ -158,7 +167,7 @@ describe("period snapshot reporting", { skip: !DATABASE_URL || !ADMIN_KEY }, () 
     const realized = realizedRows.find((row) => row.teamId === teamId);
     assert.deepEqual(
       { wins: realized.wins, playoffBerth: realized.playoffBerth, realizedReturn: realized.realizedReturn },
-      { wins: 1, playoffBerth: false, realizedReturn: 10 },
+      { wins: 0, playoffBerth: false, realizedReturn: 0 },
     );
     const missingSnapshotTeam = realizedRows.find((row) => row.teamId === legacyTeamId);
     assert.deepEqual(
@@ -167,14 +176,14 @@ describe("period snapshot reporting", { skip: !DATABASE_URL || !ADMIN_KEY }, () 
         realizedReturn: missingSnapshotTeam.realizedReturn,
         markToMarket: missingSnapshotTeam.markToMarket,
       },
-      { wins: 0, realizedReturn: 0, markToMarket: 0 },
+      { wins: 12, realizedReturn: 999, markToMarket: 999 },
     );
 
     const realizedAtWeekTwo = await fetch(
       `${baseUrl}/api/results?season=${seasonYear}&period=2&basis=realized`,
     );
     const weekTwoRows = await realizedAtWeekTwo.json();
-    assert.equal(weekTwoRows.find((row) => row.teamId === teamId).wins, 2);
+    assert.equal(weekTwoRows.find((row) => row.teamId === teamId).wins, 0);
 
     const mtmAtWeekOne = await fetch(
       `${baseUrl}/api/results?season=${seasonYear}&period=1&basis=mtm`,
@@ -183,7 +192,7 @@ describe("period snapshot reporting", { skip: !DATABASE_URL || !ADMIN_KEY }, () 
     const mtm = mtmRows.find((row) => row.teamId === teamId);
     assert.deepEqual(
       { wins: mtm.wins, playoffBerth: mtm.playoffBerth, markToMarket: mtm.markToMarket },
-      { wins: 0.25, playoffBerth: false, markToMarket: 2.5 },
+      { wins: 0, playoffBerth: false, markToMarket: 0 },
     );
   });
 });

@@ -673,6 +673,14 @@ export const upsertTeamPeriodSnapshotBodyLossesMin = 0;
 
 export const upsertTeamPeriodSnapshotBodyTiesMin = 0;
 
+export const upsertTeamPeriodSnapshotBodyOrdinaryWinsMin = 0;
+
+export const upsertTeamPeriodSnapshotBodyMarqueeWinsMin = 0;
+
+export const upsertTeamPeriodSnapshotBodyOrdinaryTiesMin = 0;
+
+export const upsertTeamPeriodSnapshotBodyMarqueeTiesMin = 0;
+
 export const upsertTeamPeriodSnapshotBodyPlayoffBerthMin = 0;
 export const upsertTeamPeriodSnapshotBodyPlayoffBerthMax = 1;
 
@@ -698,6 +706,12 @@ export const UpsertTeamPeriodSnapshotBody = zod.object({
   "wins": zod.number().min(upsertTeamPeriodSnapshotBodyWinsMin).optional(),
   "losses": zod.number().min(upsertTeamPeriodSnapshotBodyLossesMin).optional(),
   "ties": zod.number().min(upsertTeamPeriodSnapshotBodyTiesMin).optional(),
+  "ordinaryWins": zod.number().min(upsertTeamPeriodSnapshotBodyOrdinaryWinsMin).optional(),
+  "marqueeWins": zod.number().min(upsertTeamPeriodSnapshotBodyMarqueeWinsMin).optional(),
+  "ordinaryTies": zod.number().min(upsertTeamPeriodSnapshotBodyOrdinaryTiesMin).optional(),
+  "marqueeTies": zod.number().min(upsertTeamPeriodSnapshotBodyMarqueeTiesMin).optional(),
+  "ordinaryPtDiff": zod.number().optional(),
+  "marqueePtDiff": zod.number().optional(),
   "ptDiff": zod.number().optional(),
   "playoffBerth": zod.number().min(upsertTeamPeriodSnapshotBodyPlayoffBerthMin).max(upsertTeamPeriodSnapshotBodyPlayoffBerthMax).optional(),
   "divRound": zod.number().min(upsertTeamPeriodSnapshotBodyDivRoundMin).max(upsertTeamPeriodSnapshotBodyDivRoundMax).optional(),
@@ -723,6 +737,12 @@ export const UpsertTeamPeriodSnapshotResponse = zod.object({
   "wins": zod.number(),
   "losses": zod.number(),
   "ties": zod.number(),
+  "ordinaryWins": zod.number(),
+  "marqueeWins": zod.number(),
+  "ordinaryTies": zod.number(),
+  "marqueeTies": zod.number(),
+  "ordinaryPtDiff": zod.number(),
+  "marqueePtDiff": zod.number(),
   "ptDiff": zod.number(),
   "playoffBerth": zod.number(),
   "divRound": zod.number(),
@@ -746,7 +766,7 @@ export const getPayoutRulesResponsePlayoffMultiplierMin = 0;
 
 
 export const GetPayoutRulesResponseItem = zod.object({
-  "metric": zod.enum(['win', 'pt_diff', 'playoff_berth', 'div_round', 'conf_round', 'sb_berth', 'win_super_bowl']),
+  "metric": zod.enum(['win', 'tie', 'pt_diff', 'playoff_berth', 'div_round', 'conf_round', 'sb_berth', 'win_super_bowl']),
   "dollarsPerUnit": zod.number(),
   "playoffMultiplier": zod.number().min(getPayoutRulesResponsePlayoffMultiplierMin)
 })
@@ -765,7 +785,7 @@ export const replacePayoutRulesBodyRulesItemPlayoffMultiplierMin = 0;
 export const ReplacePayoutRulesBody = zod.object({
   "seasonYear": zod.number(),
   "rules": zod.array(zod.object({
-  "metric": zod.enum(['win', 'pt_diff', 'playoff_berth', 'div_round', 'conf_round', 'sb_berth', 'win_super_bowl']),
+  "metric": zod.enum(['win', 'tie', 'pt_diff', 'playoff_berth', 'div_round', 'conf_round', 'sb_berth', 'win_super_bowl']),
   "dollarsPerUnit": zod.number(),
   "playoffMultiplier": zod.number().min(replacePayoutRulesBodyRulesItemPlayoffMultiplierMin).default(replacePayoutRulesBodyRulesItemPlayoffMultiplierDefault)
 })).min(1)
@@ -776,7 +796,7 @@ export const replacePayoutRulesResponsePlayoffMultiplierMin = 0;
 
 
 export const ReplacePayoutRulesResponseItem = zod.object({
-  "metric": zod.enum(['win', 'pt_diff', 'playoff_berth', 'div_round', 'conf_round', 'sb_berth', 'win_super_bowl']),
+  "metric": zod.enum(['win', 'tie', 'pt_diff', 'playoff_berth', 'div_round', 'conf_round', 'sb_berth', 'win_super_bowl']),
   "dollarsPerUnit": zod.number(),
   "playoffMultiplier": zod.number().min(replacePayoutRulesResponsePlayoffMultiplierMin)
 })

@@ -97,16 +97,20 @@ function resultFromCalculatedSnapshots(
   if (!payoutRulesConfigured) return legacy;
   const selected = calculated?.[basis];
   if (!calculated || !selected) {
+    // Historical rows remain authoritative until a complete, reconciled
+    // snapshot ledger is available. Do not silently replace known returns
+    // with a zero just because a rubric was configured early.
+    if (legacy) return legacy;
     return {
       isProjectedRecord: basis === "mtm",
       wins: 0,
       losses: 0,
       ties: 0,
       ptDiff: 0,
-      playoffStatus: legacy?.playoffStatus ?? "unknown",
-      startingPoints: legacy?.startingPoints ?? "150",
-      draftOrder: legacy?.draftOrder ?? null,
-      seed: legacy?.seed ?? null,
+      playoffStatus: "unknown",
+      startingPoints: "150",
+      draftOrder: null,
+      seed: null,
       playoffBerth: false,
       divRound: false,
       confRound: false,
@@ -121,15 +125,12 @@ function resultFromCalculatedSnapshots(
   }
   const latest = selected.latest;
 
-  const useCalculatedMoney = calculated.rulesConfigured;
-  const realizedReturn = useCalculatedMoney
-    ? (calculated.realized?.grossReturn ?? 0)
-    : Number(legacy?.realizedReturn ?? 0);
-  const markToMarket = useCalculatedMoney
-    ? (basis === "mtm"
-      ? selected.grossReturn
-      : (calculated.mtm?.grossReturn ?? 0))
-    : Number(legacy?.markToMarket ?? 0);
+  // Realized and MTM coverage are independent. A valid snapshot for the
+  // selected view must never zero the other legacy financial field.
+  const realizedReturn = calculated.realized?.grossReturn
+    ?? Number(legacy?.realizedReturn ?? 0);
+  const markToMarket = calculated.mtm?.grossReturn
+    ?? Number(legacy?.markToMarket ?? 0);
   const netReturn = realizedReturn - cost;
   return {
     isProjectedRecord: basis === "mtm",

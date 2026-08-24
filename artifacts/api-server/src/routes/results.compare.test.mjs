@@ -162,12 +162,16 @@ describe("cross-Calcutta return comparison", { skip: !DATABASE_URL }, () => {
       .select({ id: calcuttasTable.id })
       .from(calcuttasTable)
       .where(eq(calcuttasTable.seasonId, seasonIds.get(years[1])));
-    await db.insert(payoutRulesTable).values({
+    await db.insert(payoutRulesTable).values([
+      ["win", "10.00"], ["tie", "5.00"], ["pt_diff", "1.00"],
+      ["playoff_berth", "50.00"], ["div_round", "100.00"],
+      ["conf_round", "200.00"], ["sb_berth", "400.00"], ["win_super_bowl", "800.00"],
+    ].map(([metric, dollarsPerUnit]) => ({
       calcuttaId: newerCalcutta.id,
-      metric: "win",
-      dollarsPerUnit: "10.00",
+      metric,
+      dollarsPerUnit,
       playoffMultiplier: "1.00",
-    });
+    })));
     ({ server, baseUrl } = await startServer(app));
   });
 
@@ -269,8 +273,8 @@ describe("cross-Calcutta return comparison", { skip: !DATABASE_URL }, () => {
     const newerCell = row.calcuttas[1];
     assert.equal(newerCell.throughPeriod, 2);
     assert.equal(newerCell.snapshotAvailable, false);
-    assert.equal(newerCell.snapshotTeamCount, 1);
-    assert.equal(newerCell.totalRealizedReturn, 20);
+    assert.equal(newerCell.snapshotTeamCount, 0);
+    assert.equal(newerCell.totalRealizedReturn, 0);
     assert.equal(row.aggregate.snapshotAvailable, false);
 
     const latestResponse = await fetch(
@@ -278,9 +282,9 @@ describe("cross-Calcutta return comparison", { skip: !DATABASE_URL }, () => {
     );
     const latestComparison = await latestResponse.json();
     const latestRow = latestComparison.rows.find((item) => item.bidderId === bidder.id);
-    assert.equal(latestRow.calcuttas[1].throughPeriod, 2);
+    assert.equal(latestRow.calcuttas[1].throughPeriod, null);
     assert.equal(latestRow.calcuttas[1].snapshotAvailable, false);
-    assert.equal(latestRow.calcuttas[1].snapshotTeamCount, 1);
+    assert.equal(latestRow.calcuttas[1].snapshotTeamCount, 0);
   });
 
   test("rejects a selected season without a canonical NFL Calcutta", async () => {

@@ -2,6 +2,7 @@ import { sql } from "drizzle-orm";
 import { db } from "./index";
 import {
   nflStandingsStatusMigration,
+  nflPayoutsMigration,
   ownerPositionsMigration,
   refreshJobStatesMigration,
   refreshJobStatusSignatureMigration,
@@ -12,6 +13,7 @@ const migrations = [
   nflStandingsStatusMigration,
   refreshJobStatesMigration,
   refreshJobStatusSignatureMigration,
+  nflPayoutsMigration,
 ] as const;
 
 /**
