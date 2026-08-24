@@ -21,3 +21,4 @@
 - [OpenAPI numeric fields](openapi-numeric-fields.md) — this workspace’s generated Zod client requires `number`, not OpenAPI `integer`, for new response fields.
 - [Cross-sport Calcutta catalog](cross-sport-calcutta-catalog.md) — selector lists every sport; non-NFL selections deliberately show an NFL-only report state.
 - [NFL standings source adapter](nfl-standings-source-adapter.md) — nfl.com may embed playoff markers inside club-name markup; remove marker tags before name matching.
+- [Scheduled deployment separation](deployment-scheduling.md) — Replit currently requires the standings refresh worker to live in a separate project from the Autoscale website.
