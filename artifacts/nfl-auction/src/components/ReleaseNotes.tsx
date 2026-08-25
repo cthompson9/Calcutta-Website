@@ -31,9 +31,9 @@ export const releaseNotes: ReleaseNote[] = [
           "Every Results view now preserves signed long and short ownership so exposure and returns reflect the actual position.",
       },
       {
-        title: "Switch return views more easily",
+        title: "Returns are easier to read",
         description:
-          "Use Ctrl + [ to return to Results after following a source link, while a streamlined returns engine makes it easier to toggle between live Mark-to-Market and realized results.",
+          "Consortium and comparison standings now use net MTM, while team reporting keeps realized Gross/Net, net MTM, and breakeven together.",
       },
     ],
   },

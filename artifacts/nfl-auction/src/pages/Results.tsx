@@ -63,9 +63,11 @@ export default function Results() {
   const [tab, setTab] = useState<TabId>("byOwner");
   const [expandedOwner, setExpandedOwner] = useState<number | null>(null);
   const [period, setPeriod] = useState<number | undefined>(undefined);
-  const [basis, setBasis] = useState<"realized" | "mtm">("mtm");
   const [compareSeasons, setCompareSeasons] = useState<number[]>([]);
   const [compareGroupBy, setCompareGroupBy] = useState<"bidder" | "consortium">("consortium");
+  const teamBasis = "realized" as const;
+  const portfolioBasis = "mtm" as const;
+  const basis = tab === "byTeam" ? teamBasis : portfolioBasis;
 
   const { data: periods } = useGetSportPeriods({ sport: "NFL" });
   const { data: allSeasons } = useGetSeasons();
@@ -95,11 +97,11 @@ export default function Results() {
   }, [allSeasons, compareSeasons.length]);
 
   const { data: teamResults, isLoading: loadingTeams } = useGetResults(
-    { season: year, period: selectedPeriod, basis },
+    { season: year, period: selectedPeriod, basis: teamBasis },
     {
       query: {
         enabled: tab === "byTeam" && (period != null || availability !== undefined),
-        queryKey: getGetResultsQueryKey({ season: year, period: selectedPeriod, basis }),
+        queryKey: getGetResultsQueryKey({ season: year, period: selectedPeriod, basis: teamBasis }),
       },
     },
   );
@@ -107,7 +109,7 @@ export default function Results() {
     {
       season: year,
       period: selectedPeriod,
-      basis,
+      basis: portfolioBasis,
     },
     {
       query: {
@@ -115,7 +117,7 @@ export default function Results() {
         queryKey: getGetResultsByOwnerQueryKey({
           season: year,
           period: selectedPeriod,
-          basis,
+          basis: portfolioBasis,
         }),
       },
     },
@@ -127,14 +129,14 @@ export default function Results() {
         : undefined
       : availability?.previousPeriod ?? undefined;
   const { data: previousOwnerResults } = useGetResultsByOwner(
-    { season: year, period: previousPeriod, basis },
+    { season: year, period: previousPeriod, basis: portfolioBasis },
     {
       query: {
         enabled: tab === "byOwner" && previousPeriod != null,
         queryKey: getGetResultsByOwnerQueryKey({
           season: year,
           period: previousPeriod,
-          basis,
+          basis: portfolioBasis,
         }),
       },
     },
@@ -170,7 +172,7 @@ export default function Results() {
   const compareParams = {
     seasons: compareSeasons.join(","),
     period,
-    basis,
+    basis: portfolioBasis,
     groupBy: compareGroupBy,
   };
   const { data: compareResults, isLoading: loadingCompare } = useGetResultsCompare(
@@ -188,7 +190,9 @@ export default function Results() {
         ? loadingOwners
         : loadingCompare;
 
-  const isComplete = basis === "realized";
+  // Consortium and comparison views are always live net-MTM reports. By Team
+  // receives realized snapshots so its mixed financial columns stay stable.
+  const isComplete = false;
   const selectedPeriodLabel = period == null
     ? "latest available period"
     : periods?.find((item) => item.sequence === period)?.label ?? `Period ${period}`;
@@ -202,7 +206,7 @@ export default function Results() {
             Calcutta Returns
           </h1>
           <p className="text-muted-foreground font-mono text-xs md:text-sm uppercase tracking-widest" data-testid="text-report-subtitle">
-            {basis === "mtm" ? "Mark-to-market" : "Realized returns"} · {selectedPeriodLabel} · {year} season
+            {tab === "byTeam" ? "Realized + net MTM" : "Net MTM"} · {selectedPeriodLabel} · {year} season
           </p>
         </div>
         <WeekZeroPointsControl year={year} />
@@ -235,23 +239,6 @@ export default function Results() {
               </div>
             </div>
           </label>
-          <div className="flex rounded-md border border-border/60 p-0.5 bg-muted/50" data-testid="controls-basis">
-            {(["mtm", "realized"] as const).map((value) => (
-              <button
-                key={value}
-                data-testid={`button-basis-${value}`}
-                onClick={() => setBasis(value)}
-                className={cn(
-                  "flex-1 sm:flex-none rounded-sm px-3 py-1.5 text-[10px] md:text-xs font-mono font-bold uppercase tracking-widest transition-colors",
-                  basis === value
-                    ? "bg-background text-foreground shadow-sm border border-border/50"
-                    : "text-muted-foreground hover:text-foreground",
-                )}
-              >
-                {value === "mtm" ? "Mark to market" : "Realized"}
-              </button>
-            ))}
-          </div>
           {tab === "compare" && (
             <div className="flex rounded-md border border-border/60 p-0.5 bg-muted/50">
               {(["consortium", "bidder"] as const).map((value) => (
@@ -517,17 +504,16 @@ type CommandSortKey =
   | "movement";
 
 function commandReturn(row: OwnerResultRow, isComplete: boolean): number {
-  return isComplete ? row.totalNetReturn : row.totalNetMtm;
+  return row.totalNetMtm;
 }
 
 function commandMarketValue(row: OwnerResultRow, isComplete: boolean): number {
-  return isComplete ? row.totalRealizedReturn : row.totalMtm;
+  return row.totalMtm;
 }
 
 function commandReturnPct(row: OwnerResultRow, isComplete: boolean): number {
-  if (isComplete) return row.netPctReturn * 100;
   return Math.abs(row.totalCost) > 0.005
-    ? (commandReturn(row, false) / Math.abs(row.totalCost)) * 100
+    ? (row.totalNetMtm / Math.abs(row.totalCost)) * 100
     : 0;
 }
 
@@ -813,14 +799,14 @@ function DesktopResultsCommandCenter({
         </div>
         <div className="grid gap-0 divide-y border-t border-border sm:grid-cols-3 sm:divide-x sm:divide-y-0">
           <CommandCallout
-            label="Top return"
+            label="Top net MTM"
             owner={leader}
             value={leader ? commandReturn(leader, isComplete) : 0}
             isComplete={isComplete}
             consortiumByBidderId={consortiumByBidderId}
           />
           <CommandCallout
-            label="Worst return"
+            label="Worst net MTM"
             owner={worst}
             value={worst ? commandReturn(worst, isComplete) : 0}
             isComplete={isComplete}
@@ -873,9 +859,9 @@ function DesktopResultsCommandCenter({
                   <th className="w-12 px-4 py-3 text-center"><span className="sr-only">Rank</span>#</th>
                   <th className="px-3 py-3 text-left"><SortButton label="Consortium" sort="return" /></th>
                   <th className="px-3 py-3 text-right"><SortButton label="Cost basis" sort="cost" /></th>
-                  <th className="px-3 py-3 text-right"><SortButton label="Market value" sort="marketValue" /></th>
-                  <th className="px-3 py-3 text-right"><SortButton label="Return" sort="return" /></th>
-                  <th className="px-3 py-3 text-right"><SortButton label="Return %" sort="returnPct" /></th>
+                <th className="px-3 py-3 text-right"><SortButton label="MTM gross" sort="marketValue" /></th>
+                <th className="px-3 py-3 text-right"><SortButton label="Net MTM" sort="return" /></th>
+                <th className="px-3 py-3 text-right"><SortButton label="MTM %" sort="returnPct" /></th>
                   <th className="px-3 py-3 text-right"><SortButton label="Move" sort="movement" /></th>
                   <th className="w-10 px-3 py-3 text-right"><span className="sr-only">Details</span></th>
                 </tr>
@@ -1138,12 +1124,12 @@ function DesktopOwnerDetail({
         <div className="grid grid-cols-2 gap-3">
           <DetailMetric label="Cost basis" value={formatCurrency(owner.totalCost)} />
           <DetailMetric
-            label={isComplete ? "Net return" : "MTM return"}
+            label="Net MTM"
             value={signedCurrency(commandReturn(owner, isComplete))}
             tone={commandReturn(owner, isComplete) >= 0 ? "positive" : "negative"}
           />
-          <DetailMetric label="Market value" value={formatCurrency(commandMarketValue(owner, isComplete))} />
-          <DetailMetric label="Return %" value={signedPercent(commandReturnPct(owner, isComplete))} tone={commandReturnPct(owner, isComplete) >= 0 ? "positive" : "negative"} />
+          <DetailMetric label="MTM gross" value={formatCurrency(commandMarketValue(owner, isComplete))} />
+          <DetailMetric label="MTM %" value={signedPercent(commandReturnPct(owner, isComplete))} tone={commandReturnPct(owner, isComplete) >= 0 ? "positive" : "negative"} />
         </div>
 
         <section>
@@ -1183,10 +1169,17 @@ function DesktopOwnerDetail({
                         {formatOwnershipPercent(position, true)}
                       </span>
                     </div>
-                    <div className="mt-1 flex items-center justify-between gap-2 font-mono text-[10px]">
-                      <span className="text-muted-foreground">Basis {formatCurrency(team.cost)}</span>
-                      <span className={team.markToMarket >= 0 ? "text-emerald-600 dark:text-emerald-400" : "text-rose-600 dark:text-rose-400"}>
-                        {formatCurrency(team.markToMarket)} mark
+                    <div className="mt-1 grid grid-cols-2 gap-x-3 gap-y-1 font-mono text-[10px]">
+                      <span className="text-muted-foreground">Cost {formatCurrency(team.cost)}</span>
+                      <span className="text-muted-foreground">Gross {formatCurrency(team.realizedReturn)}</span>
+                      <span className={team.netReturn >= 0 ? "text-emerald-600 dark:text-emerald-400" : "text-rose-600 dark:text-rose-400"}>
+                        Net {signedCurrency(Number(team.netReturn))}
+                      </span>
+                      <span className={team.netMtm >= 0 ? "text-emerald-600 dark:text-emerald-400" : "text-rose-600 dark:text-rose-400"}>
+                        MTM {signedCurrency(Number(team.netMtm))}
+                      </span>
+                      <span className="col-span-2 text-muted-foreground">
+                        Realized breakeven {team.ptsToBreakeven == null ? "—" : `${team.ptsToBreakeven.toLocaleString()} pts`}
                       </span>
                     </div>
                     <div className="mt-1 flex gap-3 font-mono text-[10px]">
@@ -1288,14 +1281,6 @@ function calculateExposure(row: OwnerResultRow): number {
   return Math.round(exposure * 100) / 100;
 }
 
-function calculateTeamExposure(team: TeamResultRow): number {
-  const position = team.owners[0]?.ownershipShare ?? 0;
-  if (Math.abs(position) < 0.00005) return 0;
-
-  const exposure = position > 0 ? team.cost : -team.cost;
-  return Math.round(exposure * 100) / 100;
-}
-
 type SignedTeamPosition = {
   bidderId: number;
   bidderName: string;
@@ -1336,7 +1321,7 @@ const OWNER_SUMMARY_GRID =
 const OWNER_SUMMARY_COMPLETE_GRID =
   "grid-cols-[2rem_minmax(0,1fr)_auto_2rem] md:grid-cols-[2.5rem_minmax(14rem,22rem)_minmax(0,1fr)_4.5rem_8rem_8rem_8rem_2.5rem]";
 const OWNER_TEAM_GRID =
-  "grid-cols-[1fr_auto] md:grid-cols-[minmax(0,1.2fr)_minmax(0,1fr)_6.5rem_8rem_8rem]";
+  "grid-cols-[1fr_auto] md:grid-cols-[minmax(10rem,1.2fr)_minmax(0,1fr)_6rem_6rem_6rem_6rem_6rem_6rem]";
 
 function ByOwnerView({
   rows,
@@ -1356,9 +1341,7 @@ function ByOwnerView({
   if (!rows.length) return <Empty />;
 
   // Always sort by MTM net return — that's the live standing metric
-  const sorted = [...rows].sort((a, b) =>
-    isComplete ? b.totalNetReturn - a.totalNetReturn : b.totalNetMtm - a.totalNetMtm,
-  );
+  const sorted = [...rows].sort((a, b) => b.totalNetMtm - a.totalNetMtm);
 
   return (
     <div className="space-y-3">
@@ -1390,7 +1373,7 @@ function ByOwnerView({
           </>
         ) : (
           <>
-            <div className="text-right font-bold text-foreground">MTM Return</div>
+            <div className="text-right font-bold text-foreground">Net MTM</div>
             <div className="text-right">Exposure</div>
           </>
         )}
@@ -1401,7 +1384,7 @@ function ByOwnerView({
         {sorted.map((row, idx) => {
           const isExpanded = expandedOwner === row.bidderId;
           const isLeader = idx === 0;
-          const isWinner = isLeader && isComplete && row.totalNetReturn > 0;
+          const isWinner = isLeader && row.totalNetMtm > 0;
           return (
             <div
               key={row.bidderId}
@@ -1523,7 +1506,7 @@ function ByOwnerView({
                         <div className="font-bold">{formatCurrency(calculateExposure(row))}</div>
                       </div>
                       <div>
-                        <div className="text-muted-foreground uppercase tracking-widest text-[10px]">Proj. ROI</div>
+                        <div className="text-muted-foreground uppercase tracking-widest text-[10px]">MTM ROI</div>
                         <div className="font-bold">
                           {calculateExposure(row) !== 0
                             ? ((row.totalNetMtm / Math.abs(calculateExposure(row))) * 100).toFixed(1) + "%"
@@ -1545,10 +1528,13 @@ function ByOwnerView({
                     )}
                   >
                     <div>Team</div>
-                    <div>Type</div>
+                    <div>Ownership</div>
                     <div className="text-right">Net Position</div>
-                    <div className="text-right">MTM Return</div>
-                    <div className="text-right">Exposure</div>
+                    <div className="text-right">Cost</div>
+                    <div className="text-right">Gross</div>
+                    <div className="text-right">Net</div>
+                    <div className="text-right">Net MTM</div>
+                    <div className="text-right">Pts to BE</div>
                   </div>
                   {[...row.teams]
                     .sort((a, b) => b.markToMarket - a.markToMarket)
@@ -1706,11 +1692,6 @@ function TeamSubRow({
             {team.conference}
           </span>
         </div>
-        {team.ptsToBreakeven != null && (
-          <div className="mt-1 font-mono text-[10px] uppercase tracking-widest text-muted-foreground">
-            {team.ptsToBreakeven.toLocaleString()} pts to breakeven
-          </div>
-        )}
       </div>
 
       {/* Mobile right-aligned stack */}
@@ -1718,8 +1699,8 @@ function TeamSubRow({
         <div className={cn("font-mono text-sm font-bold", netPosition >= 0 ? "text-sky-700 dark:text-sky-400" : "text-rose-600 dark:text-rose-400")}>
           {formatOwnershipPercent(netPosition, true)}
         </div>
-        <div className={cn("font-mono text-xs mt-0.5", team.markToMarket >= 0 ? "text-green-600 dark:text-green-400" : "text-red-600 dark:text-red-400")}>
-          {team.markToMarket >= 0 ? "+" : ""}{formatCurrency(team.markToMarket)}
+        <div className={cn("font-mono text-xs mt-0.5", team.netMtm >= 0 ? "text-green-600 dark:text-green-400" : "text-red-600 dark:text-red-400")}>
+          {signedCurrency(Number(team.netMtm))}
         </div>
       </div>
 
@@ -1735,6 +1716,12 @@ function TeamSubRow({
           compact
         />
       </div>
+      <div className="col-span-2 grid grid-cols-2 gap-x-4 gap-y-1 border-t border-border/40 pt-2 text-[10px] font-mono md:hidden">
+        <span className="text-muted-foreground">Cost <strong className="text-foreground">{formatCurrency(team.cost)}</strong></span>
+        <span className="text-muted-foreground">Gross <strong className="text-foreground">{formatCurrency(team.realizedReturn)}</strong></span>
+        <span className="text-muted-foreground">Net <strong className={team.netReturn >= 0 ? "text-green-600 dark:text-green-400" : "text-red-600 dark:text-red-400"}>{signedCurrency(Number(team.netReturn))}</strong></span>
+        <span className="text-muted-foreground">Breakeven <strong className="text-foreground">{team.ptsToBreakeven == null ? "—" : `${team.ptsToBreakeven.toLocaleString()} pts`}</strong></span>
+      </div>
 
       <div
         className={cn(
@@ -1744,19 +1731,20 @@ function TeamSubRow({
       >
         {formatOwnershipPercent(netPosition, true)}
       </div>
-      <div
-        className={cn(
-          "hidden md:block text-right font-mono text-sm",
-          team.markToMarket >= 0 ? "text-green-600 dark:text-green-400" : "text-red-600 dark:text-red-400",
-        )}
-      >
-        {team.markToMarket !== 0
-          ? (team.markToMarket >= 0 ? "+" : "") +
-            formatCurrency(team.markToMarket)
-          : "—"}
+      <div className="hidden md:block text-right font-mono text-sm text-muted-foreground">
+        {formatCurrency(team.cost)}
       </div>
       <div className="hidden md:block text-right font-mono text-sm text-muted-foreground">
-        {formatCurrency(calculateTeamExposure(team))}
+        {formatCurrency(team.realizedReturn)}
+      </div>
+      <div className={cn("hidden md:block text-right font-mono text-sm", team.netReturn >= 0 ? "text-green-600 dark:text-green-400" : "text-red-600 dark:text-red-400")}>
+        {signedCurrency(Number(team.netReturn))}
+      </div>
+      <div className={cn("hidden md:block text-right font-mono text-sm", team.netMtm >= 0 ? "text-green-600 dark:text-green-400" : "text-red-600 dark:text-red-400")}>
+        {signedCurrency(Number(team.netMtm))}
+      </div>
+      <div className="hidden md:block text-right font-mono text-sm text-muted-foreground">
+        {team.ptsToBreakeven == null ? "—" : `${team.ptsToBreakeven.toLocaleString()} pts`}
       </div>
     </div>
   );
@@ -2225,10 +2213,10 @@ function ByTeamView({
                 <SH label="Cost" k="cost" />
               </th>
               <th className="px-4 py-3 text-right">
-                <SH label="Gross" k="gross" />
+                <SH label="Realized Gross" k="gross" />
               </th>
               <th className="px-4 py-3 text-right">
-                <SH label="Net" k="net" />
+                <SH label="Realized Net" k="net" />
               </th>
               <th className="px-4 md:px-5 py-3 text-right">
                 <SH label="MTM" k="mtm" />
@@ -2449,9 +2437,9 @@ function CompareView({
 }) {
   if (!response || !response.rows.length) return <Empty />;
 
-  // Sort rows by aggregate MTM or Net return
-  const sorted = [...response.rows].sort((a, b) =>
-    isComplete ? b.aggregate.totalNetReturn - a.aggregate.totalNetReturn : b.aggregate.totalNetMtm - a.aggregate.totalNetMtm
+  // Comparison is deliberately live: all rows rank by cost-adjusted MTM.
+  const sorted = [...response.rows].sort(
+    (a, b) => b.aggregate.totalNetMtm - a.aggregate.totalNetMtm,
   );
 
   return (
@@ -2521,14 +2509,14 @@ function CompareCell({ cell, isComplete }: { cell: CalcuttaComparisonCell; isCom
             ? cell.totalNetReturn >= 0
               ? "text-green-600 dark:text-green-400"
               : "text-red-600 dark:text-red-400"
-            : cell.totalMtm >= 0
+            : cell.totalNetMtm >= 0
               ? "text-green-600 dark:text-green-400"
               : "text-red-600 dark:text-red-400",
         )}
       >
         {isComplete
           ? (cell.totalNetReturn >= 0 ? "+" : "") + formatCurrency(cell.totalNetReturn)
-          : (cell.totalMtm >= 0 ? "+" : "") + formatCurrency(cell.totalMtm)}
+          : signedCurrency(cell.totalNetMtm)}
       </div>
       <div className="text-[10px] text-muted-foreground flex gap-2">
         <span title="Exposure / Cost Basis">Exp: {formatCurrency(cell.exposure)}</span>
@@ -2562,14 +2550,14 @@ function CompareAggregate({ aggregate, isComplete }: { aggregate: CalcuttaCompar
             ? aggregate.totalNetReturn >= 0
               ? "text-green-600 dark:text-green-400"
               : "text-red-600 dark:text-red-400"
-            : aggregate.totalMtm >= 0
+            : aggregate.totalNetMtm >= 0
               ? "text-green-600 dark:text-green-400"
               : "text-red-600 dark:text-red-400",
         )}
       >
         {isComplete
           ? (aggregate.totalNetReturn >= 0 ? "+" : "") + formatCurrency(aggregate.totalNetReturn)
-          : (aggregate.totalMtm >= 0 ? "+" : "") + formatCurrency(aggregate.totalMtm)}
+          : signedCurrency(aggregate.totalNetMtm)}
       </div>
       <div className="text-[10px] text-muted-foreground flex gap-2">
         <span title="Total Exposure">Exp: {formatCurrency(aggregate.exposure)}</span>
