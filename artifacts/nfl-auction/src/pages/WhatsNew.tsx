@@ -96,6 +96,11 @@ export default function WhatsNew() {
               <div>Authorization: Bearer &lt;MCP_API_KEY&gt;</div>
               <div className="mt-1 text-muted-foreground">Endpoint: /api/mcp</div>
             </div>
+            <p className="border-l-2 border-primary pl-3 font-medium text-foreground">
+              MCP connections require only the MCP API key. Do not use or share the
+              ADMIN_API_KEY; it is reserved for commissioner-only write tools after
+              the MCP connection is established.
+            </p>
             <p>
               For direct API access, use this app&apos;s base URL plus the relevant{" "}
               <code className="border border-border bg-muted px-1.5 py-0.5 font-mono text-xs text-foreground">
