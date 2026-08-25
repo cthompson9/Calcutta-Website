@@ -81,6 +81,10 @@ export default function Results() {
     },
   );
   const selectedPeriod = period ?? availability?.latestPeriod ?? undefined;
+  const baselineMissing =
+    (tab === "byOwner" || tab === "byTeam") &&
+    availability !== undefined &&
+    availability.latestPeriod == null;
 
   useEffect(() => {
     if (allSeasons && compareSeasons.length === 0) {
@@ -317,6 +321,8 @@ export default function Results() {
       <div className="px-0 md:px-0">
         {isLoading ? (
           <LoadingSkeleton />
+        ) : baselineMissing ? (
+          <WeekZeroBaselineNotice year={year} />
         ) : tab === "byOwner" ? (
           <>
             <div className="hidden md:block">
@@ -488,6 +494,27 @@ function WeekZeroPointsControl({ year }: { year: number }) {
   );
 }
 
+function WeekZeroBaselineNotice({ year }: { year: number }) {
+  return (
+    <section
+      className="mx-4 border border-amber-500/50 bg-amber-50 px-5 py-5 shadow-sm dark:bg-amber-950/20 md:mx-0"
+      data-testid="week-zero-baseline-missing"
+    >
+      <p className="font-mono text-xs font-bold uppercase tracking-widest text-amber-900 dark:text-amber-200">
+        Week 0 baseline not initialized
+      </p>
+      <p className="mt-2 max-w-2xl text-sm leading-6 text-amber-950/80 dark:text-amber-100/80">
+        Auction cost is available, but return values are not yet calculated. A
+        commissioner must initialize the protected {year} Week 0 baseline
+        before this report can show realized gross, net, or breakeven values.
+      </p>
+      <p className="mt-3 font-mono text-[10px] uppercase tracking-widest text-amber-800 dark:text-amber-300">
+        Unlock Commissioner access above, then select Initialize Week 0.
+      </p>
+    </section>
+  );
+}
+
 // ─── Desktop command center ───────────────────────────────────────────────────
 
 type CommandSortKey =
@@ -514,6 +541,38 @@ function commandReturnPct(row: OwnerResultRow): number {
 
 function signedCurrency(value: number): string {
   return `${value >= 0 ? "+" : ""}${formatCurrency(value)}`;
+}
+
+function breakevenHeatClass(points: number | null): string {
+  if (points == null) return "text-muted-foreground";
+  if (points >= 0) {
+    return "bg-emerald-100 text-emerald-800 ring-1 ring-emerald-200 dark:bg-emerald-950/50 dark:text-emerald-300 dark:ring-emerald-900";
+  }
+  const gap = Math.abs(points);
+  if (gap >= 1_000) {
+    return "bg-rose-700 text-white ring-1 ring-rose-800 dark:bg-rose-800 dark:ring-rose-700";
+  }
+  if (gap >= 500) {
+    return "bg-rose-400 text-rose-950 ring-1 ring-rose-500 dark:bg-rose-900 dark:text-rose-100 dark:ring-rose-800";
+  }
+  if (gap >= 150) {
+    return "bg-rose-200 text-rose-900 ring-1 ring-rose-300 dark:bg-rose-950/70 dark:text-rose-200 dark:ring-rose-900";
+  }
+  return "bg-rose-100 text-rose-800 ring-1 ring-rose-200 dark:bg-rose-950/40 dark:text-rose-300 dark:ring-rose-900";
+}
+
+function BreakevenPoints({ points }: { points: number | null }) {
+  return (
+    <span
+      className={cn(
+        "inline-flex min-w-11 justify-end rounded px-1.5 py-0.5 font-mono text-[11px] font-bold tabular-nums",
+        breakevenHeatClass(points),
+      )}
+      data-testid="realized-points-to-breakeven"
+    >
+      {points == null ? "—" : `${points >= 0 ? "+" : ""}${points.toLocaleString()}`}
+    </span>
+  );
 }
 
 function signedPercent(value: number): string {
@@ -1164,7 +1223,7 @@ function DesktopOwnerDetail({
                         Net MTM <strong className={team.netMtm >= 0 ? "text-emerald-600 dark:text-emerald-400" : "text-rose-600 dark:text-rose-400"}>{signedCurrency(team.netMtm)}</strong>
                       </span>
                       <span className="text-muted-foreground">
-                        Realized pts to BE <strong className="text-foreground">{team.ptsToBreakeven == null ? "—" : team.ptsToBreakeven.toLocaleString()}</strong>
+                        Realized pts to BE <BreakevenPoints points={team.ptsToBreakeven} />
                       </span>
                     </div>
                     <div className="mt-1 flex gap-3 font-mono text-[10px]">
@@ -1650,7 +1709,7 @@ function TeamSubRow({
         <span>Cost <strong className="text-foreground">{formatCurrency(team.cost)}</strong></span>
         <span>Realized gross <strong className="text-foreground">{formatCurrency(team.realizedReturn)}</strong></span>
         <span>Realized net <strong className={team.netReturn >= 0 ? "text-emerald-600 dark:text-emerald-400" : "text-rose-600 dark:text-rose-400"}>{signedCurrency(team.netReturn)}</strong></span>
-        <span>Realized pts to BE <strong className="text-foreground">{team.ptsToBreakeven == null ? "—" : team.ptsToBreakeven.toLocaleString()}</strong></span>
+        <span>Realized pts to BE <BreakevenPoints points={team.ptsToBreakeven} /></span>
       </div>
 
       <div
@@ -1810,7 +1869,10 @@ function expandTeams(
         gross: Math.round(team.realizedReturn * s * 100) / 100,
         net: Math.round(team.netReturn * s * 100) / 100,
         mtm: Math.round(team.netMtm * s * 100) / 100,
-        ptsToBreakeven: team.ptsToBreakeven,
+        ptsToBreakeven:
+          team.ptsToBreakeven == null
+            ? null
+            : Math.round(team.ptsToBreakeven * s),
       });
     }
   }
@@ -2240,10 +2302,8 @@ function ByTeamView({
                         ? (row.mtm >= 0 ? "+" : "") + formatCurrency(row.mtm)
                         : "—"}
                     </td>
-                     <td className="px-4 md:px-5 py-3 text-right font-mono text-sm text-muted-foreground">
-                       {row.ptsToBreakeven != null
-                         ? row.ptsToBreakeven.toLocaleString()
-                         : "—"}
+                     <td className="px-4 md:px-5 py-3 text-right">
+                       <BreakevenPoints points={row.ptsToBreakeven} />
                      </td>
                   </tr>
                 ))
@@ -2332,10 +2392,8 @@ function ByTeamView({
                             formatCurrency(row.netMtm)
                           : "—"}
                       </td>
-                      <td className="px-4 md:px-5 py-3 text-right font-mono text-sm text-muted-foreground">
-                        {row.ptsToBreakeven != null
-                          ? row.ptsToBreakeven.toLocaleString()
-                          : "—"}
+                      <td className="px-4 md:px-5 py-3 text-right">
+                        <BreakevenPoints points={row.ptsToBreakeven} />
                       </td>
                     </tr>
                   );

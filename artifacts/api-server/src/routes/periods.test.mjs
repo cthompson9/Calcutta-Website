@@ -65,7 +65,7 @@ describe("period snapshot reporting", { skip: !DATABASE_URL || !ADMIN_KEY }, () 
     await db.insert(teamSeasonAuctionsTable).values({
       seasonId,
       teamId: legacyTeamId,
-      bidAmount: "100.00",
+      bidAmount: "300.00",
     });
     await db.insert(teamResultsTable).values({
       seasonId,
@@ -141,6 +141,7 @@ describe("period snapshot reporting", { skip: !DATABASE_URL || !ADMIN_KEY }, () 
         ties: row.ties,
         ptDiff: row.ptDiff,
         realizedReturn: row.realizedReturn,
+        netReturn: row.netReturn,
         markToMarket: row.markToMarket,
         ptsToBreakeven: row.ptsToBreakeven,
       })).sort((left, right) => left.teamId - right.teamId),
@@ -151,9 +152,10 @@ describe("period snapshot reporting", { skip: !DATABASE_URL || !ADMIN_KEY }, () 
           losses: 0,
           ties: 0,
           ptDiff: 0,
-          realizedReturn: 100,
-          markToMarket: 100,
-          ptsToBreakeven: 0,
+          realizedReturn: 200,
+          netReturn: 100,
+          markToMarket: 200,
+          ptsToBreakeven: 75,
         },
         {
           teamId: legacyTeamId,
@@ -161,9 +163,10 @@ describe("period snapshot reporting", { skip: !DATABASE_URL || !ADMIN_KEY }, () 
           losses: 0,
           ties: 0,
           ptDiff: 0,
-          realizedReturn: 100,
-          markToMarket: 100,
-          ptsToBreakeven: 0,
+          realizedReturn: 200,
+          netReturn: -100,
+          markToMarket: 200,
+          ptsToBreakeven: -75,
         },
       ].sort((left, right) => left.teamId - right.teamId),
     );
@@ -203,7 +206,7 @@ describe("period snapshot reporting", { skip: !DATABASE_URL || !ADMIN_KEY }, () 
     ).then((response) => response.json());
     assert.equal(
       mtmRows.find((row) => row.teamId === teamId).markToMarket,
-      106.25,
+      212.5,
       "retrying must not replace a later imported MTM Week 0 snapshot",
     );
   });

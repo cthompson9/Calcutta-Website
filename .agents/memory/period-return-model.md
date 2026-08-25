@@ -18,3 +18,9 @@ Week 0 is the narrow exception: a complete zero-stat baseline is valued with the
 **Why:** A new pool must be able to show its opening normalized value before a commissioner has entered optional custom rates, without weakening the configuration safeguard for live performance periods.
 
 **How to apply:** Limit the default-rubric fallback to exact Week 0 snapshot requests with no saved rule rows; do not create, replace, or infer payout-rule records as part of baseline initialization.
+
+Displayed realized points to breakeven is a signed result, not a remaining-point countdown: divide realized net value by the complete realized snapshot pool’s dollars-per-point rate and round to a whole point. Positive values are profitable surplus; negative values are the deficit.
+
+**Why:** Clamping at zero conceals profitable positions and misstates the direction of a team’s realized return.
+
+**How to apply:** Only show the value when the realized snapshot ledger has complete coverage and a positive pool rate; owner-specific rows must use each owner’s own signed realized net value.

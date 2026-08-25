@@ -86,26 +86,26 @@ type ResultDisplay = {
   netPctReturn: string | number;
   markToMarket: string | number;
   netMtm?: string | number;
+  dollarsPerPoint?: number | null;
   ptsToBreakeven?: number | null;
 };
 
 function calculatePtsToBreakeven(
-  cost: number,
+  netReturn: number,
   totalPot: number,
   totalRealizedPoints: number | null,
-  realizedPoints: number | null | undefined,
 ): number | null {
   if (
     totalPot <= 0 ||
     totalRealizedPoints == null ||
-    realizedPoints == null
+    totalRealizedPoints <= 0
   ) {
     return null;
   }
-  return Math.max(
-    0,
-    Math.round((cost / totalPot) * totalRealizedPoints - realizedPoints),
-  );
+  const dollarsPerPoint = totalPot / totalRealizedPoints;
+  return Number.isFinite(dollarsPerPoint) && dollarsPerPoint > 0
+    ? Math.round(netReturn / dollarsPerPoint)
+    : null;
 }
 
 function resultFromCalculatedSnapshots(
@@ -127,6 +127,7 @@ function resultFromCalculatedSnapshots(
         netPctReturn: cost > 0 ? (Number(legacy.realizedReturn) - cost) / cost : 0,
         markToMarket: Number(legacy.markToMarket),
         netMtm: Number(legacy.markToMarket) - cost,
+        dollarsPerPoint: null,
         ptsToBreakeven: null,
       }
     : null;
@@ -158,6 +159,7 @@ function resultFromCalculatedSnapshots(
       netPctReturn: cost > 0 ? -1 : 0,
       markToMarket: 0,
       netMtm: -cost,
+      dollarsPerPoint: null,
       ptsToBreakeven: null,
     };
   }
@@ -171,6 +173,10 @@ function resultFromCalculatedSnapshots(
     ?? Number(legacy?.markToMarket ?? 0);
   const netReturn = realizedReturn - cost;
   const netMtm = markToMarket - cost;
+  const dollarsPerPoint =
+    totalRealizedPoints != null && totalRealizedPoints > 0 && totalPot > 0
+      ? totalPot / totalRealizedPoints
+      : null;
   return {
     isProjectedRecord: basis === "mtm",
     wins: latest.wins,
@@ -192,11 +198,11 @@ function resultFromCalculatedSnapshots(
     netPctReturn: cost > 0 ? netReturn / cost : 0,
     markToMarket,
     netMtm,
+    dollarsPerPoint,
     ptsToBreakeven: calculatePtsToBreakeven(
-      cost,
+      netReturn,
       totalPot,
       totalRealizedPoints,
-      calculated.realized?.points,
     ),
   };
 }
@@ -347,6 +353,10 @@ function buildOwnerTeamResult(
   const netReturn = realizedReturn - ownerCost;
   const realizedMultiple = ownerCost > 0 ? realizedReturn / ownerCost : 0;
   const netPctReturn = ownerCost > 0 ? netReturn / ownerCost : 0;
+  const ptsToBreakeven =
+    result.dollarsPerPoint != null && result.dollarsPerPoint > 0
+      ? Math.round(netReturn / result.dollarsPerPoint)
+      : null;
   const record = result.isProjectedRecord
     ? { wins: Number(result.wins), losses: Number(result.losses), ties: Number(result.ties) }
     : explicitRecordFromStoredValues(result.wins, result.losses, result.ties);
@@ -374,7 +384,7 @@ function buildOwnerTeamResult(
     netPctReturn: Math.round(netPctReturn * 10000) / 100,
     markToMarket: Math.round(markToMarket * 100) / 100,
     netMtm: Math.round(netMtm * 100) / 100,
-    ptsToBreakeven: result.ptsToBreakeven ?? null,
+    ptsToBreakeven,
   };
 }
 
