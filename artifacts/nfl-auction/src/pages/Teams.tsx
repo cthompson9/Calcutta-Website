@@ -168,9 +168,9 @@ export default function Teams() {
         )}
       </div>
 
-      <div className="hidden md:block border border-border bg-card overflow-x-auto">
+      <div className="table-scroll hidden md:block border border-border bg-card">
         <div className="min-w-[800px]">
-          <div className="grid grid-cols-12 bg-muted text-muted-foreground text-xs font-mono font-bold uppercase tracking-widest px-4 py-3 border-b border-border">
+           <div className="sticky-table-header grid grid-cols-12 bg-muted text-muted-foreground text-xs font-mono font-bold uppercase tracking-widest px-4 py-3 border-b border-border">
             <div className="col-span-3 cursor-pointer hover:text-foreground flex items-center" onClick={() => handleSort("name")}>
               Team {sortCol === "name" && (sortAsc ? "↑" : "↓")}
             </div>

@@ -728,10 +728,10 @@ function DesktopResultsCommandCenter({
               />
             </label>
           </div>
-          <div className="overflow-x-auto">
+          <div className="table-scroll">
             <table className="w-full min-w-[760px] border-collapse text-sm">
               <caption className="sr-only">Sortable consortium returns standings</caption>
-              <thead className="border-b border-border bg-muted/30">
+              <thead className="sticky-table-header border-b border-border bg-muted/30">
                 <tr>
                   <th className="w-12 px-4 py-3 text-center"><span className="sr-only">Rank</span>#</th>
                   <th className="px-3 py-3 text-left"><SortButton label="Consortium" sort="return" /></th>
@@ -2046,9 +2046,9 @@ function ByTeamView({
       </p>
 
       {/* Table */}
-      <div className="border-y md:border border-border bg-card overflow-x-auto -mx-4 md:mx-0 md:rounded-lg shadow-sm">
+      <div className="table-scroll border-y md:border border-border bg-card -mx-4 md:mx-0 md:rounded-lg shadow-sm">
         <table className="text-sm whitespace-nowrap w-full">
-          <thead>
+          <thead className="sticky-table-header">
             <tr className="border-b border-border/60 bg-muted/30">
               {/* Team — always leftmost sticky */}
               <th className="px-4 md:px-5 py-3 text-left sticky left-0 bg-muted/95 backdrop-blur z-10 min-w-[160px] border-r border-border/50">
@@ -2306,9 +2306,9 @@ function CompareView({
   );
 
   return (
-    <div className="overflow-x-auto border-y md:border border-border md:rounded-lg bg-card shadow-sm -mx-4 md:mx-0">
+    <div className="table-scroll border-y md:border border-border md:rounded-lg bg-card shadow-sm -mx-4 md:mx-0">
       <table className="w-full text-left text-sm font-mono whitespace-nowrap border-collapse min-w-max">
-        <thead className="bg-muted/30 text-muted-foreground text-[10px] md:text-xs uppercase tracking-widest">
+        <thead className="sticky-table-header bg-muted/30 text-muted-foreground text-[10px] md:text-xs uppercase tracking-widest">
           <tr>
             <th className="px-4 py-3 font-bold border-b border-border/60 sticky left-0 z-20 bg-muted/95 backdrop-blur border-r">
               {response.groupBy === "consortium" ? "Consortium" : "Bidder"}

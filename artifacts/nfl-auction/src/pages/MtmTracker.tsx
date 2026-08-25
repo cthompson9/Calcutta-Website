@@ -809,14 +809,14 @@ function MtmContent({
 
           {/* Weekly breakdown table */}
           {data.weeks.length > 0 && activeView === "owner" && (
-            <div className="border border-border bg-card overflow-x-auto">
+            <div className="table-scroll border border-border bg-card">
               <div className="px-4 pt-4 pb-2">
                 <h3 className="font-bold text-sm uppercase tracking-tight">
                   Weekly Breakdown — By Consortium
                 </h3>
               </div>
               <table className="w-full min-w-[640px] text-sm">
-                <thead>
+                <thead className="sticky-table-header">
                   <tr className="border-b border-border bg-muted/60">
                     <th className="px-4 py-2 text-left text-xs font-mono font-bold uppercase tracking-widest text-muted-foreground">
                       Consortium
@@ -962,9 +962,9 @@ function Week0AuditView({
       )}
 
       {/* Audit Table */}
-      <div className="border border-border bg-card overflow-x-auto">
+      <div className="table-scroll border border-border bg-card">
         <table className="w-full min-w-[1280px] text-sm">
-          <thead>
+          <thead className="sticky-table-header">
             <tr className="border-b border-border bg-muted/60">
               <th className="px-4 py-3 text-left text-xs font-mono font-bold uppercase tracking-widest text-muted-foreground sticky left-0 bg-muted/95 backdrop-blur">
                 Team

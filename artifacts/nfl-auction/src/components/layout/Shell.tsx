@@ -88,7 +88,7 @@ export function Shell({ children }: ShellProps) {
       </aside>
 
       {/* Main Content */}
-      <main className="flex-1 pb-[calc(3.5rem+env(safe-area-inset-bottom))] md:pb-0 min-h-[100dvh] max-w-[100vw] overflow-x-hidden">
+      <main className="flex-1 pb-[calc(3.5rem+env(safe-area-inset-bottom))] md:pb-0 min-h-[100dvh] max-w-[100vw] overflow-x-clip">
         <div className="md:hidden sticky top-0 z-40 flex items-center gap-2 border-b border-border/60 bg-background/95 px-4 py-2.5 backdrop-blur">
           <div className="flex min-w-0 items-center gap-2">
             <img

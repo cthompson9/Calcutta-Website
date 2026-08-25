@@ -160,6 +160,39 @@
 }
 
 @layer utilities {
+  /*
+   * Keep column labels visible while long reports scroll. The mobile shell is
+   * fixed at the top of the viewport, so table headers sit just below it.
+   */
+  .table-scroll {
+    max-block-size: min(40rem, calc(100dvh - 5rem));
+    overflow: auto;
+    overscroll-behavior: contain;
+    scrollbar-gutter: stable;
+  }
+
+  .sticky-table-header {
+    position: sticky;
+    top: 0;
+    z-index: 20;
+    background-color: hsl(var(--muted) / 0.95);
+    box-shadow: inset 0 -1px 0 hsl(var(--border) / 0.7);
+  }
+
+  .sticky-table-header > tr > th {
+    background-color: hsl(var(--muted) / 0.95);
+  }
+
+  @media (max-width: 767px) {
+    .table-scroll {
+      max-block-size: calc(100dvh - 7rem);
+    }
+
+    .sticky-table-header {
+      top: 0;
+    }
+  }
+
   .no-scrollbar::-webkit-scrollbar {
     display: none;
   }
