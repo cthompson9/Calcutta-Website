@@ -51,6 +51,11 @@ import {
 } from "./lib/calcuttaReturns";
 import { loadCurrentBidderConsortiums } from "./lib/consortiumMemberships";
 import { applyNflStandingsImport, NflStandingsImportError } from "./lib/nflStandingsImport";
+import {
+  mcpProtectedResourceMetadataUrl,
+  matchesMcpApiKey,
+  verifyMcpOAuthAccessToken,
+} from "./mcpOAuth";
 
 // ─── DB helpers ─────────────────────────────────────────────────────────────
 const CONSORTIUM_MEMBERSHIP_LOCK_NAMESPACE = 841204;
@@ -1384,7 +1389,7 @@ function buildMcpServer() {
 
 // ─── Auth middleware ─────────────────────────────────────────────────────────
 
-function checkAuth(req: Request, res: Response): boolean {
+async function checkAuth(req: Request, res: Response): Promise<boolean> {
   const apiKey = process.env["MCP_API_KEY"];
   if (!apiKey) {
     res.status(503).json({
@@ -1395,10 +1400,20 @@ function checkAuth(req: Request, res: Response): boolean {
     return false;
   }
   const auth = req.headers["authorization"];
-  if (!auth || auth !== `Bearer ${apiKey}`) {
+  const token = typeof auth === "string" && auth.startsWith("Bearer ")
+    ? auth.slice("Bearer ".length)
+    : "";
+  if (!token || (!matchesMcpApiKey(token) && !await verifyMcpOAuthAccessToken(token))) {
+    res.set(
+      "WWW-Authenticate",
+      `Bearer resource_metadata="${mcpProtectedResourceMetadataUrl(req)}"`,
+    );
     res.status(401).json({
       jsonrpc: "2.0",
-      error: { code: -32000, message: "Unauthorized. Provide: Authorization: Bearer <MCP_API_KEY>" },
+      error: {
+        code: -32000,
+        message: "Unauthorized. Authorize with the MCP OAuth flow or provide Authorization: Bearer <MCP_API_KEY>.",
+      },
       id: null,
     });
     return false;
@@ -1413,7 +1428,7 @@ export function createMcpRouter(): IRouter {
 
   // POST / — main message handler (stateless: one server per request)
   router.post("/", async (req, res): Promise<void> => {
-    if (!checkAuth(req, res)) return;
+    if (!await checkAuth(req, res)) return;
 
     const server = buildMcpServer();
     const transport = new StreamableHTTPServerTransport({ sessionIdGenerator: undefined });

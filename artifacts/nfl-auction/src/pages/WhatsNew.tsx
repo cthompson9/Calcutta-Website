@@ -101,6 +101,24 @@ export default function WhatsNew() {
               ADMIN_API_KEY; it is reserved for commissioner-only write tools after
               the MCP connection is established.
             </p>
+            <div className="space-y-2 border border-border bg-muted/40 p-3">
+              <p className="font-mono text-xs font-bold uppercase tracking-wide text-foreground">
+                Claude custom connector
+              </p>
+              <ol className="list-decimal space-y-1 pl-4 text-xs">
+                <li>
+                  Add{" "}
+                  <code className="border border-border bg-background px-1 py-0.5 font-mono text-foreground">
+                    https://nfl-calcutta.replit.app/api/mcp
+                  </code>{" "}
+                  as the connector URL.
+                </li>
+                <li>
+                  Complete the Calcutta browser authorization page with the MCP API key.
+                  Claude applies the resulting access token automatically.
+                </li>
+              </ol>
+            </div>
             <p>
               For direct API access, use this app&apos;s base URL plus the relevant{" "}
               <code className="border border-border bg-muted px-1.5 py-0.5 font-mono text-xs text-foreground">
