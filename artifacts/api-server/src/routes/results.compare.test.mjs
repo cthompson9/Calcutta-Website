@@ -185,21 +185,21 @@ describe("cross-Calcutta return comparison", { skip: !DATABASE_URL }, () => {
     if (bidder) await db.delete(biddersTable).where(eq(biddersTable.id, bidder.id));
   });
 
-  test("uses each Calcutta's historical roster and flags missing selected snapshots", async () => {
+  test("uses live net-MTM values with each Calcutta's historical roster and flags missing snapshots", async () => {
     const response = await fetch(
-      `${baseUrl}/api/results/compare?seasons=${years.join(",")}&basis=realized&groupBy=bidder`,
+      `${baseUrl}/api/results/compare?seasons=${years.join(",")}&basis=mtm&groupBy=bidder`,
     );
     assert.equal(response.status, 200);
     const comparison = await response.json();
     const row = comparison.rows.find((item) => item.bidderId === bidder.id);
     assert.ok(row);
     assert.equal(row.calcuttas[0].consortium, historicConsortium.name);
-    assert.equal(row.calcuttas[0].totalRealizedReturn, 125);
+    assert.equal(row.calcuttas[0].totalNetMtm, 40);
     assert.equal(row.calcuttas[0].signedShare, 1);
     assert.equal(row.calcuttas[1].consortium, currentConsortium.name);
     assert.equal(row.calcuttas[1].snapshotAvailable, false);
     assert.equal(row.calcuttas[1].snapshotTeamCount, 0);
-    assert.equal(row.calcuttas[1].totalRealizedReturn, 0);
+    assert.equal(row.calcuttas[1].totalNetMtm, -100);
     assert.equal(row.aggregate.snapshotAvailable, false);
     assert.equal(row.aggregate.missingSnapshotCount, 1);
   });

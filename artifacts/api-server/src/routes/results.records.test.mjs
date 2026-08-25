@@ -126,7 +126,9 @@ describe("team result records", { skip: !DATABASE_URL || !ADMIN_KEY }, () => {
       { wins: 0, losses: 3, ties: 0 },
     );
 
-    const results = await fetch(`${baseUrl}/api/results?season=${seasonYear}`);
+    const results = await fetch(
+      `${baseUrl}/api/results?season=${seasonYear}&basis=realized`,
+    );
     assert.equal(results.status, 200);
     const rows = await results.json();
     const storedRow = rows.find((entry) => entry.teamId === teamId);
@@ -179,7 +181,9 @@ describe("team result records", { skip: !DATABASE_URL || !ADMIN_KEY }, () => {
       wins: "7.5",
     });
 
-    const results = await fetch(`${baseUrl}/api/results?season=${seasonYear}`);
+    const results = await fetch(
+      `${baseUrl}/api/results?season=${seasonYear}&basis=realized`,
+    );
     assert.equal(results.status, 200);
     const rows = await results.json();
     const legacyRow = rows.find((entry) => entry.teamId === legacyTeamId);

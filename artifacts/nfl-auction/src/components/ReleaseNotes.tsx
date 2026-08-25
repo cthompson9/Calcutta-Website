@@ -33,7 +33,7 @@ export const releaseNotes: ReleaseNote[] = [
       {
         title: "Returns are easier to read",
         description:
-          "Consortium and comparison standings now use net MTM, while team reporting keeps realized Gross/Net, net MTM, and breakeven together.",
+          "Use Ctrl + [ to return to Results after following a source link. Live consortium standings use net Mark-to-Market, while team analysis shows realized and MTM context together.",
       },
     ],
   },

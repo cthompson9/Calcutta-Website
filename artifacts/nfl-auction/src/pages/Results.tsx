@@ -24,7 +24,6 @@ import type {
   TeamResultRow,
   OwnerResultRow,
   CalcuttaComparisonResponse,
-  CalcuttaComparisonRow,
   CalcuttaComparisonCell,
   CalcuttaComparisonAggregate,
   AuctionSummary,
@@ -65,13 +64,13 @@ export default function Results() {
   const [period, setPeriod] = useState<number | undefined>(undefined);
   const [compareSeasons, setCompareSeasons] = useState<number[]>([]);
   const [compareGroupBy, setCompareGroupBy] = useState<"bidder" | "consortium">("consortium");
+  const consortiumBasis = "mtm" as const;
   const teamBasis = "realized" as const;
-  const portfolioBasis = "mtm" as const;
-  const basis = tab === "byTeam" ? teamBasis : portfolioBasis;
+  const viewBasis = tab === "byTeam" ? teamBasis : consortiumBasis;
 
   const { data: periods } = useGetSportPeriods({ sport: "NFL" });
   const { data: allSeasons } = useGetSeasons();
-  const availabilityParams = { season: year, basis };
+  const availabilityParams = { season: year, basis: viewBasis };
   const { data: availability } = useGetResultsAvailability(
     availabilityParams,
     {
@@ -109,7 +108,7 @@ export default function Results() {
     {
       season: year,
       period: selectedPeriod,
-      basis: portfolioBasis,
+      basis: consortiumBasis,
     },
     {
       query: {
@@ -117,7 +116,7 @@ export default function Results() {
         queryKey: getGetResultsByOwnerQueryKey({
           season: year,
           period: selectedPeriod,
-          basis: portfolioBasis,
+          basis: consortiumBasis,
         }),
       },
     },
@@ -129,14 +128,14 @@ export default function Results() {
         : undefined
       : availability?.previousPeriod ?? undefined;
   const { data: previousOwnerResults } = useGetResultsByOwner(
-    { season: year, period: previousPeriod, basis: portfolioBasis },
+    { season: year, period: previousPeriod, basis: consortiumBasis },
     {
       query: {
         enabled: tab === "byOwner" && previousPeriod != null,
         queryKey: getGetResultsByOwnerQueryKey({
           season: year,
           period: previousPeriod,
-          basis: portfolioBasis,
+          basis: consortiumBasis,
         }),
       },
     },
@@ -172,7 +171,7 @@ export default function Results() {
   const compareParams = {
     seasons: compareSeasons.join(","),
     period,
-    basis: portfolioBasis,
+    basis: consortiumBasis,
     groupBy: compareGroupBy,
   };
   const { data: compareResults, isLoading: loadingCompare } = useGetResultsCompare(
@@ -190,9 +189,9 @@ export default function Results() {
         ? loadingOwners
         : loadingCompare;
 
-  // Consortium and comparison views are always live net-MTM reports. By Team
-  // receives realized snapshots so its mixed financial columns stay stable.
-  const isComplete = false;
+  const reportBasisLabel = tab === "byTeam"
+    ? "Realized team returns + net MTM"
+    : "Net mark-to-market";
   const selectedPeriodLabel = period == null
     ? "latest available period"
     : periods?.find((item) => item.sequence === period)?.label ?? `Period ${period}`;
@@ -206,7 +205,7 @@ export default function Results() {
             Calcutta Returns
           </h1>
           <p className="text-muted-foreground font-mono text-xs md:text-sm uppercase tracking-widest" data-testid="text-report-subtitle">
-            {tab === "byTeam" ? "Realized + net MTM" : "Net MTM"} · {selectedPeriodLabel} · {year} season
+            {reportBasisLabel} · {selectedPeriodLabel} · {year} season
           </p>
         </div>
         <WeekZeroPointsControl year={year} />
@@ -324,7 +323,6 @@ export default function Results() {
               <DesktopResultsCommandCenter
                 rows={ownerResults ?? []}
                 previousRows={previousOwnerResults ?? []}
-                isComplete={isComplete}
                 seasonYear={year}
                 summary={auctionSummary}
                 mtmData={mtmData}
@@ -335,7 +333,6 @@ export default function Results() {
             <div className="md:hidden">
               <ByOwnerView
                 rows={ownerResults ?? []}
-                isComplete={isComplete}
                 expandedOwner={expandedOwner}
                 setExpandedOwner={setExpandedOwner}
                 consortiumByBidderId={consortiumByBidderId}
@@ -353,13 +350,11 @@ export default function Results() {
           ) : (
             <CompareView
               response={compareResults}
-              isComplete={isComplete}
             />
           )
         ) : (
           <ByTeamView
             rows={teamResults ?? []}
-            isComplete={isComplete}
             consortiumByBidderId={consortiumByBidderId}
             seasonYear={year}
           />
@@ -503,17 +498,17 @@ type CommandSortKey =
   | "teams"
   | "movement";
 
-function commandReturn(row: OwnerResultRow, isComplete: boolean): number {
+function commandReturn(row: OwnerResultRow): number {
   return row.totalNetMtm;
 }
 
-function commandMarketValue(row: OwnerResultRow, isComplete: boolean): number {
+function commandMarketValue(row: OwnerResultRow): number {
   return row.totalMtm;
 }
 
-function commandReturnPct(row: OwnerResultRow, isComplete: boolean): number {
+function commandReturnPct(row: OwnerResultRow): number {
   return Math.abs(row.totalCost) > 0.005
-    ? (row.totalNetMtm / Math.abs(row.totalCost)) * 100
+    ? (commandReturn(row) / Math.abs(row.totalCost)) * 100
     : 0;
 }
 
@@ -614,7 +609,6 @@ function TrendSparkline({ values }: { values: Array<number | null> }) {
 function DesktopResultsCommandCenter({
   rows,
   previousRows,
-  isComplete,
   seasonYear,
   summary,
   mtmData,
@@ -623,7 +617,6 @@ function DesktopResultsCommandCenter({
 }: {
   rows: OwnerResultRow[];
   previousRows: OwnerResultRow[];
-  isComplete: boolean;
   seasonYear: number;
   summary?: AuctionSummary;
   mtmData?: MtmData;
@@ -654,9 +647,9 @@ function DesktopResultsCommandCenter({
   const rankedRows = useMemo(
     () =>
       [...rows].sort(
-        (a, b) => commandReturn(b, isComplete) - commandReturn(a, isComplete),
+        (a, b) => commandReturn(b) - commandReturn(a),
       ),
-    [rows, isComplete],
+    [rows],
   );
   const ranks = useMemo(
     () => new Map(rankedRows.map((row, index) => [row.bidderId, index + 1])),
@@ -664,24 +657,24 @@ function DesktopResultsCommandCenter({
   );
   const maxReturn = Math.max(
     1,
-    ...rows.map((row) => Math.abs(commandReturn(row, isComplete))),
+    ...rows.map((row) => Math.abs(commandReturn(row))),
   );
   const sortedRows = [...filteredRows].sort((a, b) => {
     const previousA = previousById.get(a.bidderId);
     const previousB = previousById.get(b.bidderId);
     const movementA = previousA
-      ? commandReturn(a, isComplete) - commandReturn(previousA, isComplete)
+      ? commandReturn(a) - commandReturn(previousA)
       : 0;
     const movementB = previousB
-      ? commandReturn(b, isComplete) - commandReturn(previousB, isComplete)
+      ? commandReturn(b) - commandReturn(previousB)
       : 0;
     const values: Record<CommandSortKey, [number, number]> = {
-      return: [commandReturn(a, isComplete), commandReturn(b, isComplete)],
-      returnPct: [commandReturnPct(a, isComplete), commandReturnPct(b, isComplete)],
+      return: [commandReturn(a), commandReturn(b)],
+      returnPct: [commandReturnPct(a), commandReturnPct(b)],
       cost: [a.totalCost, b.totalCost],
       marketValue: [
-        commandMarketValue(a, isComplete),
-        commandMarketValue(b, isComplete),
+        commandMarketValue(a),
+        commandMarketValue(b),
       ],
       teams: [a.teamCount, b.teamCount],
       movement: [movementA, movementB],
@@ -695,8 +688,8 @@ function DesktopResultsCommandCenter({
     .map((row) => ({
       row,
       movement: previousById.has(row.bidderId)
-        ? commandReturn(row, isComplete) -
-          commandReturn(previousById.get(row.bidderId)!, isComplete)
+        ? commandReturn(row) -
+          commandReturn(previousById.get(row.bidderId)!)
         : 0,
     }))
     .sort((a, b) => Math.abs(b.movement) - Math.abs(a.movement))[0];
@@ -769,9 +762,7 @@ function DesktopResultsCommandCenter({
               </span>
             </div>
             <p className="mt-2 max-w-xl text-sm text-muted-foreground">
-              {isComplete
-                ? "Realized standings from the completed payout ledger."
-                : "Live mark-to-market standings based on the latest available snapshots."}
+              Live net mark-to-market standings based on the latest available snapshots.
             </p>
           </div>
           <div className="grid grid-cols-2 gap-x-8 gap-y-4 sm:grid-cols-4 lg:min-w-[44rem]">
@@ -780,7 +771,7 @@ function DesktopResultsCommandCenter({
             <CommandMetric
               label="Leader"
               value={leader ? ownerLabelById(leader.bidderId, leader.bidderName, consortiumByBidderId) : "—"}
-              subvalue={leader ? signedCurrency(commandReturn(leader, isComplete)) : undefined}
+               subvalue={leader ? signedCurrency(commandReturn(leader)) : undefined}
             />
             <CommandMetric
               label="Biggest mover"
@@ -801,15 +792,13 @@ function DesktopResultsCommandCenter({
           <CommandCallout
             label="Top net MTM"
             owner={leader}
-            value={leader ? commandReturn(leader, isComplete) : 0}
-            isComplete={isComplete}
+             value={leader ? commandReturn(leader) : 0}
             consortiumByBidderId={consortiumByBidderId}
           />
           <CommandCallout
-            label="Worst net MTM"
+            label="Lowest net MTM"
             owner={worst}
-            value={worst ? commandReturn(worst, isComplete) : 0}
-            isComplete={isComplete}
+             value={worst ? commandReturn(worst) : 0}
             consortiumByBidderId={consortiumByBidderId}
           />
           <div className="p-4">
@@ -817,12 +806,10 @@ function DesktopResultsCommandCenter({
               Coverage
             </p>
             <p className="mt-1 font-mono text-sm font-bold">
-              {isComplete ? "Realized ledger" : "MTM snapshots"}
+               MTM snapshots
             </p>
             <p className="mt-1 text-xs text-muted-foreground">
-              {isComplete
-                ? "Payout rules and approved trades applied."
-                : "Values may remain unavailable until a snapshot is captured."}
+               Net MTM values may remain unavailable until a snapshot is captured.
             </p>
           </div>
         </div>
@@ -853,16 +840,16 @@ function DesktopResultsCommandCenter({
           </div>
           <div className="table-scroll">
             <table className="w-full min-w-[760px] border-collapse text-sm">
-              <caption className="sr-only">Sortable consortium returns standings</caption>
+              <caption className="sr-only">Sortable consortium net mark-to-market standings</caption>
               <thead className="sticky-table-header border-b border-border bg-muted/30">
                 <tr>
                   <th className="w-12 px-4 py-3 text-center"><span className="sr-only">Rank</span>#</th>
                   <th className="px-3 py-3 text-left"><SortButton label="Consortium" sort="return" /></th>
                   <th className="px-3 py-3 text-right"><SortButton label="Cost basis" sort="cost" /></th>
-                <th className="px-3 py-3 text-right"><SortButton label="MTM gross" sort="marketValue" /></th>
-                <th className="px-3 py-3 text-right"><SortButton label="Net MTM" sort="return" /></th>
-                <th className="px-3 py-3 text-right"><SortButton label="MTM %" sort="returnPct" /></th>
-                  <th className="px-3 py-3 text-right"><SortButton label="Move" sort="movement" /></th>
+                  <th className="px-3 py-3 text-right"><SortButton label="MTM market value" sort="marketValue" /></th>
+                  <th className="px-3 py-3 text-right"><SortButton label="Net MTM" sort="return" /></th>
+                  <th className="px-3 py-3 text-right"><SortButton label="Net MTM %" sort="returnPct" /></th>
+                  <th className="px-3 py-3 text-right"><SortButton label="MTM move" sort="movement" /></th>
                   <th className="w-10 px-3 py-3 text-right"><span className="sr-only">Details</span></th>
                 </tr>
               </thead>
@@ -870,11 +857,10 @@ function DesktopResultsCommandCenter({
                 {sortedRows.map((row) => {
                   const rank = ranks.get(row.bidderId) ?? sortedRows.indexOf(row) + 1;
                   const previous = previousById.get(row.bidderId);
-                  const movement = previous
-                    ? commandReturn(row, isComplete) -
-                      commandReturn(previous, isComplete)
+                   const movement = previous
+                     ? commandReturn(row) - commandReturn(previous)
                     : null;
-                  const returnValue = commandReturn(row, isComplete);
+                   const returnValue = commandReturn(row);
                   const ownerName = ownerLabelById(
                     row.bidderId,
                     row.bidderName,
@@ -925,7 +911,7 @@ function DesktopResultsCommandCenter({
                         {formatCurrency(row.totalCost)}
                       </td>
                       <td className="px-3 py-3 text-right font-mono text-xs">
-                        {formatCurrency(commandMarketValue(row, isComplete))}
+                         {formatCurrency(commandMarketValue(row))}
                       </td>
                       <td className={cn(
                         "px-3 py-3 text-right font-mono text-sm font-bold",
@@ -935,9 +921,9 @@ function DesktopResultsCommandCenter({
                       </td>
                       <td className={cn(
                         "px-3 py-3 text-right font-mono text-xs font-bold",
-                        commandReturnPct(row, isComplete) >= 0 ? "text-emerald-600 dark:text-emerald-400" : "text-rose-600 dark:text-rose-400",
+                         commandReturnPct(row) >= 0 ? "text-emerald-600 dark:text-emerald-400" : "text-rose-600 dark:text-rose-400",
                       )}>
-                        {signedPercent(commandReturnPct(row, isComplete))}
+                         {signedPercent(commandReturnPct(row))}
                       </td>
                       <td className="px-3 py-3 text-right font-mono text-xs">
                         {movement == null ? (
@@ -961,7 +947,7 @@ function DesktopResultsCommandCenter({
             </table>
           </div>
           <div className="border-t border-border px-4 py-3 font-mono text-[10px] uppercase tracking-widest text-muted-foreground">
-            {sortedRows.length} of {rows.length} consortiums · values are signed and season-scoped
+            {sortedRows.length} of {rows.length} consortiums · signed, season-scoped net MTM
           </div>
         </section>
 
@@ -969,7 +955,6 @@ function DesktopResultsCommandCenter({
           <DesktopOwnerDetail
             owner={selectedOwner}
             seasonYear={seasonYear}
-            isComplete={isComplete}
             mtmData={mtmData}
             trades={trades ?? []}
             consortiumByBidderId={consortiumByBidderId}
@@ -1014,13 +999,11 @@ function CommandCallout({
   label,
   owner,
   value,
-  isComplete,
   consortiumByBidderId,
 }: {
   label: string;
   owner?: OwnerResultRow;
   value: number;
-  isComplete: boolean;
   consortiumByBidderId: Map<number, string>;
 }) {
   return (
@@ -1038,7 +1021,7 @@ function CommandCallout({
         </p>
       </div>
       <p className="mt-1 text-xs text-muted-foreground">
-        {owner ? signedPercent(commandReturnPct(owner, isComplete)) : "Awaiting data"}
+        {owner ? signedPercent(commandReturnPct(owner)) : "Awaiting data"}
       </p>
     </div>
   );
@@ -1047,7 +1030,6 @@ function CommandCallout({
 function DesktopOwnerDetail({
   owner,
   seasonYear,
-  isComplete,
   mtmData,
   trades,
   consortiumByBidderId,
@@ -1056,7 +1038,6 @@ function DesktopOwnerDetail({
 }: {
   owner: OwnerResultRow;
   seasonYear: number;
-  isComplete: boolean;
   mtmData?: MtmData;
   trades: TradeRow[];
   consortiumByBidderId: Map<number, string>;
@@ -1125,11 +1106,11 @@ function DesktopOwnerDetail({
           <DetailMetric label="Cost basis" value={formatCurrency(owner.totalCost)} />
           <DetailMetric
             label="Net MTM"
-            value={signedCurrency(commandReturn(owner, isComplete))}
-            tone={commandReturn(owner, isComplete) >= 0 ? "positive" : "negative"}
+            value={signedCurrency(commandReturn(owner))}
+            tone={commandReturn(owner) >= 0 ? "positive" : "negative"}
           />
-          <DetailMetric label="MTM gross" value={formatCurrency(commandMarketValue(owner, isComplete))} />
-          <DetailMetric label="MTM %" value={signedPercent(commandReturnPct(owner, isComplete))} tone={commandReturnPct(owner, isComplete) >= 0 ? "positive" : "negative"} />
+          <DetailMetric label="MTM market value" value={formatCurrency(commandMarketValue(owner))} />
+          <DetailMetric label="Net MTM %" value={signedPercent(commandReturnPct(owner))} tone={commandReturnPct(owner) >= 0 ? "positive" : "negative"} />
         </div>
 
         <section>
@@ -1169,17 +1150,21 @@ function DesktopOwnerDetail({
                         {formatOwnershipPercent(position, true)}
                       </span>
                     </div>
-                    <div className="mt-1 grid grid-cols-2 gap-x-3 gap-y-1 font-mono text-[10px]">
-                      <span className="text-muted-foreground">Cost {formatCurrency(team.cost)}</span>
-                      <span className="text-muted-foreground">Gross {formatCurrency(team.realizedReturn)}</span>
-                      <span className={team.netReturn >= 0 ? "text-emerald-600 dark:text-emerald-400" : "text-rose-600 dark:text-rose-400"}>
-                        Net {signedCurrency(Number(team.netReturn))}
+                    <div className="mt-2 grid grid-cols-2 gap-x-3 gap-y-1 font-mono text-[10px]">
+                      <span className="text-muted-foreground">
+                        Cost <strong className="text-foreground">{formatCurrency(team.cost)}</strong>
                       </span>
-                      <span className={team.netMtm >= 0 ? "text-emerald-600 dark:text-emerald-400" : "text-rose-600 dark:text-rose-400"}>
-                        MTM {signedCurrency(Number(team.netMtm))}
+                      <span className="text-muted-foreground">
+                        Realized gross <strong className="text-foreground">{formatCurrency(team.realizedReturn)}</strong>
                       </span>
-                      <span className="col-span-2 text-muted-foreground">
-                        Realized breakeven {team.ptsToBreakeven == null ? "—" : `${team.ptsToBreakeven.toLocaleString()} pts`}
+                      <span className="text-muted-foreground">
+                        Realized net <strong className={team.netReturn >= 0 ? "text-emerald-600 dark:text-emerald-400" : "text-rose-600 dark:text-rose-400"}>{signedCurrency(team.netReturn)}</strong>
+                      </span>
+                      <span className="text-muted-foreground">
+                        Net MTM <strong className={team.netMtm >= 0 ? "text-emerald-600 dark:text-emerald-400" : "text-rose-600 dark:text-rose-400"}>{signedCurrency(team.netMtm)}</strong>
+                      </span>
+                      <span className="text-muted-foreground">
+                        Realized pts to BE <strong className="text-foreground">{team.ptsToBreakeven == null ? "—" : team.ptsToBreakeven.toLocaleString()}</strong>
                       </span>
                     </div>
                     <div className="mt-1 flex gap-3 font-mono text-[10px]">
@@ -1281,6 +1266,14 @@ function calculateExposure(row: OwnerResultRow): number {
   return Math.round(exposure * 100) / 100;
 }
 
+function calculateTeamExposure(team: TeamResultRow): number {
+  const position = team.owners[0]?.ownershipShare ?? 0;
+  if (Math.abs(position) < 0.00005) return 0;
+
+  const exposure = position > 0 ? team.cost : -team.cost;
+  return Math.round(exposure * 100) / 100;
+}
+
 type SignedTeamPosition = {
   bidderId: number;
   bidderName: string;
@@ -1318,21 +1311,17 @@ function effectivePositionsForTeam(
 
 const OWNER_SUMMARY_GRID =
   "grid-cols-[2rem_minmax(0,1fr)_auto_2rem] md:grid-cols-[2.5rem_minmax(14rem,22rem)_minmax(0,1fr)_4.5rem_8rem_8rem_2.5rem]";
-const OWNER_SUMMARY_COMPLETE_GRID =
-  "grid-cols-[2rem_minmax(0,1fr)_auto_2rem] md:grid-cols-[2.5rem_minmax(14rem,22rem)_minmax(0,1fr)_4.5rem_8rem_8rem_8rem_2.5rem]";
 const OWNER_TEAM_GRID =
-  "grid-cols-[1fr_auto] md:grid-cols-[minmax(10rem,1.2fr)_minmax(0,1fr)_6rem_6rem_6rem_6rem_6rem_6rem]";
+  "grid-cols-[1fr_auto] md:grid-cols-[minmax(0,1.2fr)_minmax(0,1fr)_6.5rem_8rem_8rem]";
 
 function ByOwnerView({
   rows,
-  isComplete,
   expandedOwner,
   setExpandedOwner,
   consortiumByBidderId,
   seasonYear,
 }: {
   rows: OwnerResultRow[];
-  isComplete: boolean;
   expandedOwner: number | null;
   setExpandedOwner: (id: number | null) => void;
   consortiumByBidderId: Map<number, string>;
@@ -1340,8 +1329,10 @@ function ByOwnerView({
 }) {
   if (!rows.length) return <Empty />;
 
-  // Always sort by MTM net return — that's the live standing metric
-  const sorted = [...rows].sort((a, b) => b.totalNetMtm - a.totalNetMtm);
+  // Net MTM is the fixed, live consortium standing metric.
+  const sorted = [...rows].sort((a, b) =>
+    b.totalNetMtm - a.totalNetMtm,
+  );
 
   return (
     <div className="space-y-3">
@@ -1358,25 +1349,15 @@ function ByOwnerView({
       <div
         className={cn(
           "hidden md:grid bg-muted/60 text-muted-foreground text-[10px] md:text-xs font-mono font-bold uppercase tracking-widest px-4 py-3 border border-border sticky top-0 z-10 backdrop-blur rounded-t-lg",
-          isComplete ? OWNER_SUMMARY_COMPLETE_GRID : OWNER_SUMMARY_GRID,
+          OWNER_SUMMARY_GRID,
         )}
       >
         <div className="text-center">#</div>
         <div>Consortium</div>
         <div className="hidden md:block" />
         <div className="text-right">Net Teams</div>
-        {isComplete ? (
-          <>
-            <div className="text-right">Exposure</div>
-            <div className="text-right">Gross</div>
-            <div className="text-right font-bold text-foreground">Net</div>
-          </>
-        ) : (
-          <>
-            <div className="text-right font-bold text-foreground">Net MTM</div>
-            <div className="text-right">Exposure</div>
-          </>
-        )}
+        <div className="text-right font-bold text-foreground">Net MTM</div>
+        <div className="text-right">Exposure</div>
         <div />
       </div>
 
@@ -1398,7 +1379,7 @@ function ByOwnerView({
                 aria-expanded={isExpanded}
                 className={cn(
                   "w-full grid items-center px-4 py-4 md:px-4 md:py-4 hover:bg-muted/40 transition-colors text-left",
-                  isComplete ? OWNER_SUMMARY_COMPLETE_GRID : OWNER_SUMMARY_GRID,
+                  OWNER_SUMMARY_GRID,
                   isWinner && "bg-yellow-50 dark:bg-yellow-900/10",
                 )}
               >
@@ -1434,44 +1415,20 @@ function ByOwnerView({
                   {row.teamCount.toFixed(2)}
                 </div>
 
-                {isComplete ? (
-                  <>
-                    <div className="hidden md:block text-right font-mono text-sm text-muted-foreground self-center">
-                      {formatCurrency(calculateExposure(row))}
-                    </div>
-                    <div className="hidden md:block text-right font-mono text-sm text-muted-foreground self-center">
-                      {formatCurrency(row.totalRealizedReturn)}
-                    </div>
-                    <div
-                      className={cn(
-                        "text-right font-mono font-bold text-sm md:text-base self-center",
-                        row.totalNetReturn >= 0
-                          ? "text-green-600 dark:text-green-400"
-                          : "text-red-600 dark:text-red-400",
-                      )}
-                    >
-                      {row.totalNetReturn >= 0 ? "+" : ""}
-                      {formatCurrency(row.totalNetReturn)}
-                    </div>
-                  </>
-                ) : (
-                  <>
-                    <div
-                      className={cn(
-                        "text-right font-mono font-bold text-sm md:text-base self-center",
-                        row.totalNetMtm >= 0 ? "text-green-600 dark:text-green-400" : "text-red-600 dark:text-red-400",
-                      )}
-                    >
-                      {row.totalNetMtm !== 0
-                        ? (row.totalNetMtm >= 0 ? "+" : "") +
-                          formatCurrency(row.totalNetMtm)
-                        : "—"}
-                    </div>
-                    <div className="hidden md:block text-right font-mono text-sm text-muted-foreground self-center">
-                      {formatCurrency(calculateExposure(row))}
-                    </div>
-                  </>
-                )}
+                <div
+                  className={cn(
+                    "text-right font-mono font-bold text-sm md:text-base self-center",
+                    row.totalNetMtm >= 0 ? "text-green-600 dark:text-green-400" : "text-red-600 dark:text-red-400",
+                  )}
+                >
+                  {row.totalNetMtm !== 0
+                    ? (row.totalNetMtm >= 0 ? "+" : "") +
+                      formatCurrency(row.totalNetMtm)
+                    : "—"}
+                </div>
+                <div className="hidden md:block text-right font-mono text-sm text-muted-foreground self-center">
+                  {formatCurrency(calculateExposure(row))}
+                </div>
 
                 <div className="flex justify-end items-center text-muted-foreground">
                   <span className="inline-flex h-6 w-6 items-center justify-center rounded-full transition-colors group-hover:bg-muted">
@@ -1488,33 +1445,18 @@ function ByOwnerView({
               {/* Mobile stats */}
               {isExpanded && (
                 <div className="md:hidden grid grid-cols-2 text-xs font-mono border-t border-border bg-muted/30 px-4 py-3 gap-y-3">
-                  {isComplete ? (
-                    <>
-                      <div>
-                        <div className="text-muted-foreground uppercase tracking-widest text-[10px]">Exposure</div>
-                        <div className="font-bold">{formatCurrency(calculateExposure(row))}</div>
-                      </div>
-                      <div>
-                        <div className="text-muted-foreground uppercase tracking-widest text-[10px]">Gross</div>
-                        <div className="font-bold">{formatCurrency(row.totalRealizedReturn)}</div>
-                      </div>
-                    </>
-                  ) : (
-                    <>
-                      <div>
-                        <div className="text-muted-foreground uppercase tracking-widest text-[10px]">Exposure</div>
-                        <div className="font-bold">{formatCurrency(calculateExposure(row))}</div>
-                      </div>
-                      <div>
-                        <div className="text-muted-foreground uppercase tracking-widest text-[10px]">MTM ROI</div>
-                        <div className="font-bold">
-                          {calculateExposure(row) !== 0
-                            ? ((row.totalNetMtm / Math.abs(calculateExposure(row))) * 100).toFixed(1) + "%"
-                            : "—"}
-                        </div>
-                      </div>
-                    </>
-                  )}
+                  <div>
+                    <div className="text-muted-foreground uppercase tracking-widest text-[10px]">Exposure</div>
+                    <div className="font-bold">{formatCurrency(calculateExposure(row))}</div>
+                  </div>
+                  <div>
+                    <div className="text-muted-foreground uppercase tracking-widest text-[10px]">Net MTM %</div>
+                    <div className="font-bold">
+                      {calculateExposure(row) !== 0
+                        ? ((row.totalNetMtm / Math.abs(calculateExposure(row))) * 100).toFixed(1) + "%"
+                        : "—"}
+                    </div>
+                  </div>
                 </div>
               )}
 
@@ -1528,13 +1470,10 @@ function ByOwnerView({
                     )}
                   >
                     <div>Team</div>
-                    <div>Ownership</div>
+                    <div>Type</div>
                     <div className="text-right">Net Position</div>
-                    <div className="text-right">Cost</div>
-                    <div className="text-right">Gross</div>
-                    <div className="text-right">Net</div>
                     <div className="text-right">Net MTM</div>
-                    <div className="text-right">Pts to BE</div>
+                    <div className="text-right">Exposure</div>
                   </div>
                   {[...row.teams]
                     .sort((a, b) => b.markToMarket - a.markToMarket)
@@ -1699,8 +1638,8 @@ function TeamSubRow({
         <div className={cn("font-mono text-sm font-bold", netPosition >= 0 ? "text-sky-700 dark:text-sky-400" : "text-rose-600 dark:text-rose-400")}>
           {formatOwnershipPercent(netPosition, true)}
         </div>
-        <div className={cn("font-mono text-xs mt-0.5", team.netMtm >= 0 ? "text-green-600 dark:text-green-400" : "text-red-600 dark:text-red-400")}>
-          {signedCurrency(Number(team.netMtm))}
+          <div className={cn("font-mono text-xs mt-0.5", team.netMtm >= 0 ? "text-green-600 dark:text-green-400" : "text-red-600 dark:text-red-400")}>
+          {signedCurrency(team.netMtm)} net MTM
         </div>
       </div>
 
@@ -1716,11 +1655,11 @@ function TeamSubRow({
           compact
         />
       </div>
-      <div className="col-span-2 grid grid-cols-2 gap-x-4 gap-y-1 border-t border-border/40 pt-2 text-[10px] font-mono md:hidden">
-        <span className="text-muted-foreground">Cost <strong className="text-foreground">{formatCurrency(team.cost)}</strong></span>
-        <span className="text-muted-foreground">Gross <strong className="text-foreground">{formatCurrency(team.realizedReturn)}</strong></span>
-        <span className="text-muted-foreground">Net <strong className={team.netReturn >= 0 ? "text-green-600 dark:text-green-400" : "text-red-600 dark:text-red-400"}>{signedCurrency(Number(team.netReturn))}</strong></span>
-        <span className="text-muted-foreground">Breakeven <strong className="text-foreground">{team.ptsToBreakeven == null ? "—" : `${team.ptsToBreakeven.toLocaleString()} pts`}</strong></span>
+      <div className="col-span-2 grid grid-cols-2 gap-x-3 gap-y-1 border-t border-border/50 pt-2 font-mono text-[10px] text-muted-foreground md:hidden">
+        <span>Cost <strong className="text-foreground">{formatCurrency(team.cost)}</strong></span>
+        <span>Realized gross <strong className="text-foreground">{formatCurrency(team.realizedReturn)}</strong></span>
+        <span>Realized net <strong className={team.netReturn >= 0 ? "text-emerald-600 dark:text-emerald-400" : "text-rose-600 dark:text-rose-400"}>{signedCurrency(team.netReturn)}</strong></span>
+        <span>Realized pts to BE <strong className="text-foreground">{team.ptsToBreakeven == null ? "—" : team.ptsToBreakeven.toLocaleString()}</strong></span>
       </div>
 
       <div
@@ -1731,20 +1670,18 @@ function TeamSubRow({
       >
         {formatOwnershipPercent(netPosition, true)}
       </div>
-      <div className="hidden md:block text-right font-mono text-sm text-muted-foreground">
-        {formatCurrency(team.cost)}
+      <div
+        className={cn(
+          "hidden md:block text-right font-mono text-sm",
+          team.netMtm >= 0 ? "text-green-600 dark:text-green-400" : "text-red-600 dark:text-red-400",
+        )}
+      >
+        {team.netMtm !== 0
+          ? signedCurrency(team.netMtm)
+          : "—"}
       </div>
       <div className="hidden md:block text-right font-mono text-sm text-muted-foreground">
-        {formatCurrency(team.realizedReturn)}
-      </div>
-      <div className={cn("hidden md:block text-right font-mono text-sm", team.netReturn >= 0 ? "text-green-600 dark:text-green-400" : "text-red-600 dark:text-red-400")}>
-        {signedCurrency(Number(team.netReturn))}
-      </div>
-      <div className={cn("hidden md:block text-right font-mono text-sm", team.netMtm >= 0 ? "text-green-600 dark:text-green-400" : "text-red-600 dark:text-red-400")}>
-        {signedCurrency(Number(team.netMtm))}
-      </div>
-      <div className="hidden md:block text-right font-mono text-sm text-muted-foreground">
-        {team.ptsToBreakeven == null ? "—" : `${team.ptsToBreakeven.toLocaleString()} pts`}
+        {formatCurrency(calculateTeamExposure(team))}
       </div>
     </div>
   );
@@ -1891,17 +1828,15 @@ function expandTeams(
 
 function ByTeamView({
   rows,
-  isComplete,
   consortiumByBidderId,
   seasonYear,
 }: {
   rows: TeamResultRow[];
-  isComplete: boolean;
   consortiumByBidderId: Map<number, string>;
   seasonYear: number;
 }) {
   const [splitByOwner, setSplitByOwner] = useState(true);
-  const [sortKey, setSortKey] = useState<BTSortKey>(isComplete ? "net" : "mtm");
+  const [sortKey, setSortKey] = useState<BTSortKey>("net");
   const [sortAsc, setSortAsc] = useState(false);
   const [search, setSearch] = useState("");
 
@@ -2219,10 +2154,10 @@ function ByTeamView({
                 <SH label="Realized Net" k="net" />
               </th>
               <th className="px-4 md:px-5 py-3 text-right">
-                <SH label="MTM" k="mtm" />
+                <SH label="Net MTM" k="mtm" />
               </th>
                <th className="px-4 md:px-5 py-3 text-right">
-                 <span>Pts to BE</span>
+                  <span>Realized Pts to BE</span>
                </th>
             </tr>
           </thead>
@@ -2420,7 +2355,7 @@ function ByTeamView({
 
       <p className="text-[10px] md:text-xs text-muted-foreground font-mono">
         {rowCount} {splitByOwner ? "owner-team rows" : "teams"} ·{" "}
-        Return values follow this Calcutta's configured payout rules.
+        Realized columns and points to breakeven use realized snapshots; net MTM is live.
       </p>
     </div>
   );
@@ -2430,16 +2365,14 @@ function ByTeamView({
 
 function CompareView({
   response,
-  isComplete,
 }: {
   response: CalcuttaComparisonResponse | undefined;
-  isComplete: boolean;
 }) {
   if (!response || !response.rows.length) return <Empty />;
 
-  // Comparison is deliberately live: all rows rank by cost-adjusted MTM.
-  const sorted = [...response.rows].sort(
-    (a, b) => b.aggregate.totalNetMtm - a.aggregate.totalNetMtm,
+  // Comparison stays a live net-MTM view.
+  const sorted = [...response.rows].sort((a, b) =>
+    b.aggregate.totalNetMtm - a.aggregate.totalNetMtm
   );
 
   return (
@@ -2454,10 +2387,11 @@ function CompareView({
               <th key={c.id} className="px-4 py-3 font-bold border-b border-border/60 border-r text-right">
                 <div className="text-foreground">{c.year}</div>
                 <div className="text-[10px] text-muted-foreground font-normal normal-case tracking-normal">{c.label}</div>
+                <div className="mt-1 text-[10px] text-primary">Net MTM</div>
               </th>
             ))}
             <th className="px-4 py-3 font-bold border-b border-border/60 text-right bg-muted/50">
-              Aggregate
+              Net MTM aggregate
             </th>
           </tr>
         </thead>
@@ -2469,11 +2403,11 @@ function CompareView({
               </td>
               {row.calcuttas.map((cell, idx) => (
                 <td key={idx} className="px-4 py-4 border-r border-border/50 text-right align-top">
-                  {cell ? <CompareCell cell={cell} isComplete={isComplete} /> : <span className="text-muted-foreground/40">—</span>}
+                  {cell ? <CompareCell cell={cell} /> : <span className="text-muted-foreground/40">—</span>}
                 </td>
               ))}
               <td className="px-4 py-4 text-right bg-muted/10 font-bold align-top">
-                <CompareAggregate aggregate={row.aggregate} isComplete={isComplete} />
+                <CompareAggregate aggregate={row.aggregate} />
               </td>
             </tr>
           ))}
@@ -2483,7 +2417,7 @@ function CompareView({
   );
 }
 
-function CompareCell({ cell, isComplete }: { cell: CalcuttaComparisonCell; isComplete: boolean }) {
+function CompareCell({ cell }: { cell: CalcuttaComparisonCell }) {
   if (!cell.snapshotAvailable) {
     return (
       <div
@@ -2505,18 +2439,12 @@ function CompareCell({ cell, isComplete }: { cell: CalcuttaComparisonCell; isCom
       <div
         className={cn(
           "font-bold text-sm",
-          isComplete
-            ? cell.totalNetReturn >= 0
-              ? "text-green-600 dark:text-green-400"
-              : "text-red-600 dark:text-red-400"
-            : cell.totalNetMtm >= 0
-              ? "text-green-600 dark:text-green-400"
-              : "text-red-600 dark:text-red-400",
+          cell.totalNetMtm >= 0
+            ? "text-green-600 dark:text-green-400"
+            : "text-red-600 dark:text-red-400",
         )}
       >
-        {isComplete
-          ? (cell.totalNetReturn >= 0 ? "+" : "") + formatCurrency(cell.totalNetReturn)
-          : signedCurrency(cell.totalNetMtm)}
+        {signedCurrency(cell.totalNetMtm)}
       </div>
       <div className="text-[10px] text-muted-foreground flex gap-2">
         <span title="Exposure / Cost Basis">Exp: {formatCurrency(cell.exposure)}</span>
@@ -2526,7 +2454,7 @@ function CompareCell({ cell, isComplete }: { cell: CalcuttaComparisonCell; isCom
   );
 }
 
-function CompareAggregate({ aggregate, isComplete }: { aggregate: CalcuttaComparisonAggregate; isComplete: boolean }) {
+function CompareAggregate({ aggregate }: { aggregate: CalcuttaComparisonAggregate }) {
   if (!aggregate.snapshotAvailable) {
     return (
       <div
@@ -2546,18 +2474,12 @@ function CompareAggregate({ aggregate, isComplete }: { aggregate: CalcuttaCompar
       <div
         className={cn(
           "font-bold text-sm",
-          isComplete
-            ? aggregate.totalNetReturn >= 0
-              ? "text-green-600 dark:text-green-400"
-              : "text-red-600 dark:text-red-400"
-            : aggregate.totalNetMtm >= 0
-              ? "text-green-600 dark:text-green-400"
-              : "text-red-600 dark:text-red-400",
+          aggregate.totalNetMtm >= 0
+            ? "text-green-600 dark:text-green-400"
+            : "text-red-600 dark:text-red-400",
         )}
       >
-        {isComplete
-          ? (aggregate.totalNetReturn >= 0 ? "+" : "") + formatCurrency(aggregate.totalNetReturn)
-          : signedCurrency(aggregate.totalNetMtm)}
+        {signedCurrency(aggregate.totalNetMtm)}
       </div>
       <div className="text-[10px] text-muted-foreground flex gap-2">
         <span title="Total Exposure">Exp: {formatCurrency(aggregate.exposure)}</span>
