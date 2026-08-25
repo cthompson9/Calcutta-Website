@@ -1,0 +1,19 @@
+name: Calcutta standings refresh
+
+on:
+  schedule:
+    - cron: "*/5 * * * *"
+  workflow_dispatch:
+
+jobs:
+  tick:
+    runs-on: ubuntu-latest
+    timeout-minutes: 3
+    steps:
+      - name: Trigger standings refresh
+        run: |
+          curl -fsS --max-time 60 --retry 2 --retry-delay 10 \
+            -X POST "${{ secrets.CALCUTTA_APP_URL }}/api/jobs/refresh" \
+            -H "Authorization: Bearer ${{ secrets.CALCUTTA_JOB_SECRET }}" \
+            -H "Content-Type: application/json" \
+            -d '{"job":"standings"}'
