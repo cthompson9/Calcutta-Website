@@ -202,13 +202,15 @@ test("points use the game-level marquee multiplier once and retain playoff bonus
   assert.equal(result.breakdown.ptDiff, 10);
 });
 
-test("fair values reconcile exactly to the selected pot and shares normalize to one", () => {
+test("fair values use the fixed final-season denominator before all points are earned", () => {
   const values = calculateNflTeamValues([
     { teamId: 1, cost: 100, snapshot: { wins: 0, losses: 0, ties: 0, ptDiff: 0, playoffBerth: 0, divRound: 0, confRound: 0, sbBerth: 0, winSuperBowl: 0 } },
     { teamId: 2, cost: 200, snapshot: { wins: 1, losses: 0, ties: 0, ptDiff: 10, playoffBerth: 0, divRound: 0, confRound: 0, sbBerth: 0, winSuperBowl: 0 } },
   ], 300);
-  assert.ok(Math.abs(values.reduce((sum, value) => sum + value.normalizedShare, 0) - 1) < 1e-12);
-  assert.ok(Math.abs(values.reduce((sum, value) => sum + value.fairValue, 0) - 300) < 1e-9);
+  assert.equal(values[0].normalizedShare, 150 / 11420);
+  assert.equal(values[1].normalizedShare, 170 / 11420);
+  assert.ok(Math.abs(values.reduce((sum, value) => sum + value.normalizedShare, 0) - 320 / 11420) < 1e-12);
+  assert.ok(Math.abs(values.reduce((sum, value) => sum + value.fairValue, 0) - (320 / 11420) * 300) < 1e-9);
   assert.equal(values[1].netReturn, values[1].fairValue - 200);
 });
 

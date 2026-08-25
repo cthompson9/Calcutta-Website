@@ -25,7 +25,19 @@ Week 0 baseline creation is automatic on Results reporting reads, including peri
 
 **How to apply:** Ensure both team and owner result routes, plus availability, invoke the server-side baseline check before loading snapshots. Keep any retained manual endpoint backward-compatible but unnecessary for normal use.
 
-Displayed realized points to breakeven is a signed result, not a remaining-point countdown: divide realized net value by the complete realized snapshot pool’s dollars-per-point rate and round to a whole point. Positive values are profitable surplus; negative values are the deficit.
+Point-based NFL returns always use the fixed **11,420-point final-season denominator**. Interim calculated gross values deliberately sum to less than the pool; only the completed season’s full scorecard exhausts it.
+
+**Why:** Renormalizing to points earned so far incorrectly treats an opening baseline or partial season as if the full pool had already been won.
+
+**How to apply:** Calculate point-backed gross as `pool × team points ÷ 11,420`, for both calculated return bases. Keep separate market-valuation snapshots governed by their own market model.
+
+The 11,420 denominator is specific to the NFL points machine: it is the knowable complete future point inventory, including banked points, game win/tie units, playoff bonuses, and zero-sum point differential. Other sports must supply their own final denominator rather than reuse this NFL constant.
+
+**Why:** A cross-sport Calcutta abstraction can preserve the fixed-denominator principle without assuming NFL scoring totals.
+
+**How to apply:** Keep the denominator owned by each sport’s scoring model and pass that sport-specific value into shared return allocation code.
+
+Displayed realized points to breakeven is a signed result, not a remaining-point countdown: divide realized net value by the fixed final-denominator dollars-per-point rate (`pool ÷ 11,420`) and round to a whole point. Positive values are profitable surplus; negative values are the deficit.
 
 **Why:** Clamping at zero conceals profitable positions and misstates the direction of a team’s realized return.
 

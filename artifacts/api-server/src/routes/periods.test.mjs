@@ -153,10 +153,10 @@ describe("period snapshot reporting", { skip: !DATABASE_URL || !ADMIN_KEY }, () 
           losses: 0,
           ties: 0,
           ptDiff: 0,
-          realizedReturn: 200,
-          netReturn: 100,
-          markToMarket: 200,
-          ptsToBreakeven: 75,
+          realizedReturn: 5.25,
+          netReturn: -94.75,
+          markToMarket: 5.25,
+          ptsToBreakeven: -2705,
         },
         {
           teamId: legacyTeamId,
@@ -164,10 +164,10 @@ describe("period snapshot reporting", { skip: !DATABASE_URL || !ADMIN_KEY }, () 
           losses: 0,
           ties: 0,
           ptDiff: 0,
-          realizedReturn: 200,
-          netReturn: -100,
-          markToMarket: 200,
-          ptsToBreakeven: -75,
+          realizedReturn: 5.25,
+          netReturn: -294.75,
+          markToMarket: 5.25,
+          ptsToBreakeven: -8415,
         },
       ].sort((left, right) => left.teamId - right.teamId),
     );
@@ -207,7 +207,7 @@ describe("period snapshot reporting", { skip: !DATABASE_URL || !ADMIN_KEY }, () 
     ).then((response) => response.json());
     assert.equal(
       mtmRows.find((row) => row.teamId === teamId).markToMarket,
-      212.5,
+      5.95,
       "retrying must not replace a later imported MTM Week 0 snapshot",
     );
   });

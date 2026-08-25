@@ -31,6 +31,7 @@ import {
   loadReturnSnapshotPeriods,
   type CalculatedTeamReturns,
 } from "../lib/calcuttaReturns";
+import { LEAGUE_POINT_TOTAL } from "../lib/weekZeroValuation";
 import { loadSeasonConsortiums } from "../lib/consortiumMemberships";
 
 const router: IRouter = Router();
@@ -511,10 +512,7 @@ router.get("/results", async (req, res): Promise<void> => {
     auctionRows.length > 0 &&
     auctionRows.every((a) => calculatedResults.get(a.teamId)?.realized != null);
   const totalRealizedPoints = realizedCoverageComplete
-    ? auctionRows.reduce(
-        (sum, a) => sum + Number(calculatedResults.get(a.teamId)?.realized?.points ?? 0),
-        0,
-      )
+    ? LEAGUE_POINT_TOTAL
     : null;
 
   // Effective ownership (applies approved trades)
@@ -604,10 +602,7 @@ router.get("/results/by-owner", async (req, res): Promise<void> => {
     auctionRows.length > 0 &&
     auctionRows.every((a) => calculatedResults.get(a.teamId)?.realized != null);
   const totalRealizedPoints = realizedCoverageComplete
-    ? auctionRows.reduce(
-        (sum, a) => sum + Number(calculatedResults.get(a.teamId)?.realized?.points ?? 0),
-        0,
-      )
+    ? LEAGUE_POINT_TOTAL
     : null;
 
   // Effective ownership from shared helper

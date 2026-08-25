@@ -10,6 +10,7 @@ import {
   teamResultsTable,
   teamSeasonAuctionsTable,
 } from "@workspace/db";
+import { LEAGUE_POINT_TOTAL } from "./weekZeroValuation";
 
 export const NFL_SPORT = "NFL";
 function calcuttaAsOfDate(year: number): string | undefined {
@@ -409,10 +410,11 @@ export function calculateNflTeamValues(
 ): CalculatedTeamValue[] {
   if (!Number.isFinite(potSize) || potSize < 0) throw new Error("Calcutta pot size must be a non-negative number.");
   const scored = entries.map((entry) => ({ ...entry, ...calculateNflPoints(entry.snapshot, rules) }));
-  const totalPoints = scored.reduce((total, entry) => total + entry.points, 0);
-  if (totalPoints <= 0) throw new Error("Cannot normalize NFL payouts when total points are not positive.");
   return scored.map((entry) => {
-    const normalizedShare = entry.points / totalPoints;
+    // Returns accrue against the league's complete season scorecard rather
+    // than being renormalized to the points earned so far. Until the season is
+    // complete, the total displayed gross can therefore be below the full pot.
+    const normalizedShare = entry.points / LEAGUE_POINT_TOTAL;
     const fairValue = normalizedShare * potSize;
     const cost = entry.cost ?? 0;
     return {
