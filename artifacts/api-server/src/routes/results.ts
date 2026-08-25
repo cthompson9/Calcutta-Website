@@ -85,6 +85,7 @@ type ResultDisplay = {
   netReturn: string | number;
   netPctReturn: string | number;
   markToMarket: string | number;
+  netMtm?: string | number;
 };
 
 function resultFromCalculatedSnapshots(
@@ -94,13 +95,25 @@ function resultFromCalculatedSnapshots(
   basis: "realized" | "mtm",
   payoutRulesConfigured: boolean,
 ): ResultDisplay | null {
-  if (!payoutRulesConfigured) return legacy;
+  const legacyDisplay = legacy
+    ? {
+        ...legacy,
+        isProjectedRecord: basis === "mtm",
+        realizedReturn: Number(legacy.realizedReturn),
+        realizedMultiple: cost > 0 ? Number(legacy.realizedReturn) / cost : 0,
+        netReturn: Number(legacy.realizedReturn) - cost,
+        netPctReturn: cost > 0 ? (Number(legacy.realizedReturn) - cost) / cost : 0,
+        markToMarket: Number(legacy.markToMarket),
+        netMtm: Number(legacy.markToMarket) - cost,
+      }
+    : null;
+  if (!payoutRulesConfigured) return legacyDisplay;
   const selected = calculated?.[basis];
   if (!calculated || !selected) {
     // Historical rows remain authoritative until a complete, reconciled
     // snapshot ledger is available. Do not silently replace known returns
     // with a zero just because a rubric was configured early.
-    if (legacy) return legacy;
+    if (legacyDisplay) return legacyDisplay;
     return {
       isProjectedRecord: basis === "mtm",
       wins: 0,
@@ -121,6 +134,7 @@ function resultFromCalculatedSnapshots(
       netReturn: -cost,
       netPctReturn: cost > 0 ? -1 : 0,
       markToMarket: 0,
+      netMtm: -cost,
     };
   }
   const latest = selected.latest;
@@ -132,6 +146,7 @@ function resultFromCalculatedSnapshots(
   const markToMarket = calculated.mtm?.grossReturn
     ?? Number(legacy?.markToMarket ?? 0);
   const netReturn = realizedReturn - cost;
+  const netMtm = markToMarket - cost;
   return {
     isProjectedRecord: basis === "mtm",
     wins: latest.wins,
@@ -152,6 +167,7 @@ function resultFromCalculatedSnapshots(
     netReturn,
     netPctReturn: cost > 0 ? netReturn / cost : 0,
     markToMarket,
+    netMtm,
   };
 }
 
@@ -198,6 +214,7 @@ function buildTeamResult(
       netReturn: 0,
       netPctReturn: 0,
       markToMarket: 0,
+      netMtm: 0,
     };
   }
 
@@ -224,6 +241,7 @@ function buildTeamResult(
     netReturn: Number(result.netReturn),
     netPctReturn: Number(result.netPctReturn),
     markToMarket: Number(result.markToMarket),
+    netMtm: Number(result.netMtm ?? Number(result.markToMarket) - cost),
   };
 }
 
@@ -285,12 +303,14 @@ function buildOwnerTeamResult(
       netReturn: 0,
       netPctReturn: 0,
       markToMarket: 0,
+      netMtm: 0,
     };
   }
 
   // Owner-scaled financials
   const realizedReturn = Number(result.realizedReturn) * effectiveShare;
   const markToMarket = Number(result.markToMarket) * effectiveShare;
+  const netMtm = markToMarket - ownerCost;
   const netReturn = realizedReturn - ownerCost;
   const realizedMultiple = ownerCost > 0 ? realizedReturn / ownerCost : 0;
   const netPctReturn = ownerCost > 0 ? netReturn / ownerCost : 0;
@@ -320,6 +340,7 @@ function buildOwnerTeamResult(
     netReturn: Math.round(netReturn * 100) / 100,
     netPctReturn: Math.round(netPctReturn * 10000) / 100,
     markToMarket: Math.round(markToMarket * 100) / 100,
+    netMtm: Math.round(netMtm * 100) / 100,
   };
 }
 
@@ -521,6 +542,7 @@ router.get("/results/by-owner", async (req, res): Promise<void> => {
     totalRealizedReturn: number;
     totalNetReturn: number;
     totalMtm: number;
+    totalNetMtm: number;
     teams: ReturnType<typeof buildOwnerTeamResult>[];
   };
 
@@ -541,6 +563,7 @@ router.get("/results/by-owner", async (req, res): Promise<void> => {
       totalRealizedReturn: 0,
       totalNetReturn: 0,
       totalMtm: 0,
+      totalNetMtm: 0,
       teams: [],
     });
   }
@@ -587,12 +610,14 @@ router.get("/results/by-owner", async (req, res): Promise<void> => {
         ? Number(result.markToMarket) * effectiveShare
         : 0;
       const netReturn = realizedReturn - ownerCost;
+      const netMtm = markToMarket - ownerCost;
 
       agg.teamCount += effectiveShare;
       agg.totalCost += ownerCost;
       agg.totalRealizedReturn += realizedReturn;
       agg.totalNetReturn += netReturn;
       agg.totalMtm += markToMarket;
+      agg.totalNetMtm += netMtm;
 
       // Add owner-specific team row once per owner. Financial fields are scaled
       // to this bidder's economic position; team-level NFL stats preserved.
@@ -625,11 +650,12 @@ router.get("/results/by-owner", async (req, res): Promise<void> => {
           ? Math.round((o.totalNetReturn / o.totalCost) * 10000) / 100
           : 0,
       totalMtm: Math.round(o.totalMtm * 100) / 100,
+      totalNetMtm: Math.round(o.totalNetMtm * 100) / 100,
       teams: o.teams.sort((a, b) => a.teamName.localeCompare(b.teamName)),
     }))
     .sort((a, b) =>
       selectedBasis === "mtm"
-        ? b.totalMtm - a.totalMtm
+        ? b.totalNetMtm - a.totalNetMtm
         : b.totalNetReturn - a.totalNetReturn,
     );
 

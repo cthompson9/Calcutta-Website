@@ -233,6 +233,18 @@ async function getTeamResult(teamId: number, seasonId: number) {
   return rows[0] ?? null;
 }
 
+async function getTeamCost(teamId: number, seasonId: number): Promise<number> {
+  const rows = await db
+    .select({ bidAmount: teamSeasonAuctionsTable.bidAmount })
+    .from(teamSeasonAuctionsTable)
+    .where(and(
+      eq(teamSeasonAuctionsTable.teamId, teamId),
+      eq(teamSeasonAuctionsTable.seasonId, seasonId),
+    ))
+    .limit(1);
+  return Number(rows[0]?.bidAmount ?? 0);
+}
+
 /** Returns effective current owner names for a team in a season (post-trades). */
 async function getTeamOwners(teamId: number, seasonId: number): Promise<string[]> {
   const ownership = await loadSeasonOwnership(seasonId);
@@ -245,7 +257,7 @@ async function getOwnerAgg(bidderId: number, seasonId: number) {
   const calculatedReturns = await loadCalculatedTeamReturns(seasonId);
   const payoutRulesConfigured = await hasConfiguredPayoutRules(seasonId);
   const teamMap = ownership.byBidder.get(bidderId);
-  if (!teamMap) return { totalCost: 0, totalReturn: 0, totalMtm: 0 };
+  if (!teamMap) return { totalCost: 0, totalReturn: 0, totalMtm: 0, totalNetMtm: 0 };
 
   let totalCost = 0, totalReturn = 0, totalMtm = 0;
   for (const [teamId, entry] of teamMap) {
@@ -279,7 +291,7 @@ async function getOwnerAgg(bidderId: number, seasonId: number) {
       }
     }
   }
-  return { totalCost, totalReturn, totalMtm };
+  return { totalCost, totalReturn, totalMtm, totalNetMtm: totalMtm - totalCost };
 }
 
 // ─── Text helper ─────────────────────────────────────────────────────────────
@@ -441,7 +453,7 @@ function buildMcpServer() {
 
   server.tool(
     "get_team_mtm",
-    "Returns the mark-to-market valuation (net profit/loss vs. auction price) for a team in a given season.",
+    "Returns net MTM (mark-to-market gross value minus the auction price) for a team in a given season.",
     { ...teamInput, ...seasonInput },
     async ({ team, season }) => {
       const t = await findTeam(team);
@@ -450,13 +462,14 @@ function buildMcpServer() {
       const sid = await resolveSeasonId(year);
       if (!sid) return text(null);
       const r = await getTeamResult(t.id, sid);
+      const cost = await getTeamCost(t.id, sid);
       const calculated = (await loadCalculatedTeamReturns(sid)).get(t.id);
       const payoutRulesConfigured = await hasConfiguredPayoutRules(sid);
       return text(
         payoutRulesConfigured && calculated?.mtm
-          ? calculated.mtm.grossReturn
+          ? calculated.mtm.grossReturn - cost
           : r
-            ? parseFloat(r.markToMarket)
+            ? parseFloat(r.markToMarket) - cost
             : null,
       );
     },
@@ -511,7 +524,7 @@ function buildMcpServer() {
 
   server.tool(
     "get_owner_mtm",
-    "Returns the total mark-to-market net profit/loss for an owner across all their teams in a given season.",
+    "Returns total net MTM for an owner in a given season (gross market value minus signed cost basis).",
     { ...ownerInput, ...seasonInput },
     async ({ owner, season }) => {
       const b = await findBidder(owner);
@@ -520,7 +533,7 @@ function buildMcpServer() {
       const sid = await resolveSeasonId(year);
       if (!sid) return text(null);
       const agg = await getOwnerAgg(b.id, sid);
-      return text(Math.round(agg.totalMtm * 100) / 100);
+      return text(Math.round(agg.totalNetMtm * 100) / 100);
     },
   );
 

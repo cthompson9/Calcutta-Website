@@ -20,6 +20,9 @@ export interface OwnerResultRow {
   totalRealizedReturn: number;
   totalNetReturn: number;
   netPctReturn: number;
+  /** Total MTM gross dollars. */
   totalMtm: number;
+  /** Total MTM gross return minus signed cost basis. */
+  totalNetMtm: number;
   teams: TeamResultRow[];
 }

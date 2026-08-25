@@ -16,6 +16,9 @@ export interface CalcuttaComparisonAggregate {
   totalCost: number;
   totalRealizedReturn: number;
   totalNetReturn: number;
+  /** Total MTM gross dollars. */
   totalMtm: number;
+  /** Total MTM gross return minus signed cost basis. */
+  totalNetMtm: number;
   netPctReturn: number;
 }

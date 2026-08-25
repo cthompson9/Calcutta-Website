@@ -380,7 +380,7 @@ type CommandSortKey =
   | "movement";
 
 function commandReturn(row: OwnerResultRow, isComplete: boolean): number {
-  return isComplete ? row.totalNetReturn : row.totalMtm - row.totalCost;
+  return isComplete ? row.totalNetReturn : row.totalNetMtm;
 }
 
 function commandMarketValue(row: OwnerResultRow, isComplete: boolean): number {
@@ -1001,7 +1001,7 @@ function DesktopOwnerDetail({
         <div className="grid grid-cols-2 gap-3">
           <DetailMetric label="Cost basis" value={formatCurrency(owner.totalCost)} />
           <DetailMetric
-            label={isComplete ? "Net return" : "M2M return"}
+            label={isComplete ? "Net return" : "MTM return"}
             value={signedCurrency(commandReturn(owner, isComplete))}
             tone={commandReturn(owner, isComplete) >= 0 ? "positive" : "negative"}
           />
@@ -1220,7 +1220,7 @@ function ByOwnerView({
 
   // Always sort by MTM net return — that's the live standing metric
   const sorted = [...rows].sort((a, b) =>
-    isComplete ? b.totalNetReturn - a.totalNetReturn : b.totalMtm - a.totalMtm,
+    isComplete ? b.totalNetReturn - a.totalNetReturn : b.totalNetMtm - a.totalNetMtm,
   );
 
   return (
@@ -1339,12 +1339,12 @@ function ByOwnerView({
                     <div
                       className={cn(
                         "text-right font-mono font-bold text-sm md:text-base self-center",
-                        row.totalMtm >= 0 ? "text-green-600 dark:text-green-400" : "text-red-600 dark:text-red-400",
+                        row.totalNetMtm >= 0 ? "text-green-600 dark:text-green-400" : "text-red-600 dark:text-red-400",
                       )}
                     >
-                      {row.totalMtm !== 0
-                        ? (row.totalMtm >= 0 ? "+" : "") +
-                          formatCurrency(row.totalMtm)
+                      {row.totalNetMtm !== 0
+                        ? (row.totalNetMtm >= 0 ? "+" : "") +
+                          formatCurrency(row.totalNetMtm)
                         : "—"}
                     </div>
                     <div className="hidden md:block text-right font-mono text-sm text-muted-foreground self-center">
@@ -1389,7 +1389,7 @@ function ByOwnerView({
                         <div className="text-muted-foreground uppercase tracking-widest text-[10px]">Proj. ROI</div>
                         <div className="font-bold">
                           {calculateExposure(row) !== 0
-                            ? ((row.totalMtm / Math.abs(calculateExposure(row))) * 100).toFixed(1) + "%"
+                            ? ((row.totalNetMtm / Math.abs(calculateExposure(row))) * 100).toFixed(1) + "%"
                             : "—"}
                         </div>
                       </div>
@@ -1750,7 +1750,7 @@ function expandTeams(
         cost: Math.round(team.cost * s * 100) / 100,
         gross: Math.round(team.realizedReturn * s * 100) / 100,
         net: Math.round(team.netReturn * s * 100) / 100,
-        mtm: Math.round(team.markToMarket * s * 100) / 100,
+        mtm: Math.round(team.netMtm * s * 100) / 100,
       });
     }
   }
@@ -1949,7 +1949,7 @@ function ByTeamView({
         diff = a.netReturn - b.netReturn;
         break;
       case "mtm":
-        diff = a.markToMarket - b.markToMarket;
+        diff = a.netMtm - b.netMtm;
         break;
       default:
         break;
@@ -2041,10 +2041,6 @@ function ByTeamView({
           Split by Consortium
         </button>
       </div>
-      <p className="border-y md:border border-sky-200 bg-sky-50 px-4 py-3 text-xs text-sky-900 dark:border-sky-900 dark:bg-sky-950/30 dark:text-sky-100 md:rounded-lg -mx-4 md:mx-0">
-        Ownership is signed: leveraged long positions can exceed 100%, short positions are negative, and each team’s combined positions reconcile to 100%.
-      </p>
-
       {/* Table */}
       <div className="table-scroll border-y md:border border-border bg-card -mx-4 md:mx-0 md:rounded-lg shadow-sm">
         <table className="text-sm whitespace-nowrap w-full">
@@ -2163,7 +2159,7 @@ function ByTeamView({
                       {formatCurrency(row.cost)}
                     </td>
                     <td className="px-4 py-3 text-right font-mono text-sm text-muted-foreground">
-                      {isComplete ? formatCurrency(row.gross) : "—"}
+                      {formatCurrency(row.gross)}
                     </td>
                     <td
                       className={cn(
@@ -2171,9 +2167,7 @@ function ByTeamView({
                         row.net >= 0 ? "text-green-600 dark:text-green-400" : "text-red-600 dark:text-red-400",
                       )}
                     >
-                      {isComplete
-                        ? (row.net >= 0 ? "+" : "") + formatCurrency(row.net)
-                        : "—"}
+                      {(row.net >= 0 ? "+" : "") + formatCurrency(row.net)}
                     </td>
                     <td
                       className={cn(
@@ -2246,7 +2240,7 @@ function ByTeamView({
                         {formatCurrency(row.cost)}
                       </td>
                       <td className="px-4 py-3 text-right font-mono text-sm text-muted-foreground">
-                        {isComplete ? formatCurrency(row.realizedReturn) : "—"}
+                        {formatCurrency(row.realizedReturn)}
                       </td>
                       <td
                         className={cn(
@@ -2256,22 +2250,20 @@ function ByTeamView({
                             : "text-red-600 dark:text-red-400",
                         )}
                       >
-                        {isComplete
-                          ? (row.netReturn >= 0 ? "+" : "") +
-                            formatCurrency(row.netReturn)
-                          : "—"}
+                        {(row.netReturn >= 0 ? "+" : "") +
+                          formatCurrency(row.netReturn)}
                       </td>
                       <td
                         className={cn(
                           "px-4 md:px-5 py-3 text-right font-mono font-bold text-sm",
-                          row.markToMarket >= 0
+                          row.netMtm >= 0
                             ? "text-green-600 dark:text-green-400"
                             : "text-red-600 dark:text-red-400",
                         )}
                       >
-                        {row.markToMarket !== 0
-                          ? (row.markToMarket >= 0 ? "+" : "") +
-                            formatCurrency(row.markToMarket)
+                        {row.netMtm !== 0
+                          ? (row.netMtm >= 0 ? "+" : "") +
+                            formatCurrency(row.netMtm)
                           : "—"}
                       </td>
                     </tr>
@@ -2302,7 +2294,7 @@ function CompareView({
 
   // Sort rows by aggregate MTM or Net return
   const sorted = [...response.rows].sort((a, b) =>
-    isComplete ? b.aggregate.totalNetReturn - a.aggregate.totalNetReturn : b.aggregate.totalMtm - a.aggregate.totalMtm
+    isComplete ? b.aggregate.totalNetReturn - a.aggregate.totalNetReturn : b.aggregate.totalNetMtm - a.aggregate.totalNetMtm
   );
 
   return (

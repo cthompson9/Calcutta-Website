@@ -82,7 +82,7 @@ export default function MtmTracker() {
     <div className="space-y-5 px-4 pb-6 pt-4 md:space-y-6 md:p-8 max-w-5xl mx-auto">
       <header className="flex flex-col md:flex-row md:items-end justify-between gap-4">
         <div>
-          <h1 className="text-3xl md:text-5xl font-extrabold uppercase tracking-tighter mb-1" data-testid="text-mtm-title">M2M Tracker</h1>
+          <h1 className="text-3xl md:text-5xl font-extrabold uppercase tracking-tighter mb-1" data-testid="text-mtm-title">MTM Tracker</h1>
           <p className="text-muted-foreground font-mono text-xs md:text-sm uppercase tracking-widest">
             Mark-to-market · week by week · {year}
           </p>
@@ -551,7 +551,7 @@ function EmptyState({
     <div className="border border-dashed border-border flex flex-col items-center justify-center py-24 text-center">
       <TrendingUp className="w-12 h-12 text-muted-foreground/30 mb-4" />
       <p className="text-muted-foreground font-mono text-sm uppercase tracking-widest">
-        No M2M data for {year} yet
+        No MTM data for {year} yet
       </p>
       <p className="text-xs text-muted-foreground mt-2 max-w-sm">
         Weekly mark-to-market snapshots will appear here once data is entered or captured from the market.

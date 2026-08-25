@@ -317,11 +317,12 @@ export const GetResultsResponseItem = zod.object({
   "confRound": zod.boolean(),
   "sbBerth": zod.boolean(),
   "winSuperBowl": zod.boolean(),
-  "realizedReturn": zod.number(),
+  "realizedReturn": zod.number().describe('Realized gross dollars from normalized actual points.'),
   "realizedMultiple": zod.number(),
-  "netReturn": zod.number(),
+  "netReturn": zod.number().describe('Realized gross return minus cost.'),
   "netPctReturn": zod.number(),
-  "markToMarket": zod.number(),
+  "markToMarket": zod.number().describe('MTM gross dollars from normalized market points.'),
+  "netMtm": zod.number().describe('MTM gross return minus cost.'),
   "seed": zod.number().nullish().describe('Playoff seed within conference (1–7). Null if team missed playoffs or seed not yet set.')
 })
 export const GetResultsResponse = zod.array(GetResultsResponseItem)
@@ -352,7 +353,8 @@ export const GetResultsByOwnerResponseItem = zod.object({
   "totalRealizedReturn": zod.number(),
   "totalNetReturn": zod.number(),
   "netPctReturn": zod.number(),
-  "totalMtm": zod.number(),
+  "totalMtm": zod.number().describe('Total MTM gross dollars.'),
+  "totalNetMtm": zod.number().describe('Total MTM gross return minus signed cost basis.'),
   "teams": zod.array(zod.object({
   "teamId": zod.number(),
   "teamName": zod.string(),
@@ -386,11 +388,12 @@ export const GetResultsByOwnerResponseItem = zod.object({
   "confRound": zod.boolean(),
   "sbBerth": zod.boolean(),
   "winSuperBowl": zod.boolean(),
-  "realizedReturn": zod.number(),
+  "realizedReturn": zod.number().describe('Realized gross dollars from normalized actual points.'),
   "realizedMultiple": zod.number(),
-  "netReturn": zod.number(),
+  "netReturn": zod.number().describe('Realized gross return minus cost.'),
   "netPctReturn": zod.number(),
-  "markToMarket": zod.number(),
+  "markToMarket": zod.number().describe('MTM gross dollars from normalized market points.'),
+  "netMtm": zod.number().describe('MTM gross return minus cost.'),
   "seed": zod.number().nullish().describe('Playoff seed within conference (1–7). Null if team missed playoffs or seed not yet set.')
 }))
 })
@@ -541,7 +544,8 @@ export const GetResultsCompareResponse = zod.object({
   "totalCost": zod.number(),
   "totalRealizedReturn": zod.number(),
   "totalNetReturn": zod.number(),
-  "totalMtm": zod.number(),
+  "totalMtm": zod.number().describe('Total MTM gross dollars.'),
+  "totalNetMtm": zod.number().describe('Total MTM gross return minus signed cost basis.'),
   "netPctReturn": zod.number(),
   "snapshotAvailable": zod.boolean().describe('False when this Calcutta has payout rules but no valid snapshot for the selected basis and period.'),
   "throughPeriod": zod.number().nullable(),
@@ -557,7 +561,8 @@ export const GetResultsCompareResponse = zod.object({
   "totalCost": zod.number(),
   "totalRealizedReturn": zod.number(),
   "totalNetReturn": zod.number(),
-  "totalMtm": zod.number(),
+  "totalMtm": zod.number().describe('Total MTM gross dollars.'),
+  "totalNetMtm": zod.number().describe('Total MTM gross return minus signed cost basis.'),
   "netPctReturn": zod.number()
 })
 }))
@@ -630,11 +635,12 @@ export const UpsertTeamResultResponse = zod.object({
   "confRound": zod.boolean(),
   "sbBerth": zod.boolean(),
   "winSuperBowl": zod.boolean(),
-  "realizedReturn": zod.number(),
+  "realizedReturn": zod.number().describe('Realized gross dollars from normalized actual points.'),
   "realizedMultiple": zod.number(),
-  "netReturn": zod.number(),
+  "netReturn": zod.number().describe('Realized gross return minus cost.'),
   "netPctReturn": zod.number(),
-  "markToMarket": zod.number(),
+  "markToMarket": zod.number().describe('MTM gross dollars from normalized market points.'),
+  "netMtm": zod.number().describe('MTM gross return minus cost.'),
   "seed": zod.number().nullish().describe('Playoff seed within conference (1–7). Null if team missed playoffs or seed not yet set.')
 })
 

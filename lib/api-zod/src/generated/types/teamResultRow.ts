@@ -30,11 +30,16 @@ export interface TeamResultRow {
   confRound: boolean;
   sbBerth: boolean;
   winSuperBowl: boolean;
+  /** Realized gross dollars from normalized actual points. */
   realizedReturn: number;
   realizedMultiple: number;
+  /** Realized gross return minus cost. */
   netReturn: number;
   netPctReturn: number;
+  /** MTM gross dollars from normalized market points. */
   markToMarket: number;
+  /** MTM gross return minus cost. */
+  netMtm: number;
   /**
      * Playoff seed within conference (1–7). Null if team missed playoffs or seed not yet set.
      * @nullable

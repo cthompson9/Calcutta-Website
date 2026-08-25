@@ -277,11 +277,16 @@ export interface TeamResultRow {
   confRound: boolean;
   sbBerth: boolean;
   winSuperBowl: boolean;
+  /** Realized gross dollars from normalized actual points. */
   realizedReturn: number;
   realizedMultiple: number;
+  /** Realized gross return minus cost. */
   netReturn: number;
   netPctReturn: number;
+  /** MTM gross dollars from normalized market points. */
   markToMarket: number;
+  /** MTM gross return minus cost. */
+  netMtm: number;
   /**
      * Playoff seed within conference (1–7). Null if team missed playoffs or seed not yet set.
      * @nullable
@@ -524,7 +529,10 @@ export interface OwnerResultRow {
   totalRealizedReturn: number;
   totalNetReturn: number;
   netPctReturn: number;
+  /** Total MTM gross dollars. */
   totalMtm: number;
+  /** Total MTM gross return minus signed cost basis. */
+  totalNetMtm: number;
   teams: TeamResultRow[];
 }
 
@@ -560,7 +568,10 @@ export interface CalcuttaComparisonCell {
   totalCost: number;
   totalRealizedReturn: number;
   totalNetReturn: number;
+  /** Total MTM gross dollars. */
   totalMtm: number;
+  /** Total MTM gross return minus signed cost basis. */
+  totalNetMtm: number;
   netPctReturn: number;
   /** False when this Calcutta has payout rules but no valid snapshot for the selected basis and period. */
   snapshotAvailable: boolean;
@@ -580,7 +591,10 @@ export interface CalcuttaComparisonAggregate {
   totalCost: number;
   totalRealizedReturn: number;
   totalNetReturn: number;
+  /** Total MTM gross dollars. */
   totalMtm: number;
+  /** Total MTM gross return minus signed cost basis. */
+  totalNetMtm: number;
   netPctReturn: number;
 }
 

@@ -1436,14 +1436,20 @@ components:
           type: boolean
         realizedReturn:
           type: number
+          description: Realized gross dollars from normalized actual points.
         realizedMultiple:
           type: number
         netReturn:
           type: number
+          description: Realized gross return minus cost.
         netPctReturn:
           type: number
         markToMarket:
           type: number
+          description: MTM gross dollars from normalized market points.
+        netMtm:
+          type: number
+          description: MTM gross return minus cost.
         seed:
           type: ["number", "null"]
           description: "Playoff seed within conference (1–7). Null if team missed playoffs or seed not yet set."
@@ -1471,6 +1477,7 @@ components:
         - netReturn
         - netPctReturn
         - markToMarket
+        - netMtm
 
     NflStandingsImportInput:
       type: object
@@ -1785,6 +1792,10 @@ components:
           type: number
         totalMtm:
           type: number
+          description: Total MTM gross dollars.
+        totalNetMtm:
+          type: number
+          description: Total MTM gross return minus signed cost basis.
         teams:
           type: array
           items:
@@ -1799,6 +1810,7 @@ components:
         - totalNetReturn
         - netPctReturn
         - totalMtm
+        - totalNetMtm
         - teams
 
     ResultsAvailability:
@@ -1846,6 +1858,10 @@ components:
           type: number
         totalMtm:
           type: number
+          description: Total MTM gross dollars.
+        totalNetMtm:
+          type: number
+          description: Total MTM gross return minus signed cost basis.
         netPctReturn:
           type: number
         snapshotAvailable:
@@ -1870,6 +1886,7 @@ components:
         - totalRealizedReturn
         - totalNetReturn
         - totalMtm
+        - totalNetMtm
         - netPctReturn
         - snapshotAvailable
         - throughPeriod
@@ -1898,6 +1915,10 @@ components:
           type: number
         totalMtm:
           type: number
+          description: Total MTM gross dollars.
+        totalNetMtm:
+          type: number
+          description: Total MTM gross return minus signed cost basis.
         netPctReturn:
           type: number
       required:
@@ -1911,6 +1932,7 @@ components:
         - totalRealizedReturn
         - totalNetReturn
         - totalMtm
+        - totalNetMtm
         - netPctReturn
 
     CalcuttaComparisonRow:

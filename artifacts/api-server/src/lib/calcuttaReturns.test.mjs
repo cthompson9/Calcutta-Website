@@ -212,6 +212,25 @@ test("fair values reconcile exactly to the selected pot and shares normalize to 
   assert.equal(values[1].netReturn, values[1].fairValue - 200);
 });
 
+test("equal point totals split the pool using the normalized dollar formula", () => {
+  const snapshot = {
+    wins: 0, losses: 0, ties: 0, ptDiff: 0,
+    playoffBerth: 0, divRound: 0, confRound: 0, sbBerth: 0, winSuperBowl: 0,
+  };
+  const entries = [
+    { teamId: 1, cost: 1000, snapshot },
+    {
+      teamId: 2,
+      cost: 1000,
+      snapshot: { ...snapshot, ptDiff: 11120 },
+    },
+  ];
+  const values = calculateNflTeamValues(entries, 97625);
+  assert.equal(values[0].points, 150);
+  assert.equal(Math.round(values[0].grossReturn * 100) / 100, 1282.29);
+  assert.equal(Math.round(values[0].netReturn * 100) / 100, 282.29);
+});
+
 test("historical parity stays visibly non-authoritative for partial coverage or a mismatch", () => {
   const partial = compareHistoricalPayoutParity(2, [{ teamId: 1, grossReturn: 100 }], new Map());
   assert.equal(partial.isAuthoritative, false);

@@ -121,6 +121,7 @@ export type CalcuttaComparisonCell = {
   totalRealizedReturn: number;
   totalNetReturn: number;
   totalMtm: number;
+  totalNetMtm: number;
   netPctReturn: number;
   snapshotAvailable: boolean;
   throughPeriod: number | null;
@@ -145,6 +146,7 @@ export type CalcuttaComparisonRow = {
     totalRealizedReturn: number;
     totalNetReturn: number;
     totalMtm: number;
+    totalNetMtm: number;
     netPctReturn: number;
   };
 };
@@ -594,6 +596,7 @@ export async function loadCrossCalcuttaRollup(args: {
       totalRealizedReturn: 0,
       totalNetReturn: 0,
       totalMtm: 0,
+      totalNetMtm: 0,
       netPctReturn: 0,
       snapshotAvailable: true,
       throughPeriod: coverageTarget,
@@ -607,6 +610,7 @@ export async function loadCrossCalcuttaRollup(args: {
     cell.totalRealizedReturn += realizedValue * position.signedShare;
     cell.totalMtm += mtmValue * position.signedShare;
     cell.totalNetReturn = cell.totalRealizedReturn - cell.totalCost;
+    cell.totalNetMtm = cell.totalMtm - cell.totalCost;
     cell.snapshotAvailable = cell.snapshotAvailable && snapshotAvailable;
     row.cells.set(position.calcuttaId, cell);
   };
@@ -628,6 +632,7 @@ export async function loadCrossCalcuttaRollup(args: {
           totalRealizedReturn: roundMoney(cell.totalRealizedReturn),
           totalNetReturn,
           totalMtm: roundMoney(cell.totalMtm),
+          totalNetMtm: roundMoney(cell.totalNetMtm),
           netPctReturn:
             totalCost > 0 ? Math.round((totalNetReturn / totalCost) * 10_000) / 100 : 0,
         };
@@ -662,6 +667,7 @@ export async function loadCrossCalcuttaRollup(args: {
           totalRealizedReturn: roundMoney(aggregateReturn),
           totalNetReturn: roundMoney(aggregateNet),
           totalMtm: roundMoney(present.reduce((total, cell) => total + cell.totalMtm, 0)),
+          totalNetMtm: roundMoney(present.reduce((total, cell) => total + cell.totalNetMtm, 0)),
           netPctReturn:
             aggregateCost > 0
               ? Math.round((aggregateNet / aggregateCost) * 10_000) / 100
@@ -669,7 +675,7 @@ export async function loadCrossCalcuttaRollup(args: {
         },
       };
     })
-    .sort((a, b) => b.aggregate.totalMtm - a.aggregate.totalMtm);
+    .sort((a, b) => b.aggregate.totalNetMtm - a.aggregate.totalNetMtm);
 
   return { groupBy, calcuttas, rows: rowsResult };
 }

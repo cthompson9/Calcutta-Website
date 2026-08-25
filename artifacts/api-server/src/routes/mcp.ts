@@ -135,7 +135,7 @@ router.get("/mcp/get_team_points", async (req, res): Promise<void> => {
   const season = await getSeason(req.query.season as string | undefined);
   const seasonId = await resolveSeasonId(season);
   const team = await findTeam(teamName);
-  if (!team) { val(res, null); return; }
+  if (!team || !seasonId) { val(res, null); return; }
   const result = await getTeamResult(team.id, seasonId);
   val(res, result ? parseFloat(result.startingPoints) : null);
 });
@@ -147,7 +147,7 @@ router.get("/mcp/get_team_return", async (req, res): Promise<void> => {
   const season = await getSeason(req.query.season as string | undefined);
   const seasonId = await resolveSeasonId(season);
   const team = await findTeam(teamName);
-  if (!team) { val(res, null); return; }
+  if (!team || !seasonId) { val(res, null); return; }
   const result = await getTeamResult(team.id, seasonId);
   val(res, result ? parseFloat(result.realizedReturn) : null);
 });
@@ -159,8 +159,9 @@ router.get("/mcp/get_team_wins", async (req, res): Promise<void> => {
   const season = await getSeason(req.query.season as string | undefined);
   const seasonId = await resolveSeasonId(season);
   const team = await findTeam(teamName);
-  if (!team) { val(res, null); return; }
-  const result = await getTeamResult(team.id, seasonId);
+  if (!team || seasonId == null) { val(res, null); return; }
+  const resolvedSeasonId = seasonId;
+  const result = await getTeamResult(team.id, resolvedSeasonId);
   val(res, result ? parseFloat(result.wins) : null);
 });
 
@@ -171,7 +172,7 @@ router.get("/mcp/get_team_ptdiff", async (req, res): Promise<void> => {
   const season = await getSeason(req.query.season as string | undefined);
   const seasonId = await resolveSeasonId(season);
   const team = await findTeam(teamName);
-  if (!team) { val(res, null); return; }
+  if (!team || seasonId == null) { val(res, null); return; }
   const result = await getTeamResult(team.id, seasonId);
   val(res, result ? result.ptDiff : null);
 });
@@ -181,11 +182,17 @@ router.get("/mcp/get_team_mtm", async (req, res): Promise<void> => {
   const teamName = req.query.team as string;
   if (!teamName) { val(res, null); return; }
   const season = await getSeason(req.query.season as string | undefined);
-  const seasonId = await resolveSeasonId(season);
+  const resolvedSeasonId = await resolveSeasonId(season);
   const team = await findTeam(teamName);
-  if (!team) { val(res, null); return; }
-  const result = await getTeamResult(team.id, seasonId);
-  val(res, result ? parseFloat(result.markToMarket) : null);
+  if (!team || resolvedSeasonId == null) { val(res, null); return; }
+  const result = await getTeamResult(team.id, resolvedSeasonId);
+  const auctionRows = await db
+    .select({ bidAmount: teamSeasonAuctionsTable.bidAmount })
+    .from(teamSeasonAuctionsTable)
+    .where(and(eq(teamSeasonAuctionsTable.teamId, team.id), eq(teamSeasonAuctionsTable.seasonId, resolvedSeasonId)))
+    .limit(1);
+  const cost = parseFloat(auctionRows[0]?.bidAmount ?? "0");
+  val(res, result ? parseFloat(result.markToMarket) - cost : null);
 });
 
 // GET /mcp/get_team_draftorder
@@ -272,7 +279,7 @@ router.get("/mcp/get_owner_mtm", async (req, res): Promise<void> => {
   const bidder = await findBidder(ownerName);
   if (!bidder || !seasonId) { val(res, null); return; }
   const agg = await getOwnerAgg(bidder.id, seasonId);
-  val(res, Math.round(agg.totalMtm * 100) / 100);
+  val(res, Math.round((agg.totalMtm - agg.totalCost) * 100) / 100);
 });
 
 export default router;
