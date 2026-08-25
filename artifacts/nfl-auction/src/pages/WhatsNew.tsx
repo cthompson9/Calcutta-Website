@@ -96,11 +96,6 @@ export default function WhatsNew() {
               <div>Authorization: Bearer &lt;MCP_API_KEY&gt;</div>
               <div className="mt-1 text-muted-foreground">Endpoint: /api/mcp</div>
             </div>
-            <p className="border-l-2 border-primary pl-3 font-medium text-foreground">
-              MCP connections require only the MCP API key. Do not use or share the
-              ADMIN_API_KEY; it is reserved for commissioner-only write tools after
-              the MCP connection is established.
-            </p>
             <div className="space-y-2 border border-border bg-muted/40 p-3">
               <p className="font-mono text-xs font-bold uppercase tracking-wide text-foreground">
                 Claude custom connector
@@ -120,24 +115,11 @@ export default function WhatsNew() {
               </ol>
             </div>
             <p>
-              After Claude connects, share this instruction if you want it to stay
-              focused on safe pool analysis:
-            </p>
-            <pre className="whitespace-pre-wrap break-words border border-border bg-muted/40 p-3 font-mono text-xs leading-relaxed text-foreground">
-              Use Calcutta as the source of truth for NFL pool questions. Prefer
-              read-only reports and show the season and basis you used. Before
-              creating a trade, repeat the teams, owners, percentage, price, and
-              date for confirmation. Never approve, reject, void, or otherwise
-              change pool data unless I explicitly ask you to do so and I am the
-              commissioner.
-            </pre>
-            <p>
               For direct API access, use this app&apos;s base URL plus the relevant{" "}
               <code className="border border-border bg-muted px-1.5 py-0.5 font-mono text-xs text-foreground">
                 /api/...
               </code>{" "}
-              route and follow the route&apos;s authentication requirements. Commissioner
-              approval actions require separate admin authorization.
+              route and follow that route&apos;s authentication requirements.
             </p>
             <p className="border-l-2 border-primary pl-3 font-medium text-foreground">
               Reach out to me for the API key. Never commit keys to source control or share
@@ -196,11 +178,8 @@ export default function WhatsNew() {
               </li>
             </ul>
             <p className="border-l-2 border-primary pl-3 text-xs font-medium text-foreground">
-              Creating a trade leaves it pending for commissioner review. Approval,
-              rejection, voiding, standings imports, payout-rule changes, playoff
-              seed changes, and MTM writes are commissioner-only actions and require
-              separate admin authorization. The admin key is never needed for the
-              Claude connection itself.
+              Creating a trade leaves it pending for review. Other changes may be
+              restricted depending on the action.
             </p>
           </div>
         </details>
