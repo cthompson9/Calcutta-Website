@@ -1336,15 +1336,6 @@ function ByOwnerView({
 
   return (
     <div className="space-y-3">
-      <div className="flex flex-col gap-1 border-y md:border border-sky-200 bg-sky-50 px-4 py-3 text-xs dark:border-sky-900 dark:bg-sky-950/30 sm:flex-row sm:items-center sm:justify-between mx-0">
-        <span className="font-mono font-bold uppercase tracking-widest text-sky-900 dark:text-sky-100">
-          Signed position ledger
-        </span>
-        <span className="text-sky-800 dark:text-sky-200">
-          Leveraged longs and negative shorts are both included; every team nets to 100% ownership.
-        </span>
-      </div>
-
       {/* Summary header */}
       <div
         className={cn(
