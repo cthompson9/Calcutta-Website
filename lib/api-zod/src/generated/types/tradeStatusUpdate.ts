@@ -5,10 +5,18 @@
  * NFL Auction Manager API
  * OpenAPI spec version: 0.1.0
  */
-import type { TradeStatusUpdateStatus } from './tradeStatusUpdateStatus';
 
-export interface TradeStatusUpdate {
-  status: TradeStatusUpdateStatus;
+export type TradeStatusUpdate = {
+  status: 'approved' | 'rejected';
   /** Must be true to record this irreversible commissioner decision. */
   confirmed: true;
-}
+} | {
+  status: 'voided';
+  /** Must be true to explicitly confirm this irreversible void. */
+  confirmed: true;
+  /**
+     * Commissioner explanation for voiding the approved trade.
+     * @minLength 1
+     */
+  reason: string;
+};

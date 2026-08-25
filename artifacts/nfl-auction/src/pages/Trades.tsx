@@ -4,7 +4,6 @@ import {
   useGetTeams,
   useGetBidders,
   useCreateTrade,
-  useDeleteTrade,
 } from "@workspace/api-client-react";
 import type { TradeInput, TradeRow } from "@workspace/api-client-react";
 import { formatCurrency } from "@/lib/utils";
@@ -36,6 +35,7 @@ function StatusBadge({ status }: { status: string }) {
     pending:  { label: "PENDING REVIEW", cls: "bg-amber-100 text-amber-800 border-amber-300" },
     approved: { label: "APPROVED",       cls: "bg-green-100 text-green-800 border-green-300" },
     rejected: { label: "REJECTED",       cls: "bg-red-100 text-red-800 border-red-300" },
+    voided:   { label: "VOIDED",         cls: "bg-slate-100 text-slate-700 border-slate-300" },
   };
   const { label, cls } = config[status] ?? config.pending;
   return (
@@ -49,8 +49,9 @@ function StatusBadge({ status }: { status: string }) {
 
 async function setTradeStatus(
   id: number,
-  status: "approved" | "rejected",
+  status: "approved" | "rejected" | "voided",
   adminKey: string,
+  reason?: string,
 ): Promise<{ ok: boolean; error?: string }> {
   try {
     const res = await fetch(`/api/trades/${id}/status`, {
@@ -59,7 +60,37 @@ async function setTradeStatus(
         "Content-Type": "application/json",
         Authorization: `Bearer ${adminKey}`,
       },
-      body: JSON.stringify({ status, confirmed: true }),
+      body: JSON.stringify({ status, confirmed: true, ...(reason ? { reason } : {}) }),
+    });
+    if (res.status === 401) return { ok: false, error: "Invalid admin key" };
+    if (!res.ok) return { ok: false, error: await res.text() };
+    return { ok: true };
+  } catch {
+    return { ok: false, error: "Network error" };
+  }
+}
+
+async function validateAdminKey(adminKey: string): Promise<{ ok: boolean; error?: string }> {
+  try {
+    const res = await fetch("/api/admin/validate", {
+      headers: { Authorization: `Bearer ${adminKey}` },
+    });
+    if (res.status === 401) return { ok: false, error: "Invalid admin key" };
+    if (!res.ok) return { ok: false, error: "Could not validate admin key" };
+    return { ok: true };
+  } catch {
+    return { ok: false, error: "Network error while validating admin key" };
+  }
+}
+
+async function deleteTradeRecord(
+  id: number,
+  adminKey: string,
+): Promise<{ ok: boolean; error?: string }> {
+  try {
+    const res = await fetch(`/api/trades/${id}`, {
+      method: "DELETE",
+      headers: { Authorization: `Bearer ${adminKey}` },
     });
     if (res.status === 401) return { ok: false, error: "Invalid admin key" };
     if (!res.ok) return { ok: false, error: await res.text() };
@@ -89,6 +120,40 @@ function decisionAuditLabel(trade: TradeRow): string | null {
     timeZoneName: "short",
   }).format(new Date(trade.decisionAt));
   return `Decision recorded ${timestamp} · ${channel}`;
+}
+
+function voidAuditLabel(trade: TradeRow): string | null {
+  if (trade.status !== "voided" || !trade.voidedAt) return null;
+
+  const channel =
+    trade.voidedSource === "commissioner_mcp"
+      ? "Commissioner MCP"
+      : trade.voidedSource === "commissioner_api"
+        ? "Commissioner app"
+        : "Commissioner channel";
+  const timestamp = new Intl.DateTimeFormat("en-US", {
+    timeZone: "America/New_York",
+    month: "short",
+    day: "numeric",
+    year: "numeric",
+    hour: "numeric",
+    minute: "2-digit",
+    timeZoneName: "short",
+  }).format(new Date(trade.voidedAt));
+  return `Voided ${timestamp} · ${channel}${trade.voidReason ? ` · ${trade.voidReason}` : ""}`;
+}
+
+function TradeAudit({ trade }: { trade: TradeRow }) {
+  const decisionAudit = decisionAuditLabel(trade);
+  const voidAudit = voidAuditLabel(trade);
+  if (!decisionAudit && !voidAudit) return null;
+
+  return (
+    <div className="space-y-1 border-t border-border pt-2 text-[11px] text-muted-foreground font-mono">
+      {decisionAudit && <p>{decisionAudit}</p>}
+      {voidAudit && <p>{voidAudit}</p>}
+    </div>
+  );
 }
 
 type TradeGroup = {
@@ -203,7 +268,8 @@ function sortTradeGroups(a: TradeGroup, b: TradeGroup): number {
   const statusOrder: Record<string, number> = {
     pending: 0,
     approved: 1,
-    rejected: 2,
+    voided: 2,
+    rejected: 3,
   };
 
   if (aStatus !== bStatus) {
@@ -250,17 +316,30 @@ function TradeActions({
   const [acting, setActing] = useState(false);
   const [adminError, setAdminError] = useState("");
 
-  async function handleStatus(status: "approved" | "rejected") {
+  async function handleStatus(status: "approved" | "rejected" | "voided") {
     if (!adminKey) return;
-    const decision = status === "approved" ? "approve" : "reject";
+    let reason: string | undefined;
+    if (status === "voided") {
+      const response = window.prompt(
+        `Why is ${trade.teamName} (${trade.percentage}% from ${trade.fromBidderName} to ${trade.toBidderName}) being voided?`,
+      );
+      if (response === null) return;
+      reason = response.trim();
+      if (!reason) {
+        setAdminError("A void reason is required.");
+        return;
+      }
+    }
+    const decision =
+      status === "approved" ? "approve" : status === "rejected" ? "reject" : "void";
     const confirmed = window.confirm(
-      `${decision[0].toUpperCase()}${decision.slice(1)} ${trade.teamName} (${trade.percentage}% from ${trade.fromBidderName} to ${trade.toBidderName})?\n\nThis decision is permanent. Choose OK to record it.`,
+      `${decision[0].toUpperCase()}${decision.slice(1)} ${trade.teamName} (${trade.percentage}% from ${trade.fromBidderName} to ${trade.toBidderName})?\n\n${status === "voided" ? `Reason: ${reason}\n\nThis removes the trade from ownership and returns while preserving its audit record.` : "This decision is permanent."} Choose OK to record it.`,
     );
     if (!confirmed) return;
 
     setActing(true);
     setAdminError("");
-    const result = await setTradeStatus(trade.id, status, adminKey);
+    const result = await setTradeStatus(trade.id, status, adminKey, reason);
     setActing(false);
     if (!result.ok) {
       setAdminError(result.error ?? "Error");
@@ -271,7 +350,7 @@ function TradeActions({
 
   return (
     <>
-      {showDelete && (
+      {showDelete && adminKey && trade.status === "pending" && (
         <button
           onClick={() => onDelete(trade.id)}
           className="text-muted-foreground hover:text-destructive transition-colors"
@@ -282,23 +361,35 @@ function TradeActions({
         </button>
       )}
 
-      {adminKey && trade.status === "pending" && (
+      {adminKey && (trade.status === "pending" || trade.status === "approved") && (
         <div className="border-t border-border pt-2 flex items-center gap-2 flex-wrap basis-full">
           <span className="text-xs font-mono text-muted-foreground uppercase tracking-widest">Admin:</span>
-          <button
-            onClick={() => handleStatus("approved")}
-            disabled={acting}
-            className="flex items-center gap-1.5 px-3 py-1 bg-green-600 text-white text-xs font-mono font-bold uppercase tracking-wider hover:bg-green-700 disabled:opacity-50 transition-colors"
-          >
-            <Check className="w-3 h-3" /> Approve
-          </button>
-          <button
-            onClick={() => handleStatus("rejected")}
-            disabled={acting}
-            className="flex items-center gap-1.5 px-3 py-1 bg-red-600 text-white text-xs font-mono font-bold uppercase tracking-wider hover:bg-red-700 disabled:opacity-50 transition-colors"
-          >
-            <Ban className="w-3 h-3" /> Reject
-          </button>
+          {trade.status === "pending" ? (
+            <>
+              <button
+                onClick={() => handleStatus("approved")}
+                disabled={acting}
+                className="flex items-center gap-1.5 px-3 py-1 bg-green-600 text-white text-xs font-mono font-bold uppercase tracking-wider hover:bg-green-700 disabled:opacity-50 transition-colors"
+              >
+                <Check className="w-3 h-3" /> Approve
+              </button>
+              <button
+                onClick={() => handleStatus("rejected")}
+                disabled={acting}
+                className="flex items-center gap-1.5 px-3 py-1 bg-red-600 text-white text-xs font-mono font-bold uppercase tracking-wider hover:bg-red-700 disabled:opacity-50 transition-colors"
+              >
+                <Ban className="w-3 h-3" /> Reject
+              </button>
+            </>
+          ) : (
+            <button
+              onClick={() => handleStatus("voided")}
+              disabled={acting}
+              className="flex items-center gap-1.5 px-3 py-1 bg-slate-700 text-white text-xs font-mono font-bold uppercase tracking-wider hover:bg-slate-800 disabled:opacity-50 transition-colors"
+            >
+              <Ban className="w-3 h-3" /> Void trade
+            </button>
+          )}
           {adminError && <span className="text-xs text-destructive font-mono">{adminError}</span>}
         </div>
       )}
@@ -376,8 +467,9 @@ function TradeCard({
           <TradeActions
             trade={trade}
             onDelete={onDelete}
-            adminKey={null}
+            adminKey={adminKey}
             onStatusChange={onStatusChange}
+            showDelete={trade.status === "pending"}
           />
         </div>
       </div>
@@ -385,14 +477,10 @@ function TradeCard({
       {trade.notes && (
         <p className="text-xs text-muted-foreground font-mono border-t border-border pt-2">{trade.notes}</p>
       )}
-      {decisionAuditLabel(trade) && (
-        <p className="text-[11px] text-muted-foreground font-mono border-t border-border pt-2">
-          {decisionAuditLabel(trade)}
-        </p>
-      )}
+      <TradeAudit trade={trade} />
 
-      {/* Admin approve/reject — only for pending trades when admin key is entered */}
-      {adminKey && trade.status === "pending" && (
+      {/* Admin decisions are available for pending trades and approved trades that need a void. */}
+      {adminKey && (trade.status === "pending" || trade.status === "approved") && (
         <TradeActions
           trade={trade}
           onDelete={() => {}}
@@ -463,19 +551,16 @@ function TradeLeg({
           <TradeActions
             trade={trade}
             onDelete={onDelete}
-            adminKey={null}
+            adminKey={adminKey}
             onStatusChange={onStatusChange}
+            showDelete={trade.status === "pending"}
           />
         </div>
       </div>
 
-      {trade.decisionAt && decisionAuditLabel(trade) && (
-        <p className="text-[11px] text-muted-foreground font-mono border-t border-border pt-2">
-          {decisionAuditLabel(trade)}
-        </p>
-      )}
+      <TradeAudit trade={trade} />
 
-      {adminKey && trade.status === "pending" && (
+      {adminKey && (trade.status === "pending" || trade.status === "approved") && (
         <TradeActions
           trade={trade}
           onDelete={() => {}}
@@ -577,11 +662,7 @@ function TradeGroupCard({
           <span>Teams: {teamNames.join(", ")}</span>
           <span>Aggregate: {formatCurrency(totalValue)}</span>
         </div>
-        {decisionAuditLabel(latestDecisionTrade) && (
-          <p className="text-[11px] text-muted-foreground font-mono border-t border-border pt-2">
-            {decisionAuditLabel(latestDecisionTrade)}
-          </p>
-        )}
+        <TradeAudit trade={latestDecisionTrade} />
       </button>
 
       <div
@@ -865,18 +946,22 @@ function AdminPanel({
   onClearKey,
 }: {
   adminKey: string | null;
-  onSetKey: (k: string) => void;
+  onSetKey: (k: string) => Promise<{ ok: boolean; error?: string }>;
   onClearKey: () => void;
 }) {
   const [expanded, setExpanded] = useState(false);
   const [input, setInput] = useState("");
   const [error, setError] = useState("");
 
-  function handleUnlock() {
+  async function handleUnlock() {
     if (!input.trim()) return;
-    onSetKey(input.trim());
-    setInput("");
     setError("");
+    const result = await onSetKey(input.trim());
+    if (!result.ok) {
+      setError(result.error ?? "Invalid admin key");
+      return;
+    }
+    setInput("");
     setExpanded(false);
   }
 
@@ -904,7 +989,7 @@ function AdminPanel({
       {expanded && (
         <div className="absolute right-0 top-full mt-1 z-50 bg-background border border-border p-3 w-64 space-y-2 shadow-lg">
           <p className="text-xs font-mono text-muted-foreground">
-            Enter your admin key to approve or reject pending trades. It is kept only until this page reloads.
+            Enter your admin key to approve, reject, void, or delete trades. It is validated and kept only until this page reloads.
           </p>
           <input
             type="password"
@@ -960,19 +1045,25 @@ export default function Trades() {
   const { data: bidderDirectory } = useGetBidders({});
   const consortiumByBidderId = bidderConsortiums(bidderDirectory);
   const { mutate: createTrade, isPending: creating } = useCreateTrade();
-  const { mutate: deleteTrade } = useDeleteTrade();
-
-  function saveAdminKey(key: string) {
-    setAdminKey(key);
+  async function saveAdminKey(key: string): Promise<{ ok: boolean; error?: string }> {
+    const result = await validateAdminKey(key);
+    if (result.ok) setAdminKey(key);
+    return result;
   }
 
   function clearAdminKey() {
     setAdminKey(null);
   }
 
-  function handleDelete(id: number) {
-    if (!confirm("Delete this trade record?")) return;
-    deleteTrade({ id }, { onSuccess: () => refetch() });
+  async function handleDelete(id: number) {
+    if (!adminKey || !window.confirm("Delete this pending trade record?")) return;
+    const result = await deleteTradeRecord(id, adminKey);
+    if (!result.ok) {
+      if (result.error === "Invalid admin key") clearAdminKey();
+      window.alert(result.error ?? "Could not delete trade");
+      return;
+    }
+    refetch();
   }
 
   const [search, setSearch] = useState("");

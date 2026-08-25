@@ -876,6 +876,9 @@ function buildMcpServer() {
           percentage: tradesTable.percentage,
           decisionAt: tradesTable.decisionAt,
           decisionSource: tradesTable.decisionSource,
+          voidedAt: tradesTable.voidedAt,
+          voidedSource: tradesTable.voidedSource,
+          voidReason: tradesTable.voidReason,
           tradeDate: tradesTable.tradeDate,
         })
         .from(tradesTable)
@@ -889,28 +892,35 @@ function buildMcpServer() {
         : r.status === "pending"
           ? ""
           : " Historical decision; audit details are unavailable.";
+      const voidAudit = r.voidedAt
+        ? ` Void recorded ${r.voidedAt.toISOString()} via ${r.voidedSource ?? "unknown channel"}${r.voidReason ? `: ${r.voidReason}` : "."}`
+        : "";
       return text(
-        `Trade #${r.id}: ${r.percentage}% stake for $${r.price} on ${r.tradeDate} — Status: ${r.status.toUpperCase()}.${decisionAudit}`,
+        `Trade #${r.id}: ${r.percentage}% stake for $${r.price} on ${r.tradeDate} — Status: ${r.status.toUpperCase()}.${decisionAudit}${voidAudit}`,
       );
     },
   );
 
   server.tool(
     "set_trade_status",
-    "Record one irreversible approval or rejection for a pending trade. Requires the ADMIN_API_KEY plus confirmed: true. Only approved trades affect owner standings and returns.",
+    "Record an approval or rejection for a pending trade, or void an approved trade. Requires the ADMIN_API_KEY plus confirmed: true. Voiding requires a reason and removes the trade from owner standings and returns while preserving its audit trail.",
     {
       tradeId:  z.number().describe("Trade ID to update"),
-      status:   z.enum(["approved", "rejected"]).describe("New status: approved or rejected"),
+      status:   z.enum(["approved", "rejected", "voided"]).describe("New status: approved, rejected, or voided"),
       confirmed: z.literal(true).describe("Must be true to explicitly confirm this irreversible decision"),
+      reason: z.string().optional().describe("Required when voiding: why the approved trade is being voided"),
       adminKey: z.string().describe("Admin API key — only the pool admin knows this"),
     },
-    async ({ tradeId, status, confirmed, adminKey }) => {
+    async ({ tradeId, status, confirmed, adminKey, reason }) => {
       const expectedKey = process.env["ADMIN_API_KEY"];
       if (!expectedKey || adminKey !== expectedKey) {
         return text("Error: Invalid admin key. Only the pool admin can approve or reject trades.");
       }
       if (confirmed !== true) {
         return text("Error: Set confirmed to true to record this irreversible trade decision.");
+      }
+      if (status === "voided" && !reason?.trim()) {
+        return text("Error: Voiding an approved trade requires a non-empty reason.");
       }
 
       const outcome = await db.transaction(async (tx) => {
@@ -930,22 +940,33 @@ function buildMcpServer() {
           .where(eq(tradesTable.id, tradeId))
           .limit(1);
         if (!fresh[0]) return { kind: "not_found" as const };
-        if (fresh[0].status !== "pending") return { kind: "already_decided" as const };
+        if (
+          fresh[0].status !== "pending" &&
+          !(status === "voided" && fresh[0].status === "approved")
+        ) {
+          return { kind: "already_decided" as const };
+        }
+        if (status === "voided" && fresh[0].status !== "approved") {
+          return { kind: "invalid" as const, error: "Only an approved trade can be voided." };
+        }
 
         if (status === "approved") {
           const validationError = await validateMcpTradeApproval(fresh[0], tx, true);
           if (validationError) return { kind: "invalid" as const, error: validationError };
         }
 
-        await tx
-          .update(tradesTable)
-          .set({
-            status,
-            decisionAt: new Date(),
-            decisionSource: "commissioner_mcp",
-          })
-          .where(eq(tradesTable.id, tradeId));
-        if (status === "approved") {
+        const now = new Date();
+        const updates: Partial<typeof tradesTable.$inferInsert> = { status };
+        if (status === "voided") {
+          updates.voidedAt = now;
+          updates.voidedSource = "commissioner_mcp";
+          updates.voidReason = reason!.trim();
+        } else {
+          updates.decisionAt = now;
+          updates.decisionSource = "commissioner_mcp";
+        }
+        await tx.update(tradesTable).set(updates).where(eq(tradesTable.id, tradeId));
+        if (status === "approved" || status === "voided") {
           await syncSeasonPositions(tx, fresh[0].seasonId);
         }
         return { kind: "updated" as const };
@@ -954,10 +975,10 @@ function buildMcpServer() {
       if (outcome.kind === "already_decided") {
         return text(`Error: Trade #${tradeId} has already been decided and cannot be changed. Record a new trade instead.`);
       }
-      if (outcome.kind === "invalid") return text(`Error: Cannot approve trade: ${outcome.error}`);
+      if (outcome.kind === "invalid") return text(`Error: Cannot ${status === "voided" ? "void" : "approve"} trade: ${outcome.error}`);
 
       return text(
-        `Trade #${tradeId} has been ${status.toUpperCase()}. ${status === "approved" ? "It now affects owner standings and returns." : "It has been rejected and will not affect results."}`,
+        `Trade #${tradeId} has been ${status.toUpperCase()}. ${status === "approved" ? "It now affects owner standings and returns." : status === "voided" ? "It no longer affects owner standings or returns; its audit trail is preserved." : "It has been rejected and will not affect results."}`,
       );
     },
   );

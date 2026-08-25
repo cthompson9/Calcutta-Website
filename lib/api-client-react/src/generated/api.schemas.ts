@@ -657,7 +657,7 @@ export interface TeamResultInput {
 }
 
 /**
- * Approval status. New trades start as pending.
+ * Approval status. New trades start as pending; an approved trade may later be voided.
  */
 export type TradeRowStatus = typeof TradeRowStatus[keyof typeof TradeRowStatus];
 
@@ -666,6 +666,7 @@ export const TradeRowStatus = {
   pending: 'pending',
   approved: 'approved',
   rejected: 'rejected',
+  voided: 'voided',
 } as const;
 
 export interface TradeRow {
@@ -680,7 +681,7 @@ export interface TradeRow {
   price: number;
   /** Percentage of team traded (0–100). Default 100 = full transfer. */
   percentage: number;
-  /** Approval status. New trades start as pending. */
+  /** Approval status. New trades start as pending; an approved trade may later be voided. */
   status: TradeRowStatus;
   /**
      * Time the commissioner decision was recorded. Null for pending or legacy records.
@@ -692,6 +693,21 @@ export interface TradeRow {
      * @nullable
      */
   decisionSource: string | null;
+  /**
+     * Time the approved trade was voided. Null unless the trade is voided.
+     * @nullable
+     */
+  voidedAt: string | null;
+  /**
+     * Trusted channel that recorded the void. Null unless the trade is voided.
+     * @nullable
+     */
+  voidedSource: string | null;
+  /**
+     * Required commissioner explanation when the trade is voided.
+     * @nullable
+     */
+  voidReason: string | null;
   tradeDate: string;
   /** @nullable */
   notes?: string | null;
@@ -717,19 +733,20 @@ export interface TradeUpdate {
   notes?: string;
 }
 
-export type TradeStatusUpdateStatus = typeof TradeStatusUpdateStatus[keyof typeof TradeStatusUpdateStatus];
-
-
-export const TradeStatusUpdateStatus = {
-  approved: 'approved',
-  rejected: 'rejected',
-} as const;
-
-export interface TradeStatusUpdate {
-  status: TradeStatusUpdateStatus;
+export type TradeStatusUpdate = {
+  status: 'approved' | 'rejected';
   /** Must be true to record this irreversible commissioner decision. */
   confirmed: true;
-}
+} | {
+  status: 'voided';
+  /** Must be true to explicitly confirm this irreversible void. */
+  confirmed: true;
+  /**
+     * Commissioner explanation for voiding the approved trade.
+     * @minLength 1
+     */
+  reason: string;
+};
 
 /**
  * @nullable

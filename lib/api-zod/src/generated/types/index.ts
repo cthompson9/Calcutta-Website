@@ -109,7 +109,6 @@ export * from './tradeInput';
 export * from './tradeRow';
 export * from './tradeRowStatus';
 export * from './tradeStatusUpdate';
-export * from './tradeStatusUpdateStatus';
 export * from './tradeUpdate';
 export * from './weekZeroCaptureInput';
 export * from './weekZeroCaptureResult';

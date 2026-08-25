@@ -783,7 +783,9 @@ paths:
     delete:
       operationId: deleteTrade
       tags: [trades]
-      summary: Delete a pending or rejected trade record
+      summary: Delete a pending trade record (admin only — requires ADMIN_API_KEY bearer token)
+      security:
+        - AdminBearerAuth: []
       parameters:
         - name: id
           in: path
@@ -799,8 +801,31 @@ paths:
             application/json:
               schema:
                 $ref: "#/components/schemas/ErrorResponse"
+        "401":
+          description: Unauthorized — ADMIN_API_KEY required
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
         "409":
           description: Approved trades cannot be deleted
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+
+  /admin/validate:
+    get:
+      operationId: validateAdminKey
+      tags: [trades]
+      summary: Validate the commissioner admin bearer token
+      security:
+        - AdminBearerAuth: []
+      responses:
+        "204":
+          description: Admin token is valid
+        "401":
+          description: Unauthorized — ADMIN_API_KEY required
           content:
             application/json:
               schema:
@@ -810,7 +835,9 @@ paths:
     patch:
       operationId: setTradeStatus
       tags: [trades]
-      summary: Confirm and record a pending trade decision (admin only — requires ADMIN_API_KEY bearer token)
+      summary: Confirm a pending trade decision or void an approved trade (admin only — requires ADMIN_API_KEY bearer token)
+      security:
+        - AdminBearerAuth: []
       parameters:
         - name: id
           in: path
@@ -2018,8 +2045,8 @@ components:
           description: Percentage of team traded (0–100). Default 100 = full transfer.
         status:
           type: string
-          enum: [pending, approved, rejected]
-          description: Approval status. New trades start as pending.
+          enum: [pending, approved, rejected, voided]
+          description: Approval status. New trades start as pending; an approved trade may later be voided.
         decisionAt:
           type: ["string", "null"]
           format: date-time
@@ -2027,6 +2054,16 @@ components:
         decisionSource:
           type: ["string", "null"]
           description: Trusted channel that recorded the decision. Null for pending or legacy records.
+        voidedAt:
+          type: ["string", "null"]
+          format: date-time
+          description: Time the approved trade was voided. Null unless the trade is voided.
+        voidedSource:
+          type: ["string", "null"]
+          description: Trusted channel that recorded the void. Null unless the trade is voided.
+        voidReason:
+          type: ["string", "null"]
+          description: Required commissioner explanation when the trade is voided.
         tradeDate:
           type: string
         notes:
@@ -2045,6 +2082,9 @@ components:
         - status
         - decisionAt
         - decisionSource
+        - voidedAt
+        - voidedSource
+        - voidReason
         - tradeDate
 
     TradeInput:
@@ -2083,16 +2123,33 @@ components:
           type: string
 
     TradeStatusUpdate:
-      type: object
-      properties:
-        status:
-          type: string
-          enum: [approved, rejected]
-        confirmed:
-          type: boolean
-          enum: [true]
-          description: Must be true to record this irreversible commissioner decision.
-      required: [status, confirmed]
+      oneOf:
+        - type: object
+          additionalProperties: false
+          properties:
+            status:
+              type: string
+              enum: [approved, rejected]
+            confirmed:
+              type: boolean
+              enum: [true]
+              description: Must be true to record this irreversible commissioner decision.
+          required: [status, confirmed]
+        - type: object
+          additionalProperties: false
+          properties:
+            status:
+              type: string
+              enum: [voided]
+            confirmed:
+              type: boolean
+              enum: [true]
+              description: Must be true to explicitly confirm this irreversible void.
+            reason:
+              type: string
+              minLength: 1
+              description: Commissioner explanation for voiding the approved trade.
+          required: [status, confirmed, reason]
 
     # MTM
     MtmSnapshot:

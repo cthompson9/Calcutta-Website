@@ -35,12 +35,16 @@ export const tradesTable = pgTable(
     price: numeric("price", { precision: 10, scale: 2 }).notNull().default("0"),
     /** Percentage of the team traded, 1–100. Default 100 = full ownership transfer. */
     percentage: numeric("percentage", { precision: 5, scale: 2 }).notNull().default("100"),
-    /** Approval workflow: pending → approved | rejected */
+    /** Approval workflow: pending → approved | rejected; approved → voided */
     status: text("status").notNull().default("pending"),
     /** Immutable audit metadata for a commissioner approval or rejection. */
     decisionAt: timestamp("decision_at", { withTimezone: true }),
     /** Trusted channel that recorded the commissioner decision; never stores credentials. */
     decisionSource: text("decision_source"),
+    /** Audit metadata for voiding an approved trade; never stores credentials. */
+    voidedAt: timestamp("voided_at", { withTimezone: true }),
+    voidedSource: text("voided_source"),
+    voidReason: text("void_reason"),
     tradeDate: date("trade_date", { mode: "string" }).notNull(),
     notes: text("notes"),
   },
@@ -54,7 +58,7 @@ export const tradesTable = pgTable(
     // Only known workflow states are valid
     check(
       "trades_status_values",
-      sql`${t.status} IN ('pending', 'approved', 'rejected')`,
+      sql`${t.status} IN ('pending', 'approved', 'rejected', 'voided')`,
     ),
     // Quickly retrieve all trades for a season (dashboard, bulk ops)
     index("trades_season_idx").on(t.seasonId),

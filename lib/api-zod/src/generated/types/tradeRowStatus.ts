@@ -7,7 +7,7 @@
  */
 
 /**
- * Approval status. New trades start as pending.
+ * Approval status. New trades start as pending; an approved trade may later be voided.
  */
 export type TradeRowStatus = typeof TradeRowStatus[keyof typeof TradeRowStatus];
 
@@ -16,4 +16,5 @@ export const TradeRowStatus = {
   pending: 'pending',
   approved: 'approved',
   rejected: 'rejected',
+  voided: 'voided',
 } as const;

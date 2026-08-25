@@ -2243,7 +2243,7 @@ export const getDeleteTradeUrl = (id: number,) => {
 }
 
 /**
- * @summary Delete a pending or rejected trade record
+ * @summary Delete a pending trade record (admin only — requires ADMIN_API_KEY bearer token)
  */
 export const deleteTrade = async (id: number, options?: Parameters<typeof customFetch>[1]): Promise<void> => {
 
@@ -2292,7 +2292,7 @@ const {mutation: mutationOptions, request: requestOptions} = options ?
     export type DeleteTradeMutationError = ErrorType<ErrorResponse>
 
     /**
- * @summary Delete a pending or rejected trade record
+ * @summary Delete a pending trade record (admin only — requires ADMIN_API_KEY bearer token)
  */
 export const useDeleteTrade = <TError = ErrorType<ErrorResponse>,
     TContext = unknown>(options?: { mutation?:UseMutationOptions<Awaited<ReturnType<typeof deleteTrade>>, TError,{id: number}, TContext>, request?: SecondParameter<typeof customFetch>}
@@ -2305,6 +2305,83 @@ export const useDeleteTrade = <TError = ErrorType<ErrorResponse>,
       return useMutation(getDeleteTradeMutationOptions(options));
     }
 
+export const getValidateAdminKeyUrl = () => {
+
+
+
+
+  return `/api/admin/validate`
+}
+
+/**
+ * @summary Validate the commissioner admin bearer token
+ */
+export const validateAdminKey = async ( options?: Parameters<typeof customFetch>[1]): Promise<void> => {
+
+  return customFetch<void>(getValidateAdminKeyUrl(),
+  {
+    ...options,
+    method: 'GET'
+
+
+  }
+);}
+
+
+
+
+
+export const getValidateAdminKeyQueryKey = () => {
+    return [
+    `/api/admin/validate`
+    ] as const;
+    }
+
+
+export const getValidateAdminKeyQueryOptions = <TData = Awaited<ReturnType<typeof validateAdminKey>>, TError = ErrorType<ErrorResponse>>( options?: { query?:UseQueryOptions<Awaited<ReturnType<typeof validateAdminKey>>, TError, TData>, request?: SecondParameter<typeof customFetch>}
+) => {
+
+const {query: queryOptions, request: requestOptions} = options ?? {};
+
+  const queryKey =  queryOptions?.queryKey ?? getValidateAdminKeyQueryKey();
+
+
+
+    const queryFn: QueryFunction<Awaited<ReturnType<typeof validateAdminKey>>> = ({ signal }) => validateAdminKey({ signal, ...requestOptions });
+
+
+
+
+
+   return  { queryKey, queryFn, ...queryOptions} as UseQueryOptions<Awaited<ReturnType<typeof validateAdminKey>>, TError, TData> & { queryKey: QueryKey }
+}
+
+export type ValidateAdminKeyQueryResult = NonNullable<Awaited<ReturnType<typeof validateAdminKey>>>
+export type ValidateAdminKeyQueryError = ErrorType<ErrorResponse>
+
+
+/**
+ * @summary Validate the commissioner admin bearer token
+ */
+
+export function useValidateAdminKey<TData = Awaited<ReturnType<typeof validateAdminKey>>, TError = ErrorType<ErrorResponse>>(
+  options?: { query?:UseQueryOptions<Awaited<ReturnType<typeof validateAdminKey>>, TError, TData>, request?: SecondParameter<typeof customFetch>}
+
+ ):  UseQueryResult<TData, TError> & { queryKey: QueryKey } {
+
+  const queryOptions = getValidateAdminKeyQueryOptions(options)
+
+  const query = useQuery(queryOptions) as  UseQueryResult<TData, TError> & { queryKey: QueryKey };
+
+  return withQueryKey(query, queryOptions.queryKey);
+}
+
+
+
+
+
+
+
 export const getSetTradeStatusUrl = (id: number,) => {
 
 
@@ -2314,7 +2391,7 @@ export const getSetTradeStatusUrl = (id: number,) => {
 }
 
 /**
- * @summary Confirm and record a pending trade decision (admin only — requires ADMIN_API_KEY bearer token)
+ * @summary Confirm a pending trade decision or void an approved trade (admin only — requires ADMIN_API_KEY bearer token)
  */
 export const setTradeStatus = async (id: number,
     tradeStatusUpdate: TradeStatusUpdate, options?: Parameters<typeof customFetch>[1]): Promise<TradeRow> => {
@@ -2364,7 +2441,7 @@ const {mutation: mutationOptions, request: requestOptions} = options ?
     export type SetTradeStatusMutationError = ErrorType<ErrorResponse>
 
     /**
- * @summary Confirm and record a pending trade decision (admin only — requires ADMIN_API_KEY bearer token)
+ * @summary Confirm a pending trade decision or void an approved trade (admin only — requires ADMIN_API_KEY bearer token)
  */
 export const useSetTradeStatus = <TError = ErrorType<ErrorResponse>,
     TContext = unknown>(options?: { mutation?:UseMutationOptions<Awaited<ReturnType<typeof setTradeStatus>>, TError,{id: number;data: BodyType<TradeStatusUpdate>}, TContext>, request?: SecondParameter<typeof customFetch>}

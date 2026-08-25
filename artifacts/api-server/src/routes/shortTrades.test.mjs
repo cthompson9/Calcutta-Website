@@ -179,6 +179,9 @@ describe("short trades and new trade participants", { skip: !canRun }, () => {
     assert.equal(createdTrade.status, "pending");
     assert.equal(createdTrade.decisionAt, null);
     assert.equal(createdTrade.decisionSource, null);
+    assert.equal(createdTrade.voidedAt, null);
+    assert.equal(createdTrade.voidedSource, null);
+    assert.equal(createdTrade.voidReason, null);
 
     const approvalResponse = await fetch(`${baseUrl}/api/trades/${createdTrade.id}/status`, {
       method: "PATCH",
@@ -197,6 +200,9 @@ describe("short trades and new trade participants", { skip: !canRun }, () => {
       Number.isFinite(Date.parse(approvedTrade.decisionAt)),
       "a newly recorded decision has an audit timestamp",
     );
+    assert.equal(approvedTrade.voidedAt, null);
+    assert.equal(approvedTrade.voidedSource, null);
+    assert.equal(approvedTrade.voidReason, null);
     return { createdTrade, approvedTrade };
   }
 
@@ -315,6 +321,41 @@ describe("short trades and new trade participants", { skip: !canRun }, () => {
       body: JSON.stringify({ status: "approved", confirmed: true }),
     });
     assert.equal(unauthorizedApproval.status, 401);
+
+    const unauthorizedDelete = await fetch(`${baseUrl}/api/trades/${createdTrade.id}`, {
+      method: "DELETE",
+    });
+    assert.equal(unauthorizedDelete.status, 401);
+
+    const pendingVoid = await fetch(`${baseUrl}/api/trades/${createdTrade.id}/status`, {
+      method: "PATCH",
+      headers: {
+        "Content-Type": "application/json",
+        Authorization: `Bearer ${ADMIN_KEY}`,
+      },
+      body: JSON.stringify({
+        status: "voided",
+        confirmed: true,
+        reason: "Attempting to void an undecided trade",
+      }),
+    });
+    assert.equal(pendingVoid.status, 400, "only approved trades can be voided");
+
+    const adminValidation = await fetch(`${baseUrl}/api/admin/validate`, {
+      headers: { Authorization: `Bearer ${ADMIN_KEY}` },
+    });
+    assert.equal(adminValidation.status, 204);
+
+    const invalidAdminValidation = await fetch(`${baseUrl}/api/admin/validate`, {
+      headers: { Authorization: "Bearer invalid" },
+    });
+    assert.equal(invalidAdminValidation.status, 401);
+
+    const deletedPendingTrade = await fetch(`${baseUrl}/api/trades/${createdTrade.id}`, {
+      method: "DELETE",
+      headers: { Authorization: `Bearer ${ADMIN_KEY}` },
+    });
+    assert.equal(deletedPendingTrade.status, 204);
   });
 
   test("records one audited decision and rejects later status changes", async () => {
@@ -473,6 +514,106 @@ describe("short trades and new trade participants", { skip: !canRun }, () => {
     );
   });
 
+  test("voids an approved REST trade, removes its signed positions, and preserves audit history", async () => {
+    const ownershipBeforeTrade = await loadSeasonOwnership(seasonId);
+    const shortSellerBeforeTrade =
+      ownershipBeforeTrade.byBidder.get(shortSeller.id)?.get(teamId)?.effectiveShare ?? 0;
+    const newBuyerBeforeTrade =
+      ownershipBeforeTrade.byBidder.get(newBuyer.id)?.get(teamId)?.effectiveShare ?? 0;
+    const { createdTrade, approvedTrade } = await createAndApproveTrade({
+      fromBidderId: shortSeller.id,
+      toBidderId: newBuyer.id,
+      percentage: 25,
+      price: 25,
+    });
+    const ownershipWithTrade = await loadSeasonOwnership(seasonId);
+    assert.equal(
+      ownershipWithTrade.byBidder.get(shortSeller.id).get(teamId).effectiveShare,
+      shortSellerBeforeTrade - 0.25,
+    );
+    assert.equal(
+      ownershipWithTrade.byBidder.get(newBuyer.id).get(teamId).effectiveShare,
+      newBuyerBeforeTrade + 0.25,
+    );
+
+    const missingReason = await fetch(`${baseUrl}/api/trades/${createdTrade.id}/status`, {
+      method: "PATCH",
+      headers: {
+        "Content-Type": "application/json",
+        Authorization: `Bearer ${ADMIN_KEY}`,
+      },
+      body: JSON.stringify({ status: "voided", confirmed: true }),
+    });
+    assert.equal(missingReason.status, 400);
+
+    const whitespaceReason = await fetch(`${baseUrl}/api/trades/${createdTrade.id}/status`, {
+      method: "PATCH",
+      headers: {
+        "Content-Type": "application/json",
+        Authorization: `Bearer ${ADMIN_KEY}`,
+      },
+      body: JSON.stringify({ status: "voided", confirmed: true, reason: "   " }),
+    });
+    assert.equal(whitespaceReason.status, 400);
+
+    const voidResponse = await fetch(`${baseUrl}/api/trades/${createdTrade.id}/status`, {
+      method: "PATCH",
+      headers: {
+        "Content-Type": "application/json",
+        Authorization: `Bearer ${ADMIN_KEY}`,
+      },
+      body: JSON.stringify({
+        status: "voided",
+        confirmed: true,
+        reason: "Commissioner correction: duplicate submission",
+      }),
+    });
+    const voidedTrade = await voidResponse.json();
+    assert.equal(voidResponse.status, 200, JSON.stringify(voidedTrade));
+    assert.equal(voidedTrade.status, "voided");
+    assert.equal(voidedTrade.decisionAt, approvedTrade.decisionAt);
+    assert.equal(voidedTrade.decisionSource, "commissioner_api");
+    assert.equal(voidedTrade.voidedSource, "commissioner_api");
+    assert.equal(voidedTrade.voidReason, "Commissioner correction: duplicate submission");
+    assert.ok(Number.isFinite(Date.parse(voidedTrade.voidedAt)));
+
+    const ownershipAfterVoid = await loadSeasonOwnership(seasonId);
+    assert.equal(
+      ownershipAfterVoid.byBidder.get(shortSeller.id)?.get(teamId)?.effectiveShare ?? 0,
+      shortSellerBeforeTrade,
+      "voided trade no longer creates a short position",
+    );
+    assert.equal(
+      ownershipAfterVoid.byBidder.get(newBuyer.id)?.get(teamId)?.effectiveShare ?? 0,
+      newBuyerBeforeTrade,
+      "voided trade no longer creates a buyer position",
+    );
+    const storedLegs = await db
+      .select({ id: positionsTable.id })
+      .from(positionsTable)
+      .where(eq(positionsTable.tradeId, createdTrade.id));
+    assert.equal(storedLegs.length, 0, "position rebuild removes voided trade legs");
+
+    const listedTrade = (await (await fetch(`${baseUrl}/api/trades?season=${seasonYear}`)).json())
+      .find((trade) => trade.id === createdTrade.id);
+    assert.equal(listedTrade.status, "voided", "the original trade remains visible");
+    assert.equal(listedTrade.voidReason, voidedTrade.voidReason);
+
+    const repeatedVoid = await fetch(`${baseUrl}/api/trades/${createdTrade.id}/status`, {
+      method: "PATCH",
+      headers: {
+        "Content-Type": "application/json",
+        Authorization: `Bearer ${ADMIN_KEY}`,
+      },
+      body: JSON.stringify({
+        status: "voided",
+        confirmed: true,
+        reason: "Second attempt",
+      }),
+    });
+    assert.equal(repeatedVoid.status, 409);
+  });
+
   test("keeps primary shares separate from trade-derived positions in results", async () => {
     const [tradeSeller] = await db
       .insert(biddersTable)
@@ -611,12 +752,16 @@ describe("short trades and new trade participants", { skip: !canRun }, () => {
         status: tradesTable.status,
         decisionAt: tradesTable.decisionAt,
         decisionSource: tradesTable.decisionSource,
+        voidedAt: tradesTable.voidedAt,
+        voidedSource: tradesTable.voidedSource,
+        voidReason: tradesTable.voidReason,
       })
       .from(tradesTable)
       .where(eq(tradesTable.id, pendingTrade.id));
     assert.equal(storedTrade.status, "approved");
     assert.equal(storedTrade.decisionSource, "commissioner_mcp");
     assert.ok(storedTrade.decisionAt instanceof Date);
+    assert.equal(storedTrade.voidedAt, null);
     const tradeLegs = await db
       .select({
         bidderId: positionsTable.bidderId,
@@ -634,5 +779,42 @@ describe("short trades and new trade participants", { skip: !canRun }, () => {
       ].sort((left, right) => left[0] - right[0]),
       "MCP approval writes both signed normalized trade legs",
     );
+
+    const missingReasonVoid = await callMcpTool("set_trade_status", {
+      tradeId: pendingTrade.id,
+      status: "voided",
+      confirmed: true,
+      adminKey: ADMIN_KEY,
+    });
+    assert.match(JSON.stringify(missingReasonVoid), /reason/i);
+
+    const voided = await callMcpTool("set_trade_status", {
+      tradeId: pendingTrade.id,
+      status: "voided",
+      confirmed: true,
+      reason: "MCP correction of an incorrectly approved trade",
+      adminKey: ADMIN_KEY,
+    });
+    assert.match(JSON.stringify(voided), /VOIDED/);
+    const [voidedStoredTrade] = await db
+      .select({
+        status: tradesTable.status,
+        decisionSource: tradesTable.decisionSource,
+        voidedAt: tradesTable.voidedAt,
+        voidedSource: tradesTable.voidedSource,
+        voidReason: tradesTable.voidReason,
+      })
+      .from(tradesTable)
+      .where(eq(tradesTable.id, pendingTrade.id));
+    assert.equal(voidedStoredTrade.status, "voided");
+    assert.equal(voidedStoredTrade.decisionSource, "commissioner_mcp");
+    assert.equal(voidedStoredTrade.voidedSource, "commissioner_mcp");
+    assert.equal(voidedStoredTrade.voidReason, "MCP correction of an incorrectly approved trade");
+    assert.ok(voidedStoredTrade.voidedAt instanceof Date);
+    const voidedTradeLegs = await db
+      .select({ id: positionsTable.id })
+      .from(positionsTable)
+      .where(eq(positionsTable.tradeId, pendingTrade.id));
+    assert.equal(voidedTradeLegs.length, 0, "MCP void removes signed trade legs");
   });
 });

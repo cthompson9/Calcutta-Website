@@ -19,7 +19,7 @@ export interface TradeRow {
   price: number;
   /** Percentage of team traded (0–100). Default 100 = full transfer. */
   percentage: number;
-  /** Approval status. New trades start as pending. */
+  /** Approval status. New trades start as pending; an approved trade may later be voided. */
   status: TradeRowStatus;
   /**
      * Time the commissioner decision was recorded. Null for pending or legacy records.
@@ -31,6 +31,21 @@ export interface TradeRow {
      * @nullable
      */
   decisionSource: string | null;
+  /**
+     * Time the approved trade was voided. Null unless the trade is voided.
+     * @nullable
+     */
+  voidedAt: Date | null;
+  /**
+     * Trusted channel that recorded the void. Null unless the trade is voided.
+     * @nullable
+     */
+  voidedSource: string | null;
+  /**
+     * Required commissioner explanation when the trade is voided.
+     * @nullable
+     */
+  voidReason: string | null;
   tradeDate: string;
   /** @nullable */
   notes?: string | null;

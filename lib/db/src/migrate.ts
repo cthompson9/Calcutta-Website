@@ -3,6 +3,7 @@ import { db } from "./index";
 import {
   nflStandingsStatusMigration,
   nflPayoutsMigration,
+  tradeVoidingMigration,
   ownerPositionsMigration,
   refreshJobStatesMigration,
   refreshJobStatusSignatureMigration,
@@ -14,6 +15,7 @@ const migrations = [
   refreshJobStatesMigration,
   refreshJobStatusSignatureMigration,
   nflPayoutsMigration,
+  tradeVoidingMigration,
 ] as const;
 
 /**

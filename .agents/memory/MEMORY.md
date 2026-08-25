@@ -1,7 +1,7 @@
 - [Schema design](schema-design.md) — auction prices and primary ownership are season-scoped; empty seasons never inherit legacy prices or owners.
 - [Seed approach](seed-approach.md) — 2025 season results seeded via lib/db/src/seed2025.ts using `node --import tsx/esm/index.mjs`; 2025=id1, 2026=id2.
 - [MCP endpoints](mcp-endpoints.md) — 18 tools total at POST /api/mcp (streamable HTTP, stateless); MCP_API_KEY gates all access; ADMIN_API_KEY gates set_trade_status tool parameter.
-- [Trade workflow](trade-workflow.md) — trades always created as pending; ADMIN_API_KEY bearer token required on PATCH /api/trades/:id/status; effective ownership in by-owner results applies approved trades only.
+- [Trade workflow](trade-workflow.md) — trades start pending; only audited approvals affect positions, and approved trades can be reasoned, audited voids.
 - [Mobile admin key handling](mobile-admin-key.md) — never persist the admin bearer key in AsyncStorage; SecureStore on native, memory-only on web.
 - [Week 0 market valuation](week-zero-market-valuation.md) — Kalshi Week 0 marks are audited, quality-gated season snapshots with a fixed first-capture date.
 - [Ownership write integrity](ownership-write-integrity.md) — primary split changes and trade lifecycle edits must serialize per season and preserve exact four-decimal ownership totals.

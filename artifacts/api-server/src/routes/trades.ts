@@ -141,6 +141,9 @@ async function enrichTrade(tradeId: number) {
       status: tradesTable.status,
       decisionAt: tradesTable.decisionAt,
       decisionSource: tradesTable.decisionSource,
+      voidedAt: tradesTable.voidedAt,
+      voidedSource: tradesTable.voidedSource,
+      voidReason: tradesTable.voidReason,
       tradeDate: tradesTable.tradeDate,
       notes: tradesTable.notes,
     })
@@ -178,12 +181,23 @@ async function enrichTrade(tradeId: number) {
     status: row.status,
     decisionAt: row.decisionAt,
     decisionSource: row.decisionSource,
+    voidedAt: row.voidedAt,
+    voidedSource: row.voidedSource,
+    voidReason: row.voidReason,
     tradeDate: row.tradeDate,
     notes: row.notes,
   };
 }
 
 // ── GET /trades ──────────────────────────────────────────────────────────────
+
+router.get("/admin/validate", (req: Request, res: Response): void => {
+  if (!isAdminRequest(req)) {
+    res.status(401).json({ error: "Invalid admin key" });
+    return;
+  }
+  res.status(204).send();
+});
 
 router.get("/trades", async (req, res): Promise<void> => {
   const parsed = GetTradesQueryParams.safeParse(req.query);
@@ -212,6 +226,9 @@ router.get("/trades", async (req, res): Promise<void> => {
       status: tradesTable.status,
       decisionAt: tradesTable.decisionAt,
       decisionSource: tradesTable.decisionSource,
+      voidedAt: tradesTable.voidedAt,
+      voidedSource: tradesTable.voidedSource,
+      voidReason: tradesTable.voidReason,
       tradeDate: tradesTable.tradeDate,
       notes: tradesTable.notes,
     })
@@ -247,6 +264,9 @@ router.get("/trades", async (req, res): Promise<void> => {
       status: r.status,
       decisionAt: r.decisionAt,
       decisionSource: r.decisionSource,
+      voidedAt: r.voidedAt,
+      voidedSource: r.voidedSource,
+      voidReason: r.voidReason,
       tradeDate: r.tradeDate,
       notes: r.notes,
     })),
@@ -430,14 +450,18 @@ router.patch("/trades/:id/status", async (req: Request, res: Response): Promise<
   const body = SetTradeStatusBody.safeParse(req.body);
   if (!body.success) {
     res.status(400).json({
-      error: 'Body must be { "status": "approved" | "rejected", "confirmed": true }',
+      error: 'Body must be { "status": "approved" | "rejected" | "voided", "confirmed": true, "reason"?: string }',
     });
+    return;
+  }
+  if (body.data.status === "voided" && !body.data.reason?.trim()) {
+    res.status(400).json({ error: "Voiding an approved trade requires a non-empty reason." });
     return;
   }
 
   // Serialize decisions with primary ownership changes. A status can transition
-  // exactly once: pending → approved | rejected. This eliminates accidental
-  // retries or later API calls rewriting commissioner history.
+  // once from pending to approved/rejected, or from approved to voided. This
+  // eliminates accidental retries or later calls rewriting commissioner history.
   const decision = await db.transaction(async (tx) => {
     const initial = await tx
       .select({ seasonId: tradesTable.seasonId })
@@ -455,7 +479,15 @@ router.patch("/trades/:id/status", async (req: Request, res: Response): Promise<
       .where(eq(tradesTable.id, id))
       .limit(1);
     if (!fresh[0]) return { kind: "not_found" as const };
-    if (fresh[0].status !== "pending") return { kind: "already_decided" as const };
+    if (
+      fresh[0].status !== "pending" &&
+      !(body.data.status === "voided" && fresh[0].status === "approved")
+    ) {
+      return { kind: "already_decided" as const };
+    }
+    if (body.data.status === "voided" && fresh[0].status !== "approved") {
+      return { kind: "invalid" as const, error: "Only an approved trade can be voided." };
+    }
 
     if (body.data.status === "approved") {
       const validationError = await validateTradeOwnership({
@@ -468,15 +500,20 @@ router.patch("/trades/:id/status", async (req: Request, res: Response): Promise<
       if (validationError) return { kind: "invalid" as const, error: validationError };
     }
 
-    await tx
-      .update(tradesTable)
-      .set({
-        status: body.data.status,
-        decisionAt: new Date(),
-        decisionSource: "commissioner_api",
-      })
-      .where(eq(tradesTable.id, id));
-    if (body.data.status === "approved") {
+    const now = new Date();
+    const updates: Partial<typeof tradesTable.$inferInsert> = {
+      status: body.data.status,
+    };
+    if (body.data.status === "voided") {
+      updates.voidedAt = now;
+      updates.voidedSource = "commissioner_api";
+      updates.voidReason = body.data.reason!.trim();
+    } else {
+      updates.decisionAt = now;
+      updates.decisionSource = "commissioner_api";
+    }
+    await tx.update(tradesTable).set(updates).where(eq(tradesTable.id, id));
+    if (body.data.status === "approved" || body.data.status === "voided") {
       await syncSeasonPositions(tx, fresh[0].seasonId);
     }
     return { kind: "recorded" as const };
@@ -488,7 +525,7 @@ router.patch("/trades/:id/status", async (req: Request, res: Response): Promise<
   }
   if (decision.kind === "already_decided") {
     res.status(409).json({
-      error: "This trade has already been decided and cannot be changed. Record a new trade instead.",
+      error: "This trade cannot be changed from its current status. Only an approved trade can be voided.",
     });
     return;
   }
@@ -508,6 +545,13 @@ router.patch("/trades/:id/status", async (req: Request, res: Response): Promise<
 // ── DELETE /trades/:id ────────────────────────────────────────────────────────
 
 router.delete("/trades/:id", async (req: Request, res: Response): Promise<void> => {
+  if (!isAdminRequest(req)) {
+    res.status(401).json({
+      error: "Unauthorized. This endpoint requires the ADMIN_API_KEY bearer token.",
+    });
+    return;
+  }
+
   const parsed = DeleteTradeParams.safeParse(req.params);
   if (!parsed.success) {
     res.status(400).json({ error: "Invalid id" });

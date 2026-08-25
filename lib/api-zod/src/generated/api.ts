@@ -821,9 +821,12 @@ export const GetTradesResponseItem = zod.object({
   "toBidderName": zod.string(),
   "price": zod.number(),
   "percentage": zod.number().describe('Percentage of team traded (0–100). Default 100 = full transfer.'),
-  "status": zod.enum(['pending', 'approved', 'rejected']).describe('Approval status. New trades start as pending.'),
+  "status": zod.enum(['pending', 'approved', 'rejected', 'voided']).describe('Approval status. New trades start as pending; an approved trade may later be voided.'),
   "decisionAt": zod.coerce.date().nullable().describe('Time the commissioner decision was recorded. Null for pending or legacy records.'),
   "decisionSource": zod.string().nullable().describe('Trusted channel that recorded the decision. Null for pending or legacy records.'),
+  "voidedAt": zod.coerce.date().nullable().describe('Time the approved trade was voided. Null unless the trade is voided.'),
+  "voidedSource": zod.string().nullable().describe('Trusted channel that recorded the void. Null unless the trade is voided.'),
+  "voidReason": zod.string().nullable().describe('Required commissioner explanation when the trade is voided.'),
   "tradeDate": zod.string(),
   "notes": zod.string().nullish()
 })
@@ -855,9 +858,12 @@ export const CreateTradeResponse = zod.object({
   "toBidderName": zod.string(),
   "price": zod.number(),
   "percentage": zod.number().describe('Percentage of team traded (0–100). Default 100 = full transfer.'),
-  "status": zod.enum(['pending', 'approved', 'rejected']).describe('Approval status. New trades start as pending.'),
+  "status": zod.enum(['pending', 'approved', 'rejected', 'voided']).describe('Approval status. New trades start as pending; an approved trade may later be voided.'),
   "decisionAt": zod.coerce.date().nullable().describe('Time the commissioner decision was recorded. Null for pending or legacy records.'),
   "decisionSource": zod.string().nullable().describe('Trusted channel that recorded the decision. Null for pending or legacy records.'),
+  "voidedAt": zod.coerce.date().nullable().describe('Time the approved trade was voided. Null unless the trade is voided.'),
+  "voidedSource": zod.string().nullable().describe('Trusted channel that recorded the void. Null unless the trade is voided.'),
+  "voidReason": zod.string().nullable().describe('Required commissioner explanation when the trade is voided.'),
   "tradeDate": zod.string(),
   "notes": zod.string().nullish()
 })
@@ -888,16 +894,19 @@ export const UpdateTradeResponse = zod.object({
   "toBidderName": zod.string(),
   "price": zod.number(),
   "percentage": zod.number().describe('Percentage of team traded (0–100). Default 100 = full transfer.'),
-  "status": zod.enum(['pending', 'approved', 'rejected']).describe('Approval status. New trades start as pending.'),
+  "status": zod.enum(['pending', 'approved', 'rejected', 'voided']).describe('Approval status. New trades start as pending; an approved trade may later be voided.'),
   "decisionAt": zod.coerce.date().nullable().describe('Time the commissioner decision was recorded. Null for pending or legacy records.'),
   "decisionSource": zod.string().nullable().describe('Trusted channel that recorded the decision. Null for pending or legacy records.'),
+  "voidedAt": zod.coerce.date().nullable().describe('Time the approved trade was voided. Null unless the trade is voided.'),
+  "voidedSource": zod.string().nullable().describe('Trusted channel that recorded the void. Null unless the trade is voided.'),
+  "voidReason": zod.string().nullable().describe('Required commissioner explanation when the trade is voided.'),
   "tradeDate": zod.string(),
   "notes": zod.string().nullish()
 })
 
 
 /**
- * @summary Delete a pending or rejected trade record
+ * @summary Delete a pending trade record (admin only — requires ADMIN_API_KEY bearer token)
  */
 export const DeleteTradeParams = zod.object({
   "id": zod.coerce.number()
@@ -907,16 +916,29 @@ export const DeleteTradeResponse = zod.void()
 
 
 /**
- * @summary Confirm and record a pending trade decision (admin only — requires ADMIN_API_KEY bearer token)
+ * @summary Validate the commissioner admin bearer token
+ */
+export const ValidateAdminKeyResponse = zod.void()
+
+
+/**
+ * @summary Confirm a pending trade decision or void an approved trade (admin only — requires ADMIN_API_KEY bearer token)
  */
 export const SetTradeStatusParams = zod.object({
   "id": zod.coerce.number()
 })
 
-export const SetTradeStatusBody = zod.object({
+
+
+
+export const SetTradeStatusBody = zod.union([zod.object({
   "status": zod.enum(['approved', 'rejected']),
   "confirmed": zod.literal(true).describe('Must be true to record this irreversible commissioner decision.')
-})
+}),zod.object({
+  "status": zod.enum(['voided']),
+  "confirmed": zod.literal(true).describe('Must be true to explicitly confirm this irreversible void.'),
+  "reason": zod.string().min(1).describe('Commissioner explanation for voiding the approved trade.')
+})])
 
 export const SetTradeStatusResponse = zod.object({
   "id": zod.number(),
@@ -929,9 +951,12 @@ export const SetTradeStatusResponse = zod.object({
   "toBidderName": zod.string(),
   "price": zod.number(),
   "percentage": zod.number().describe('Percentage of team traded (0–100). Default 100 = full transfer.'),
-  "status": zod.enum(['pending', 'approved', 'rejected']).describe('Approval status. New trades start as pending.'),
+  "status": zod.enum(['pending', 'approved', 'rejected', 'voided']).describe('Approval status. New trades start as pending; an approved trade may later be voided.'),
   "decisionAt": zod.coerce.date().nullable().describe('Time the commissioner decision was recorded. Null for pending or legacy records.'),
   "decisionSource": zod.string().nullable().describe('Trusted channel that recorded the decision. Null for pending or legacy records.'),
+  "voidedAt": zod.coerce.date().nullable().describe('Time the approved trade was voided. Null unless the trade is voided.'),
+  "voidedSource": zod.string().nullable().describe('Trusted channel that recorded the void. Null unless the trade is voided.'),
+  "voidReason": zod.string().nullable().describe('Required commissioner explanation when the trade is voided.'),
   "tradeDate": zod.string(),
   "notes": zod.string().nullish()
 })
