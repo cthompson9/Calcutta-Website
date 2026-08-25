@@ -13,6 +13,41 @@ export type ReleaseNote = {
 
 export const releaseNotes: ReleaseNote[] = [
   {
+    date: "August 25, 2026",
+    updates: [
+      {
+        title: "By Consortium team detail",
+        description:
+          "Open a consortium's detail view to see team positions, realized and MTM values, breakeven points, source links, and trade history together.",
+      },
+      {
+        title: "Realized value math fixes",
+        description:
+          "Realized values now use corrected calculations so net results and team-level amounts stay consistent.",
+      },
+      {
+        title: "Sorting bug fixes",
+        description:
+          "Updated sorting keeps standings, teams, and trade summaries in the expected order.",
+      },
+      {
+        title: "Erroneous trades cleaned up",
+        description:
+          "Erroneous trades were voided and removed from Consortium trade history while their audit records remain preserved.",
+      },
+      {
+        title: "Frozen report headers",
+        description:
+          "The top row stays visible while scrolling through long reports.",
+      },
+      {
+        title: "Breakeven points",
+        description:
+          "Breakeven fields now show the points needed to reach the target realized result.",
+      },
+    ],
+  },
+  {
     date: "August 23, 2026",
     updates: [
       {
