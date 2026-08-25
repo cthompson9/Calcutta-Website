@@ -1067,7 +1067,7 @@ function DesktopOwnerDetail({
                     <div className="flex items-center justify-between gap-2">
                       <span className="truncate text-xs font-bold">{team.teamName}</span>
                       <span className={cn("shrink-0 font-mono text-xs font-bold", position >= 0 ? "text-sky-700 dark:text-sky-400" : "text-rose-600 dark:text-rose-400")}>
-                        {formatOwnershipPercent(position, true)}
+                        {formatOwnershipPercent(position)}
                       </span>
                     </div>
                     <div className="mt-2 grid grid-cols-2 gap-x-3 gap-y-1 font-mono text-[10px]">
