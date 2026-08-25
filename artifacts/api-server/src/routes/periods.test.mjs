@@ -98,7 +98,18 @@ describe("period snapshot reporting", { skip: !DATABASE_URL || !ADMIN_KEY }, () 
     assert.equal(initializeResponse.status, 401);
   });
 
-  test("initializes complete immutable Week 0 baselines and opening returns", async () => {
+  test("automatically initializes complete immutable Week 0 baselines and opening returns", async () => {
+    for (const basis of ["realized", "mtm"]) {
+      const availability = await fetch(
+        `${baseUrl}/api/results/availability?season=${seasonYear}&basis=${basis}`,
+      );
+      assert.equal(availability.status, 200);
+      assert.deepEqual(await availability.json(), {
+        latestPeriod: 0,
+        previousPeriod: null,
+      });
+    }
+
     const headers = {
       "Content-Type": "application/json",
       Authorization: `Bearer ${ADMIN_KEY}`,
@@ -114,21 +125,11 @@ describe("period snapshot reporting", { skip: !DATABASE_URL || !ADMIN_KEY }, () 
       periodSequence: 0,
       periodLabel: "Week 0",
       teamCount: 2,
-      realizedSnapshotsWritten: 2,
-      mtmSnapshotsWritten: 2,
-      snapshotsWritten: 4,
-      alreadyInitialized: false,
+      realizedSnapshotsWritten: 0,
+      mtmSnapshotsWritten: 0,
+      snapshotsWritten: 0,
+      alreadyInitialized: true,
     });
-
-    for (const basis of ["realized", "mtm"]) {
-      const availability = await fetch(
-        `${baseUrl}/api/results/availability?season=${seasonYear}&basis=${basis}`,
-      );
-      assert.deepEqual(await availability.json(), {
-        latestPeriod: 0,
-        previousPeriod: null,
-      });
-    }
 
     const realizedRows = await fetch(
       `${baseUrl}/api/results?season=${seasonYear}&period=0&basis=realized`,

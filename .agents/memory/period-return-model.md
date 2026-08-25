@@ -19,6 +19,12 @@ Week 0 is the narrow exception: a complete zero-stat baseline is valued with the
 
 **How to apply:** Limit the default-rubric fallback to exact Week 0 snapshot requests with no saved rule rows; do not create, replace, or infer payout-rule records as part of baseline initialization.
 
+Week 0 baseline creation is automatic on Results reporting reads, including period availability. It must never be gated by a commissioner key or a visible manual initialization action.
+
+**Why:** Opening returns are a normal report state, not a privileged operational step; the baseline writer is additive and idempotent under the season lock.
+
+**How to apply:** Ensure both team and owner result routes, plus availability, invoke the server-side baseline check before loading snapshots. Keep any retained manual endpoint backward-compatible but unnecessary for normal use.
+
 Displayed realized points to breakeven is a signed result, not a remaining-point countdown: divide realized net value by the complete realized snapshot pool’s dollars-per-point rate and round to a whole point. Positive values are profitable surplus; negative values are the deficit.
 
 **Why:** Clamping at zero conceals profitable positions and misstates the direction of a team’s realized return.

@@ -17,7 +17,6 @@ import {
   getGetMtmSnapshotsQueryKey,
   useGetTrades,
   getGetTradesQueryKey,
-  useInitializeWeekZeroPoints,
 } from "@workspace/api-client-react";
 import type {
   OwnershipSegment,
@@ -43,13 +42,8 @@ import {
   Search,
   Trophy,
   X,
-  Loader2,
-  Lock,
-  Unlock,
 } from "lucide-react";
 import { Link } from "wouter";
-import { useQueryClient } from "@tanstack/react-query";
-import { toast } from "sonner";
 import { bidderConsortiums, ownerLabelById } from "@/lib/ownerDisplay";
 import { ConsortiumLabel } from "@/components/ConsortiumLabel";
 import { auctionResultHref, tradeHref } from "@/lib/resultSourceLinks";
@@ -81,10 +75,6 @@ export default function Results() {
     },
   );
   const selectedPeriod = period ?? availability?.latestPeriod ?? undefined;
-  const baselineMissing =
-    (tab === "byOwner" || tab === "byTeam") &&
-    availability !== undefined &&
-    availability.latestPeriod == null;
 
   useEffect(() => {
     if (allSeasons && compareSeasons.length === 0) {
@@ -212,7 +202,6 @@ export default function Results() {
             {reportBasisLabel} · {selectedPeriodLabel} · {year} season
           </p>
         </div>
-        <WeekZeroPointsControl year={year} />
       </header>
 
       <div className="hidden px-4 md:block md:px-0">
@@ -321,8 +310,6 @@ export default function Results() {
       <div className="px-0 md:px-0">
         {isLoading ? (
           <LoadingSkeleton />
-        ) : baselineMissing ? (
-          <WeekZeroBaselineNotice year={year} />
         ) : tab === "byOwner" ? (
           <>
             <div className="hidden md:block">
@@ -367,151 +354,6 @@ export default function Results() {
         )}
       </div>
     </div>
-  );
-}
-
-function WeekZeroPointsControl({ year }: { year: number }) {
-  const queryClient = useQueryClient();
-  const [adminKey, setAdminKey] = useState<string | null>(
-    () => sessionStorage.getItem("nfl_admin_key"),
-  );
-  const [showKeyEntry, setShowKeyEntry] = useState(false);
-  const [keyInput, setKeyInput] = useState("");
-  const initializeWeekZero = useInitializeWeekZeroPoints({
-    request: {
-      headers: adminKey ? { Authorization: `Bearer ${adminKey}` } : {},
-    },
-  });
-
-  function saveAdminKey() {
-    const trimmed = keyInput.trim();
-    if (!trimmed) return;
-    sessionStorage.setItem("nfl_admin_key", trimmed);
-    setAdminKey(trimmed);
-    setKeyInput("");
-    setShowKeyEntry(false);
-  }
-
-  function clearAdminKey() {
-    sessionStorage.removeItem("nfl_admin_key");
-    setAdminKey(null);
-  }
-
-  async function initialize() {
-    if (!adminKey) return;
-    try {
-      const result = await initializeWeekZero.mutateAsync({
-        data: { seasonYear: year },
-      });
-      await Promise.all([
-        queryClient.invalidateQueries({
-          queryKey: getGetResultsAvailabilityQueryKey(),
-        }),
-        queryClient.invalidateQueries({ queryKey: getGetResultsQueryKey() }),
-        queryClient.invalidateQueries({
-          queryKey: getGetResultsByOwnerQueryKey(),
-        }),
-        queryClient.invalidateQueries({
-          queryKey: getGetResultsCompareQueryKey(),
-        }),
-      ]);
-      toast.success(
-        result.alreadyInitialized
-          ? `Week 0 is already initialized for ${year}.`
-          : `Initialized Week 0 for ${result.teamCount} teams.`,
-      );
-    } catch (error) {
-      toast.error(
-        error instanceof Error ? error.message : "Unable to initialize Week 0.",
-      );
-    }
-  }
-
-  return (
-    <div className="flex flex-wrap items-center gap-2">
-      {adminKey ? (
-        <>
-          <button
-            type="button"
-            onClick={clearAdminKey}
-            className="flex items-center gap-1.5 border border-green-600 px-2.5 py-1.5 font-mono text-[10px] font-bold uppercase tracking-widest text-green-700 transition-colors hover:bg-green-50 dark:text-green-400 dark:hover:bg-green-950/30"
-            title="Commissioner access is active — click to lock"
-          >
-            <Unlock className="h-3 w-3" /> Commissioner
-          </button>
-          <button
-            type="button"
-            data-testid="button-initialize-week-zero"
-            onClick={() => void initialize()}
-            disabled={initializeWeekZero.isPending}
-            className="flex items-center gap-1.5 bg-primary px-3 py-1.5 font-mono text-[10px] font-bold uppercase tracking-widest text-primary-foreground transition-colors hover:bg-primary/90 disabled:cursor-not-allowed disabled:opacity-60"
-          >
-            {initializeWeekZero.isPending ? (
-              <Loader2 className="h-3 w-3 animate-spin" />
-            ) : null}
-            {initializeWeekZero.isPending ? "Initializing…" : "Initialize Week 0"}
-          </button>
-        </>
-      ) : (
-        <div className="relative">
-          <button
-            type="button"
-            onClick={() => setShowKeyEntry((visible) => !visible)}
-            className="flex items-center gap-1.5 border border-border px-2.5 py-1.5 font-mono text-[10px] font-bold uppercase tracking-widest text-muted-foreground transition-colors hover:bg-muted hover:text-foreground"
-            title="Enter a commissioner key to initialize the Week 0 baseline"
-          >
-            <Lock className="h-3 w-3" /> Commissioner
-          </button>
-          {showKeyEntry ? (
-            <div className="absolute right-0 top-full z-50 mt-1 w-64 space-y-2 border border-border bg-background p-3 shadow-lg">
-              <p className="font-mono text-[10px] text-muted-foreground">
-                Enter the commissioner key to initialize the protected Week 0 baseline.
-              </p>
-              <input
-                type="password"
-                value={keyInput}
-                onChange={(event) => setKeyInput(event.target.value)}
-                onKeyDown={(event) => {
-                  if (event.key === "Enter") saveAdminKey();
-                }}
-                placeholder="Commissioner key…"
-                className="w-full border border-border bg-background px-2 py-1.5 font-mono text-sm"
-                autoFocus
-              />
-              <button
-                type="button"
-                onClick={saveAdminKey}
-                disabled={!keyInput.trim()}
-                className="w-full bg-primary py-1.5 font-mono text-[10px] font-bold uppercase tracking-widest text-primary-foreground disabled:opacity-50"
-              >
-                Unlock
-              </button>
-            </div>
-          ) : null}
-        </div>
-      )}
-    </div>
-  );
-}
-
-function WeekZeroBaselineNotice({ year }: { year: number }) {
-  return (
-    <section
-      className="mx-4 border border-amber-500/50 bg-amber-50 px-5 py-5 shadow-sm dark:bg-amber-950/20 md:mx-0"
-      data-testid="week-zero-baseline-missing"
-    >
-      <p className="font-mono text-xs font-bold uppercase tracking-widest text-amber-900 dark:text-amber-200">
-        Week 0 baseline not initialized
-      </p>
-      <p className="mt-2 max-w-2xl text-sm leading-6 text-amber-950/80 dark:text-amber-100/80">
-        Auction cost is available, but return values are not yet calculated. A
-        commissioner must initialize the protected {year} Week 0 baseline
-        before this report can show realized gross, net, or breakeven values.
-      </p>
-      <p className="mt-3 font-mono text-[10px] uppercase tracking-widest text-amber-800 dark:text-amber-300">
-        Unlock Commissioner access above, then select Initialize Week 0.
-      </p>
-    </section>
   );
 }
 

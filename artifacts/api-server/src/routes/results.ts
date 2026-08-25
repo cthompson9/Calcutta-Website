@@ -26,6 +26,7 @@ import {
 import { OWNERSHIP_SEASON_LOCK_NAMESPACE } from "../lib/ownershipShares";
 import {
   hasConfiguredPayoutRules,
+  initializeNflWeekZeroSnapshots,
   loadCalculatedTeamReturns,
   loadReturnSnapshotPeriods,
   type CalculatedTeamReturns,
@@ -46,6 +47,18 @@ async function resolveSeasonId(year: number): Promise<number | null> {
     .where(eq(seasonsTable.year, year))
     .limit(1);
   return rows[0]?.id ?? null;
+}
+
+async function ensureWeekZeroReportingBaseline(
+  seasonId: number,
+  year: number,
+): Promise<void> {
+  await db.transaction(async (tx) => {
+    await tx.execute(
+      sql`select pg_advisory_xact_lock(${OWNERSHIP_SEASON_LOCK_NAMESPACE}, ${seasonId})`,
+    );
+    await initializeNflWeekZeroSnapshots(tx, { seasonId, year });
+  });
 }
 
 async function getSeasonCost(
@@ -457,6 +470,7 @@ router.get("/results", async (req, res): Promise<void> => {
     res.json([]);
     return;
   }
+  await ensureWeekZeroReportingBaseline(seasonId, season);
 
   let teamQuery = db.select().from(teamsTable).$dynamic();
   if (conference)
@@ -554,6 +568,7 @@ router.get("/results/by-owner", async (req, res): Promise<void> => {
     res.json([]);
     return;
   }
+  await ensureWeekZeroReportingBaseline(seasonId, season);
 
   const allTeams = await db.select().from(teamsTable);
   const allBidders = await db
@@ -749,6 +764,7 @@ router.get("/results/availability", async (req, res): Promise<void> => {
     res.json({ latestPeriod: null, previousPeriod: null });
     return;
   }
+  await ensureWeekZeroReportingBaseline(seasonId, parsed.data.season);
 
   const periods = await loadReturnSnapshotPeriods(
     seasonId,
