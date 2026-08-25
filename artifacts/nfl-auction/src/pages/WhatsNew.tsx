@@ -120,6 +120,18 @@ export default function WhatsNew() {
               </ol>
             </div>
             <p>
+              After Claude connects, share this instruction if you want it to stay
+              focused on safe pool analysis:
+            </p>
+            <pre className="whitespace-pre-wrap break-words border border-border bg-muted/40 p-3 font-mono text-xs leading-relaxed text-foreground">
+              Use Calcutta as the source of truth for NFL pool questions. Prefer
+              read-only reports and show the season and basis you used. Before
+              creating a trade, repeat the teams, owners, percentage, price, and
+              date for confirmation. Never approve, reject, void, or otherwise
+              change pool data unless I explicitly ask you to do so and I am the
+              commissioner.
+            </pre>
+            <p>
               For direct API access, use this app&apos;s base URL plus the relevant{" "}
               <code className="border border-border bg-muted px-1.5 py-0.5 font-mono text-xs text-foreground">
                 /api/...
@@ -139,6 +151,57 @@ export default function WhatsNew() {
               Open MCP endpoint
               <ExternalLink className="h-3.5 w-3.5" aria-hidden="true" />
             </a>
+          </div>
+        </details>
+
+        <details className="group border border-border bg-background" data-testid="details-mcp-prompts-faq">
+          <summary className="cursor-pointer list-none px-4 py-3 font-mono text-sm font-bold uppercase tracking-wide focus:outline-none focus:ring-2 focus:ring-primary focus:ring-inset">
+            <span className="flex items-center justify-between gap-3">
+              What can I ask Claude?
+              <span className="text-lg leading-none text-muted-foreground transition-transform group-open:rotate-45">
+                +
+              </span>
+            </span>
+          </summary>
+          <div className="space-y-4 border-t border-border px-4 py-4 text-sm leading-relaxed text-muted-foreground">
+            <p>
+              These are good starting prompts. Include a season when you want a
+              historical answer instead of the active season:
+            </p>
+            <ul className="list-disc space-y-2 pl-5 text-xs">
+              <li>
+                <code className="font-mono text-foreground">
+                  Show the current owners, auction cost, wins, and realized return for the Seattle Seahawks in 2026.
+                </code>
+              </li>
+              <li>
+                <code className="font-mono text-foreground">
+                  Compare signed realized returns by consortium for the 2025 and 2026 Calcuttas.
+                </code>
+              </li>
+              <li>
+                <code className="font-mono text-foreground">
+                  Show the mark-to-market value and return for the 49ers in the current season.
+                </code>
+              </li>
+              <li>
+                <code className="font-mono text-foreground">
+                  Check trade 123 and summarize its status and audit history.
+                </code>
+              </li>
+              <li>
+                <code className="font-mono text-foreground">
+                  Prepare a 25% trade of the Seahawks from Alex to Jordan for $100, but do not approve it.
+                </code>
+              </li>
+            </ul>
+            <p className="border-l-2 border-primary pl-3 text-xs font-medium text-foreground">
+              Creating a trade leaves it pending for commissioner review. Approval,
+              rejection, voiding, standings imports, payout-rule changes, playoff
+              seed changes, and MTM writes are commissioner-only actions and require
+              separate admin authorization. The admin key is never needed for the
+              Claude connection itself.
+            </p>
           </div>
         </details>
       </section>
