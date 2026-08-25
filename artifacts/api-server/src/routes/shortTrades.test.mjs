@@ -358,7 +358,7 @@ describe("short trades and new trade participants", { skip: !canRun }, () => {
     assert.equal(deletedPendingTrade.status, 204);
   });
 
-  test("records one audited decision and rejects later status changes", async () => {
+  test("allows an approved trade to be corrected to rejected, then rejects later changes", async () => {
     const [auditTeam] = await db
       .select({ id: teamsTable.id })
       .from(teamsTable)
@@ -396,7 +396,7 @@ describe("short trades and new trade participants", { skip: !canRun }, () => {
     });
 
     assert.equal(approvedTrade.id, createdTrade.id);
-    const secondDecision = await fetch(`${baseUrl}/api/trades/${createdTrade.id}/status`, {
+    const rejectionResponse = await fetch(`${baseUrl}/api/trades/${createdTrade.id}/status`, {
       method: "PATCH",
       headers: {
         "Content-Type": "application/json",
@@ -404,13 +404,39 @@ describe("short trades and new trade participants", { skip: !canRun }, () => {
       },
       body: JSON.stringify({ status: "rejected", confirmed: true }),
     });
-    assert.equal(secondDecision.status, 409, "a recorded decision cannot be changed");
+    const rejectedTrade = await rejectionResponse.json();
+    assert.equal(rejectionResponse.status, 200, JSON.stringify(rejectedTrade));
+    assert.equal(rejectedTrade.status, "rejected");
+    assert.equal(rejectedTrade.decisionSource, "commissioner_api");
+    assert.ok(Number.isFinite(Date.parse(rejectedTrade.decisionAt)));
+
+    const ownershipAfterRejection = await loadSeasonOwnership(seasonId);
+    assert.equal(
+      ownershipAfterRejection.byBidder.get(auditSeller.id)?.get(auditTeam.id)?.effectiveShare ?? 0,
+      0,
+      "rejected correction removes the seller's signed trade position",
+    );
+    assert.equal(
+      ownershipAfterRejection.byBidder.get(auditBuyer.id)?.get(auditTeam.id)?.effectiveShare ?? 0,
+      0,
+      "rejected correction removes the buyer's signed trade position",
+    );
+
+    const secondDecision = await fetch(`${baseUrl}/api/trades/${createdTrade.id}/status`, {
+      method: "PATCH",
+      headers: {
+        "Content-Type": "application/json",
+        Authorization: `Bearer ${ADMIN_KEY}`,
+      },
+      body: JSON.stringify({ status: "approved", confirmed: true }),
+    });
+    assert.equal(secondDecision.status, 409, "a rejected trade cannot be decided again");
 
     const getTradesResponse = await fetch(`${baseUrl}/api/trades?season=${seasonYear}`);
     const listedTrade = (await getTradesResponse.json()).find((trade) => trade.id === createdTrade.id);
-    assert.equal(listedTrade.status, "approved");
+    assert.equal(listedTrade.status, "rejected");
     assert.equal(listedTrade.decisionSource, "commissioner_api");
-    assert.equal(listedTrade.decisionAt, approvedTrade.decisionAt);
+    assert.notEqual(listedTrade.decisionAt, approvedTrade.decisionAt);
   });
 
   test("approves a zero-stake sale, preserves signed ownership, and supports an offsetting buy", async () => {
@@ -693,7 +719,7 @@ describe("short trades and new trade participants", { skip: !canRun }, () => {
     );
   });
 
-  test("MCP decisions require confirmation and cannot overwrite an audit record", { skip: !MCP_KEY }, async () => {
+  test("MCP decisions require confirmation, can correct approval to rejection, and preserve void auditing", { skip: !MCP_KEY }, async () => {
     const [mcpSeller] = await db
       .insert(biddersTable)
       .values({ name: `MCP Audit Seller ${seasonYear}` })
@@ -739,13 +765,13 @@ describe("short trades and new trade participants", { skip: !canRun }, () => {
     });
     assert.match(JSON.stringify(approved), /APPROVED/);
 
-    const repeated = await callMcpTool("set_trade_status", {
+    const correctedToRejected = await callMcpTool("set_trade_status", {
       tradeId: pendingTrade.id,
       status: "rejected",
       confirmed: true,
       adminKey: ADMIN_KEY,
     });
-    assert.match(JSON.stringify(repeated), /already been decided/i);
+    assert.match(JSON.stringify(correctedToRejected), /REJECTED/);
 
     const [storedTrade] = await db
       .select({
@@ -758,30 +784,41 @@ describe("short trades and new trade participants", { skip: !canRun }, () => {
       })
       .from(tradesTable)
       .where(eq(tradesTable.id, pendingTrade.id));
-    assert.equal(storedTrade.status, "approved");
+    assert.equal(storedTrade.status, "rejected");
     assert.equal(storedTrade.decisionSource, "commissioner_mcp");
     assert.ok(storedTrade.decisionAt instanceof Date);
     assert.equal(storedTrade.voidedAt, null);
-    const tradeLegs = await db
-      .select({
-        bidderId: positionsTable.bidderId,
-        share: positionsTable.ownershipShare,
-      })
+    const rejectedTradeLegs = await db
+      .select({ id: positionsTable.id })
       .from(positionsTable)
       .where(eq(positionsTable.tradeId, pendingTrade.id));
-    assert.deepEqual(
-      tradeLegs
-        .map((leg) => [leg.bidderId, Number(leg.share)])
-        .sort((left, right) => left[0] - right[0]),
-      [
-        [mcpSeller.id, -0.1],
-        [mcpBuyer.id, 0.1],
-      ].sort((left, right) => left[0] - right[0]),
-      "MCP approval writes both signed normalized trade legs",
-    );
+    assert.equal(rejectedTradeLegs.length, 0, "MCP rejection removes signed trade legs");
+
+    const voidTradeResponse = await fetch(`${baseUrl}/api/trades`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
+        seasonYear,
+        teamId,
+        fromBidderId: mcpSeller.id,
+        toBidderId: mcpBuyer.id,
+        percentage: 10,
+        price: 10,
+        tradeDate: "2030-01-01",
+      }),
+    });
+    const voidableTrade = await voidTradeResponse.json();
+    assert.equal(voidTradeResponse.status, 201, JSON.stringify(voidableTrade));
+    const voidApproval = await callMcpTool("set_trade_status", {
+      tradeId: voidableTrade.id,
+      status: "approved",
+      confirmed: true,
+      adminKey: ADMIN_KEY,
+    });
+    assert.match(JSON.stringify(voidApproval), /APPROVED/);
 
     const missingReasonVoid = await callMcpTool("set_trade_status", {
-      tradeId: pendingTrade.id,
+      tradeId: voidableTrade.id,
       status: "voided",
       confirmed: true,
       adminKey: ADMIN_KEY,
@@ -789,7 +826,7 @@ describe("short trades and new trade participants", { skip: !canRun }, () => {
     assert.match(JSON.stringify(missingReasonVoid), /reason/i);
 
     const voided = await callMcpTool("set_trade_status", {
-      tradeId: pendingTrade.id,
+      tradeId: voidableTrade.id,
       status: "voided",
       confirmed: true,
       reason: "MCP correction of an incorrectly approved trade",
@@ -805,7 +842,7 @@ describe("short trades and new trade participants", { skip: !canRun }, () => {
         voidReason: tradesTable.voidReason,
       })
       .from(tradesTable)
-      .where(eq(tradesTable.id, pendingTrade.id));
+      .where(eq(tradesTable.id, voidableTrade.id));
     assert.equal(voidedStoredTrade.status, "voided");
     assert.equal(voidedStoredTrade.decisionSource, "commissioner_mcp");
     assert.equal(voidedStoredTrade.voidedSource, "commissioner_mcp");
@@ -814,7 +851,7 @@ describe("short trades and new trade participants", { skip: !canRun }, () => {
     const voidedTradeLegs = await db
       .select({ id: positionsTable.id })
       .from(positionsTable)
-      .where(eq(positionsTable.tradeId, pendingTrade.id));
+      .where(eq(positionsTable.tradeId, voidableTrade.id));
     assert.equal(voidedTradeLegs.length, 0, "MCP void removes signed trade legs");
   });
 });

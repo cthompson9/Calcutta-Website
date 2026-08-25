@@ -47,6 +47,12 @@ import { Link } from "wouter";
 import { bidderConsortiums, ownerLabelById } from "@/lib/ownerDisplay";
 import { ConsortiumLabel } from "@/components/ConsortiumLabel";
 import { auctionResultHref, tradeHref } from "@/lib/resultSourceLinks";
+import {
+  buildTradeGroups,
+  sharedTradeDescription,
+  sortTradeGroups,
+  type TradeGroup,
+} from "@/lib/tradeGroups";
 import { ReleaseNotes } from "@/components/ReleaseNotes";
 
 type TabId = "byOwner" | "byTeam" | "compare";
@@ -482,7 +488,7 @@ function TrendSparkline({ values }: { values: Array<number | null> }) {
       viewBox="0 0 220 64"
       className="h-16 w-full overflow-visible"
       role="img"
-      aria-label="Eight week mark-to-market trend"
+      aria-label="MTM trend over eight weeks"
     >
       <line x1="0" y1="54" x2="220" y2="54" stroke="currentColor" opacity="0.15" />
       {lineSegments.map((points, index) => (
@@ -973,10 +979,19 @@ function DesktopOwnerDetail({
       ? series?.weeklyTotals[trendStartIndex + index] ?? null
       : null;
   });
-  const ownerTrades = trades
-    .filter((trade) => trade.fromBidderId === owner.bidderId || trade.toBidderId === owner.bidderId)
-    .sort((a, b) => b.tradeDate.localeCompare(a.tradeDate))
-    .slice(0, 6);
+  const ownerTradeGroups = useMemo(
+    () =>
+      buildTradeGroups(trades.filter((trade) => trade.status === "approved"))
+        .filter((group) =>
+          group.trades.some(
+            (trade) =>
+              trade.fromBidderId === owner.bidderId ||
+              trade.toBidderId === owner.bidderId,
+          ),
+        )
+        .sort(sortTradeGroups),
+    [owner.bidderId, trades],
+  );
 
   return (
     <aside
@@ -1006,17 +1021,21 @@ function DesktopOwnerDetail({
         <div className="grid grid-cols-2 gap-3">
           <DetailMetric label="Cost basis" value={formatCurrency(owner.totalCost)} />
           <DetailMetric
-            label="Net MTM"
-            value={signedCurrency(commandReturn(owner))}
-            tone={commandReturn(owner) >= 0 ? "positive" : "negative"}
+            label="Realized, Net"
+            value={signedCurrency(owner.totalNetReturn)}
+            tone={owner.totalNetReturn >= 0 ? "positive" : "negative"}
           />
-          <DetailMetric label="MTM market value" value={formatCurrency(commandMarketValue(owner))} />
-          <DetailMetric label="Net MTM %" value={signedPercent(commandReturnPct(owner))} tone={commandReturnPct(owner) >= 0 ? "positive" : "negative"} />
+          <DetailMetric
+            label="MTM"
+            value={signedCurrency(owner.totalNetMtm)}
+            tone={owner.totalNetMtm >= 0 ? "positive" : "negative"}
+          />
+          <DetailMetric label="MTM %" value={signedPercent(commandReturnPct(owner))} tone={commandReturnPct(owner) >= 0 ? "positive" : "negative"} />
         </div>
 
         <section>
           <div className="flex items-center justify-between">
-            <p className="font-mono text-[10px] font-bold uppercase tracking-widest text-muted-foreground">Eight-week revaluation</p>
+            <p className="font-mono text-[10px] font-bold uppercase tracking-widest text-muted-foreground">MTM Trend</p>
             <span className="font-mono text-[10px] text-muted-foreground">Current portfolio</span>
           </div>
           <div className="mt-2 border border-border/70 p-2 text-primary">
@@ -1029,7 +1048,7 @@ function DesktopOwnerDetail({
             </div>
           )}
           <p className="mt-2 text-[10px] leading-relaxed text-muted-foreground">
-            Revalues today&apos;s positions at each snapshot; incomplete weeks are left as gaps rather than shown as zero.
+            MTM of current positions over last eight weeks
           </p>
         </section>
 
@@ -1062,7 +1081,7 @@ function DesktopOwnerDetail({
                         Realized net <strong className={team.netReturn >= 0 ? "text-emerald-600 dark:text-emerald-400" : "text-rose-600 dark:text-rose-400"}>{signedCurrency(team.netReturn)}</strong>
                       </span>
                       <span className="text-muted-foreground">
-                        Net MTM <strong className={team.netMtm >= 0 ? "text-emerald-600 dark:text-emerald-400" : "text-rose-600 dark:text-rose-400"}>{signedCurrency(team.netMtm)}</strong>
+                        MTM <strong className={team.netMtm >= 0 ? "text-emerald-600 dark:text-emerald-400" : "text-rose-600 dark:text-rose-400"}>{signedCurrency(team.netMtm)}</strong>
                       </span>
                       <span className="text-muted-foreground">
                         Realized pts to BE <BreakevenPoints points={team.ptsToBreakeven} />
@@ -1090,34 +1109,78 @@ function DesktopOwnerDetail({
             <p className="font-mono text-[10px] font-bold uppercase tracking-widest text-muted-foreground">Trade history</p>
             <History className="h-3.5 w-3.5 text-muted-foreground" aria-hidden="true" />
           </div>
-          {ownerTrades.length === 0 ? (
-            <p className="mt-2 border border-dashed border-border p-3 text-xs text-muted-foreground">No trades recorded for this portfolio.</p>
+          {ownerTradeGroups.length === 0 ? (
+            <p className="mt-2 border border-dashed border-border p-3 text-xs text-muted-foreground">No finalized trades recorded for this portfolio.</p>
           ) : (
             <div className="mt-2 divide-y divide-border/70 border-y border-border/70">
-              {ownerTrades.map((trade) => {
-                const acquired = trade.toBidderId === owner.bidderId;
-                return (
-                  <Link
-                    key={trade.id}
-                    href={tradeHref(seasonYear, trade.id)}
-                    className="block py-2.5 transition-colors hover:bg-muted/40 focus:outline-none focus:ring-1 focus:ring-primary"
-                  >
-                    <div className="flex items-center justify-between gap-2 text-xs">
-                      <span className="font-bold">{acquired ? "Acquired" : "Sold"} · {trade.teamName}</span>
-                      <span className={cn("font-mono text-[10px] uppercase", trade.status === "approved" ? "text-emerald-600 dark:text-emerald-400" : "text-muted-foreground")}>{trade.status}</span>
-                    </div>
-                    <div className="mt-1 flex justify-between font-mono text-[10px] text-muted-foreground">
-                      <span>{trade.tradeDate} · {trade.percentage.toFixed(0)}%</span>
-                      <span>{formatCurrency(trade.price)}</span>
-                    </div>
-                  </Link>
-                );
-              })}
+              {ownerTradeGroups.map((group) => (
+                <TradeHistorySummary
+                  key={group.key}
+                  group={group}
+                  ownerId={owner.bidderId}
+                  seasonYear={seasonYear}
+                  consortiumByBidderId={consortiumByBidderId}
+                />
+              ))}
             </div>
           )}
         </section>
       </div>
     </aside>
+  );
+}
+
+function TradeHistorySummary({
+  group,
+  ownerId,
+  seasonYear,
+  consortiumByBidderId,
+}: {
+  group: TradeGroup;
+  ownerId: number;
+  seasonYear: number;
+  consortiumByBidderId: Map<number, string>;
+}) {
+  const firstTrade = group.trades[0];
+  const title =
+    group.trades.length > 1
+      ? sharedTradeDescription(firstTrade.notes) || "Trade transaction"
+      : firstTrade.teamName;
+  const totalValue = group.trades.reduce((total, trade) => total + trade.price, 0);
+  const teamNames = [...new Set(group.trades.map((trade) => trade.teamName))];
+  const bought = firstTrade.toBidderId === ownerId;
+  const fromLabel = ownerLabelById(
+    firstTrade.fromBidderId,
+    firstTrade.fromBidderName,
+    consortiumByBidderId,
+  );
+  const toLabel = ownerLabelById(
+    firstTrade.toBidderId,
+    firstTrade.toBidderName,
+    consortiumByBidderId,
+  );
+
+  return (
+    <Link
+      href={tradeHref(seasonYear, firstTrade.id)}
+      data-trade-group={group.key}
+      className="block space-y-1.5 py-2.5 transition-colors hover:bg-muted/40 focus:outline-none focus:ring-1 focus:ring-primary"
+    >
+      <div className="flex items-start justify-between gap-2 text-xs">
+        <span className="font-bold">{title}</span>
+        <span className="shrink-0 font-mono">{formatCurrency(totalValue)}</span>
+      </div>
+      <div className="flex items-center gap-1.5 text-[10px] text-muted-foreground font-mono">
+        <span className="font-bold uppercase tracking-widest">{bought ? "Bought" : "Sold"}</span>
+        <ConsortiumLabel className="min-w-0" label={fromLabel} />
+        <span aria-hidden="true">→</span>
+        <ConsortiumLabel className="min-w-0" label={toLabel} />
+      </div>
+      <div className="flex flex-wrap justify-between gap-x-3 gap-y-1 font-mono text-[10px] text-muted-foreground">
+        <span>Teams: {teamNames.join(", ")}</span>
+        {group.trades.length > 1 && <span>{group.trades.length} legs</span>}
+      </div>
+    </Link>
   );
 }
 

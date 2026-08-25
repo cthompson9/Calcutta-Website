@@ -460,8 +460,8 @@ router.patch("/trades/:id/status", async (req: Request, res: Response): Promise<
   }
 
   // Serialize decisions with primary ownership changes. A status can transition
-  // once from pending to approved/rejected, or from approved to voided. This
-  // eliminates accidental retries or later calls rewriting commissioner history.
+  // from pending to approved/rejected, or an approved trade can be corrected to
+  // rejected or voided. Rejected and voided trades cannot be decided again.
   const decision = await db.transaction(async (tx) => {
     const initial = await tx
       .select({ seasonId: tradesTable.seasonId })
@@ -479,10 +479,10 @@ router.patch("/trades/:id/status", async (req: Request, res: Response): Promise<
       .where(eq(tradesTable.id, id))
       .limit(1);
     if (!fresh[0]) return { kind: "not_found" as const };
-    if (
-      fresh[0].status !== "pending" &&
-      !(body.data.status === "voided" && fresh[0].status === "approved")
-    ) {
+    const canCorrectApprovedTrade =
+      fresh[0].status === "approved" &&
+      (body.data.status === "rejected" || body.data.status === "voided");
+    if (fresh[0].status !== "pending" && !canCorrectApprovedTrade) {
       return { kind: "already_decided" as const };
     }
     if (body.data.status === "voided" && fresh[0].status !== "approved") {
@@ -513,7 +513,11 @@ router.patch("/trades/:id/status", async (req: Request, res: Response): Promise<
       updates.decisionSource = "commissioner_api";
     }
     await tx.update(tradesTable).set(updates).where(eq(tradesTable.id, id));
-    if (body.data.status === "approved" || body.data.status === "voided") {
+    if (
+      body.data.status === "approved" ||
+      body.data.status === "voided" ||
+      (body.data.status === "rejected" && fresh[0].status === "approved")
+    ) {
       await syncSeasonPositions(tx, fresh[0].seasonId);
     }
     return { kind: "recorded" as const };
@@ -525,7 +529,7 @@ router.patch("/trades/:id/status", async (req: Request, res: Response): Promise<
   }
   if (decision.kind === "already_decided") {
     res.status(409).json({
-      error: "This trade cannot be changed from its current status. Only an approved trade can be voided.",
+      error: "This trade cannot be changed from its current status. Pending trades can be approved or rejected; approved trades can be rejected or voided.",
     });
     return;
   }

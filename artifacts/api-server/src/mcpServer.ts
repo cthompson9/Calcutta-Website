@@ -916,7 +916,7 @@ function buildMcpServer() {
 
   server.tool(
     "set_trade_status",
-    "Record an approval or rejection for a pending trade, or void an approved trade. Requires the ADMIN_API_KEY plus confirmed: true. Voiding requires a reason and removes the trade from owner standings and returns while preserving its audit trail.",
+    "Record an approval or rejection for a pending trade, correct an approved trade to rejected, or void an approved trade. Requires the ADMIN_API_KEY plus confirmed: true. Voiding requires a reason and removes the trade from owner standings and returns while preserving its audit trail.",
     {
       tradeId:  z.number().describe("Trade ID to update"),
       status:   z.enum(["approved", "rejected", "voided"]).describe("New status: approved, rejected, or voided"),
@@ -953,10 +953,10 @@ function buildMcpServer() {
           .where(eq(tradesTable.id, tradeId))
           .limit(1);
         if (!fresh[0]) return { kind: "not_found" as const };
-        if (
-          fresh[0].status !== "pending" &&
-          !(status === "voided" && fresh[0].status === "approved")
-        ) {
+        const canCorrectApprovedTrade =
+          fresh[0].status === "approved" &&
+          (status === "rejected" || status === "voided");
+        if (fresh[0].status !== "pending" && !canCorrectApprovedTrade) {
           return { kind: "already_decided" as const };
         }
         if (status === "voided" && fresh[0].status !== "approved") {
@@ -979,14 +979,18 @@ function buildMcpServer() {
           updates.decisionSource = "commissioner_mcp";
         }
         await tx.update(tradesTable).set(updates).where(eq(tradesTable.id, tradeId));
-        if (status === "approved" || status === "voided") {
+        if (
+          status === "approved" ||
+          status === "voided" ||
+          (status === "rejected" && fresh[0].status === "approved")
+        ) {
           await syncSeasonPositions(tx, fresh[0].seasonId);
         }
         return { kind: "updated" as const };
       });
       if (outcome.kind === "not_found") return text(`Trade #${tradeId} not found`);
       if (outcome.kind === "already_decided") {
-        return text(`Error: Trade #${tradeId} has already been decided and cannot be changed. Record a new trade instead.`);
+        return text(`Error: Trade #${tradeId} cannot be changed from its current status. Pending trades can be approved or rejected; approved trades can be rejected or voided.`);
       }
       if (outcome.kind === "invalid") return text(`Error: Cannot ${status === "voided" ? "void" : "approve"} trade: ${outcome.error}`);
 

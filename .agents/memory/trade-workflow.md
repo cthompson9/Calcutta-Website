@@ -1,13 +1,14 @@
 ---
 name: Trade workflow
-description: Lifecycle and audit constraints for commissioner trade decisions and voids.
+description: Lifecycle and audit constraints for commissioner trade decisions, corrections, and voids.
 ---
 
 Trades always begin pending. A commissioner may approve or reject a pending
-trade, while only an approved trade may later be voided. A void requires an
-explicit confirmation and non-empty explanation; it preserves the original
-approval audit and records a separate timestamp and trusted channel. Voided
-trades no longer contribute to signed positions, ownership, or returns.
+trade, and may correct an approved trade to rejected or voided. A void requires
+an explicit confirmation and non-empty explanation; it preserves the original
+approval audit and records a separate timestamp and trusted channel. A rejected
+correction or void no longer contributes to signed positions, ownership, or
+returns.
 Deleting a pending trade is also a commissioner action: the server must require
 the bearer credential, and the user interface must not expose the destructive
 control until that key has passed read-only validation for the current session.
