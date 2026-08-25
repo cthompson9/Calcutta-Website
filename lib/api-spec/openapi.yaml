@@ -1450,6 +1450,9 @@ components:
         netMtm:
           type: number
           description: MTM gross return minus cost.
+        ptsToBreakeven:
+          type: ["number", "null"]
+          description: Remaining realized points needed to reach 1.0x cost, rounded to whole points.
         seed:
           type: ["number", "null"]
           description: "Playoff seed within conference (1–7). Null if team missed playoffs or seed not yet set."
@@ -1478,6 +1481,7 @@ components:
         - netPctReturn
         - markToMarket
         - netMtm
+        - ptsToBreakeven
 
     NflStandingsImportInput:
       type: object

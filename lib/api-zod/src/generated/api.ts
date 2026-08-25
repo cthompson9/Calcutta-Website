@@ -323,6 +323,7 @@ export const GetResultsResponseItem = zod.object({
   "netPctReturn": zod.number(),
   "markToMarket": zod.number().describe('MTM gross dollars from normalized market points.'),
   "netMtm": zod.number().describe('MTM gross return minus cost.'),
+  "ptsToBreakeven": zod.number().nullable().describe('Remaining realized points needed to reach 1.0x cost, rounded to whole points.'),
   "seed": zod.number().nullish().describe('Playoff seed within conference (1–7). Null if team missed playoffs or seed not yet set.')
 })
 export const GetResultsResponse = zod.array(GetResultsResponseItem)
@@ -394,6 +395,7 @@ export const GetResultsByOwnerResponseItem = zod.object({
   "netPctReturn": zod.number(),
   "markToMarket": zod.number().describe('MTM gross dollars from normalized market points.'),
   "netMtm": zod.number().describe('MTM gross return minus cost.'),
+  "ptsToBreakeven": zod.number().nullable().describe('Remaining realized points needed to reach 1.0x cost, rounded to whole points.'),
   "seed": zod.number().nullish().describe('Playoff seed within conference (1–7). Null if team missed playoffs or seed not yet set.')
 }))
 })
@@ -641,6 +643,7 @@ export const UpsertTeamResultResponse = zod.object({
   "netPctReturn": zod.number(),
   "markToMarket": zod.number().describe('MTM gross dollars from normalized market points.'),
   "netMtm": zod.number().describe('MTM gross return minus cost.'),
+  "ptsToBreakeven": zod.number().nullable().describe('Remaining realized points needed to reach 1.0x cost, rounded to whole points.'),
   "seed": zod.number().nullish().describe('Playoff seed within conference (1–7). Null if team missed playoffs or seed not yet set.')
 })
 

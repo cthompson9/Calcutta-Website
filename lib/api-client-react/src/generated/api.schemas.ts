@@ -288,6 +288,11 @@ export interface TeamResultRow {
   /** MTM gross return minus cost. */
   netMtm: number;
   /**
+     * Remaining realized points needed to reach 1.0x cost, rounded to whole points.
+     * @nullable
+     */
+  ptsToBreakeven: number | null;
+  /**
      * Playoff seed within conference (1–7). Null if team missed playoffs or seed not yet set.
      * @nullable
      */

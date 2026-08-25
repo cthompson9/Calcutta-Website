@@ -86,7 +86,27 @@ type ResultDisplay = {
   netPctReturn: string | number;
   markToMarket: string | number;
   netMtm?: string | number;
+  ptsToBreakeven?: number | null;
 };
+
+function calculatePtsToBreakeven(
+  cost: number,
+  totalPot: number,
+  totalRealizedPoints: number | null,
+  realizedPoints: number | null | undefined,
+): number | null {
+  if (
+    totalPot <= 0 ||
+    totalRealizedPoints == null ||
+    realizedPoints == null
+  ) {
+    return null;
+  }
+  return Math.max(
+    0,
+    Math.round((cost / totalPot) * totalRealizedPoints - realizedPoints),
+  );
+}
 
 function resultFromCalculatedSnapshots(
   legacy: typeof teamResultsTable.$inferSelect | null,
@@ -94,6 +114,8 @@ function resultFromCalculatedSnapshots(
   cost: number,
   basis: "realized" | "mtm",
   payoutRulesConfigured: boolean,
+  totalPot: number,
+  totalRealizedPoints: number | null,
 ): ResultDisplay | null {
   const legacyDisplay = legacy
     ? {
@@ -105,6 +127,7 @@ function resultFromCalculatedSnapshots(
         netPctReturn: cost > 0 ? (Number(legacy.realizedReturn) - cost) / cost : 0,
         markToMarket: Number(legacy.markToMarket),
         netMtm: Number(legacy.markToMarket) - cost,
+        ptsToBreakeven: null,
       }
     : null;
   if (!payoutRulesConfigured) return legacyDisplay;
@@ -135,6 +158,7 @@ function resultFromCalculatedSnapshots(
       netPctReturn: cost > 0 ? -1 : 0,
       markToMarket: 0,
       netMtm: -cost,
+      ptsToBreakeven: null,
     };
   }
   const latest = selected.latest;
@@ -168,6 +192,12 @@ function resultFromCalculatedSnapshots(
     netPctReturn: cost > 0 ? netReturn / cost : 0,
     markToMarket,
     netMtm,
+    ptsToBreakeven: calculatePtsToBreakeven(
+      cost,
+      totalPot,
+      totalRealizedPoints,
+      calculated.realized?.points,
+    ),
   };
 }
 
@@ -215,6 +245,7 @@ function buildTeamResult(
       netPctReturn: 0,
       markToMarket: 0,
       netMtm: 0,
+      ptsToBreakeven: null,
     };
   }
 
@@ -242,6 +273,7 @@ function buildTeamResult(
     netPctReturn: Number(result.netPctReturn),
     markToMarket: Number(result.markToMarket),
     netMtm: Number(result.netMtm ?? Number(result.markToMarket) - cost),
+    ptsToBreakeven: result.ptsToBreakeven ?? null,
   };
 }
 
@@ -304,6 +336,7 @@ function buildOwnerTeamResult(
       netPctReturn: 0,
       markToMarket: 0,
       netMtm: 0,
+      ptsToBreakeven: null,
     };
   }
 
@@ -341,6 +374,7 @@ function buildOwnerTeamResult(
     netPctReturn: Math.round(netPctReturn * 10000) / 100,
     markToMarket: Math.round(markToMarket * 100) / 100,
     netMtm: Math.round(netMtm * 100) / 100,
+    ptsToBreakeven: result.ptsToBreakeven ?? null,
   };
 }
 
@@ -445,6 +479,16 @@ router.get("/results", async (req, res): Promise<void> => {
   const auctionPriceMap = new Map(
     auctionRows.map((a) => [a.teamId, parseFloat(a.bidAmount)]),
   );
+  const totalPot = auctionRows.reduce((sum, a) => sum + parseFloat(a.bidAmount), 0);
+  const realizedCoverageComplete =
+    auctionRows.length > 0 &&
+    auctionRows.every((a) => calculatedResults.get(a.teamId)?.realized != null);
+  const totalRealizedPoints = realizedCoverageComplete
+    ? auctionRows.reduce(
+        (sum, a) => sum + Number(calculatedResults.get(a.teamId)?.realized?.points ?? 0),
+        0,
+      )
+    : null;
 
   // Effective ownership (applies approved trades)
   const ownership = await loadSeasonOwnership(seasonId);
@@ -466,6 +510,8 @@ router.get("/results", async (req, res): Promise<void> => {
           cost,
           selectedBasis,
           payoutRulesConfigured,
+          totalPot,
+          totalRealizedPoints,
         ),
         currentOwners,
         ownershipSegments,
@@ -524,6 +570,16 @@ router.get("/results/by-owner", async (req, res): Promise<void> => {
   const auctionPriceMap = new Map(
     auctionRows.map((a) => [a.teamId, parseFloat(a.bidAmount)]),
   );
+  const totalPot = auctionRows.reduce((sum, a) => sum + parseFloat(a.bidAmount), 0);
+  const realizedCoverageComplete =
+    auctionRows.length > 0 &&
+    auctionRows.every((a) => calculatedResults.get(a.teamId)?.realized != null);
+  const totalRealizedPoints = realizedCoverageComplete
+    ? auctionRows.reduce(
+        (sum, a) => sum + Number(calculatedResults.get(a.teamId)?.realized?.points ?? 0),
+        0,
+      )
+    : null;
 
   // Effective ownership from shared helper
   const ownership = await loadSeasonOwnership(seasonId);
@@ -591,6 +647,8 @@ router.get("/results/by-owner", async (req, res): Promise<void> => {
         seasonAuctionPrice,
         selectedBasis,
         payoutRulesConfigured,
+        totalPot,
+        totalRealizedPoints,
       );
 
       // Owner-result reporting preserves the signed ledger position. A short

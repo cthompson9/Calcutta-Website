@@ -1569,6 +1569,11 @@ function TeamSubRow({
             {team.conference}
           </span>
         </div>
+        {team.ptsToBreakeven != null && (
+          <div className="mt-1 font-mono text-[10px] uppercase tracking-widest text-muted-foreground">
+            {team.ptsToBreakeven.toLocaleString()} pts to breakeven
+          </div>
+        )}
       </div>
 
       {/* Mobile right-aligned stack */}
@@ -1653,6 +1658,7 @@ type ExpandedTeamRow = {
   gross: number;
   net: number;
   mtm: number;
+  ptsToBreakeven: number | null;
 };
 
 type BTSortKey =
@@ -1751,6 +1757,7 @@ function expandTeams(
         gross: Math.round(team.realizedReturn * s * 100) / 100,
         net: Math.round(team.netReturn * s * 100) / 100,
         mtm: Math.round(team.netMtm * s * 100) / 100,
+        ptsToBreakeven: team.ptsToBreakeven,
       });
     }
   }
@@ -2089,6 +2096,9 @@ function ByTeamView({
               <th className="px-4 md:px-5 py-3 text-right">
                 <SH label="MTM" k="mtm" />
               </th>
+               <th className="px-4 md:px-5 py-3 text-right">
+                 <span>Pts to BE</span>
+               </th>
             </tr>
           </thead>
           <tbody>
@@ -2179,6 +2189,11 @@ function ByTeamView({
                         ? (row.mtm >= 0 ? "+" : "") + formatCurrency(row.mtm)
                         : "—"}
                     </td>
+                     <td className="px-4 md:px-5 py-3 text-right font-mono text-sm text-muted-foreground">
+                       {row.ptsToBreakeven != null
+                         ? row.ptsToBreakeven.toLocaleString()
+                         : "—"}
+                     </td>
                   </tr>
                 ))
               : teamSorted.map((row) => {
@@ -2264,6 +2279,11 @@ function ByTeamView({
                         {row.netMtm !== 0
                           ? (row.netMtm >= 0 ? "+" : "") +
                             formatCurrency(row.netMtm)
+                          : "—"}
+                      </td>
+                      <td className="px-4 md:px-5 py-3 text-right font-mono text-sm text-muted-foreground">
+                        {row.ptsToBreakeven != null
+                          ? row.ptsToBreakeven.toLocaleString()
                           : "—"}
                       </td>
                     </tr>
