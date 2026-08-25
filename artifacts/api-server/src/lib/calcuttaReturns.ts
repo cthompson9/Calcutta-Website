@@ -442,6 +442,106 @@ export async function ensureNflSportPeriods(writer: CalcuttaWriter = db): Promis
   }
 }
 
+export type WeekZeroPointsInitialization =
+  | {
+      kind: "saved";
+      teamCount: number;
+      realizedSnapshotsWritten: number;
+      mtmSnapshotsWritten: number;
+      snapshotsWritten: number;
+      alreadyInitialized: boolean;
+    }
+  | { kind: "no_auctioned_teams" };
+
+/**
+ * Creates the zero-stat Week 0 baseline used by both return bases.
+ *
+ * Week 0 is an immutable starting point for the period ledger: retries only
+ * insert a missing basis row and never update an existing row. That protects a
+ * later imported snapshot at the same period while still repairing a partial
+ * first initialization.
+ */
+export async function initializeNflWeekZeroSnapshots(
+  writer: CalcuttaWriter,
+  args: { seasonId: number; year: number },
+): Promise<WeekZeroPointsInitialization> {
+  await ensureNflSportPeriods(writer);
+  const auctionRows = await writer
+    .select({ teamId: teamSeasonAuctionsTable.teamId })
+    .from(teamSeasonAuctionsTable)
+    .where(eq(teamSeasonAuctionsTable.seasonId, args.seasonId));
+  if (auctionRows.length === 0) return { kind: "no_auctioned_teams" };
+
+  const calcutta = await getOrCreateCanonicalCalcutta(writer, args);
+  const period = await writer
+    .select({ id: sportPeriodsTable.id })
+    .from(sportPeriodsTable)
+    .where(
+      and(
+        eq(sportPeriodsTable.sport, NFL_SPORT),
+        eq(sportPeriodsTable.sequence, 0),
+      ),
+    )
+    .limit(1);
+  if (!period[0]) throw new Error("NFL Week 0 period was not seeded.");
+
+  let realizedSnapshotsWritten = 0;
+  let mtmSnapshotsWritten = 0;
+  for (const auction of auctionRows) {
+    const entry = await getOrCreateCalcuttaEntry(writer, {
+      calcuttaId: calcutta.id,
+      teamId: auction.teamId,
+    });
+    for (const basis of ["realized", "mtm"] as const) {
+      const [inserted] = await writer
+        .insert(teamPeriodSnapshotsTable)
+        .values({
+          entryId: entry.id,
+          periodId: period[0].id,
+          basis,
+          wins: "0",
+          losses: "0",
+          ties: "0",
+          ptDiff: "0",
+          ordinaryWins: "0",
+          marqueeWins: "0",
+          ordinaryTies: "0",
+          marqueeTies: "0",
+          ordinaryPtDiff: "0",
+          marqueePtDiff: "0",
+          playoffBerth: "0",
+          divRound: "0",
+          confRound: "0",
+          sbBerth: "0",
+          winSuperBowl: "0",
+          playoffStatus: "unknown",
+          capturedAt: new Date(),
+        })
+        .onConflictDoNothing({
+          target: [
+            teamPeriodSnapshotsTable.entryId,
+            teamPeriodSnapshotsTable.periodId,
+            teamPeriodSnapshotsTable.basis,
+          ],
+        })
+        .returning({ id: teamPeriodSnapshotsTable.id });
+      if (!inserted) continue;
+      if (basis === "realized") realizedSnapshotsWritten += 1;
+      else mtmSnapshotsWritten += 1;
+    }
+  }
+
+  const snapshotsWritten = realizedSnapshotsWritten + mtmSnapshotsWritten;
+  return {
+    kind: "saved",
+    teamCount: auctionRows.length,
+    realizedSnapshotsWritten,
+    mtmSnapshotsWritten,
+    snapshotsWritten,
+    alreadyInitialized: snapshotsWritten === 0,
+  };
+}
+
 export async function getOrCreateCanonicalCalcutta(
   writer: CalcuttaWriter,
   args: { seasonId: number; year: number },
@@ -696,13 +796,20 @@ export async function loadCalculatedTeamReturnsForCalcutta(
     })
     .from(payoutRulesTable)
     .where(eq(payoutRulesTable.calcuttaId, calcuttaId));
-  const rules = rawRules.map((rule) => ({
+  const configuredRules = rawRules.map((rule) => ({
     metric: rule.metric as ReturnMetric,
     dollarsPerUnit: Number(rule.dollarsPerUnit),
     playoffMultiplier: Number(rule.playoffMultiplier),
   }));
-  const rulesValid = validateNflPayoutRules(rules).ok;
-  if (!rulesValid) return new Map();
+  const rulesValid = validateNflPayoutRules(configuredRules).ok;
+  // Week 0 contains only the fixed 150-point opening allocation. It is safe to
+  // calculate with the established default rubric when a new pool has not yet
+  // saved custom rates; later periods keep the existing configuration guard.
+  const useDefaultWeekZeroRules = periodSequence === 0 && rawRules.length === 0;
+  if (!rulesValid && !useDefaultWeekZeroRules) return new Map();
+  const rules = rulesValid
+    ? configuredRules
+    : NFL_PAYOUT_RULES as unknown as RuleValue[];
 
   const calcutta = await db
     .select({ seasonId: calcuttasTable.seasonId, isComplete: seasonsTable.isComplete })

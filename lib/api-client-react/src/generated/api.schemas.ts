@@ -521,6 +521,22 @@ export interface TeamPeriodSnapshotRow {
   grossReturn: number;
 }
 
+export interface InitializeWeekZeroPointsInput {
+  /** NFL season to initialize */
+  seasonYear: number;
+}
+
+export interface WeekZeroPointsInitialization {
+  seasonYear: number;
+  periodSequence: number;
+  periodLabel: string;
+  teamCount: number;
+  realizedSnapshotsWritten: number;
+  mtmSnapshotsWritten: number;
+  snapshotsWritten: number;
+  alreadyInitialized: boolean;
+}
+
 export interface OwnerResultRow {
   bidderId: number;
   bidderName: string;

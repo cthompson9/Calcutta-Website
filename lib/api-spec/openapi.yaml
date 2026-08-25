@@ -654,6 +654,43 @@ paths:
               schema:
                 $ref: "#/components/schemas/ErrorResponse"
 
+  /period-snapshots/week-zero:
+    post:
+      operationId: initializeWeekZeroPoints
+      tags: [results]
+      summary: Initialize the immutable zero-stat Week 0 baseline for a season
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/InitializeWeekZeroPointsInput"
+      responses:
+        "200":
+          description: Week 0 realized and MTM snapshots initialized or already present
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/WeekZeroPointsInitialization"
+        "400":
+          description: Validation error or no auctioned teams
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+        "401":
+          description: Unauthorized — ADMIN_API_KEY required
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+        "404":
+          description: Season not found
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+
   /payout-rules:
     get:
       operationId: getPayoutRules
@@ -1773,6 +1810,43 @@ components:
         - winSuperBowl
         - playoffStatus
         - grossReturn
+
+    InitializeWeekZeroPointsInput:
+      type: object
+      properties:
+        seasonYear:
+          type: number
+          description: NFL season to initialize
+      required: [seasonYear]
+
+    WeekZeroPointsInitialization:
+      type: object
+      properties:
+        seasonYear:
+          type: number
+        periodSequence:
+          type: number
+        periodLabel:
+          type: string
+        teamCount:
+          type: number
+        realizedSnapshotsWritten:
+          type: number
+        mtmSnapshotsWritten:
+          type: number
+        snapshotsWritten:
+          type: number
+        alreadyInitialized:
+          type: boolean
+      required:
+        - seasonYear
+        - periodSequence
+        - periodLabel
+        - teamCount
+        - realizedSnapshotsWritten
+        - mtmSnapshotsWritten
+        - snapshotsWritten
+        - alreadyInitialized
 
     OwnerResultRow:
       type: object

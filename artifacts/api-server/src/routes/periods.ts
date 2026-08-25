@@ -3,6 +3,8 @@ import { and, asc, eq, gte, lte, sql } from "drizzle-orm";
 import {
   GetPayoutRulesQueryParams,
   GetSportPeriodsQueryParams,
+  InitializeWeekZeroPointsBody,
+  InitializeWeekZeroPointsResponse,
   ReplacePayoutRulesBody,
   UpsertTeamPeriodSnapshotBody,
   UpsertTeamPeriodSnapshotResponse,
@@ -29,6 +31,7 @@ import {
   ensureNflSportPeriods,
   getOrCreateCalcuttaEntry,
   getOrCreateCanonicalCalcutta,
+  initializeNflWeekZeroSnapshots,
   loadCalculatedTeamReturns,
   loadCalculatedTeamReturnsForCalcutta,
   normalizeNflGame,
@@ -179,6 +182,51 @@ router.put("/payout-rules", async (req, res): Promise<void> => {
     }));
   });
   res.json(saved);
+});
+
+router.post("/period-snapshots/week-zero", async (req, res): Promise<void> => {
+  if (!isAdminRequest(req)) {
+    res.status(401).json({ error: "Unauthorized" });
+    return;
+  }
+  const parsed = InitializeWeekZeroPointsBody.safeParse(req.body);
+  if (!parsed.success) {
+    res.status(400).json({ error: parsed.error.message });
+    return;
+  }
+  const season = await resolveSeason(parsed.data.seasonYear);
+  if (!season) {
+    res.status(404).json({ error: `Season ${parsed.data.seasonYear} not found` });
+    return;
+  }
+
+  const outcome = await db.transaction(async (tx) => {
+    await tx.execute(
+      sql`select pg_advisory_xact_lock(${OWNERSHIP_SEASON_LOCK_NAMESPACE}, ${season.id})`,
+    );
+    return initializeNflWeekZeroSnapshots(tx, {
+      seasonId: season.id,
+      year: season.year,
+    });
+  });
+  if (outcome.kind === "no_auctioned_teams") {
+    res.status(400).json({
+      error: "Week 0 requires at least one auctioned NFL team in this season.",
+    });
+    return;
+  }
+
+  const response = InitializeWeekZeroPointsResponse.parse({
+    seasonYear: season.year,
+    periodSequence: 0,
+    periodLabel: "Week 0",
+    teamCount: outcome.teamCount,
+    realizedSnapshotsWritten: outcome.realizedSnapshotsWritten,
+    mtmSnapshotsWritten: outcome.mtmSnapshotsWritten,
+    snapshotsWritten: outcome.snapshotsWritten,
+    alreadyInitialized: outcome.alreadyInitialized,
+  });
+  res.json(response);
 });
 
 router.post("/period-snapshots", async (req, res): Promise<void> => {

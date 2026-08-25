@@ -89,6 +89,123 @@ describe("period snapshot reporting", { skip: !DATABASE_URL || !ADMIN_KEY }, () 
       body: JSON.stringify({ teamId, seasonYear, periodSequence: 1, basis: "realized" }),
     });
     assert.equal(response.status, 401);
+
+    const initializeResponse = await fetch(`${baseUrl}/api/period-snapshots/week-zero`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ seasonYear }),
+    });
+    assert.equal(initializeResponse.status, 401);
+  });
+
+  test("initializes complete immutable Week 0 baselines and opening returns", async () => {
+    const headers = {
+      "Content-Type": "application/json",
+      Authorization: `Bearer ${ADMIN_KEY}`,
+    };
+    const initialized = await fetch(`${baseUrl}/api/period-snapshots/week-zero`, {
+      method: "POST",
+      headers,
+      body: JSON.stringify({ seasonYear }),
+    });
+    assert.equal(initialized.status, 200);
+    assert.deepEqual(await initialized.json(), {
+      seasonYear,
+      periodSequence: 0,
+      periodLabel: "Week 0",
+      teamCount: 2,
+      realizedSnapshotsWritten: 2,
+      mtmSnapshotsWritten: 2,
+      snapshotsWritten: 4,
+      alreadyInitialized: false,
+    });
+
+    for (const basis of ["realized", "mtm"]) {
+      const availability = await fetch(
+        `${baseUrl}/api/results/availability?season=${seasonYear}&basis=${basis}`,
+      );
+      assert.deepEqual(await availability.json(), {
+        latestPeriod: 0,
+        previousPeriod: null,
+      });
+    }
+
+    const realizedRows = await fetch(
+      `${baseUrl}/api/results?season=${seasonYear}&period=0&basis=realized`,
+    ).then((response) => response.json());
+    assert.deepEqual(
+      realizedRows.map((row) => ({
+        teamId: row.teamId,
+        wins: row.wins,
+        losses: row.losses,
+        ties: row.ties,
+        ptDiff: row.ptDiff,
+        realizedReturn: row.realizedReturn,
+        markToMarket: row.markToMarket,
+        ptsToBreakeven: row.ptsToBreakeven,
+      })).sort((left, right) => left.teamId - right.teamId),
+      [
+        {
+          teamId,
+          wins: 0,
+          losses: 0,
+          ties: 0,
+          ptDiff: 0,
+          realizedReturn: 100,
+          markToMarket: 100,
+          ptsToBreakeven: 0,
+        },
+        {
+          teamId: legacyTeamId,
+          wins: 0,
+          losses: 0,
+          ties: 0,
+          ptDiff: 0,
+          realizedReturn: 100,
+          markToMarket: 100,
+          ptsToBreakeven: 0,
+        },
+      ].sort((left, right) => left.teamId - right.teamId),
+    );
+
+    const importedMtm = await fetch(`${baseUrl}/api/period-snapshots`, {
+      method: "POST",
+      headers,
+      body: JSON.stringify({
+        teamId,
+        seasonYear,
+        periodSequence: 0,
+        basis: "mtm",
+        wins: 2,
+      }),
+    });
+    assert.equal(importedMtm.status, 200);
+
+    const repeated = await fetch(`${baseUrl}/api/period-snapshots/week-zero`, {
+      method: "POST",
+      headers,
+      body: JSON.stringify({ seasonYear }),
+    });
+    assert.equal(repeated.status, 200);
+    assert.deepEqual(await repeated.json(), {
+      seasonYear,
+      periodSequence: 0,
+      periodLabel: "Week 0",
+      teamCount: 2,
+      realizedSnapshotsWritten: 0,
+      mtmSnapshotsWritten: 0,
+      snapshotsWritten: 0,
+      alreadyInitialized: true,
+    });
+
+    const mtmRows = await fetch(
+      `${baseUrl}/api/results?season=${seasonYear}&period=0&basis=mtm`,
+    ).then((response) => response.json());
+    assert.equal(
+      mtmRows.find((row) => row.teamId === teamId).markToMarket,
+      106.25,
+      "retrying must not replace a later imported MTM Week 0 snapshot",
+    );
   });
 
   test("requires a Week 18 baseline before accepting a playoff snapshot", async () => {

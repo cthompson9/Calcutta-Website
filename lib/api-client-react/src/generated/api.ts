@@ -42,6 +42,7 @@ import type {
   GetTeamsParams,
   GetTradesParams,
   HealthStatus,
+  InitializeWeekZeroPointsInput,
   MtmData,
   MtmSnapshot,
   MtmSnapshotInput,
@@ -69,7 +70,8 @@ import type {
   TradeStatusUpdate,
   TradeUpdate,
   WeekZeroCaptureInput,
-  WeekZeroCaptureResult
+  WeekZeroCaptureResult,
+  WeekZeroPointsInitialization
 } from './api.schemas';
 
 import { customFetch } from '../custom-fetch';
@@ -1850,6 +1852,77 @@ export const useUpsertTeamPeriodSnapshot = <TError = ErrorType<ErrorResponse>,
         TContext
       > => {
       return useMutation(getUpsertTeamPeriodSnapshotMutationOptions(options));
+    }
+
+export const getInitializeWeekZeroPointsUrl = () => {
+
+
+
+
+  return `/api/period-snapshots/week-zero`
+}
+
+/**
+ * @summary Initialize the immutable zero-stat Week 0 baseline for a season
+ */
+export const initializeWeekZeroPoints = async (initializeWeekZeroPointsInput: InitializeWeekZeroPointsInput, options?: Parameters<typeof customFetch>[1]): Promise<WeekZeroPointsInitialization> => {
+
+  return customFetch<WeekZeroPointsInitialization>(getInitializeWeekZeroPointsUrl(),
+  {
+    ...options,
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json', ...options?.headers },
+    body: JSON.stringify(initializeWeekZeroPointsInput)
+  }
+);}
+
+
+
+
+
+export const getInitializeWeekZeroPointsMutationOptions = <TError = ErrorType<ErrorResponse>,
+    TContext = unknown>(options?: { mutation?:UseMutationOptions<Awaited<ReturnType<typeof initializeWeekZeroPoints>>, TError,{data: BodyType<InitializeWeekZeroPointsInput>}, TContext>, request?: SecondParameter<typeof customFetch>}
+): UseMutationOptions<Awaited<ReturnType<typeof initializeWeekZeroPoints>>, TError,{data: BodyType<InitializeWeekZeroPointsInput>}, TContext> => {
+
+const mutationKey = ['initializeWeekZeroPoints'];
+const {mutation: mutationOptions, request: requestOptions} = options ?
+      options.mutation && 'mutationKey' in options.mutation && options.mutation.mutationKey ?
+      options
+      : {...options, mutation: {...options.mutation, mutationKey}}
+      : {mutation: { mutationKey, }, request: undefined};
+
+
+
+
+      const mutationFn: MutationFunction<Awaited<ReturnType<typeof initializeWeekZeroPoints>>, {data: BodyType<InitializeWeekZeroPointsInput>}> = (props) => {
+          const {data} = props ?? {};
+
+          return  initializeWeekZeroPoints(data,requestOptions)
+        }
+
+
+
+
+
+
+  return  { mutationFn, ...mutationOptions }}
+
+    export type InitializeWeekZeroPointsMutationResult = NonNullable<Awaited<ReturnType<typeof initializeWeekZeroPoints>>>
+    export type InitializeWeekZeroPointsMutationBody = BodyType<InitializeWeekZeroPointsInput>
+    export type InitializeWeekZeroPointsMutationError = ErrorType<ErrorResponse>
+
+    /**
+ * @summary Initialize the immutable zero-stat Week 0 baseline for a season
+ */
+export const useInitializeWeekZeroPoints = <TError = ErrorType<ErrorResponse>,
+    TContext = unknown>(options?: { mutation?:UseMutationOptions<Awaited<ReturnType<typeof initializeWeekZeroPoints>>, TError,{data: BodyType<InitializeWeekZeroPointsInput>}, TContext>, request?: SecondParameter<typeof customFetch>}
+ ): UseMutationResult<
+        Awaited<ReturnType<typeof initializeWeekZeroPoints>>,
+        TError,
+        {data: BodyType<InitializeWeekZeroPointsInput>},
+        TContext
+      > => {
+      return useMutation(getInitializeWeekZeroPointsMutationOptions(options));
     }
 
 export const getGetPayoutRulesUrl = (params: GetPayoutRulesParams,) => {

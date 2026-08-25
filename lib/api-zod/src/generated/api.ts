@@ -764,6 +764,25 @@ export const UpsertTeamPeriodSnapshotResponse = zod.object({
 
 
 /**
+ * @summary Initialize the immutable zero-stat Week 0 baseline for a season
+ */
+export const InitializeWeekZeroPointsBody = zod.object({
+  "seasonYear": zod.number().describe('NFL season to initialize')
+})
+
+export const InitializeWeekZeroPointsResponse = zod.object({
+  "seasonYear": zod.number(),
+  "periodSequence": zod.number(),
+  "periodLabel": zod.string(),
+  "teamCount": zod.number(),
+  "realizedSnapshotsWritten": zod.number(),
+  "mtmSnapshotsWritten": zod.number(),
+  "snapshotsWritten": zod.number(),
+  "alreadyInitialized": zod.boolean()
+})
+
+
+/**
  * @summary List a season Calcutta's payout rules
  */
 export const GetPayoutRulesQueryParams = zod.object({

@@ -466,7 +466,10 @@ router.get("/results", async (req, res): Promise<void> => {
     .where(eq(teamResultsTable.seasonId, seasonId));
   for (const r of results) resultsMap.set(r.teamId, r);
   const calculatedResults = await loadCalculatedTeamReturns(seasonId, period);
-  const payoutRulesConfigured = await hasConfiguredPayoutRules(seasonId);
+  // Week 0 is the fixed 150-point opening allocation and can be valued from
+  // the default rubric before a commissioner saves custom payout rates.
+  const payoutRulesConfigured =
+    period === 0 || await hasConfiguredPayoutRules(seasonId);
 
   // Season auction prices
   const auctionRows = await db
@@ -557,7 +560,8 @@ router.get("/results/by-owner", async (req, res): Promise<void> => {
     .where(eq(teamResultsTable.seasonId, seasonId));
   for (const r of seasonResults) resultsMap.set(r.teamId, r);
   const calculatedResults = await loadCalculatedTeamReturns(seasonId, period);
-  const payoutRulesConfigured = await hasConfiguredPayoutRules(seasonId);
+  const payoutRulesConfigured =
+    period === 0 || await hasConfiguredPayoutRules(seasonId);
 
   // Season auction prices
   const auctionRows = await db
