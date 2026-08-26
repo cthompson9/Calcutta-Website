@@ -36,7 +36,7 @@ const claudeSetupSteps = [
   {
     title: "Authorize Calcutta MCP",
     description:
-      "Enter the MCP API key on the Calcutta authorization page and select Connect. Use the MCP API key only; the commissioner admin key is never needed.",
+      "Enter the MCP API key on the Calcutta authorization page and select Connect. Reach out to Craig for the API key.",
     image: "screen-6-api-key.png",
     alt: "Calcutta authorization page asking for the MCP API key",
   },
@@ -184,10 +184,6 @@ export default function WhatsNew() {
                 /api/...
               </code>{" "}
               route and follow that route&apos;s authentication requirements.
-            </p>
-            <p className="border-l-2 border-primary pl-3 font-medium text-foreground">
-              Reach out to me for the API key. Never commit keys to source control or share
-              them in public messages.
             </p>
             <a
               href="/api/mcp"
