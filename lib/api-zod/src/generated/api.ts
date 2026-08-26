@@ -56,7 +56,8 @@ export const GetTeamsQueryParams = zod.object({
   "division": zod.enum(['East', 'North', 'South', 'West']).optional(),
   "search": zod.coerce.string().optional(),
   "bidderId": zod.coerce.number().nullish(),
-  "season": zod.coerce.number().nullish()
+  "season": zod.coerce.number().nullish(),
+  "calcuttaId": zod.coerce.number().nullish()
 })
 
 export const GetTeamsResponseItem = zod.object({
@@ -89,6 +90,7 @@ export const CreateTeamBody = zod.object({
   "division": zod.enum(['East', 'North', 'South', 'West']),
   "bidAmount": zod.number().min(createTeamBodyBidAmountMin),
   "season": zod.number().optional(),
+  "calcuttaId": zod.number().optional(),
   "owners": zod.array(zod.object({
   "bidderId": zod.number(),
   "ownershipShare": zod.number()
@@ -149,6 +151,7 @@ export const UpdateTeamBody = zod.object({
   "division": zod.enum(['East', 'North', 'South', 'West']).optional(),
   "bidAmount": zod.number().min(updateTeamBodyBidAmountMin).optional(),
   "season": zod.number().optional(),
+  "calcuttaId": zod.number().optional(),
   "owners": zod.array(zod.object({
   "bidderId": zod.number(),
   "ownershipShare": zod.number()
@@ -183,7 +186,8 @@ export const DeleteTeamResponse = zod.void()
  * @summary List bidders. With season, returns only season participants (primary owners + approved trade recipients). Without season, returns all bidders (global identity directory).
  */
 export const GetBiddersQueryParams = zod.object({
-  "season": zod.coerce.number().nullish().describe('When supplied, filter to bidders with a season presence (team_bidders owners + approved trade toBidders). Without season, returns all bidders for global identity directory use.')
+  "season": zod.coerce.number().nullish().describe('When supplied, filter to bidders with a season presence (team_bidders owners + approved trade toBidders). Without season, returns all bidders for global identity directory use.'),
+  "calcuttaId": zod.coerce.number().nullish().describe('When supplied with season, filter participants to this Calcutta. Omit both filters for the global bidder directory.')
 })
 
 export const GetBiddersResponseItem = zod.object({
@@ -211,7 +215,8 @@ export const GetBiddersResponse = zod.array(GetBiddersResponseItem)
 
 
 export const CreateBidderBody = zod.object({
-  "name": zod.string().min(1)
+  "name": zod.string().min(1),
+  "calcuttaId": zod.number().optional()
 })
 
 export const CreateBidderResponse = zod.object({
@@ -248,7 +253,8 @@ export const UpdateBidderParams = zod.object({
 
 
 export const UpdateBidderBody = zod.object({
-  "name": zod.string().min(1).optional()
+  "name": zod.string().min(1).optional(),
+  "calcuttaId": zod.number().optional()
 })
 
 export const UpdateBidderResponse = zod.object({
@@ -278,6 +284,7 @@ export const getResultsQueryPeriodMax = 22;
 
 export const GetResultsQueryParams = zod.object({
   "season": zod.coerce.number(),
+  "calcuttaId": zod.coerce.number().nullish(),
   "period": zod.coerce.number().int().min(getResultsQueryPeriodMin).max(getResultsQueryPeriodMax).optional().describe('NFL period sequence through which cumulative returns are calculated.'),
   "basis": zod.enum(['realized', 'mtm']).optional().describe('Select the snapshot basis used for the focused return view.'),
   "conference": zod.enum(['AFC', 'NFC']).optional(),
@@ -340,6 +347,7 @@ export const getResultsByOwnerQueryPeriodMultipleOf = 1;
 
 export const GetResultsByOwnerQueryParams = zod.object({
   "season": zod.coerce.number(),
+  "calcuttaId": zod.coerce.number().nullish(),
   "period": zod.coerce.number().min(getResultsByOwnerQueryPeriodMin).max(getResultsByOwnerQueryPeriodMax).multipleOf(getResultsByOwnerQueryPeriodMultipleOf).optional().describe('NFL period sequence through which cumulative returns are calculated.'),
   "basis": zod.enum(['realized', 'mtm']).optional().describe('Select the snapshot basis used for the focused return view.'),
   "membershipView": zod.enum(['historical', 'current']).optional().describe('Use historical consortium membership at the Calcutta as-of date (default), or the current roster.')
@@ -412,7 +420,8 @@ export const previewNflStandingsImportBodySeasonYearMax = 2100;
 
 
 export const PreviewNflStandingsImportBody = zod.object({
-  "seasonYear": zod.number().min(previewNflStandingsImportBodySeasonYearMin).max(previewNflStandingsImportBodySeasonYearMax)
+  "seasonYear": zod.number().min(previewNflStandingsImportBodySeasonYearMin).max(previewNflStandingsImportBodySeasonYearMax),
+  "calcuttaId": zod.number().optional()
 })
 
 export const PreviewNflStandingsImportResponse = zod.object({
@@ -451,7 +460,8 @@ export const applyNflStandingsImportBodySeasonYearMax = 2100;
 
 
 export const ApplyNflStandingsImportBody = zod.object({
-  "seasonYear": zod.number().min(applyNflStandingsImportBodySeasonYearMin).max(applyNflStandingsImportBodySeasonYearMax)
+  "seasonYear": zod.number().min(applyNflStandingsImportBodySeasonYearMin).max(applyNflStandingsImportBodySeasonYearMax),
+  "calcuttaId": zod.number().optional()
 })
 
 export const ApplyNflStandingsImportResponse = zod.object({
@@ -491,6 +501,7 @@ export const RefreshNflStandingsJobResponse = zod.object({
  */
 export const GetResultsAvailabilityQueryParams = zod.object({
   "season": zod.coerce.number(),
+  "calcuttaId": zod.coerce.number().nullish(),
   "basis": zod.enum(['realized', 'mtm']).optional().describe('Snapshot basis used to identify recorded reporting periods.')
 })
 
@@ -585,6 +596,7 @@ export const upsertTeamResultBodyTiesMin = 0;
 export const UpsertTeamResultBody = zod.object({
   "teamId": zod.number(),
   "seasonYear": zod.number(),
+  "calcuttaId": zod.number().optional(),
   "wins": zod.number().min(upsertTeamResultBodyWinsMin).optional(),
   "losses": zod.number().min(upsertTeamResultBodyLossesMin).optional(),
   "ties": zod.number().min(upsertTeamResultBodyTiesMin).optional(),
@@ -710,6 +722,7 @@ export const upsertTeamPeriodSnapshotBodyWinSuperBowlMax = 1;
 export const UpsertTeamPeriodSnapshotBody = zod.object({
   "teamId": zod.number(),
   "seasonYear": zod.number(),
+  "calcuttaId": zod.number().optional(),
   "periodSequence": zod.number().min(upsertTeamPeriodSnapshotBodyPeriodSequenceMin).max(upsertTeamPeriodSnapshotBodyPeriodSequenceMax).multipleOf(upsertTeamPeriodSnapshotBodyPeriodSequenceMultipleOf),
   "basis": zod.enum(['realized', 'mtm']),
   "wins": zod.number().min(upsertTeamPeriodSnapshotBodyWinsMin).optional(),
@@ -767,7 +780,8 @@ export const UpsertTeamPeriodSnapshotResponse = zod.object({
  * @summary Initialize the immutable zero-stat Week 0 baseline for a season
  */
 export const InitializeWeekZeroPointsBody = zod.object({
-  "seasonYear": zod.number().describe('NFL season to initialize')
+  "seasonYear": zod.number().describe('NFL season to initialize'),
+  "calcuttaId": zod.number().optional()
 })
 
 export const InitializeWeekZeroPointsResponse = zod.object({
@@ -786,7 +800,8 @@ export const InitializeWeekZeroPointsResponse = zod.object({
  * @summary List a season Calcutta's payout rules
  */
 export const GetPayoutRulesQueryParams = zod.object({
-  "season": zod.coerce.number()
+  "season": zod.coerce.number(),
+  "calcuttaId": zod.coerce.number().nullish()
 })
 
 export const getPayoutRulesResponsePlayoffMultiplierMin = 0;
@@ -812,6 +827,7 @@ export const replacePayoutRulesBodyRulesItemPlayoffMultiplierMin = 0;
 
 export const ReplacePayoutRulesBody = zod.object({
   "seasonYear": zod.number(),
+  "calcuttaId": zod.number().optional(),
   "rules": zod.array(zod.object({
   "metric": zod.enum(['win', 'tie', 'pt_diff', 'playoff_berth', 'div_round', 'conf_round', 'sb_berth', 'win_super_bowl']),
   "dollarsPerUnit": zod.number(),
@@ -835,7 +851,8 @@ export const ReplacePayoutRulesResponse = zod.array(ReplacePayoutRulesResponseIt
  * @summary List trades for a season
  */
 export const GetTradesQueryParams = zod.object({
-  "season": zod.coerce.number()
+  "season": zod.coerce.number(),
+  "calcuttaId": zod.coerce.number().nullish()
 })
 
 export const GetTradesResponseItem = zod.object({
@@ -866,6 +883,7 @@ export const GetTradesResponse = zod.array(GetTradesResponseItem)
  */
 export const CreateTradeBody = zod.object({
   "seasonYear": zod.number(),
+  "calcuttaId": zod.number().optional(),
   "teamId": zod.number(),
   "fromBidderId": zod.number(),
   "toBidderId": zod.number(),
@@ -905,6 +923,7 @@ export const UpdateTradeParams = zod.object({
 })
 
 export const UpdateTradeBody = zod.object({
+  "calcuttaId": zod.number().optional(),
   "price": zod.number().optional(),
   "percentage": zod.number().optional(),
   "tradeDate": zod.string().optional(),
@@ -960,9 +979,11 @@ export const SetTradeStatusParams = zod.object({
 
 
 export const SetTradeStatusBody = zod.union([zod.object({
+  "calcuttaId": zod.number().optional(),
   "status": zod.enum(['approved', 'rejected']),
   "confirmed": zod.literal(true).describe('Must be true to record this irreversible commissioner decision.')
 }),zod.object({
+  "calcuttaId": zod.number().optional(),
   "status": zod.enum(['voided']),
   "confirmed": zod.literal(true).describe('Must be true to explicitly confirm this irreversible void.'),
   "reason": zod.string().min(1).describe('Commissioner explanation for voiding the approved trade.')
@@ -995,6 +1016,7 @@ export const SetTradeStatusResponse = zod.object({
  */
 export const GetMtmSnapshotsQueryParams = zod.object({
   "season": zod.coerce.number(),
+  "calcuttaId": zod.coerce.number().nullish(),
   "teamId": zod.coerce.number().nullish()
 })
 
@@ -1081,6 +1103,7 @@ export const GetMtmSnapshotsResponse = zod.object({
 export const UpsertMtmSnapshotBody = zod.object({
   "teamId": zod.number(),
   "seasonYear": zod.number(),
+  "calcuttaId": zod.number().optional(),
   "weekNum": zod.number().optional().describe('Optional week label (0=pre-season, 1–18=regular, 19+=playoffs)'),
   "snapshotDate": zod.string().optional().describe('Date as YYYY-MM-DD. Defaults to today. Same-day submissions overwrite the previous value.'),
   "mtmValue": zod.number()
@@ -1110,6 +1133,7 @@ export const UpsertMtmSnapshotResponse = zod.object({
  */
 export const CaptureWeekZeroMtmBody = zod.object({
   "seasonYear": zod.number(),
+  "calcuttaId": zod.number().optional(),
   "snapshotDate": zod.string().optional().describe('Optional Week 0 calendar date as YYYY-MM-DD. The first successful capture fixes this date for idempotent retries.')
 })
 
@@ -1135,7 +1159,8 @@ export const CaptureWeekZeroMtmResponse = zod.object({
  * @summary Overall auction summary for a specific season
  */
 export const GetAuctionSummaryQueryParams = zod.object({
-  "season": zod.coerce.number().describe('Season year (YYYY). Required. Returns empty\/zero data if the season has no auction rows.')
+  "season": zod.coerce.number().describe('Season year (YYYY). Required. Returns empty\/zero data if the season has no auction rows.'),
+  "calcuttaId": zod.coerce.number().nullish()
 })
 
 export const GetAuctionSummaryResponse = zod.object({
@@ -1167,7 +1192,8 @@ export const GetAuctionSummaryResponse = zod.object({
  * @summary Import a complete season auction export from the configured AuctionPro source
  */
 export const ImportAuctionDataBody = zod.object({
-  "seasonYear": zod.number().describe('Season year to replace from the configured complete AuctionPro export.')
+  "seasonYear": zod.number().describe('Season year to replace from the configured complete AuctionPro export.'),
+  "calcuttaId": zod.number().optional()
 })
 
 export const ImportAuctionDataResponse = zod.object({
@@ -1183,7 +1209,8 @@ export const ImportAuctionDataResponse = zod.object({
  * @summary Import auction prices, ownership, and draft order from the AuctionPro live endpoint
  */
 export const ImportDraftOrderBody = zod.object({
-  "seasonYear": zod.number().describe('Season year to replace from the configured complete AuctionPro export.')
+  "seasonYear": zod.number().describe('Season year to replace from the configured complete AuctionPro export.'),
+  "calcuttaId": zod.number().optional()
 })
 
 export const ImportDraftOrderResponse = zod.object({

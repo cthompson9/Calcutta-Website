@@ -4,6 +4,8 @@ import {
   useGetTeams,
   useGetBidders,
   useCreateTrade,
+  getGetTradesQueryKey,
+  getGetTeamsQueryKey,
 } from "@workspace/api-client-react";
 import type { TradeInput, TradeRow } from "@workspace/api-client-react";
 import { formatCurrency } from "@/lib/utils";
@@ -57,6 +59,7 @@ async function setTradeStatus(
   id: number,
   status: "approved" | "rejected" | "voided",
   adminKey: string,
+  calcuttaId?: number,
   reason?: string,
 ): Promise<{ ok: boolean; error?: string }> {
   try {
@@ -66,7 +69,12 @@ async function setTradeStatus(
         "Content-Type": "application/json",
         Authorization: `Bearer ${adminKey}`,
       },
-      body: JSON.stringify({ status, confirmed: true, ...(reason ? { reason } : {}) }),
+      body: JSON.stringify({
+        status,
+        confirmed: true,
+        calcuttaId,
+        ...(reason ? { reason } : {}),
+      }),
     });
     if (res.status === 401) return { ok: false, error: "Invalid admin key" };
     if (!res.ok) return { ok: false, error: await res.text() };
@@ -183,6 +191,8 @@ function TradeActions({
   onStatusChange: () => void;
   showDelete?: boolean;
 }) {
+  const { selectedCalcutta } = useSeason();
+  const calcuttaId = selectedCalcutta?.sport === "NFL" ? selectedCalcutta.id : undefined;
   const [acting, setActing] = useState(false);
   const [adminError, setAdminError] = useState("");
 
@@ -215,7 +225,7 @@ function TradeActions({
 
     setActing(true);
     setAdminError("");
-    const result = await setTradeStatus(trade.id, status, adminKey, reason);
+    const result = await setTradeStatus(trade.id, status, adminKey, calcuttaId, reason);
     setActing(false);
     if (!result.ok) {
       setAdminError(result.error ?? "Error");
@@ -626,6 +636,7 @@ function TradeForm({
   fromBidders,
   toBidders,
   seasonYear,
+  calcuttaId,
   onCreate,
   onClose,
   creating,
@@ -635,6 +646,7 @@ function TradeForm({
   fromBidders: any[];
   toBidders: any[];
   seasonYear: number;
+  calcuttaId?: number;
   onCreate: (data: TradeInput) => void;
   onClose: () => void;
   creating: boolean;
@@ -664,9 +676,10 @@ function TradeForm({
   }, [useDraftCost, teamId, percentage, selectedTeam]);
 
   function submit() {
-    if (!teamId || !fromId || !toId) return;
+    if (!teamId || !fromId || !toId || !calcuttaId) return;
     onCreate({
       seasonYear,
+      calcuttaId,
       teamId: parseInt(teamId),
       fromBidderId: parseInt(fromId),
       toBidderId: parseInt(toId),
@@ -913,7 +926,10 @@ function Field({ label, children }: { label: string; children: React.ReactNode }
 // ── Page ──────────────────────────────────────────────────────────────────────
 
 export default function Trades() {
-  const { year, setYear } = useSeason();
+  const { year, setYear, selectedCalcutta } = useSeason();
+  const isNflCalcutta = selectedCalcutta?.sport === "NFL";
+  const calcuttaId = isNflCalcutta ? selectedCalcutta.id : undefined;
+  const tradeParams = { season: year, calcuttaId };
   const [location] = useLocation();
   const sourceTarget = parseResultSourceTarget(
     typeof window === "undefined" ? location : window.location.href,
@@ -925,8 +941,12 @@ export default function Trades() {
   const [expandedGroups, setExpandedGroups] = useState<Set<string>>(() => new Set());
   const sourceExpandedTradeId = useRef<number | null>(null);
 
-  const { data: trades, isLoading, refetch } = useGetTrades({ season: year });
-  const { data: teams } = useGetTeams({ season: year });
+  const { data: trades, isLoading, refetch } = useGetTrades(tradeParams, {
+    query: { enabled: isNflCalcutta, queryKey: getGetTradesQueryKey(tradeParams) },
+  });
+  const { data: teams } = useGetTeams(tradeParams, {
+    query: { enabled: isNflCalcutta, queryKey: getGetTeamsQueryKey(tradeParams) },
+  });
   const { data: bidderDirectory } = useGetBidders({});
   const consortiumByBidderId = bidderConsortiums(bidderDirectory);
   const { mutate: createTrade, isPending: creating } = useCreateTrade();
@@ -1074,6 +1094,7 @@ export default function Trades() {
           <button
             data-testid="button-submit-trade"
             onClick={() => { setSubmissionError(""); setShowForm(true); }}
+            disabled={!isNflCalcutta}
             className="flex flex-1 items-center justify-center gap-2 px-4 py-2 bg-primary text-primary-foreground font-mono font-bold uppercase tracking-widest text-xs hover:bg-primary/90 transition-colors h-10 sm:flex-none"
           >
             <Plus className="w-4 h-4" /> Submit Trade
@@ -1099,6 +1120,7 @@ export default function Trades() {
           fromBidders={bidderDirectory}
           toBidders={bidderDirectory}
           seasonYear={year}
+          calcuttaId={calcuttaId}
           onCreate={(data) =>
             createTrade({ data }, {
               onSuccess: () => {

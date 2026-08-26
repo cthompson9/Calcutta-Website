@@ -15,6 +15,7 @@ import {
   db,
   nflGamesTable,
   payoutRulesTable,
+  positionsTable,
   seasonsTable,
   sportPeriodsTable,
   teamPeriodSnapshotsTable,
@@ -29,17 +30,104 @@ import {
   aggregateNflRegularSeasonGames,
   compareHistoricalPayoutParity,
   ensureNflSportPeriods,
-  getOrCreateCalcuttaEntry,
-  getOrCreateCanonicalCalcutta,
   initializeNflWeekZeroSnapshots,
-  loadCalculatedTeamReturns,
   loadCalculatedTeamReturnsForCalcutta,
   normalizeNflGame,
   validateNflPayoutRules,
-  type ReturnMetric,
 } from "../lib/calcuttaReturns";
+import { resolveCalcuttaId } from "../lib/calcuttaContext";
 
 const router: IRouter = Router();
+
+async function rebuildNflRealizedSnapshots(
+  tx: Parameters<Parameters<typeof db.transaction>[0]>[0],
+  seasonId: number,
+  periodSequence: number,
+): Promise<number> {
+  const entries = await tx
+    .selectDistinct({
+      entryId: calcuttaEntriesTable.id,
+      teamId: calcuttaEntriesTable.teamId,
+      calcuttaId: calcuttaEntriesTable.calcuttaId,
+    })
+    .from(calcuttaEntriesTable)
+    .innerJoin(calcuttasTable, eq(calcuttasTable.id, calcuttaEntriesTable.calcuttaId))
+    .innerJoin(positionsTable, and(
+      eq(positionsTable.entryId, calcuttaEntriesTable.id),
+      eq(positionsTable.source, "primary"),
+    ))
+    .where(and(
+      eq(calcuttasTable.seasonId, seasonId),
+      eq(calcuttasTable.sport, NFL_SPORT),
+    ));
+  const entriesByCalcutta = new Map<number, typeof entries>();
+  for (const entry of entries) {
+    const poolEntries = entriesByCalcutta.get(entry.calcuttaId) ?? [];
+    poolEntries.push(entry);
+    entriesByCalcutta.set(entry.calcuttaId, poolEntries);
+  }
+
+  let snapshotsWritten = 0;
+  for (const [calcuttaId, poolEntries] of entriesByCalcutta) {
+    await initializeNflWeekZeroSnapshots(tx, { calcuttaId });
+    const priorPeriods = await tx
+      .select({ sequence: sportPeriodsTable.sequence })
+      .from(teamPeriodSnapshotsTable)
+      .innerJoin(calcuttaEntriesTable, eq(calcuttaEntriesTable.id, teamPeriodSnapshotsTable.entryId))
+      .innerJoin(sportPeriodsTable, eq(sportPeriodsTable.id, teamPeriodSnapshotsTable.periodId))
+      .where(and(
+        eq(calcuttaEntriesTable.calcuttaId, calcuttaId),
+        eq(teamPeriodSnapshotsTable.basis, "realized"),
+        eq(sportPeriodsTable.sport, NFL_SPORT),
+        gte(sportPeriodsTable.sequence, periodSequence),
+        lte(sportPeriodsTable.sequence, 18),
+      ));
+    const sequences = [...new Set([
+      periodSequence,
+      ...priorPeriods.map((row) => row.sequence),
+    ])].sort((a, b) => a - b);
+
+    for (const sequence of sequences) {
+      const rows = await tx.select().from(nflGamesTable).where(and(
+        eq(nflGamesTable.seasonId, seasonId),
+        eq(nflGamesTable.round, "regular"),
+        eq(nflGamesTable.status, "final"),
+        lte(nflGamesTable.periodSequence, sequence),
+      ));
+      const aggregate = aggregateNflRegularSeasonGames(rows.map((row) => ({
+        seasonId: row.seasonId, source: row.source, sourceGameId: row.sourceGameId,
+        periodSequence: row.periodSequence, round: row.round, homeTeamId: row.homeTeamId,
+        awayTeamId: row.awayTeamId, homeScore: row.homeScore, awayScore: row.awayScore,
+        actualKickoffAt: row.actualKickoffAt, status: row.status, sourceData: row.sourceData,
+      })));
+      const period = await tx.select({ id: sportPeriodsTable.id }).from(sportPeriodsTable)
+        .where(and(eq(sportPeriodsTable.sport, NFL_SPORT), eq(sportPeriodsTable.sequence, sequence))).limit(1);
+      if (!period[0]) throw new Error("NFL period was not seeded.");
+      for (const entry of poolEntries) {
+        const stats = aggregate.get(entry.teamId) ?? {
+          wins: 0, losses: 0, ties: 0, ordinaryWins: 0, marqueeWins: 0,
+          ordinaryTies: 0, marqueeTies: 0, ordinaryPtDiff: 0, marqueePtDiff: 0,
+        };
+        const snapshot = {
+          entryId: entry.entryId, periodId: period[0].id, basis: "realized" as const,
+          wins: String(stats.wins), losses: String(stats.losses), ties: String(stats.ties),
+          ptDiff: String(stats.ordinaryPtDiff + NFL_MARQUEE_MULTIPLIER * stats.marqueePtDiff),
+          ordinaryWins: String(stats.ordinaryWins), marqueeWins: String(stats.marqueeWins),
+          ordinaryTies: String(stats.ordinaryTies), marqueeTies: String(stats.marqueeTies),
+          ordinaryPtDiff: String(stats.ordinaryPtDiff), marqueePtDiff: String(stats.marqueePtDiff),
+          playoffBerth: "0", divRound: "0", confRound: "0", sbBerth: "0", winSuperBowl: "0",
+          playoffStatus: "unknown" as const, capturedAt: new Date(),
+        };
+        await tx.insert(teamPeriodSnapshotsTable).values(snapshot).onConflictDoUpdate({
+          target: [teamPeriodSnapshotsTable.entryId, teamPeriodSnapshotsTable.periodId, teamPeriodSnapshotsTable.basis],
+          set: snapshot,
+        });
+        snapshotsWritten += 1;
+      }
+    }
+  }
+  return snapshotsWritten;
+}
 
 function isAdminRequest(req: Request): boolean {
   const adminKey = process.env["ADMIN_API_KEY"];
@@ -94,19 +182,14 @@ router.get("/payout-rules", async (req, res): Promise<void> => {
     res.json([]);
     return;
   }
-  const calcutta = await db
-    .select({ id: calcuttasTable.id })
-    .from(calcuttasTable)
-    .where(
-      and(
-        eq(calcuttasTable.seasonId, season.id),
-        eq(calcuttasTable.sport, NFL_SPORT),
-        eq(calcuttasTable.isCanonical, true),
-      ),
-    )
-    .limit(1);
-  if (!calcutta[0]) {
-    res.json([]);
+  const calcuttaId = await resolveCalcuttaId(db, {
+    seasonId: season.id,
+    calcuttaId: parsed.data.calcuttaId,
+  });
+  if (!calcuttaId) {
+    if (parsed.data.calcuttaId != null) {
+      res.status(400).json({ error: "Calcutta must be an NFL pool in the requested season." });
+    } else res.json([]);
     return;
   }
   const rules = await db
@@ -116,7 +199,7 @@ router.get("/payout-rules", async (req, res): Promise<void> => {
       playoffMultiplier: payoutRulesTable.playoffMultiplier,
     })
     .from(payoutRulesTable)
-    .where(eq(payoutRulesTable.calcuttaId, calcutta[0].id));
+    .where(eq(payoutRulesTable.calcuttaId, calcuttaId));
   res.json(
     rules.map((rule) => ({
       metric: rule.metric,
@@ -154,22 +237,26 @@ router.put("/payout-rules", async (req, res): Promise<void> => {
     res.status(404).json({ error: `Season ${parsed.data.seasonYear} not found` });
     return;
   }
+  const resolvedCalcuttaId = await resolveCalcuttaId(db, {
+    seasonId: season.id,
+    calcuttaId: parsed.data.calcuttaId,
+  });
+  if (!resolvedCalcuttaId) {
+    res.status(400).json({ error: "Calcutta must be an NFL pool in the requested season." });
+    return;
+  }
 
   const saved = await db.transaction(async (tx) => {
     await tx.execute(
       sql`select pg_advisory_xact_lock(${OWNERSHIP_SEASON_LOCK_NAMESPACE}, ${season.id})`,
     );
     await ensureNflSportPeriods(tx);
-    const calcutta = await getOrCreateCanonicalCalcutta(tx, {
-      seasonId: season.id,
-      year: season.year,
-    });
     await tx
       .delete(payoutRulesTable)
-      .where(eq(payoutRulesTable.calcuttaId, calcutta.id));
+      .where(eq(payoutRulesTable.calcuttaId, resolvedCalcuttaId));
     await tx.insert(payoutRulesTable).values(
       parsed.data.rules.map((rule) => ({
-        calcuttaId: calcutta.id,
+        calcuttaId: resolvedCalcuttaId,
         metric: rule.metric,
         dollarsPerUnit: rule.dollarsPerUnit.toString(),
         playoffMultiplier: rule.playoffMultiplier.toString(),
@@ -199,19 +286,26 @@ router.post("/period-snapshots/week-zero", async (req, res): Promise<void> => {
     res.status(404).json({ error: `Season ${parsed.data.seasonYear} not found` });
     return;
   }
+  const resolvedCalcuttaId = await resolveCalcuttaId(db, {
+    seasonId: season.id,
+    calcuttaId: parsed.data.calcuttaId,
+  });
+  if (!resolvedCalcuttaId) {
+    res.status(400).json({ error: "Calcutta must be an NFL pool in the requested season." });
+    return;
+  }
 
   const outcome = await db.transaction(async (tx) => {
     await tx.execute(
       sql`select pg_advisory_xact_lock(${OWNERSHIP_SEASON_LOCK_NAMESPACE}, ${season.id})`,
     );
     return initializeNflWeekZeroSnapshots(tx, {
-      seasonId: season.id,
-      year: season.year,
+      calcuttaId: resolvedCalcuttaId,
     });
   });
   if (outcome.kind === "no_auctioned_teams") {
     res.status(400).json({
-      error: "Week 0 requires at least one auctioned NFL team in this season.",
+      error: "Week 0 requires at least one auctioned NFL team in this Calcutta.",
     });
     return;
   }
@@ -245,6 +339,14 @@ router.post("/period-snapshots", async (req, res): Promise<void> => {
     res.status(404).json({ error: `Season ${data.seasonYear} not found` });
     return;
   }
+  const resolvedCalcuttaId = await resolveCalcuttaId(db, {
+    seasonId: season.id,
+    calcuttaId: data.calcuttaId,
+  });
+  if (!resolvedCalcuttaId) {
+    res.status(400).json({ error: "Calcutta must be an NFL pool in the requested season." });
+    return;
+  }
 
   const outcome = await db.transaction(async (tx) => {
     await tx.execute(
@@ -252,25 +354,20 @@ router.post("/period-snapshots", async (req, res): Promise<void> => {
     );
     await ensureNflSportPeriods(tx);
     const auctioned = await tx
-      .select({ teamId: teamSeasonAuctionsTable.teamId })
-      .from(teamSeasonAuctionsTable)
-      .where(
-        and(
-          eq(teamSeasonAuctionsTable.teamId, data.teamId),
-          eq(teamSeasonAuctionsTable.seasonId, season.id),
-        ),
-      )
+      .select({ teamId: calcuttaEntriesTable.teamId, entryId: calcuttaEntriesTable.id })
+      .from(calcuttaEntriesTable)
+      .innerJoin(positionsTable, and(
+        eq(positionsTable.entryId, calcuttaEntriesTable.id),
+        eq(positionsTable.source, "primary"),
+      ))
+      .where(and(
+        eq(calcuttaEntriesTable.calcuttaId, resolvedCalcuttaId),
+        eq(calcuttaEntriesTable.teamId, data.teamId),
+      ))
       .limit(1);
     if (!auctioned[0]) return { kind: "not_auctioned" as const };
 
-    const calcutta = await getOrCreateCanonicalCalcutta(tx, {
-      seasonId: season.id,
-      year: season.year,
-    });
-    const entry = await getOrCreateCalcuttaEntry(tx, {
-      calcuttaId: calcutta.id,
-      teamId: data.teamId,
-    });
+    const entry = { id: auctioned[0].entryId };
     const period = await tx
       .select({
         id: sportPeriodsTable.id,
@@ -377,7 +474,10 @@ router.post("/period-snapshots", async (req, res): Promise<void> => {
     return;
   }
 
-  const calculated = await loadCalculatedTeamReturns(season.id, data.periodSequence);
+  const calculated = await loadCalculatedTeamReturnsForCalcutta(
+    resolvedCalcuttaId,
+    data.periodSequence,
+  );
   const grossReturn = calculated.get(data.teamId)?.[data.basis]?.grossReturn ?? 0;
   const response = UpsertTeamPeriodSnapshotResponse.parse({
     teamId: data.teamId,
@@ -479,59 +579,12 @@ router.post("/nfl-games", async (req, res): Promise<void> => {
       target: [nflGamesTable.seasonId, nflGamesTable.source, nflGamesTable.sourceGameId],
       set: values,
     });
-    const auctioned = await tx.select({ teamId: teamSeasonAuctionsTable.teamId })
-      .from(teamSeasonAuctionsTable).where(eq(teamSeasonAuctionsTable.seasonId, season.id));
-    const calcutta = await getOrCreateCanonicalCalcutta(tx, { seasonId: season.id, year: season.year });
-    const priorPeriods = await tx
-      .select({ sequence: sportPeriodsTable.sequence })
-      .from(teamPeriodSnapshotsTable)
-      .innerJoin(calcuttaEntriesTable, eq(calcuttaEntriesTable.id, teamPeriodSnapshotsTable.entryId))
-      .innerJoin(sportPeriodsTable, eq(sportPeriodsTable.id, teamPeriodSnapshotsTable.periodId))
-      .where(and(
-        eq(calcuttaEntriesTable.calcuttaId, calcutta.id),
-        eq(teamPeriodSnapshotsTable.basis, "realized"),
-        eq(sportPeriodsTable.sport, NFL_SPORT),
-        gte(sportPeriodsTable.sequence, periodSequence),
-        lte(sportPeriodsTable.sequence, 18),
-      ));
-    const sequences = [...new Set([periodSequence, ...priorPeriods.map((row) => row.sequence)])].sort((a, b) => a - b);
-    for (const sequence of sequences) {
-      const rows = await tx.select().from(nflGamesTable).where(and(
-        eq(nflGamesTable.seasonId, season.id), eq(nflGamesTable.round, "regular"),
-        eq(nflGamesTable.status, "final"), lte(nflGamesTable.periodSequence, sequence),
-      ));
-      const aggregate = aggregateNflRegularSeasonGames(rows.map((row) => ({
-        seasonId: row.seasonId, source: row.source, sourceGameId: row.sourceGameId,
-        periodSequence: row.periodSequence, round: row.round, homeTeamId: row.homeTeamId,
-        awayTeamId: row.awayTeamId, homeScore: row.homeScore, awayScore: row.awayScore,
-        actualKickoffAt: row.actualKickoffAt, status: row.status, sourceData: row.sourceData,
-      })));
-      const period = await tx.select({ id: sportPeriodsTable.id }).from(sportPeriodsTable)
-        .where(and(eq(sportPeriodsTable.sport, NFL_SPORT), eq(sportPeriodsTable.sequence, sequence))).limit(1);
-      if (!period[0]) throw new Error("NFL period was not seeded.");
-      for (const { teamId } of auctioned) {
-        const entry = await getOrCreateCalcuttaEntry(tx, { calcuttaId: calcutta.id, teamId });
-        const stats = aggregate.get(teamId) ?? {
-          wins: 0, losses: 0, ties: 0, ordinaryWins: 0, marqueeWins: 0,
-          ordinaryTies: 0, marqueeTies: 0, ordinaryPtDiff: 0, marqueePtDiff: 0,
-        };
-        const snapshot = {
-          entryId: entry.id, periodId: period[0].id, basis: "realized" as const,
-          wins: String(stats.wins), losses: String(stats.losses), ties: String(stats.ties),
-          ptDiff: String(stats.ordinaryPtDiff + NFL_MARQUEE_MULTIPLIER * stats.marqueePtDiff),
-          ordinaryWins: String(stats.ordinaryWins), marqueeWins: String(stats.marqueeWins),
-          ordinaryTies: String(stats.ordinaryTies), marqueeTies: String(stats.marqueeTies),
-          ordinaryPtDiff: String(stats.ordinaryPtDiff), marqueePtDiff: String(stats.marqueePtDiff),
-          playoffBerth: "0", divRound: "0", confRound: "0", sbBerth: "0", winSuperBowl: "0",
-          playoffStatus: "unknown" as const, capturedAt: new Date(),
-        };
-        await tx.insert(teamPeriodSnapshotsTable).values(snapshot).onConflictDoUpdate({
-          target: [teamPeriodSnapshotsTable.entryId, teamPeriodSnapshotsTable.periodId, teamPeriodSnapshotsTable.basis],
-          set: snapshot,
-        });
-      }
-    }
-    return { game, snapshotsWritten: auctioned.length * sequences.length };
+    const snapshotsWritten = await rebuildNflRealizedSnapshots(
+      tx,
+      season.id,
+      periodSequence,
+    );
+    return { game, snapshotsWritten };
   });
   res.status(201).json(outcome);
 });

@@ -14,6 +14,7 @@ import {
 } from "drizzle-orm/pg-core";
 import { teamsTable } from "./teams";
 import { seasonsTable } from "./seasons";
+import { calcuttaEntriesTable } from "./calcuttaEntries";
 import { createInsertSchema } from "drizzle-zod";
 import { z } from "zod/v4";
 
@@ -21,6 +22,9 @@ export const mtmSnapshotsTable = pgTable(
   "mtm_snapshots",
   {
     id: serial("id").primaryKey(),
+    entryId: integer("entry_id")
+      .notNull()
+      .references(() => calcuttaEntriesTable.id, { onDelete: "cascade" }),
     teamId: integer("team_id")
       .notNull()
       .references(() => teamsTable.id, { onDelete: "cascade" }),
@@ -29,7 +33,7 @@ export const mtmSnapshotsTable = pgTable(
       .references(() => seasonsTable.id, { onDelete: "cascade" }),
     // weekNum is now optional — a convenience label only, not the upsert key
     weekNum: integer("week_num"),
-    // snapshotDate is the upsert key: one row per team per season per date
+    // snapshotDate is the upsert key: one row per selected entry per date
     snapshotDate: date("snapshot_date", { mode: "string" }).notNull(),
     mtmValue: numeric("mtm_value", { precision: 10, scale: 4 }).notNull().default("0"),
     snapshotKey: text("snapshot_key"),
@@ -44,16 +48,17 @@ export const mtmSnapshotsTable = pgTable(
     marketData: jsonb("market_data").$type<Record<string, unknown>>(),
   },
   (t) => [
-    // One snapshot per team per season per calendar date (the primary upsert key)
-    uniqueIndex("mtm_team_season_date_idx").on(t.teamId, t.seasonId, t.snapshotDate),
+    // One snapshot per Calcutta entry per calendar date (the primary upsert key)
+    uniqueIndex("mtm_entry_date_idx").on(t.entryId, t.snapshotDate),
     // snapshot_key uniqueness only applies when a key is actually present;
     // NULL rows (manual/unlabelled snapshots) must not collide with each other.
-    uniqueIndex("mtm_team_season_key_idx")
-      .on(t.teamId, t.seasonId, t.snapshotKey)
+    uniqueIndex("mtm_entry_key_idx")
+      .on(t.entryId, t.snapshotKey)
       .where(sql`${t.snapshotKey} IS NOT NULL`),
     check("mtm_snapshots_value_non_negative", sql`${t.mtmValue} >= 0`),
-    // Quickly load all snapshots for a season
+    // Compatibility lookup plus authoritative entry-scoped lookup.
     index("mtm_snapshots_season_idx").on(t.seasonId),
+    index("mtm_snapshots_entry_idx").on(t.entryId),
   ],
 );
 

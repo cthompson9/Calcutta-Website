@@ -1,11 +1,12 @@
 import { Router, type IRouter, type Request } from "express";
-import { and, eq, asc, isNull, ne, or, sql } from "drizzle-orm";
+import { and, eq, asc, inArray, isNull, ne, or, sql } from "drizzle-orm";
 import {
   db,
   teamsTable,
   mtmSnapshotsTable,
   seasonsTable,
-  teamSeasonAuctionsTable,
+  calcuttaEntriesTable,
+  positionsTable,
 } from "@workspace/db";
 import {
   CaptureWeekZeroMtmBody,
@@ -16,6 +17,7 @@ import {
 import { loadSeasonOwnership } from "../lib/seasonOwnership";
 import { captureKalshiWeekZero } from "../lib/kalshiWeekZero";
 import { todayInNewYork } from "../lib/newYorkTime";
+import { resolveCalcuttaId } from "../lib/calcuttaContext";
 import {
   buildWeekZeroSnapshotRows,
   calculateWeekZeroValuations,
@@ -83,12 +85,28 @@ router.get("/mtm", async (req, res): Promise<void> => {
     res.json({ weeks: [], teams: [], owners: [] });
     return;
   }
+  const calcuttaId = await resolveCalcuttaId(db, {
+    seasonId,
+    calcuttaId: parsed.data.calcuttaId,
+  });
+  if (!calcuttaId) {
+    res.status(400).json({ error: "Calcutta must be an NFL pool in the requested season." });
+    return;
+  }
+  const entryRows = await db
+    .select({
+      entryId: calcuttaEntriesTable.id,
+      teamId: calcuttaEntriesTable.teamId,
+    })
+    .from(calcuttaEntriesTable)
+    .where(eq(calcuttaEntriesTable.calcuttaId, calcuttaId));
+  const entryIds = entryRows.map((entry) => entry.entryId);
 
-  // Fetch all snapshots for the season ordered by date
+  // Fetch only snapshots belonging to the selected Calcutta entries.
   const snapshotsRaw = await db
     .select()
     .from(mtmSnapshotsTable)
-    .where(eq(mtmSnapshotsTable.seasonId, seasonId))
+    .where(inArray(mtmSnapshotsTable.entryId, entryIds))
     .orderBy(asc(mtmSnapshotsTable.snapshotDate), asc(mtmSnapshotsTable.teamId));
 
   // Fetch team info
@@ -96,7 +114,7 @@ router.get("/mtm", async (req, res): Promise<void> => {
   const teamMap = new Map(teams.map((t) => [t.id, t]));
 
   // Effective ownership (applies approved trades)
-  const ownership = await loadSeasonOwnership(seasonId);
+  const ownership = await loadSeasonOwnership(seasonId, calcuttaId);
 
   // Get unique dates sorted chronologically
   const dates = [...new Set(snapshotsRaw.map((s) => s.snapshotDate))].sort();
@@ -297,12 +315,33 @@ router.post("/mtm", async (req, res): Promise<void> => {
     res.status(404).json({ error: `Season ${data.seasonYear} not found` });
     return;
   }
+  const calcuttaId = await resolveCalcuttaId(db, {
+    seasonId,
+    calcuttaId: data.calcuttaId,
+  });
+  if (!calcuttaId) {
+    res.status(400).json({ error: "Calcutta must be an NFL pool in the requested season." });
+    return;
+  }
+  const entry = await db
+    .select({ id: calcuttaEntriesTable.id })
+    .from(calcuttaEntriesTable)
+    .where(and(
+      eq(calcuttaEntriesTable.calcuttaId, calcuttaId),
+      eq(calcuttaEntriesTable.teamId, data.teamId),
+    ))
+    .limit(1);
+  if (!entry[0]) {
+    res.status(400).json({ error: "Team is not an entry in the selected Calcutta." });
+    return;
+  }
 
   const today = todayInNewYork();
   const snapshotDate = data.snapshotDate ?? today;
 
   const manualWrite = await writeManualMtmSnapshot({
     seasonId,
+    calcuttaId,
     teamId: data.teamId,
     snapshotDate,
     mtmValue: data.mtmValue,
@@ -354,14 +393,28 @@ router.post("/mtm/week-zero/capture", async (req, res): Promise<void> => {
     res.status(404).json({ error: `Season ${seasonYear} not found` });
     return;
   }
+  const calcuttaId = await resolveCalcuttaId(db, {
+    seasonId,
+    calcuttaId: parsed.data.calcuttaId,
+  });
+  if (!calcuttaId) {
+    res.status(400).json({ error: "Calcutta must be an NFL pool in the requested season." });
+    return;
+  }
 
   const teams = await db
     .select({
+      entryId: calcuttaEntriesTable.id,
       id: teamsTable.id,
       name: teamsTable.name,
       conference: teamsTable.conference,
     })
     .from(teamsTable)
+    .innerJoin(
+      calcuttaEntriesTable,
+      eq(calcuttaEntriesTable.teamId, teamsTable.id),
+    )
+    .where(eq(calcuttaEntriesTable.calcuttaId, calcuttaId))
     .orderBy(asc(teamsTable.id));
   if (teams.length !== 32) {
     res.status(400).json({
@@ -369,25 +422,36 @@ router.post("/mtm/week-zero/capture", async (req, res): Promise<void> => {
     });
     return;
   }
+  const entryIdByTeam = new Map(teams.map((team) => [team.id, team.entryId]));
 
   const capturedAt = new Date();
   const requestedSnapshotDate =
     parsed.data.snapshotDate ?? todayInNewYork(capturedAt);
 
-  const auctionRows = await db
-    .select({ bidAmount: teamSeasonAuctionsTable.bidAmount })
-    .from(teamSeasonAuctionsTable)
-    .where(eq(teamSeasonAuctionsTable.seasonId, seasonId));
-  if (auctionRows.length !== 32) {
+  const primaryPositionRows = await db
+    .select({
+      entryId: positionsTable.entryId,
+      costBasis: positionsTable.costBasis,
+    })
+    .from(positionsTable)
+    .where(and(
+      inArray(positionsTable.entryId, [...entryIdByTeam.values()]),
+      eq(positionsTable.source, "primary"),
+    ));
+  const bidCostByEntry = new Map<number, number>();
+  for (const position of primaryPositionRows) {
+    bidCostByEntry.set(
+      position.entryId,
+      (bidCostByEntry.get(position.entryId) ?? 0) + Number(position.costBasis),
+    );
+  }
+  if (bidCostByEntry.size !== 32) {
     res.status(400).json({
-      error: `Week 0 requires auction prices for all 32 teams; found ${auctionRows.length}.`,
+      error: `Week 0 requires primary-position bid costs for all 32 selected entries; found ${bidCostByEntry.size}.`,
     });
     return;
   }
-  const potSize = auctionRows.reduce(
-    (total, auction) => total + parseFloat(auction.bidAmount),
-    0,
-  );
+  const potSize = [...bidCostByEntry.values()].reduce((total, cost) => total + cost, 0);
 
   let calculation;
   try {
@@ -418,14 +482,14 @@ router.post("/mtm/week-zero/capture", async (req, res): Promise<void> => {
   try {
     snapshotDate = await db.transaction(async (tx) => {
       await tx.execute(
-        sql`select pg_advisory_xact_lock(${MTM_SEASON_LOCK_NAMESPACE}, ${seasonId})`,
+        sql`select pg_advisory_xact_lock(${MTM_SEASON_LOCK_NAMESPACE}, ${calcuttaId})`,
       );
       const existingWeekZero = await tx
         .select({ snapshotDate: mtmSnapshotsTable.snapshotDate })
         .from(mtmSnapshotsTable)
         .where(
           and(
-            eq(mtmSnapshotsTable.seasonId, seasonId),
+            inArray(mtmSnapshotsTable.entryId, [...entryIdByTeam.values()]),
             eq(mtmSnapshotsTable.snapshotKey, WEEK_ZERO_SNAPSHOT_KEY),
           ),
         )
@@ -439,7 +503,7 @@ router.post("/mtm/week-zero/capture", async (req, res): Promise<void> => {
           .from(mtmSnapshotsTable)
           .where(
             and(
-              eq(mtmSnapshotsTable.seasonId, seasonId),
+              inArray(mtmSnapshotsTable.entryId, [...entryIdByTeam.values()]),
               eq(mtmSnapshotsTable.snapshotDate, canonicalSnapshotDate),
               or(
                 isNull(mtmSnapshotsTable.snapshotKey),
@@ -457,6 +521,7 @@ router.post("/mtm/week-zero/capture", async (req, res): Promise<void> => {
 
       const snapshotRows = buildWeekZeroSnapshotRows(calculation, {
         seasonId,
+        entryIdByTeam,
         snapshotDate: canonicalSnapshotDate,
         capturedAt,
       });
@@ -466,8 +531,7 @@ router.post("/mtm/week-zero/capture", async (req, res): Promise<void> => {
           .values(values)
           .onConflictDoUpdate({
             target: [
-              mtmSnapshotsTable.teamId,
-              mtmSnapshotsTable.seasonId,
+              mtmSnapshotsTable.entryId,
               mtmSnapshotsTable.snapshotKey,
             ],
             targetWhere: sql`${mtmSnapshotsTable.snapshotKey} IS NOT NULL`,

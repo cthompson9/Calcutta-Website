@@ -12,14 +12,12 @@ let biddersTable;
 let consortiaTable;
 let consortiumMembershipsTable;
 let teamSeasonAuctionsTable;
-let teamBiddersTable;
 let teamResultsTable;
 let tradesTable;
 let positionsTable;
 let calcuttaEntriesTable;
 let calcuttasTable;
 let app;
-let syncSeasonPositions;
 let ensureOwnerPositionRollout;
 let runDatabaseMigrations;
 
@@ -32,13 +30,11 @@ if (DATABASE_URL) {
     consortiaTable,
     consortiumMembershipsTable,
     teamSeasonAuctionsTable,
-    teamBiddersTable,
     teamResultsTable,
     tradesTable,
     positionsTable,
     calcuttaEntriesTable,
     calcuttasTable,
-    syncSeasonPositions,
     ensureOwnerPositionRollout,
     runDatabaseMigrations,
   } = await import("@workspace/db"));
@@ -115,12 +111,43 @@ describe("owner positions and dated consortium rollups", { skip: !DATABASE_URL }
       teamId,
       bidAmount: "100.00",
     });
-    await db.insert(teamBiddersTable).values({
+    const [calcutta] = await db.insert(calcuttasTable).values({
       seasonId,
+      year: seasonYear,
+      name: `${seasonYear} NFL Calcutta`,
+      sport: "NFL",
+      isCanonical: true,
+      asOfDate: `${seasonYear}-08-01`,
+    }).returning();
+    const [entry] = await db.insert(calcuttaEntriesTable).values({
+      calcuttaId: calcutta.id,
       teamId,
-      bidderId: sellerId,
-      ownershipShare: "1.0000",
-    });
+      realizedReturn: "100.00",
+      markToMarket: "100.00",
+    }).returning();
+    await db.insert(positionsTable).values([
+      {
+        entryId: entry.id,
+        bidderId: sellerId,
+        ownershipShare: "1.000000",
+        source: "primary",
+        costBasis: "100.00",
+      },
+      {
+        entryId: entry.id,
+        bidderId: sellerId,
+        ownershipShare: "-0.500000",
+        source: "trade",
+        costBasis: "-50.00",
+      },
+      {
+        entryId: entry.id,
+        bidderId: buyerId,
+        ownershipShare: "0.500000",
+        source: "trade",
+        costBasis: "50.00",
+      },
+    ]);
     await db.insert(teamResultsTable).values({
       seasonId,
       teamId,
@@ -137,7 +164,6 @@ describe("owner positions and dated consortium rollups", { skip: !DATABASE_URL }
       status: "approved",
       tradeDate: `${seasonYear}-09-15`,
     });
-    await syncSeasonPositions(db, seasonId);
     ({ server, baseUrl } = await startServer(app));
   });
 
@@ -206,6 +232,13 @@ describe("owner positions and dated consortium rollups", { skip: !DATABASE_URL }
       })
       .returning({ id: seasonsTable.id });
     try {
+      await db.insert(calcuttasTable).values({
+        seasonId: syntheticSeason.id,
+        name: `Synthetic NFL ${syntheticYear}`,
+        year: syntheticYear,
+        sport: "NFL",
+        isCanonical: true,
+      });
       const response = await fetch(
         `${baseUrl}/api/results/by-owner?season=${syntheticYear}`,
       );

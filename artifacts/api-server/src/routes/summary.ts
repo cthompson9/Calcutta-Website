@@ -4,14 +4,15 @@ import {
   db,
   teamsTable,
   biddersTable,
-  teamBiddersTable,
+  positionsTable,
+  calcuttaEntriesTable,
   teamResultsTable,
-  teamSeasonAuctionsTable,
   seasonsTable,
 } from "@workspace/db";
 import { GetAuctionSummaryQueryParams } from "@workspace/api-zod";
 import { loadSeasonOwnership } from "../lib/seasonOwnership";
 import { buildAuctionResults } from "../lib/auctionResults";
+import { resolveCalcuttaId } from "../lib/calcuttaContext";
 
 const router: IRouter = Router();
 
@@ -22,7 +23,7 @@ router.get("/summary", async (req, res): Promise<void> => {
     return;
   }
 
-  const { season } = parsed.data;
+  const { season } = parsed.data as typeof parsed.data & { calcuttaId?: number };
 
   // Resolve the requested season — no active-season fallback
   const seasonRows = await db
@@ -44,28 +45,53 @@ router.get("/summary", async (req, res): Promise<void> => {
   }
 
   const seasonId = seasonRows[0].id;
+  const calcuttaId = await resolveCalcuttaId(db, {
+    seasonId,
+    calcuttaId: (parsed.data as typeof parsed.data & { calcuttaId?: number }).calcuttaId,
+  });
+  if (!calcuttaId) {
+    res.status(404).json({ error: "Calcutta not found for this season." });
+    return;
+  }
 
-  // All auction rows for this season — authoritative source of prices and "auctioned" count
-  const auctionRows = await db
+  // The selected Calcutta's primary positions are its immutable auction ledger.
+  // Do not read season-wide legacy auction rows: a season can have multiple pools.
+  const primaryRows = await db
     .select({
-      teamId: teamSeasonAuctionsTable.teamId,
-      bidAmount: teamSeasonAuctionsTable.bidAmount,
+      teamId: calcuttaEntriesTable.teamId,
+      costBasis: positionsTable.costBasis,
       teamName: teamsTable.name,
       conference: teamsTable.conference,
     })
-    .from(teamSeasonAuctionsTable)
-    .innerJoin(teamsTable, eq(teamSeasonAuctionsTable.teamId, teamsTable.id))
-    .where(eq(teamSeasonAuctionsTable.seasonId, seasonId));
+    .from(calcuttaEntriesTable)
+    .innerJoin(teamsTable, eq(calcuttaEntriesTable.teamId, teamsTable.id))
+    .leftJoin(positionsTable, and(
+      eq(positionsTable.entryId, calcuttaEntriesTable.id),
+      eq(positionsTable.source, "primary"),
+    ))
+    .where(eq(calcuttaEntriesTable.calcuttaId, calcuttaId));
+  const auctionRows = [...primaryRows.reduce((byTeam, row) => {
+    const existing = byTeam.get(row.teamId) ?? {
+      teamId: row.teamId,
+      teamName: row.teamName,
+      conference: row.conference,
+      bidAmount: 0,
+    };
+    existing.bidAmount += Number(row.costBasis ?? 0);
+    byTeam.set(row.teamId, existing);
+    return byTeam;
+  }, new Map<number, { teamId: number; teamName: string; conference: string; bidAmount: number }>())
+    .values()];
 
   const teamsAuctioned = auctionRows.length;
-  const potSize = auctionRows.reduce((sum, a) => sum + parseFloat(a.bidAmount), 0);
+  const potSize = auctionRows.reduce((sum, a) => sum + a.bidAmount, 0);
   const avgBidPerTeam = teamsAuctioned > 0 ? potSize / teamsAuctioned : 0;
 
   // Conference breakdown
   const conferenceMap = new Map<string, { totalSpent: number; teamCount: number }>();
   for (const a of auctionRows) {
     const entry = conferenceMap.get(a.conference) ?? { totalSpent: 0, teamCount: 0 };
-    entry.totalSpent += parseFloat(a.bidAmount);
+    entry.totalSpent += a.bidAmount;
     entry.teamCount += 1;
     conferenceMap.set(a.conference, entry);
   }
@@ -82,34 +108,34 @@ router.get("/summary", async (req, res): Promise<void> => {
     .select({
       teamId: teamsTable.id,
       teamName: teamsTable.name,
-      bidAmount: teamSeasonAuctionsTable.bidAmount,
+      costBasis: positionsTable.costBasis,
       winnerName: biddersTable.name,
       draftOrder: teamResultsTable.draftOrder,
     })
-    .from(teamSeasonAuctionsTable)
-    .innerJoin(teamsTable, eq(teamSeasonAuctionsTable.teamId, teamsTable.id))
-    .innerJoin(
-      teamBiddersTable,
-      and(
-        eq(teamBiddersTable.teamId, teamSeasonAuctionsTable.teamId),
-        eq(teamBiddersTable.seasonId, teamSeasonAuctionsTable.seasonId),
-      ),
-    )
-    .innerJoin(biddersTable, eq(teamBiddersTable.bidderId, biddersTable.id))
+    .from(calcuttaEntriesTable)
+    .innerJoin(positionsTable, and(
+      eq(positionsTable.entryId, calcuttaEntriesTable.id),
+      eq(positionsTable.source, "primary"),
+    ))
+    .innerJoin(teamsTable, eq(calcuttaEntriesTable.teamId, teamsTable.id))
+    .innerJoin(biddersTable, eq(positionsTable.bidderId, biddersTable.id))
     .leftJoin(
       teamResultsTable,
       and(
-        eq(teamResultsTable.teamId, teamSeasonAuctionsTable.teamId),
-        eq(teamResultsTable.seasonId, teamSeasonAuctionsTable.seasonId),
+        eq(teamResultsTable.teamId, calcuttaEntriesTable.teamId),
+        eq(teamResultsTable.seasonId, seasonId),
       ),
     )
-    .where(eq(teamSeasonAuctionsTable.seasonId, seasonId));
+    .where(eq(calcuttaEntriesTable.calcuttaId, calcuttaId));
 
-  const auctionResults = buildAuctionResults(resultRows);
+  const auctionResults = buildAuctionResults(resultRows.map((row) => ({
+    ...row,
+    bidAmount: String(auctionRows.find((auction) => auction.teamId === row.teamId)?.bidAmount ?? 0),
+  })));
 
   const mostExpensive = auctionRows.reduce<typeof auctionRows[number] | null>(
     (highest, row) =>
-      !highest || parseFloat(row.bidAmount) > parseFloat(highest.bidAmount)
+      !highest || row.bidAmount > highest.bidAmount
         ? row
         : highest,
     null,
@@ -122,7 +148,7 @@ router.get("/summary", async (req, res): Promise<void> => {
     mostExpensiveTeam: mostExpensive
       ? {
           name: mostExpensive.teamName,
-          bidAmount: Math.round(parseFloat(mostExpensive.bidAmount) * 100) / 100,
+          bidAmount: Math.round(mostExpensive.bidAmount * 100) / 100,
         }
       : null,
     auctionResults,

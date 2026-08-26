@@ -9,4 +9,5 @@
 export interface BidderUpdate {
   /** @minLength 1 */
   name?: string;
+  calcuttaId?: number;
 }

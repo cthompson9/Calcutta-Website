@@ -7,6 +7,7 @@
  */
 
 export interface TradeUpdate {
+  calcuttaId?: number;
   price?: number;
   percentage?: number;
   tradeDate?: string;

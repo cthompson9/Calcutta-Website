@@ -1,10 +1,9 @@
 import { Router, type IRouter } from "express";
-import { eq, and, inArray, sql } from "drizzle-orm";
+import { eq, inArray } from "drizzle-orm";
 import {
   db,
   biddersTable,
   teamsTable,
-  teamSeasonAuctionsTable,
   seasonsTable,
 } from "@workspace/db";
 import {
@@ -16,6 +15,7 @@ import {
 } from "@workspace/api-zod";
 import { loadSeasonOwnership } from "../lib/seasonOwnership";
 import { loadCurrentBidderConsortiums } from "../lib/consortiumMemberships";
+import { resolveCalcuttaId } from "../lib/calcuttaContext";
 
 const router: IRouter = Router();
 
@@ -51,7 +51,7 @@ router.get("/bidders", async (req, res): Promise<void> => {
     res.status(400).json({ error: parsed.error.message });
     return;
   }
-  const { season: seasonYear } = parsed.data;
+  const { season: seasonYear } = parsed.data as typeof parsed.data & { calcuttaId?: number };
 
   if (seasonYear != null) {
     // ── Season-filtered: only return season participants ───────────────────
@@ -61,7 +61,15 @@ router.get("/bidders", async (req, res): Promise<void> => {
       return;
     }
 
-    const ownership = await loadSeasonOwnership(seasonId);
+    const calcuttaId = await resolveCalcuttaId(db, {
+      seasonId,
+      calcuttaId: (parsed.data as typeof parsed.data & { calcuttaId?: number }).calcuttaId,
+    });
+    if (!calcuttaId) {
+      res.json([]);
+      return;
+    }
+    const ownership = await loadSeasonOwnership(seasonId, calcuttaId);
 
     if (ownership.participantIds.size === 0) {
       res.json([]);
@@ -71,16 +79,15 @@ router.get("/bidders", async (req, res): Promise<void> => {
     // Fetch all team info needed for the response
     const allTeams = await db.select().from(teamsTable);
     const teamInfoMap = new Map(allTeams.map((t) => [t.id, t]));
-
-    // Fetch all season auction prices
-    const auctionRows = await db
-      .select({
-        teamId: teamSeasonAuctionsTable.teamId,
-        bidAmount: teamSeasonAuctionsTable.bidAmount,
-      })
-      .from(teamSeasonAuctionsTable)
-      .where(eq(teamSeasonAuctionsTable.seasonId, seasonId));
-    const auctionPriceMap = new Map(auctionRows.map((a) => [a.teamId, parseFloat(a.bidAmount)]));
+    const primaryCostByTeam = new Map<number, number>();
+    for (const teamMap of ownership.byBidder.values()) {
+      for (const [teamId, entry] of teamMap) {
+        primaryCostByTeam.set(
+          teamId,
+          (primaryCostByTeam.get(teamId) ?? 0) + entry.primaryCostBasis,
+        );
+      }
+    }
 
     // Fetch bidder name rows for all participants
     const participantIdArr = Array.from(ownership.participantIds);
@@ -111,9 +118,7 @@ router.get("/bidders", async (req, res): Promise<void> => {
 
       if (teamMap) {
         for (const [teamId, entry] of teamMap) {
-          const auctionPrice = auctionPriceMap.get(teamId) ?? 0;
-          const originalCost = auctionPrice * entry.originalShare;
-          totalPaid += originalCost + entry.tradePaid - entry.tradeReceived;
+          totalPaid += entry.originalCostBasis + entry.tradePaid - entry.tradeReceived;
 
           // Include team in list if they have current effective ownership
           if (entry.effectiveShare > 0.00005) {
@@ -124,7 +129,7 @@ router.get("/bidders", async (req, res): Promise<void> => {
                 name: teamInfo.name,
                 conference: teamInfo.conference,
                 division: teamInfo.division,
-                bidAmount: auctionPrice,
+                bidAmount: primaryCostByTeam.get(teamId) ?? 0,
                 ownershipShare: entry.effectiveShare,
               });
             }
@@ -215,7 +220,7 @@ router.patch("/bidders/:id", async (req, res): Promise<void> => {
 
   const [bidder] = await db
     .update(biddersTable)
-    .set(parsed.data)
+    .set({ name: parsed.data.name })
     .where(eq(biddersTable.id, params.data.id))
     .returning();
 

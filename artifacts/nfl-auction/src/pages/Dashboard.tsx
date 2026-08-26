@@ -94,10 +94,16 @@ function AdminPanel({
 // ── Page ──────────────────────────────────────────────────────────────────────
 
 export default function Dashboard() {
-  const { year, setYear } = useSeason();
+  const { year, setYear, selectedCalcutta } = useSeason();
+  const isNflCalcutta = selectedCalcutta?.sport === "NFL";
+  const calcuttaId = isNflCalcutta ? selectedCalcutta.id : undefined;
+  const summaryParams = { season: year, calcuttaId };
   const [location] = useLocation();
   const queryClient = useQueryClient();
-  const { data: summary, isLoading: loadingSummary, refetch } = useGetAuctionSummary({ season: year });
+  const { data: summary, isLoading: loadingSummary, refetch } = useGetAuctionSummary(
+    summaryParams,
+    { query: { enabled: isNflCalcutta, queryKey: getGetAuctionSummaryQueryKey(summaryParams) } },
+  );
   const sourceTarget = parseResultSourceTarget(
     typeof window === "undefined" ? location : window.location.href,
   );
@@ -153,12 +159,12 @@ export default function Dashboard() {
   }
 
   async function runImport() {
-    if (!adminKey) return;
+    if (!adminKey || !calcuttaId) return;
     setImporting(true);
     setImportResult(null);
     try {
       const result = await importDraftOrder(
-        { seasonYear: year },
+        { seasonYear: year, calcuttaId },
         { headers: { Authorization: `Bearer ${adminKey}` } },
       );
       setImportResult({
@@ -166,7 +172,7 @@ export default function Dashboard() {
         msg: `Imported ${result.importedTeams} teams for ${result.seasonYear} from ${result.source}.`,
       });
       await refetch();
-      queryClient.invalidateQueries({ queryKey: getGetAuctionSummaryQueryKey() });
+      queryClient.invalidateQueries({ queryKey: getGetAuctionSummaryQueryKey(summaryParams) });
     } catch (err) {
       setImportResult({
         ok: false,

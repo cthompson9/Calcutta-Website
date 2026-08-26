@@ -8,7 +8,7 @@
     "build": "node ./build.mjs",
     "start": "node --enable-source-maps ./dist/index.mjs",
     "refresh:nfl-standings": "node --import tsx/esm src/jobs/nflStandingsRefresh.ts",
-    "test": "node --import tsx/esm --test src/**/*.test.mjs",
+    "test": "node --import tsx/esm --test --test-concurrency=1 src/**/*.test.mjs",
     "typecheck": "tsc -p tsconfig.json --noEmit"
   },
   "dependencies": {

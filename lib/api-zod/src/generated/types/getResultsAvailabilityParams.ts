@@ -10,6 +10,10 @@ import type { GetResultsAvailabilityBasis } from './getResultsAvailabilityBasis'
 export type GetResultsAvailabilityParams = {
 season: number;
 /**
+ * @nullable
+ */
+calcuttaId?: number | null;
+/**
  * Snapshot basis used to identify recorded reporting periods.
  */
 basis?: GetResultsAvailabilityBasis;

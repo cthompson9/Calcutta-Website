@@ -19,8 +19,13 @@ import { useToast } from "@/hooks/use-toast";
 import { useSeason } from "@/hooks/useSeason";
 
 export default function Bidders() {
-  const { year } = useSeason();
-  const { data: bidders, isLoading } = useGetBidders({ season: year });
+  const { year, selectedCalcutta } = useSeason();
+  const isNflCalcutta = selectedCalcutta?.sport === "NFL";
+  const calcuttaId = isNflCalcutta ? selectedCalcutta.id : undefined;
+  const bidderParams = { season: year, calcuttaId };
+  const { data: bidders, isLoading } = useGetBidders(bidderParams, {
+    query: { enabled: isNflCalcutta, queryKey: getGetBiddersQueryKey(bidderParams) },
+  });
   const [search, setSearch] = useState("");
   
   const [isCreateOpen, setIsCreateOpen] = useState(false);
@@ -50,7 +55,7 @@ export default function Bidders() {
             Review {year} participants and portfolios
           </p>
         </div>
-        <Button data-testid="button-add-bidder" onClick={() => setIsCreateOpen(true)} className="min-h-11 uppercase font-bold tracking-wider font-mono rounded-none">
+        <Button data-testid="button-add-bidder" onClick={() => setIsCreateOpen(true)} disabled={!isNflCalcutta} className="min-h-11 uppercase font-bold tracking-wider font-mono rounded-none">
           <Plus className="w-4 h-4 mr-2" /> Add Bidder
         </Button>
       </header>
@@ -168,6 +173,7 @@ export default function Bidders() {
         open={isCreateOpen} 
         onOpenChange={setIsCreateOpen} 
         seasonYear={year}
+        calcuttaId={calcuttaId}
       />
       {editingBidder && (
         <BidderDialog 
@@ -175,6 +181,7 @@ export default function Bidders() {
           open={!!editingBidder} 
           onOpenChange={(o) => !o && setEditingBidder(null)} 
           seasonYear={year}
+          calcuttaId={calcuttaId}
         />
       )}
     </div>
@@ -186,11 +193,13 @@ function BidderDialog({
   open,
   onOpenChange,
   seasonYear,
+  calcuttaId,
 }: {
   bidder?: BidderSummary;
   open: boolean;
   onOpenChange: (o: boolean) => void;
   seasonYear: number;
+  calcuttaId?: number;
 }) {
   const isEdit = !!bidder;
   const queryClient = useQueryClient();
@@ -206,21 +215,25 @@ function BidderDialog({
 
   const handleSave = () => {
     if (!name.trim()) return;
+    if (!calcuttaId) {
+      toast({ title: "NFL Calcutta required", description: "Bidder portfolio changes are available only for an NFL Calcutta.", variant: "destructive" });
+      return;
+    }
     
     if (isEdit) {
-      updateMut.mutate({ id: bidder.id, data: { name } }, {
+      updateMut.mutate({ id: bidder.id, data: { name, calcuttaId } }, {
         onSuccess: () => {
-          queryClient.invalidateQueries({ queryKey: getGetBiddersQueryKey() });
-          queryClient.invalidateQueries({ queryKey: getGetAuctionSummaryQueryKey() });
+          queryClient.invalidateQueries({ queryKey: getGetBiddersQueryKey({ season: seasonYear, calcuttaId }) });
+          queryClient.invalidateQueries({ queryKey: getGetAuctionSummaryQueryKey({ season: seasonYear, calcuttaId }) });
           onOpenChange(false);
           toast({ title: "Bidder updated" });
         }
       });
     } else {
-      createMut.mutate({ data: { name } }, {
+      createMut.mutate({ data: { name, calcuttaId } }, {
         onSuccess: () => {
-          queryClient.invalidateQueries({ queryKey: getGetBiddersQueryKey() });
-          queryClient.invalidateQueries({ queryKey: getGetAuctionSummaryQueryKey() });
+          queryClient.invalidateQueries({ queryKey: getGetBiddersQueryKey({ season: seasonYear, calcuttaId }) });
+          queryClient.invalidateQueries({ queryKey: getGetAuctionSummaryQueryKey({ season: seasonYear, calcuttaId }) });
           onOpenChange(false);
           reset();
           toast({ title: "Bidder created" });
@@ -239,8 +252,8 @@ function BidderDialog({
 
     deleteMut.mutate({ id: bidder.id }, {
       onSuccess: () => {
-        queryClient.invalidateQueries({ queryKey: getGetBiddersQueryKey() });
-        queryClient.invalidateQueries({ queryKey: getGetAuctionSummaryQueryKey() });
+        queryClient.invalidateQueries({ queryKey: getGetBiddersQueryKey({ season: seasonYear, calcuttaId }) });
+        queryClient.invalidateQueries({ queryKey: getGetAuctionSummaryQueryKey({ season: seasonYear, calcuttaId }) });
         onOpenChange(false);
         toast({ title: "Bidder deleted" });
       }

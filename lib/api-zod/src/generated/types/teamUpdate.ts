@@ -17,6 +17,7 @@ export interface TeamUpdate {
   /** @minimum 0 */
   bidAmount?: number;
   season?: number;
+  calcuttaId?: number;
   /** @minItems 1 */
   owners?: OwnerInput[];
 }

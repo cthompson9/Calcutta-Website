@@ -11,10 +11,14 @@ let seasonsTable;
 let teamsTable;
 let teamResultsTable;
 let teamSeasonAuctionsTable;
+let calcuttasTable;
+let calcuttaEntriesTable;
+let positionsTable;
+let biddersTable;
 let app;
 
 if (DATABASE_URL) {
-  ({ db, seasonsTable, teamsTable, teamResultsTable, teamSeasonAuctionsTable } =
+  ({ db, seasonsTable, teamsTable, teamResultsTable, teamSeasonAuctionsTable, calcuttasTable, calcuttaEntriesTable, positionsTable, biddersTable } =
     await import("@workspace/db"));
   ({ default: app } = await import("../app.ts"));
 }
@@ -40,6 +44,8 @@ describe("team result records", { skip: !DATABASE_URL || !ADMIN_KEY }, () => {
   let seasonId;
   let teamId;
   let legacyTeamId;
+  let canonicalCalcuttaId;
+  let fixtureBidderId;
   let server;
   let baseUrl;
 
@@ -69,6 +75,30 @@ describe("team result records", { skip: !DATABASE_URL || !ADMIN_KEY }, () => {
       seasonId,
       teamId,
       bidAmount: "1000.00",
+    });
+    const [calcutta] = await db.insert(calcuttasTable).values({
+      seasonId,
+      year: seasonYear,
+      name: `${seasonYear} NFL Calcutta`,
+      sport: "NFL",
+      isCanonical: true,
+    }).returning();
+    canonicalCalcuttaId = calcutta.id;
+    const entries = await db.insert(calcuttaEntriesTable).values([
+      { calcuttaId: calcutta.id, teamId },
+      { calcuttaId: calcutta.id, teamId: legacyTeamId },
+    ]).returning();
+    const [bidder] = await db.select({ id: biddersTable.id }).from(biddersTable).limit(1);
+    assert.ok(bidder, "an NFL bidder fixture must exist");
+    fixtureBidderId = bidder.id;
+    const teamEntry = entries.find((entry) => entry.teamId === teamId);
+    assert.ok(teamEntry);
+    await db.insert(positionsTable).values({
+      entryId: teamEntry.id,
+      bidderId: bidder.id,
+      ownershipShare: "1.000000",
+      source: "primary",
+      costBasis: "1000.00",
     });
 
     ({ server, baseUrl } = await startServer(app));
@@ -191,5 +221,60 @@ describe("team result records", { skip: !DATABASE_URL || !ADMIN_KEY }, () => {
       { wins: legacyRow.wins, losses: legacyRow.losses, ties: legacyRow.ties },
       { wins: 7, losses: 9, ties: 1 },
     );
+  });
+
+  test("keeps manual financial results isolated between Calcuttas in one season", async () => {
+    const [alternate] = await db.insert(calcuttasTable).values({
+      seasonId,
+      year: seasonYear,
+      name: `${seasonYear} Alternate NFL Calcutta`,
+      sport: "NFL",
+      isCanonical: false,
+    }).returning();
+    const [alternateEntry] = await db.insert(calcuttaEntriesTable).values({
+      calcuttaId: alternate.id,
+      teamId,
+    }).returning();
+    await db.insert(positionsTable).values({
+      entryId: alternateEntry.id,
+      bidderId: fixtureBidderId,
+      ownershipShare: "1.000000",
+      source: "primary",
+      costBasis: "2000.00",
+    });
+
+    for (const [calcuttaId, realizedReturn, markToMarket] of [
+      [canonicalCalcuttaId, 111, 123],
+      [alternate.id, 222, 234],
+    ]) {
+      const response = await fetch(`${baseUrl}/api/results/upsert`, {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+          Authorization: `Bearer ${ADMIN_KEY}`,
+        },
+        body: JSON.stringify({
+          teamId,
+          seasonYear,
+          calcuttaId,
+          realizedReturn,
+          markToMarket,
+        }),
+      });
+      assert.equal(response.status, 200);
+    }
+
+    const [canonicalResponse, alternateResponse] = await Promise.all([
+      fetch(`${baseUrl}/api/results?season=${seasonYear}&calcuttaId=${canonicalCalcuttaId}`),
+      fetch(`${baseUrl}/api/results?season=${seasonYear}&calcuttaId=${alternate.id}`),
+    ]);
+    assert.equal(canonicalResponse.status, 200);
+    assert.equal(alternateResponse.status, 200);
+    const canonicalRow = (await canonicalResponse.json()).find((row) => row.teamId === teamId);
+    const alternateRow = (await alternateResponse.json()).find((row) => row.teamId === teamId);
+    assert.equal(canonicalRow.realizedReturn, 111);
+    assert.equal(canonicalRow.markToMarket, 123);
+    assert.equal(alternateRow.realizedReturn, 222);
+    assert.equal(alternateRow.markToMarket, 234);
   });
 });

@@ -1,12 +1,14 @@
 import { Router, type IRouter } from "express";
-import { eq, and, ilike, sql } from "drizzle-orm";
+import { eq, and, ilike, inArray, sql } from "drizzle-orm";
 import {
   db,
   teamsTable,
   biddersTable,
-  teamBiddersTable,
+  calcuttaEntriesTable,
+  positionsTable,
+  sportPeriodsTable,
+  teamPeriodSnapshotsTable,
   teamResultsTable,
-  teamSeasonAuctionsTable,
   seasonsTable,
   tradesTable,
   explicitRecordFromStoredValues,
@@ -25,14 +27,14 @@ import {
 } from "../lib/seasonOwnership";
 import { OWNERSHIP_SEASON_LOCK_NAMESPACE } from "../lib/ownershipShares";
 import {
-  hasConfiguredPayoutRules,
+  hasConfiguredPayoutRulesForCalcutta,
   initializeNflWeekZeroSnapshots,
-  loadCalculatedTeamReturns,
-  loadReturnSnapshotPeriods,
+  loadCalculatedTeamReturnsForCalcutta,
   type CalculatedTeamReturns,
 } from "../lib/calcuttaReturns";
 import { LEAGUE_POINT_TOTAL } from "../lib/weekZeroValuation";
-import { loadSeasonConsortiums } from "../lib/consortiumMemberships";
+import { loadCalcuttaConsortiums, loadSeasonConsortiums } from "../lib/consortiumMemberships";
+import { resolveCalcuttaId } from "../lib/calcuttaContext";
 
 const router: IRouter = Router();
 
@@ -50,33 +52,31 @@ async function resolveSeasonId(year: number): Promise<number | null> {
   return rows[0]?.id ?? null;
 }
 
+async function resolveNflCalcutta(
+  seasonId: number,
+  calcuttaId?: number | null,
+): Promise<number | null> {
+  return resolveCalcuttaId(db, { seasonId, calcuttaId });
+}
+
+async function loadCalcuttaTeamIds(calcuttaId: number): Promise<number[]> {
+  const entries = await db
+    .select({ teamId: calcuttaEntriesTable.teamId })
+    .from(calcuttaEntriesTable)
+    .where(eq(calcuttaEntriesTable.calcuttaId, calcuttaId));
+  return entries.map((entry) => entry.teamId);
+}
+
 async function ensureWeekZeroReportingBaseline(
   seasonId: number,
-  year: number,
+  calcuttaId: number,
 ): Promise<void> {
   await db.transaction(async (tx) => {
     await tx.execute(
       sql`select pg_advisory_xact_lock(${OWNERSHIP_SEASON_LOCK_NAMESPACE}, ${seasonId})`,
     );
-    await initializeNflWeekZeroSnapshots(tx, { seasonId, year });
+    await initializeNflWeekZeroSnapshots(tx, { calcuttaId });
   });
-}
-
-async function getSeasonCost(
-  teamId: number,
-  seasonId: number,
-): Promise<number> {
-  const rows = await db
-    .select({ bidAmount: teamSeasonAuctionsTable.bidAmount })
-    .from(teamSeasonAuctionsTable)
-    .where(
-      and(
-        eq(teamSeasonAuctionsTable.teamId, teamId),
-        eq(teamSeasonAuctionsTable.seasonId, seasonId),
-      ),
-    )
-    .limit(1);
-  return parseFloat(rows[0]?.bidAmount ?? "0");
 }
 
 type ResultDisplay = {
@@ -104,6 +104,11 @@ type ResultDisplay = {
   ptsToBreakeven?: number | null;
 };
 
+type EntryEconomics = Pick<
+  typeof calcuttaEntriesTable.$inferSelect,
+  "realizedReturn" | "realizedMultiple" | "netReturn" | "netPctReturn" | "markToMarket"
+>;
+
 function calculatePtsToBreakeven(
   netReturn: number,
   totalPot: number,
@@ -124,6 +129,7 @@ function calculatePtsToBreakeven(
 
 function resultFromCalculatedSnapshots(
   legacy: typeof teamResultsTable.$inferSelect | null,
+  entryEconomics: EntryEconomics | null,
   calculated: CalculatedTeamReturns | undefined,
   cost: number,
   basis: "realized" | "mtm",
@@ -135,12 +141,12 @@ function resultFromCalculatedSnapshots(
     ? {
         ...legacy,
         isProjectedRecord: basis === "mtm",
-        realizedReturn: Number(legacy.realizedReturn),
-        realizedMultiple: cost > 0 ? Number(legacy.realizedReturn) / cost : 0,
-        netReturn: Number(legacy.realizedReturn) - cost,
-        netPctReturn: cost > 0 ? (Number(legacy.realizedReturn) - cost) / cost : 0,
-        markToMarket: Number(legacy.markToMarket),
-        netMtm: Number(legacy.markToMarket) - cost,
+        realizedReturn: Number(entryEconomics?.realizedReturn ?? 0),
+        realizedMultiple: Number(entryEconomics?.realizedMultiple ?? 0),
+        netReturn: Number(entryEconomics?.netReturn ?? 0),
+        netPctReturn: Number(entryEconomics?.netPctReturn ?? 0),
+        markToMarket: Number(entryEconomics?.markToMarket ?? 0),
+        netMtm: Number(entryEconomics?.markToMarket ?? 0) - cost,
         dollarsPerPoint: null,
         ptsToBreakeven: null,
       }
@@ -152,6 +158,8 @@ function resultFromCalculatedSnapshots(
     // snapshot ledger is available. Do not silently replace known returns
     // with a zero just because a rubric was configured early.
     if (legacyDisplay) return legacyDisplay;
+    const realizedReturn = Number(entryEconomics?.realizedReturn ?? 0);
+    const markToMarket = Number(entryEconomics?.markToMarket ?? 0);
     return {
       isProjectedRecord: basis === "mtm",
       wins: 0,
@@ -167,12 +175,12 @@ function resultFromCalculatedSnapshots(
       confRound: false,
       sbBerth: false,
       winSuperBowl: false,
-      realizedReturn: 0,
-      realizedMultiple: 0,
-      netReturn: -cost,
-      netPctReturn: cost > 0 ? -1 : 0,
-      markToMarket: 0,
-      netMtm: -cost,
+      realizedReturn,
+      realizedMultiple: Number(entryEconomics?.realizedMultiple ?? 0),
+      netReturn: Number(entryEconomics?.netReturn ?? realizedReturn - cost),
+      netPctReturn: Number(entryEconomics?.netPctReturn ?? (cost > 0 ? (realizedReturn - cost) / cost : 0)),
+      markToMarket,
+      netMtm: markToMarket - cost,
       dollarsPerPoint: null,
       ptsToBreakeven: null,
     };
@@ -182,9 +190,9 @@ function resultFromCalculatedSnapshots(
   // Realized and MTM coverage are independent. A valid snapshot for the
   // selected view must never zero the other legacy financial field.
   const realizedReturn = calculated.realized?.grossReturn
-    ?? Number(legacy?.realizedReturn ?? 0);
+    ?? Number(entryEconomics?.realizedReturn ?? 0);
   const markToMarket = calculated.mtm?.grossReturn
-    ?? Number(legacy?.markToMarket ?? 0);
+    ?? Number(entryEconomics?.markToMarket ?? 0);
   const netReturn = realizedReturn - cost;
   const netMtm = markToMarket - cost;
   const dollarsPerPoint =
@@ -408,10 +416,11 @@ router.patch("/results/seed", async (req, res): Promise<void> => {
     res.status(401).json({ error: "Unauthorized" });
     return;
   }
-  const { teamId, seasonYear, seed } = req.body as {
+  const { teamId, seasonYear, seed, calcuttaId } = req.body as {
     teamId: number;
     seasonYear: number;
     seed: number | null;
+    calcuttaId?: number;
   };
   if (!teamId || !seasonYear) {
     res.status(400).json({ error: "teamId and seasonYear required" });
@@ -422,17 +431,26 @@ router.patch("/results/seed", async (req, res): Promise<void> => {
     res.status(400).json({ error: `Season ${seasonYear} not found` });
     return;
   }
+  const resolvedCalcuttaId = await resolveNflCalcutta(seasonId, calcuttaId);
+  if (!resolvedCalcuttaId) {
+    res.status(400).json({ error: "Calcutta must be an NFL pool in the requested season." });
+    return;
+  }
   const seedWritten = await db.transaction(async (tx) => {
     await tx.execute(
       sql`select pg_advisory_xact_lock(${OWNERSHIP_SEASON_LOCK_NAMESPACE}, ${seasonId})`,
     );
     const auctionedTeam = await tx
-      .select({ teamId: teamSeasonAuctionsTable.teamId })
-      .from(teamSeasonAuctionsTable)
+      .select({ id: positionsTable.id })
+      .from(calcuttaEntriesTable)
+      .innerJoin(positionsTable, and(
+        eq(positionsTable.entryId, calcuttaEntriesTable.id),
+        eq(positionsTable.source, "primary"),
+      ))
       .where(
         and(
-          eq(teamSeasonAuctionsTable.teamId, teamId),
-          eq(teamSeasonAuctionsTable.seasonId, seasonId),
+          eq(calcuttaEntriesTable.teamId, teamId),
+          eq(calcuttaEntriesTable.calcuttaId, resolvedCalcuttaId),
         ),
       )
       .limit(1);
@@ -462,7 +480,7 @@ router.get("/results", async (req, res): Promise<void> => {
     res.status(400).json({ error: parsed.error.message });
     return;
   }
-  const { season, conference, search, period, basis } = parsed.data;
+  const { season, calcuttaId, conference, search, period, basis } = parsed.data;
   const selectedBasis = basis ?? "realized";
 
   // Unknown season → empty list, never fall back to another season
@@ -471,7 +489,13 @@ router.get("/results", async (req, res): Promise<void> => {
     res.json([]);
     return;
   }
-  await ensureWeekZeroReportingBaseline(seasonId, season);
+  const resolvedCalcuttaId = await resolveNflCalcutta(seasonId, calcuttaId);
+  if (!resolvedCalcuttaId) {
+    res.status(400).json({ error: "Calcutta must be an NFL pool in the requested season." });
+    return;
+  }
+  await ensureWeekZeroReportingBaseline(seasonId, resolvedCalcuttaId);
+  const calcuttaTeamIds = await loadCalcuttaTeamIds(resolvedCalcuttaId);
 
   let teamQuery = db.select().from(teamsTable).$dynamic();
   if (conference)
@@ -490,38 +514,58 @@ router.get("/results", async (req, res): Promise<void> => {
     .from(teamResultsTable)
     .where(eq(teamResultsTable.seasonId, seasonId));
   for (const r of results) resultsMap.set(r.teamId, r);
-  const calculatedResults = await loadCalculatedTeamReturns(seasonId, period);
+  const calculatedResults = await loadCalculatedTeamReturnsForCalcutta(
+    resolvedCalcuttaId,
+    period,
+  );
   // Week 0 is the fixed 150-point opening allocation and can be valued from
   // the default rubric before a commissioner saves custom payout rates.
   const payoutRulesConfigured =
-    period === 0 || await hasConfiguredPayoutRules(seasonId);
+    period === 0 || await hasConfiguredPayoutRulesForCalcutta(resolvedCalcuttaId);
 
-  // Season auction prices
+  // Selected-Calcutta primary position costs
   const auctionRows = await db
     .select({
-      teamId: teamSeasonAuctionsTable.teamId,
-      bidAmount: teamSeasonAuctionsTable.bidAmount,
+      entryId: calcuttaEntriesTable.id,
+      teamId: calcuttaEntriesTable.teamId,
+      costBasis: positionsTable.costBasis,
+      realizedReturn: calcuttaEntriesTable.realizedReturn,
+      realizedMultiple: calcuttaEntriesTable.realizedMultiple,
+      netReturn: calcuttaEntriesTable.netReturn,
+      netPctReturn: calcuttaEntriesTable.netPctReturn,
+      markToMarket: calcuttaEntriesTable.markToMarket,
     })
-    .from(teamSeasonAuctionsTable)
-    .where(eq(teamSeasonAuctionsTable.seasonId, seasonId));
-  const auctionPriceMap = new Map(
-    auctionRows.map((a) => [a.teamId, parseFloat(a.bidAmount)]),
-  );
-  const totalPot = auctionRows.reduce((sum, a) => sum + parseFloat(a.bidAmount), 0);
+    .from(calcuttaEntriesTable)
+    .innerJoin(positionsTable, and(
+      eq(positionsTable.entryId, calcuttaEntriesTable.id),
+      eq(positionsTable.source, "primary"),
+    ))
+    .where(and(
+      eq(calcuttaEntriesTable.calcuttaId, resolvedCalcuttaId),
+      inArray(calcuttaEntriesTable.teamId, calcuttaTeamIds),
+    ));
+  const auctionPriceMap = new Map<number, number>();
+  const entryEconomicsMap = new Map<number, EntryEconomics>();
+  for (const row of auctionRows) {
+    auctionPriceMap.set(row.teamId, (auctionPriceMap.get(row.teamId) ?? 0) + Number(row.costBasis));
+    entryEconomicsMap.set(row.teamId, row);
+  }
+  const totalPot = [...auctionPriceMap.values()].reduce((sum, cost) => sum + cost, 0);
   const realizedCoverageComplete =
-    auctionRows.length > 0 &&
-    auctionRows.every((a) => calculatedResults.get(a.teamId)?.realized != null);
+    auctionPriceMap.size > 0 &&
+    [...auctionPriceMap.keys()].every((teamId) => calculatedResults.get(teamId)?.realized != null);
   const totalRealizedPoints = realizedCoverageComplete
     ? LEAGUE_POINT_TOTAL
     : null;
 
   // Effective ownership (applies approved trades)
-  const ownership = await loadSeasonOwnership(seasonId);
+  const ownership = await loadSeasonOwnership(seasonId, resolvedCalcuttaId);
 
   // Only include teams that have bidders or results for this specific season
   const rows = allTeams
     .filter(
-      (t) => ownership.currentOwnersByTeam.has(t.id) || resultsMap.has(t.id),
+      (t) => calcuttaTeamIds.includes(t.id) &&
+        (ownership.currentOwnersByTeam.has(t.id) || resultsMap.has(t.id)),
     )
     .map((t) => {
       const cost = auctionPriceMap.get(t.id) ?? 0;
@@ -531,6 +575,7 @@ router.get("/results", async (req, res): Promise<void> => {
         t,
         resultFromCalculatedSnapshots(
           resultsMap.get(t.id) ?? null,
+          entryEconomicsMap.get(t.id) ?? null,
           calculatedResults.get(t.id),
           cost,
           selectedBasis,
@@ -556,7 +601,7 @@ router.get("/results/by-owner", async (req, res): Promise<void> => {
     res.status(400).json({ error: parsed.error.message });
     return;
   }
-  const { season, period, basis } = parsed.data;
+  const { season, calcuttaId, period, basis } = parsed.data;
   const selectedBasis = basis ?? "realized";
   const membershipView = req.query.membershipView === "current" ? "current" : "historical";
 
@@ -566,7 +611,13 @@ router.get("/results/by-owner", async (req, res): Promise<void> => {
     res.json([]);
     return;
   }
-  await ensureWeekZeroReportingBaseline(seasonId, season);
+  const resolvedCalcuttaId = await resolveNflCalcutta(seasonId, calcuttaId);
+  if (!resolvedCalcuttaId) {
+    res.status(400).json({ error: "Calcutta must be an NFL pool in the requested season." });
+    return;
+  }
+  await ensureWeekZeroReportingBaseline(seasonId, resolvedCalcuttaId);
+  const calcuttaTeamIds = await loadCalcuttaTeamIds(resolvedCalcuttaId);
 
   const allTeams = await db.select().from(teamsTable);
   const allBidders = await db
@@ -582,32 +633,53 @@ router.get("/results/by-owner", async (req, res): Promise<void> => {
     .from(teamResultsTable)
     .where(eq(teamResultsTable.seasonId, seasonId));
   for (const r of seasonResults) resultsMap.set(r.teamId, r);
-  const calculatedResults = await loadCalculatedTeamReturns(seasonId, period);
+  const calculatedResults = await loadCalculatedTeamReturnsForCalcutta(
+    resolvedCalcuttaId,
+    period,
+  );
   const payoutRulesConfigured =
-    period === 0 || await hasConfiguredPayoutRules(seasonId);
+    period === 0 || await hasConfiguredPayoutRulesForCalcutta(resolvedCalcuttaId);
 
-  // Season auction prices
+  // Selected-Calcutta primary position costs
   const auctionRows = await db
     .select({
-      teamId: teamSeasonAuctionsTable.teamId,
-      bidAmount: teamSeasonAuctionsTable.bidAmount,
+      entryId: calcuttaEntriesTable.id,
+      teamId: calcuttaEntriesTable.teamId,
+      costBasis: positionsTable.costBasis,
+      realizedReturn: calcuttaEntriesTable.realizedReturn,
+      realizedMultiple: calcuttaEntriesTable.realizedMultiple,
+      netReturn: calcuttaEntriesTable.netReturn,
+      netPctReturn: calcuttaEntriesTable.netPctReturn,
+      markToMarket: calcuttaEntriesTable.markToMarket,
     })
-    .from(teamSeasonAuctionsTable)
-    .where(eq(teamSeasonAuctionsTable.seasonId, seasonId));
-  const auctionPriceMap = new Map(
-    auctionRows.map((a) => [a.teamId, parseFloat(a.bidAmount)]),
-  );
-  const totalPot = auctionRows.reduce((sum, a) => sum + parseFloat(a.bidAmount), 0);
+    .from(calcuttaEntriesTable)
+    .innerJoin(positionsTable, and(
+      eq(positionsTable.entryId, calcuttaEntriesTable.id),
+      eq(positionsTable.source, "primary"),
+    ))
+    .where(and(
+      eq(calcuttaEntriesTable.calcuttaId, resolvedCalcuttaId),
+      inArray(calcuttaEntriesTable.teamId, calcuttaTeamIds),
+    ));
+  const auctionPriceMap = new Map<number, number>();
+  const entryEconomicsMap = new Map<number, EntryEconomics>();
+  for (const row of auctionRows) {
+    auctionPriceMap.set(row.teamId, (auctionPriceMap.get(row.teamId) ?? 0) + Number(row.costBasis));
+    entryEconomicsMap.set(row.teamId, row);
+  }
+  const totalPot = [...auctionPriceMap.values()].reduce((sum, cost) => sum + cost, 0);
   const realizedCoverageComplete =
-    auctionRows.length > 0 &&
-    auctionRows.every((a) => calculatedResults.get(a.teamId)?.realized != null);
+    auctionPriceMap.size > 0 &&
+    [...auctionPriceMap.keys()].every((teamId) => calculatedResults.get(teamId)?.realized != null);
   const totalRealizedPoints = realizedCoverageComplete
     ? LEAGUE_POINT_TOTAL
     : null;
 
   // Effective ownership from shared helper
-  const ownership = await loadSeasonOwnership(seasonId);
-  const consortiumByBidder = await loadSeasonConsortiums(seasonId, membershipView);
+  const ownership = await loadSeasonOwnership(seasonId, resolvedCalcuttaId);
+  const consortiumByBidder = calcuttaId == null
+    ? await loadSeasonConsortiums(seasonId, membershipView)
+    : await loadCalcuttaConsortiums(resolvedCalcuttaId, membershipView);
 
   const teamMap = new Map(allTeams.map((t) => [t.id, t]));
   const bidderNameMap = new Map(allBidders.map((b) => [b.id, b.name]));
@@ -667,6 +739,7 @@ router.get("/results/by-owner", async (req, res): Promise<void> => {
       const seasonAuctionPrice = auctionPriceMap.get(teamId) ?? 0;
       const result = resultFromCalculatedSnapshots(
         resultsMap.get(teamId) ?? null,
+        entryEconomicsMap.get(teamId) ?? null,
         calculatedResults.get(teamId),
         seasonAuctionPrice,
         selectedBasis,
@@ -759,11 +832,30 @@ router.get("/results/availability", async (req, res): Promise<void> => {
     res.json({ latestPeriod: null, previousPeriod: null });
     return;
   }
-  await ensureWeekZeroReportingBaseline(seasonId, parsed.data.season);
+  const resolvedCalcuttaId = await resolveNflCalcutta(seasonId, parsed.data.calcuttaId);
+  if (!resolvedCalcuttaId) {
+    res.status(400).json({ error: "Calcutta must be an NFL pool in the requested season." });
+    return;
+  }
+  await ensureWeekZeroReportingBaseline(seasonId, resolvedCalcuttaId);
 
-  const periods = await loadReturnSnapshotPeriods(
-    seasonId,
-    parsed.data.basis ?? "realized",
+  const snapshotRows = await db
+    .select({ sequence: sportPeriodsTable.sequence })
+    .from(calcuttaEntriesTable)
+    .innerJoin(
+      teamPeriodSnapshotsTable,
+      eq(teamPeriodSnapshotsTable.entryId, calcuttaEntriesTable.id),
+    )
+    .innerJoin(
+      sportPeriodsTable,
+      eq(sportPeriodsTable.id, teamPeriodSnapshotsTable.periodId),
+    )
+    .where(and(
+      eq(calcuttaEntriesTable.calcuttaId, resolvedCalcuttaId),
+      eq(teamPeriodSnapshotsTable.basis, parsed.data.basis ?? "realized"),
+    ));
+  const periods = [...new Set(snapshotRows.map((row) => row.sequence))].sort(
+    (a, b) => a - b,
   );
   res.json({
     latestPeriod: periods.at(-1) ?? null,
@@ -861,31 +953,40 @@ router.post("/results/upsert", async (req, res): Promise<void> => {
     res.status(400).json({ error: `Season ${data.seasonYear} not found` });
     return;
   }
+  const resolvedCalcuttaId = await resolveNflCalcutta(seasonId, data.calcuttaId);
+  if (!resolvedCalcuttaId) {
+    res.status(400).json({ error: "Calcutta must be an NFL pool in the requested season." });
+    return;
+  }
 
   const writeOutcome = await db.transaction(async (tx) => {
     await tx.execute(
       sql`select pg_advisory_xact_lock(${OWNERSHIP_SEASON_LOCK_NAMESPACE}, ${seasonId})`,
     );
     const auctionedTeam = await tx
-      .select({ bidAmount: teamSeasonAuctionsTable.bidAmount })
-      .from(teamSeasonAuctionsTable)
-      .where(
-        and(
-          eq(teamSeasonAuctionsTable.teamId, data.teamId),
-          eq(teamSeasonAuctionsTable.seasonId, seasonId),
-        ),
-      )
-      .limit(1);
+      .select({
+        entryId: calcuttaEntriesTable.id,
+        costBasis: positionsTable.costBasis,
+      })
+      .from(calcuttaEntriesTable)
+      .innerJoin(positionsTable, and(
+        eq(positionsTable.entryId, calcuttaEntriesTable.id),
+        eq(positionsTable.source, "primary"),
+      ))
+      .where(and(
+        eq(calcuttaEntriesTable.teamId, data.teamId),
+        eq(calcuttaEntriesTable.calcuttaId, resolvedCalcuttaId),
+      ));
     if (!auctionedTeam[0]) return { kind: "not_auctioned" as const };
 
-    const cost = Number(auctionedTeam[0].bidAmount);
+    const cost = auctionedTeam.reduce((sum, row) => sum + Number(row.costBasis), 0);
     const realizedReturn = data.realizedReturn ?? 0;
     const realizedMultiple =
       data.realizedMultiple ?? (cost > 0 ? realizedReturn / cost : 0);
     const netReturn = data.netReturn ?? realizedReturn - cost;
     const netPctReturn = data.netPctReturn ?? (cost > 0 ? netReturn / cost : 0);
     const markToMarket = data.markToMarket ?? 0;
-    const values = {
+    const objectiveValues = {
       wins: wins.toString(),
       losses,
       ties,
@@ -897,26 +998,34 @@ router.post("/results/upsert", async (req, res): Promise<void> => {
       confRound: data.confRound ?? false,
       sbBerth: data.sbBerth ?? false,
       winSuperBowl: data.winSuperBowl ?? false,
+    };
+    const financialValues = {
       realizedReturn: realizedReturn.toFixed(6),
       realizedMultiple: realizedMultiple.toFixed(7),
       netReturn: netReturn.toFixed(6),
       netPctReturn: netPctReturn.toFixed(7),
       markToMarket: markToMarket.toFixed(6),
     };
+    const [entry] = await tx
+      .update(calcuttaEntriesTable)
+      .set(financialValues)
+      .where(eq(calcuttaEntriesTable.id, auctionedTeam[0].entryId))
+      .returning();
+    if (!entry) throw new Error("Selected Calcutta entry disappeared during result upsert.");
     const [row] = await tx
       .insert(teamResultsTable)
       .values({
         teamId: data.teamId,
         seasonId,
-        ...values,
+        ...objectiveValues,
         startingPoints: (data.startingPoints ?? 150).toString(),
       })
       .onConflictDoUpdate({
         target: [teamResultsTable.teamId, teamResultsTable.seasonId],
-        set: values,
+        set: objectiveValues,
       })
       .returning();
-    return { kind: "saved" as const, row, cost };
+    return { kind: "saved" as const, row, entry, cost };
   });
   if (writeOutcome.kind === "not_auctioned") {
     res.status(400).json({
@@ -924,7 +1033,15 @@ router.post("/results/upsert", async (req, res): Promise<void> => {
     });
     return;
   }
-  const row = writeOutcome.row;
+  const row = {
+    ...writeOutcome.row,
+    ...writeOutcome.entry,
+    realizedReturn: writeOutcome.entry.realizedReturn ?? "0",
+    realizedMultiple: writeOutcome.entry.realizedMultiple ?? "0",
+    netReturn: writeOutcome.entry.netReturn ?? "0",
+    netPctReturn: writeOutcome.entry.netPctReturn ?? "0",
+    markToMarket: writeOutcome.entry.markToMarket ?? "0",
+  };
   const cost = writeOutcome.cost;
 
   // Build response in TeamResultRow shape
@@ -939,7 +1056,7 @@ router.post("/results/upsert", async (req, res): Promise<void> => {
     return;
   }
 
-  const ownership = await loadSeasonOwnership(seasonId);
+  const ownership = await loadSeasonOwnership(seasonId, resolvedCalcuttaId);
   const currentOwners = ownership.currentOwnersByTeam.get(data.teamId) ?? [];
   const ownershipSegments =
     ownership.ownershipSegmentsByTeam.get(data.teamId) ?? [];

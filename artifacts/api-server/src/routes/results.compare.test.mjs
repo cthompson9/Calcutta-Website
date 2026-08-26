@@ -14,15 +14,14 @@ let biddersTable;
 let consortiaTable;
 let consortiumMembershipsTable;
 let teamSeasonAuctionsTable;
-let teamBiddersTable;
 let teamResultsTable;
 let payoutRulesTable;
 let calcuttasTable;
 let calcuttaEntriesTable;
 let sportPeriodsTable;
 let teamPeriodSnapshotsTable;
+let positionsTable;
 let app;
-let syncSeasonPositions;
 let runDatabaseMigrations;
 
 if (DATABASE_URL) {
@@ -34,14 +33,13 @@ if (DATABASE_URL) {
     consortiaTable,
     consortiumMembershipsTable,
     teamSeasonAuctionsTable,
-    teamBiddersTable,
     teamResultsTable,
     payoutRulesTable,
     calcuttasTable,
     calcuttaEntriesTable,
     sportPeriodsTable,
     teamPeriodSnapshotsTable,
-    syncSeasonPositions,
+    positionsTable,
     runDatabaseMigrations,
   } = await import("@workspace/db"));
   ({ default: app } = await import("../app.ts"));
@@ -90,6 +88,8 @@ describe("cross-Calcutta return comparison", { skip: !DATABASE_URL }, () => {
   let historicConsortium;
   let currentConsortium;
   let teamId;
+  let teamName;
+  let secondaryCalcuttaId;
 
   before(async () => {
     await runDatabaseMigrations();
@@ -133,9 +133,10 @@ describe("cross-Calcutta return comparison", { skip: !DATABASE_URL }, () => {
         fromDate: `${years[1]}-01-01`,
       },
     ]);
-    const [team] = await db.select({ id: teamsTable.id }).from(teamsTable).limit(1);
+    const [team] = await db.select({ id: teamsTable.id, name: teamsTable.name }).from(teamsTable).limit(1);
     assert.ok(team, "an NFL team fixture must exist");
     teamId = team.id;
+    teamName = team.name;
     for (const year of years) {
       const seasonId = seasonIds.get(year);
       await db.insert(teamSeasonAuctionsTable).values({
@@ -143,20 +144,57 @@ describe("cross-Calcutta return comparison", { skip: !DATABASE_URL }, () => {
         teamId: team.id,
         bidAmount: "100.00",
       });
-      await db.insert(teamBiddersTable).values({
+      const [calcutta] = await db.insert(calcuttasTable).values({
         seasonId,
+        year,
+        name: `${year} NFL Calcutta`,
+        sport: "NFL",
+        isCanonical: true,
+        asOfDate: `${year}-08-01`,
+      }).returning();
+      const [entry] = await db.insert(calcuttaEntriesTable).values({
+        calcuttaId: calcutta.id,
         teamId: team.id,
+        realizedReturn: "125.00",
+        markToMarket: "140.00",
+      }).returning();
+      await db.insert(positionsTable).values({
+        entryId: entry.id,
         bidderId: bidder.id,
-        ownershipShare: "1.0000",
+        ownershipShare: "1.000000",
+        source: "primary",
+        costBasis: "100.00",
       });
       await db.insert(teamResultsTable).values({
         seasonId,
         teamId: team.id,
-        realizedReturn: "125.00",
-        markToMarket: "140.00",
+        realizedReturn: "999.00",
+        markToMarket: "888.00",
       });
-      await syncSeasonPositions(db, seasonId);
     }
+
+    const [secondaryCalcutta] = await db.insert(calcuttasTable).values({
+      seasonId: seasonIds.get(years[0]),
+      year: years[0],
+      name: `${years[0]} secondary NFL Calcutta ${fixtureId}`,
+      sport: "NFL",
+      isCanonical: false,
+      asOfDate: `${years[0]}-08-02`,
+    }).returning();
+    secondaryCalcuttaId = secondaryCalcutta.id;
+    const [secondaryEntry] = await db.insert(calcuttaEntriesTable).values({
+      calcuttaId: secondaryCalcuttaId,
+      teamId,
+      realizedReturn: "333.00",
+      markToMarket: "444.00",
+    }).returning();
+    await db.insert(positionsTable).values({
+      entryId: secondaryEntry.id,
+      bidderId: bidder.id,
+      ownershipShare: "1.000000",
+      source: "primary",
+      costBasis: "200.00",
+    });
 
     const [newerCalcutta] = await db
       .select({ id: calcuttasTable.id })
@@ -219,6 +257,44 @@ describe("cross-Calcutta return comparison", { skip: !DATABASE_URL }, () => {
     assert.ok(!currentRows.some((row) => row.name === historicConsortium.name));
   });
 
+  test("legacy MCP HTTP endpoints isolate selected-Calcutta financials and preserve canonical fallback", async () => {
+    const query = (path, params) => fetch(
+      `${baseUrl}/api${path}?${new URLSearchParams(params)}`,
+    ).then(async (response) => {
+      assert.equal(response.status, 200);
+      return (await response.json()).value;
+    });
+
+    assert.equal(await query("/mcp/get_team_return", {
+      team: teamName,
+      season: String(years[0]),
+    }), 125);
+    assert.equal(await query("/mcp/get_team_return", {
+      team: teamName,
+      season: String(years[0]),
+      calcuttaId: String(secondaryCalcuttaId),
+    }), 333);
+    assert.equal(await query("/mcp/get_team_mtm", {
+      team: teamName,
+      season: String(years[0]),
+    }), 40);
+    assert.equal(await query("/mcp/get_team_mtm", {
+      team: teamName,
+      season: String(years[0]),
+      calcuttaId: String(secondaryCalcuttaId),
+    }), 244);
+    assert.equal(await query("/mcp/get_owner_return", {
+      owner: bidder.name,
+      season: String(years[0]),
+      calcuttaId: String(secondaryCalcuttaId),
+    }), 333);
+    assert.equal(await query("/mcp/get_owner_mtm", {
+      owner: bidder.name,
+      season: String(years[0]),
+      calcuttaId: String(secondaryCalcuttaId),
+    }), 244);
+  });
+
   test("flags a stale selected-basis snapshot instead of mixing periods", async () => {
     const [freshTeam] = await db
       .select({ id: teamsTable.id })
@@ -232,26 +308,29 @@ describe("cross-Calcutta return comparison", { skip: !DATABASE_URL }, () => {
       teamId: freshTeam.id,
       bidAmount: "100.00",
     });
-    await db.insert(teamBiddersTable).values({
-      seasonId: newerSeasonId,
-      teamId: freshTeam.id,
-      bidderId: bidder.id,
-      ownershipShare: "1.0000",
-    });
-    await syncSeasonPositions(db, newerSeasonId);
-
     const [newerCalcutta] = await db
       .select({ id: calcuttasTable.id })
       .from(calcuttasTable)
       .where(eq(calcuttasTable.seasonId, newerSeasonId));
+    const [freshEntry] = await db.insert(calcuttaEntriesTable).values({
+      calcuttaId: newerCalcutta.id,
+      teamId: freshTeam.id,
+    }).returning();
+    await db.insert(positionsTable).values({
+      entryId: freshEntry.id,
+      bidderId: bidder.id,
+      ownershipShare: "1.000000",
+      source: "primary",
+      costBasis: "100.00",
+    });
     const entries = await db
       .select({ id: calcuttaEntriesTable.id, teamId: calcuttaEntriesTable.teamId })
       .from(calcuttaEntriesTable)
       .where(eq(calcuttaEntriesTable.calcuttaId, newerCalcutta.id));
     const staleEntry = entries.find((entry) => entry.teamId === teamId);
-    const freshEntry = entries.find((entry) => entry.teamId === freshTeam.id);
+    const freshSnapshotEntry = entries.find((entry) => entry.teamId === freshTeam.id);
     assert.ok(staleEntry);
-    assert.ok(freshEntry);
+    assert.ok(freshSnapshotEntry);
 
     await ensureNflSportPeriods(db);
     const periods = await db
@@ -261,7 +340,7 @@ describe("cross-Calcutta return comparison", { skip: !DATABASE_URL }, () => {
     const periodId = new Map(periods.map((period) => [period.sequence, period.id]));
     await db.insert(teamPeriodSnapshotsTable).values([
       { entryId: staleEntry.id, periodId: periodId.get(1), basis: "realized", wins: "1" },
-      { entryId: freshEntry.id, periodId: periodId.get(2), basis: "realized", wins: "2" },
+      { entryId: freshSnapshotEntry.id, periodId: periodId.get(2), basis: "realized", wins: "2" },
     ]);
 
     const response = await fetch(
@@ -320,6 +399,25 @@ describe("cross-Calcutta return comparison", { skip: !DATABASE_URL }, () => {
     const comparison = JSON.parse(mcpText(response));
     assert.equal(comparison.groupBy, "bidder");
     assert.equal(comparison.calcuttas.length, 2);
+
+    const selectedTeamReturn = await mcpRequest(baseUrl, 20, "tools/call", {
+      name: "get_team_return",
+      arguments: {
+        team: teamName,
+        season: years[0],
+        calcuttaId: secondaryCalcuttaId,
+      },
+    });
+    assert.equal(mcpText(selectedTeamReturn), "333");
+    const selectedOwnerMtm = await mcpRequest(baseUrl, 21, "tools/call", {
+      name: "get_owner_mtm",
+      arguments: {
+        owner: bidder.name,
+        season: years[0],
+        calcuttaId: secondaryCalcuttaId,
+      },
+    });
+    assert.equal(mcpText(selectedOwnerMtm), "244");
 
     const absentYear = years[1] + 1;
     const [absentSeason] = await db

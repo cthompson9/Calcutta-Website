@@ -27,12 +27,12 @@ const ADMIN_KEY = process.env.ADMIN_API_KEY;
 const canRun = Boolean(DATABASE_URL && ADMIN_KEY);
 
 // Deferred imports — must not execute when DATABASE_URL is absent (lib/db throws)
-let db, mtmSnapshotsTable, seasonsTable, teamsTable, teamSeasonAuctionsTable;
+let db, mtmSnapshotsTable, seasonsTable, teamsTable, teamSeasonAuctionsTable, calcuttasTable, calcuttaEntriesTable, positionsTable, biddersTable;
 let app;
 let WEEK_ZERO_SNAPSHOT_KEY;
 
 if (canRun) {
-  ({ db, mtmSnapshotsTable, seasonsTable, teamsTable, teamSeasonAuctionsTable } =
+  ({ db, mtmSnapshotsTable, seasonsTable, teamsTable, teamSeasonAuctionsTable, calcuttasTable, calcuttaEntriesTable, positionsTable, biddersTable } =
     await import("@workspace/db"));
   ({ default: app } = await import("../app.ts"));
   ({ WEEK_ZERO_SNAPSHOT_KEY } = await import("../lib/weekZeroValuation.ts"));
@@ -126,6 +126,9 @@ describe(
     // Shared state created in before() and cleaned up in after()
     let testSeasonId;     // ID of the disposable year-9999 test season
     let testTeamIds;      // All 32 team IDs (shared teams table, not season-specific)
+    let testCalcuttaId;
+    let entryIdByTeam;
+    let testBidderId;
     let server, baseUrl;
     let realFetch;
 
@@ -169,6 +172,50 @@ describe(
           })),
         )
         .onConflictDoNothing();
+      const [calcutta] = await db
+        .insert(calcuttasTable)
+        .values({
+          seasonId: testSeasonId,
+          year: 9999,
+          name: "9999 NFL Calcutta",
+          sport: "NFL",
+          isCanonical: true,
+        })
+        .onConflictDoUpdate({
+          target: calcuttasTable.name,
+          set: { seasonId: testSeasonId, isCanonical: true },
+        })
+        .returning();
+      testCalcuttaId = calcutta.id;
+      const entries = await db
+        .insert(calcuttaEntriesTable)
+        .values(testTeamIds.map((teamId) => ({ calcuttaId: calcutta.id, teamId })))
+        .onConflictDoUpdate({
+          target: [calcuttaEntriesTable.calcuttaId, calcuttaEntriesTable.teamId],
+          set: { calcuttaId: calcutta.id },
+        })
+        .returning();
+      entryIdByTeam = new Map(entries.map((entry) => [entry.teamId, entry.id]));
+      const [bidder] = await db
+        .insert(biddersTable)
+        .values({ name: "MTM integration fixture bidder 9999" })
+        .onConflictDoUpdate({
+          target: biddersTable.name,
+          set: { name: "MTM integration fixture bidder 9999" },
+        })
+        .returning();
+      testBidderId = bidder.id;
+      await db.delete(positionsTable).where(inArray(
+        positionsTable.entryId,
+        entries.map((entry) => entry.id),
+      ));
+      await db.insert(positionsTable).values(entries.map((entry) => ({
+        entryId: entry.id,
+        bidderId: bidder.id,
+        ownershipShare: "1",
+        source: "primary",
+        costBasis: "1500",
+      })));
 
       ({ server, baseUrl } = await startServer(app));
       realFetch = globalThis.fetch;
@@ -189,11 +236,12 @@ describe(
       await db
         .delete(seasonsTable)
         .where(eq(seasonsTable.id, testSeasonId));
+      await db.delete(biddersTable).where(eq(biddersTable.id, testBidderId));
     });
 
     // ── Shared request helpers ─────────────────────────────────────────────
 
-    function postManualMtm({ teamId, snapshotDate, mtmValue = 42 }) {
+    function postManualMtm({ teamId, snapshotDate, mtmValue = 42, calcuttaId }) {
       return fetch(`${baseUrl}/api/mtm`, {
         method: "POST",
         headers: {
@@ -205,18 +253,23 @@ describe(
           teamId,
           snapshotDate,
           mtmValue,
+          ...(calcuttaId == null ? {} : { calcuttaId }),
         }),
       });
     }
 
-    function postWeekZeroCapture({ snapshotDate }) {
+    function postWeekZeroCapture({ snapshotDate, calcuttaId }) {
       return fetch(`${baseUrl}/api/mtm/week-zero/capture`, {
         method: "POST",
         headers: {
           "Content-Type": "application/json",
           Authorization: `Bearer ${ADMIN_KEY}`,
         },
-        body: JSON.stringify({ seasonYear: 9999, snapshotDate }),
+        body: JSON.stringify({
+          seasonYear: 9999,
+          snapshotDate,
+          ...(calcuttaId == null ? {} : { calcuttaId }),
+        }),
       });
     }
 
@@ -225,6 +278,7 @@ describe(
       const [row] = await db
         .insert(mtmSnapshotsTable)
         .values({
+          entryId: entryIdByTeam.get(testTeamIds[0]),
           teamId: testTeamIds[0],
           seasonId: testSeasonId,
           weekNum: 0,
@@ -360,6 +414,91 @@ describe(
           globalThis.fetch = realFetch;
           const leaked = await snapshotsAtDate(DATE);
           await deleteSnapshotsByIds(leaked.map((row) => row.id));
+        }
+      },
+    );
+
+    test(
+      "two Calcuttas in one season keep manual values and Week 0 captures entry-scoped",
+      async () => {
+        const MANUAL_DATE = "9999-09-06";
+        const WEEK_ZERO_DATE = "9999-09-07";
+        const [secondCalcutta] = await db.insert(calcuttasTable).values({
+          seasonId: testSeasonId,
+          year: 9999,
+          name: "9999 alternate NFL Calcutta",
+          sport: "NFL",
+          isCanonical: false,
+        }).returning();
+        const secondEntries = await db.insert(calcuttaEntriesTable)
+          .values(testTeamIds.map((teamId) => ({
+            calcuttaId: secondCalcutta.id,
+            teamId,
+          })))
+          .returning();
+        await db.insert(positionsTable).values(secondEntries.map((entry) => ({
+          entryId: entry.id,
+          bidderId: testBidderId,
+          ownershipShare: "1",
+          source: "primary",
+          costBasis: "1000",
+        })));
+
+        globalThis.fetch = makeKalshiMock(realFetch);
+        try {
+          const [canonicalManual, alternateManual] = await Promise.all([
+            postManualMtm({
+              calcuttaId: testCalcuttaId,
+              teamId: testTeamIds[0],
+              snapshotDate: MANUAL_DATE,
+              mtmValue: 111,
+            }),
+            postManualMtm({
+              calcuttaId: secondCalcutta.id,
+              teamId: testTeamIds[0],
+              snapshotDate: MANUAL_DATE,
+              mtmValue: 222,
+            }),
+          ]);
+          assert.equal(canonicalManual.status, 200);
+          assert.equal(alternateManual.status, 200);
+          const manualRows = await snapshotsAtDate(MANUAL_DATE);
+          assert.equal(manualRows.length, 2);
+          assert.deepEqual(
+            manualRows.map((row) => Number(row.mtmValue)).sort((a, b) => a - b),
+            [111, 222],
+          );
+
+          const firstCapture = await postWeekZeroCapture({
+            calcuttaId: testCalcuttaId,
+            snapshotDate: WEEK_ZERO_DATE,
+          });
+          assert.equal(firstCapture.status, 200);
+          const canonicalBefore = await snapshotsAtDate(WEEK_ZERO_DATE);
+          assert.equal(canonicalBefore.length, 32);
+          const canonicalIds = new Set(canonicalBefore.map((row) => row.id));
+
+          const secondCapture = await postWeekZeroCapture({
+            calcuttaId: secondCalcutta.id,
+            snapshotDate: WEEK_ZERO_DATE,
+          });
+          assert.equal(secondCapture.status, 200);
+          const combined = await snapshotsAtDate(WEEK_ZERO_DATE);
+          assert.equal(combined.length, 64);
+          const combinedIds = new Set(combined.map((row) => row.id));
+          assert.ok(
+            canonicalBefore.every(
+              (row) => canonicalIds.has(row.id) && combinedIds.has(row.id),
+            ),
+            "the alternate capture must not replace canonical snapshot identities",
+          );
+        } finally {
+          globalThis.fetch = realFetch;
+          await db.delete(mtmSnapshotsTable).where(and(
+            eq(mtmSnapshotsTable.seasonId, testSeasonId),
+            inArray(mtmSnapshotsTable.snapshotDate, [MANUAL_DATE, WEEK_ZERO_DATE]),
+          ));
+          await db.delete(calcuttasTable).where(eq(calcuttasTable.id, secondCalcutta.id));
         }
       },
     );

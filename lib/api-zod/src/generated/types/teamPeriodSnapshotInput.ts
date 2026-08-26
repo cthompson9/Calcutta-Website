@@ -11,6 +11,7 @@ import type { TeamPeriodSnapshotInputPlayoffStatus } from './teamPeriodSnapshotI
 export interface TeamPeriodSnapshotInput {
   teamId: number;
   seasonYear: number;
+  calcuttaId?: number;
   /**
      * @minimum 0
      * @maximum 22

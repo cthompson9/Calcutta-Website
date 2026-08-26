@@ -4,12 +4,11 @@ import {
   db,
   teamsTable,
   biddersTable,
-  teamBiddersTable,
-  teamSeasonAuctionsTable,
   seasonsTable,
   tradesTable,
   ownershipAdjustmentsTable,
-  syncSeasonPositions,
+  positionsTable,
+  calcuttaEntriesTable,
 } from "@workspace/db";
 import {
   GetTeamsQueryParams,
@@ -24,6 +23,7 @@ import {
   OWNERSHIP_SEASON_LOCK_NAMESPACE,
   validatePrimaryOwnership,
 } from "../lib/ownershipShares";
+import { getOrCreateCalcuttaEntry, resolveCalcuttaId } from "../lib/calcuttaContext";
 
 const router: IRouter = Router();
 
@@ -51,22 +51,18 @@ async function resolveSeasonId(year: number): Promise<number | null> {
   return rows[0]?.id ?? null;
 }
 
-async function getSeasonBidAmount(teamId: number, seasonId: number): Promise<number> {
-  const rows = await db
-    .select({ bidAmount: teamSeasonAuctionsTable.bidAmount })
-    .from(teamSeasonAuctionsTable)
-    .where(
-      and(
-        eq(teamSeasonAuctionsTable.teamId, teamId),
-        eq(teamSeasonAuctionsTable.seasonId, seasonId),
-      ),
-    )
-    .limit(1);
-  return parseFloat(rows[0]?.bidAmount ?? "0");
+function primaryCostByTeam(ownership: Awaited<ReturnType<typeof loadSeasonOwnership>>) {
+  const costs = new Map<number, number>();
+  for (const teamMap of ownership.byBidder.values()) {
+    for (const [teamId, entry] of teamMap) {
+      costs.set(teamId, (costs.get(teamId) ?? 0) + entry.primaryCostBasis);
+    }
+  }
+  return costs;
 }
 
 /** Fetch a single team with effective owners for the given season. */
-async function fetchTeamWithOwners(teamId: number, seasonId: number) {
+async function fetchTeamWithOwners(teamId: number, seasonId: number, calcuttaId?: number) {
   const team = await db
     .select()
     .from(teamsTable)
@@ -74,8 +70,19 @@ async function fetchTeamWithOwners(teamId: number, seasonId: number) {
     .limit(1);
   if (!team[0]) return null;
 
-  const ownership = await loadSeasonOwnership(seasonId);
-  const bidAmount = await getSeasonBidAmount(teamId, seasonId);
+  const selectedCalcuttaId = calcuttaId ?? await resolveCalcuttaId(db, { seasonId });
+  if (!selectedCalcuttaId) return null;
+  const entry = await db
+    .select({ id: calcuttaEntriesTable.id })
+    .from(calcuttaEntriesTable)
+    .where(and(
+      eq(calcuttaEntriesTable.calcuttaId, selectedCalcuttaId),
+      eq(calcuttaEntriesTable.teamId, teamId),
+    ))
+    .limit(1);
+  if (!entry[0]) return null;
+  const ownership = await loadSeasonOwnership(seasonId, selectedCalcuttaId);
+  const bidAmount = primaryCostByTeam(ownership).get(teamId) ?? 0;
 
   const currentOwners = ownership.currentOwnersByTeam.get(teamId) ?? [];
 
@@ -99,7 +106,8 @@ router.get("/teams", async (req, res): Promise<void> => {
     res.status(400).json({ error: parsed.error.message });
     return;
   }
-  const { conference, division, search, bidderId, season: seasonYear } = parsed.data;
+  const { conference, division, search, bidderId, season: seasonYear } =
+    parsed.data as typeof parsed.data & { calcuttaId?: number };
 
   // Resolve season
   let seasonId: number | null = null;
@@ -113,9 +121,17 @@ router.get("/teams", async (req, res): Promise<void> => {
     seasonId = resolved;
   }
 
-  // Build base team query.
-  // When a season is provided, join team_season_auctions to filter to auctioned teams.
-  // Without season: no filter, return all teams.
+  // A team belongs to the selected Calcutta only when it has a ledger entry.
+  const ownershipSeasonId = seasonId ?? (await getActiveSeasonId());
+  const calcuttaId = await resolveCalcuttaId(db, {
+    seasonId: ownershipSeasonId,
+    calcuttaId: (parsed.data as typeof parsed.data & { calcuttaId?: number }).calcuttaId,
+  });
+  if (!calcuttaId) {
+    res.json([]);
+    return;
+  }
+
   let baseQuery = db
     .selectDistinct({
       id: teamsTable.id,
@@ -126,16 +142,13 @@ router.get("/teams", async (req, res): Promise<void> => {
     .from(teamsTable)
     .$dynamic();
 
-  if (seasonId != null) {
-    // Use team_season_auctions presence — a team is "in the season" if it was auctioned
-    baseQuery = baseQuery.innerJoin(
-      teamSeasonAuctionsTable,
-      and(
-        eq(teamSeasonAuctionsTable.teamId, teamsTable.id),
-        eq(teamSeasonAuctionsTable.seasonId, seasonId),
-      ),
-    );
-  }
+  baseQuery = baseQuery.innerJoin(
+    calcuttaEntriesTable,
+    and(
+      eq(calcuttaEntriesTable.teamId, teamsTable.id),
+      eq(calcuttaEntriesTable.calcuttaId, calcuttaId),
+    ),
+  );
 
   const conditions = [];
   if (conference) conditions.push(eq(teamsTable.conference, conference));
@@ -152,9 +165,7 @@ router.get("/teams", async (req, res): Promise<void> => {
     return;
   }
 
-  // Determine effective season for ownership lookups
-  const ownershipSeasonId = seasonId ?? (await getActiveSeasonId());
-  const ownership = await loadSeasonOwnership(ownershipSeasonId);
+  const ownership = await loadSeasonOwnership(ownershipSeasonId, calcuttaId);
 
   // If bidderId filter is set, apply it using effective ownership
   if (bidderId != null) {
@@ -172,29 +183,14 @@ router.get("/teams", async (req, res): Promise<void> => {
     }
   }
 
-  const teamIds = teams.map((t) => t.id);
-
-  // Fetch season auction prices
-  const auctionRows = await db
-    .select({
-      teamId: teamSeasonAuctionsTable.teamId,
-      bidAmount: teamSeasonAuctionsTable.bidAmount,
-    })
-    .from(teamSeasonAuctionsTable)
-    .where(
-      and(
-        sql`${teamSeasonAuctionsTable.teamId} = ANY(ARRAY[${sql.join(teamIds.map((id) => sql`${id}`), sql`, `)}]::int[])`,
-        eq(teamSeasonAuctionsTable.seasonId, ownershipSeasonId),
-      ),
-    );
-  const auctionPriceMap = new Map(auctionRows.map((a) => [a.teamId, parseFloat(a.bidAmount)]));
+  const primaryCosts = primaryCostByTeam(ownership);
 
   const result = teams.map((t) => ({
     id: t.id,
     name: t.name,
     conference: t.conference,
     division: t.division,
-    bidAmount: auctionPriceMap.get(t.id) ?? 0,
+    bidAmount: primaryCosts.get(t.id) ?? 0,
     owners: (ownership.currentOwnersByTeam.get(t.id) ?? []).map((o) => ({
       bidderId: o.bidderId,
       bidderName: o.bidderName,
@@ -216,7 +212,8 @@ router.post("/teams", async (req, res): Promise<void> => {
     return;
   }
 
-  const { name, conference, division, bidAmount, owners, season: seasonYear } = parsed.data;
+  const { name, conference, division, bidAmount, owners, season: seasonYear } =
+    parsed.data as typeof parsed.data & { calcuttaId?: number };
 
   const split = validatePrimaryOwnership(
     owners.map((owner) => ({
@@ -245,6 +242,11 @@ router.post("/teams", async (req, res): Promise<void> => {
     await tx.execute(
       sql`select pg_advisory_xact_lock(${OWNERSHIP_SEASON_LOCK_NAMESPACE}, ${seasonId})`,
     );
+    const calcuttaId = await resolveCalcuttaId(tx, {
+      seasonId,
+      calcuttaId: (parsed.data as typeof parsed.data & { calcuttaId?: number }).calcuttaId,
+    });
+    if (!calcuttaId) return { kind: "calcutta_not_found" as const };
     const matchedBidders = await tx
       .select({ id: biddersTable.id })
       .from(biddersTable)
@@ -257,17 +259,14 @@ router.post("/teams", async (req, res): Promise<void> => {
       .insert(teamsTable)
       .values({ name, conference, division })
       .returning({ id: teamsTable.id });
-    await tx.insert(teamSeasonAuctionsTable).values({
-      teamId: team.id,
-      seasonId,
-      bidAmount: String(bidAmount),
-    });
-    await tx.insert(teamBiddersTable).values(
+    const entryId = await getOrCreateCalcuttaEntry(tx, calcuttaId, team.id);
+    await tx.insert(positionsTable).values(
       split.owners.map((owner) => ({
-        teamId: team.id,
+        entryId,
         bidderId: owner.bidderId,
-        seasonId,
-        ownershipShare: String(owner.share),
+        ownershipShare: owner.share.toFixed(6),
+        source: "primary",
+        costBasis: (bidAmount * owner.share).toFixed(2),
       })),
     );
     await tx.insert(ownershipAdjustmentsTable).values({
@@ -283,16 +282,19 @@ router.post("/teams", async (req, res): Promise<void> => {
         })),
       },
     });
-    await syncSeasonPositions(tx, seasonId);
-    return { kind: "created" as const, teamId: team.id };
+    return { kind: "created" as const, teamId: team.id, calcuttaId };
   });
 
   if (outcome.kind === "unknown_owner") {
     res.status(400).json({ error: "Every primary owner must be an existing bidder." });
     return;
   }
+  if (outcome.kind === "calcutta_not_found") {
+    res.status(400).json({ error: "Calcutta not found for this season." });
+    return;
+  }
 
-  const full = await fetchTeamWithOwners(outcome.teamId, seasonId);
+  const full = await fetchTeamWithOwners(outcome.teamId, seasonId, outcome.calcuttaId);
   res.status(201).json(full);
 });
 
@@ -329,7 +331,8 @@ router.patch("/teams/:id", async (req, res): Promise<void> => {
     return;
   }
 
-  const { owners, bidAmount, season: seasonYear, ...rest } = parsed.data;
+  const updateData = parsed.data as typeof parsed.data & { calcuttaId?: number };
+  const { owners, bidAmount, season: seasonYear, calcuttaId: requestedCalcuttaId, ...rest } = updateData;
   const split =
     owners === undefined
       ? null
@@ -360,6 +363,9 @@ router.patch("/teams/:id", async (req, res): Promise<void> => {
     await tx.execute(
       sql`select pg_advisory_xact_lock(${OWNERSHIP_SEASON_LOCK_NAMESPACE}, ${seasonId})`,
     );
+    const calcuttaId = await resolveCalcuttaId(tx, { seasonId, calcuttaId: requestedCalcuttaId });
+    if (!calcuttaId) return { kind: "calcutta_not_found" as const };
+    const entryId = await getOrCreateCalcuttaEntry(tx, calcuttaId, params.data.id);
     const existingTeam = await tx
       .select({ id: teamsTable.id })
       .from(teamsTable)
@@ -378,8 +384,7 @@ router.patch("/teams/:id", async (req, res): Promise<void> => {
           .from(tradesTable)
           .where(
             and(
-              eq(tradesTable.teamId, params.data.id),
-              eq(tradesTable.seasonId, seasonId),
+              eq(tradesTable.entryId, entryId),
               eq(tradesTable.status, "approved"),
             ),
           )
@@ -397,29 +402,43 @@ router.patch("/teams/:id", async (req, res): Promise<void> => {
       await tx.update(teamsTable).set(updates).where(eq(teamsTable.id, params.data.id));
     }
     if (bidAmount !== undefined) {
-      await tx
-        .insert(teamSeasonAuctionsTable)
-        .values({ teamId: params.data.id, seasonId, bidAmount: String(bidAmount) })
-        .onConflictDoUpdate({
-          target: [teamSeasonAuctionsTable.teamId, teamSeasonAuctionsTable.seasonId],
-          set: { bidAmount: String(bidAmount) },
-        });
+      if (!split) {
+        await tx
+          .update(positionsTable)
+          .set({
+            costBasis: sql`${positionsTable.ownershipShare} * ${String(bidAmount)}`,
+          })
+          .where(and(
+            eq(positionsTable.entryId, entryId),
+            eq(positionsTable.source, "primary"),
+          ));
+      }
     }
     if (split) {
-      await tx
-        .delete(teamBiddersTable)
-        .where(
-          and(
-            eq(teamBiddersTable.teamId, params.data.id),
-            eq(teamBiddersTable.seasonId, seasonId),
-          ),
-        );
-      await tx.insert(teamBiddersTable).values(
+      const existingPrimaryRows = await tx
+        .select({ costBasis: positionsTable.costBasis })
+        .from(positionsTable)
+        .where(and(
+          eq(positionsTable.entryId, entryId),
+          eq(positionsTable.source, "primary"),
+        ));
+      if (bidAmount === undefined && existingPrimaryRows.length === 0) {
+        return { kind: "primary_cost_not_found" as const };
+      }
+      const existingBidAmount = bidAmount ?? existingPrimaryRows.reduce(
+        (sum, row) => sum + Number(row.costBasis),
+        0,
+      );
+      await tx.delete(positionsTable).where(
+        and(eq(positionsTable.entryId, entryId), eq(positionsTable.source, "primary")),
+      );
+      await tx.insert(positionsTable).values(
         split.owners.map((owner) => ({
-          teamId: params.data.id,
+          entryId,
           bidderId: owner.bidderId,
-          seasonId,
-          ownershipShare: String(owner.share),
+          ownershipShare: owner.share.toFixed(6),
+          source: "primary",
+          costBasis: (existingBidAmount * owner.share).toFixed(2),
         })),
       );
       await tx.insert(ownershipAdjustmentsTable).values({
@@ -435,10 +454,7 @@ router.patch("/teams/:id", async (req, res): Promise<void> => {
         },
       });
     }
-    if (split || bidAmount !== undefined) {
-      await syncSeasonPositions(tx, seasonId);
-    }
-    return { kind: "updated" as const };
+    return { kind: "updated" as const, calcuttaId };
   });
 
   if (updateResult.kind === "not_found") {
@@ -449,6 +465,10 @@ router.patch("/teams/:id", async (req, res): Promise<void> => {
     res.status(400).json({ error: "Every primary owner must be an existing bidder." });
     return;
   }
+  if (updateResult.kind === "calcutta_not_found") {
+    res.status(400).json({ error: "Calcutta not found for this season." });
+    return;
+  }
   if (updateResult.kind === "approved_trade") {
     res.status(409).json({
       error:
@@ -456,8 +476,15 @@ router.patch("/teams/:id", async (req, res): Promise<void> => {
     });
     return;
   }
+  if (updateResult.kind === "primary_cost_not_found") {
+    res.status(400).json({
+      error:
+        "The selected Calcutta entry has no primary cost basis. Provide bidAmount when creating its primary ownership split.",
+    });
+    return;
+  }
 
-  const full = await fetchTeamWithOwners(params.data.id, seasonId);
+  const full = await fetchTeamWithOwners(params.data.id, seasonId, updateResult.calcuttaId);
   if (!full) {
     res.status(404).json({ error: "Team not found" });
     return;

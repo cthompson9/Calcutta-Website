@@ -4,11 +4,11 @@ import {
   calcuttaEntriesTable,
   db,
   payoutRulesTable,
+  positionsTable,
   seasonsTable,
   sportPeriodsTable,
   teamPeriodSnapshotsTable,
   teamResultsTable,
-  teamSeasonAuctionsTable,
 } from "@workspace/db";
 import { LEAGUE_POINT_TOTAL } from "./weekZeroValuation";
 
@@ -430,7 +430,7 @@ export function calculateNflTeamValues(
   });
 }
 
-type CalcuttaWriter = Pick<typeof db, "insert" | "select">;
+type CalcuttaWriter = Pick<typeof db, "insert" | "select" | "selectDistinct">;
 
 export async function ensureNflSportPeriods(writer: CalcuttaWriter = db): Promise<void> {
   for (const period of NFL_PERIOD_TEMPLATE) {
@@ -465,16 +465,55 @@ export type WeekZeroPointsInitialization =
  */
 export async function initializeNflWeekZeroSnapshots(
   writer: CalcuttaWriter,
-  args: { seasonId: number; year: number },
+  args: { calcuttaId: number },
 ): Promise<WeekZeroPointsInitialization> {
   await ensureNflSportPeriods(writer);
-  const auctionRows = await writer
-    .select({ teamId: teamSeasonAuctionsTable.teamId })
-    .from(teamSeasonAuctionsTable)
-    .where(eq(teamSeasonAuctionsTable.seasonId, args.seasonId));
-  if (auctionRows.length === 0) return { kind: "no_auctioned_teams" };
-
-  const calcutta = await getOrCreateCanonicalCalcutta(writer, args);
+  // A pool's Week 0 ledger belongs exclusively to entries already created in
+  // that pool. In particular, do not infer a canonical pool or manufacture
+  // entries from the season-wide legacy auction table here.
+  const entryRows = await writer
+    .selectDistinct({
+      entryId: calcuttaEntriesTable.id,
+      teamId: calcuttaEntriesTable.teamId,
+    })
+    .from(calcuttaEntriesTable)
+    .innerJoin(
+      positionsTable,
+      and(
+        eq(positionsTable.entryId, calcuttaEntriesTable.id),
+        eq(positionsTable.source, "primary"),
+      ),
+    )
+    .where(eq(calcuttaEntriesTable.calcuttaId, args.calcuttaId));
+  if (entryRows.length === 0) return { kind: "no_auctioned_teams" };
+  // Read primary cost basis from this pool's ownership ledger. Week 0 does not
+  // persist prices, but deriving them here keeps its selected-entry definition
+  // aligned with the return engine and avoids any season-wide auction fallback.
+  const primaryPositions = await writer
+    .select({
+      entryId: positionsTable.entryId,
+      costBasis: positionsTable.costBasis,
+    })
+    .from(positionsTable)
+    .innerJoin(
+      calcuttaEntriesTable,
+      eq(calcuttaEntriesTable.id, positionsTable.entryId),
+    )
+    .where(and(
+      eq(calcuttaEntriesTable.calcuttaId, args.calcuttaId),
+      eq(positionsTable.source, "primary"),
+    ));
+  const auctionPriceByEntry = new Map<number, number>();
+  for (const position of primaryPositions) {
+    auctionPriceByEntry.set(
+      position.entryId,
+      (auctionPriceByEntry.get(position.entryId) ?? 0) + Number(position.costBasis),
+    );
+  }
+  const auctionEntries = entryRows.map((entry) => ({
+    ...entry,
+    auctionPrice: auctionPriceByEntry.get(entry.entryId) ?? 0,
+  }));
   const period = await writer
     .select({ id: sportPeriodsTable.id })
     .from(sportPeriodsTable)
@@ -489,16 +528,12 @@ export async function initializeNflWeekZeroSnapshots(
 
   let realizedSnapshotsWritten = 0;
   let mtmSnapshotsWritten = 0;
-  for (const auction of auctionRows) {
-    const entry = await getOrCreateCalcuttaEntry(writer, {
-      calcuttaId: calcutta.id,
-      teamId: auction.teamId,
-    });
+  for (const entry of auctionEntries) {
     for (const basis of ["realized", "mtm"] as const) {
       const [inserted] = await writer
         .insert(teamPeriodSnapshotsTable)
         .values({
-          entryId: entry.id,
+          entryId: entry.entryId,
           periodId: period[0].id,
           basis,
           wins: "0",
@@ -536,7 +571,7 @@ export async function initializeNflWeekZeroSnapshots(
   const snapshotsWritten = realizedSnapshotsWritten + mtmSnapshotsWritten;
   return {
     kind: "saved",
-    teamCount: auctionRows.length,
+    teamCount: auctionEntries.length,
     realizedSnapshotsWritten,
     mtmSnapshotsWritten,
     snapshotsWritten,
@@ -814,19 +849,50 @@ export async function loadCalculatedTeamReturnsForCalcutta(
     : NFL_PAYOUT_RULES as unknown as RuleValue[];
 
   const calcutta = await db
-    .select({ seasonId: calcuttasTable.seasonId, isComplete: seasonsTable.isComplete })
+    .select({
+      seasonId: calcuttasTable.seasonId,
+      isCanonical: calcuttasTable.isCanonical,
+      isComplete: seasonsTable.isComplete,
+    })
     .from(calcuttasTable)
     .innerJoin(seasonsTable, eq(seasonsTable.id, calcuttasTable.seasonId))
     .where(eq(calcuttasTable.id, calcuttaId))
     .limit(1);
   if (!calcutta[0]) return new Map();
-  const auctionRows = await db
+  const entryRows = await db
     .select({
-      teamId: teamSeasonAuctionsTable.teamId,
-      bidAmount: teamSeasonAuctionsTable.bidAmount,
+      entryId: calcuttaEntriesTable.id,
+      teamId: calcuttaEntriesTable.teamId,
     })
-    .from(teamSeasonAuctionsTable)
-    .where(eq(teamSeasonAuctionsTable.seasonId, calcutta[0].seasonId));
+    .from(calcuttaEntriesTable)
+    .where(eq(calcuttaEntriesTable.calcuttaId, calcuttaId));
+  const primaryPositions = await db
+    .select({
+      entryId: positionsTable.entryId,
+      costBasis: positionsTable.costBasis,
+    })
+    .from(positionsTable)
+    .innerJoin(
+      calcuttaEntriesTable,
+      eq(calcuttaEntriesTable.id, positionsTable.entryId),
+    )
+    .where(and(
+      eq(calcuttaEntriesTable.calcuttaId, calcuttaId),
+      eq(positionsTable.source, "primary"),
+    ));
+  const costsByEntry = new Map<number, number>();
+  for (const position of primaryPositions) {
+    costsByEntry.set(
+      position.entryId,
+      (costsByEntry.get(position.entryId) ?? 0) + Number(position.costBasis),
+    );
+  }
+  const costs = new Map(entryRows.map((entry) => [
+    entry.teamId,
+    costsByEntry.get(entry.entryId) ?? 0,
+  ]));
+  const potSize = [...costsByEntry.values()]
+    .reduce((total, cost) => total + cost, 0);
 
   const where = [
     eq(calcuttaEntriesTable.calcuttaId, calcuttaId),
@@ -881,10 +947,8 @@ export async function loadCalculatedTeamReturnsForCalcutta(
     grouped.set(row.teamId, teamRows);
   }
 
-  const costs = new Map(auctionRows.map((row) => [row.teamId, Number(row.bidAmount)]));
-  const potSize = auctionRows.reduce((total, row) => total + Number(row.bidAmount), 0);
   const result = new Map<number, CalculatedTeamReturns>();
-  for (const team of auctionRows) result.set(team.teamId, { rulesConfigured: true });
+  for (const team of entryRows) result.set(team.teamId, { rulesConfigured: true });
 
   for (const basis of ["realized", "mtm"] as const) {
     const targetSequence = periodSequence ?? Math.max(
@@ -892,9 +956,9 @@ export async function loadCalculatedTeamReturnsForCalcutta(
       ...[...grouped.values()].flatMap((byBasis) => (byBasis.get(basis) ?? []).map((row) => row.sequence)),
     );
     if (targetSequence < 0) continue;
-    const latestByTeam = auctionRows.map((auction) => ({
-      teamId: auction.teamId,
-      snapshot: (grouped.get(auction.teamId)?.get(basis) ?? [])
+    const latestByTeam = entryRows.map((entry) => ({
+      teamId: entry.teamId,
+      snapshot: (grouped.get(entry.teamId)?.get(basis) ?? [])
         .filter((snapshot) => snapshot.sequence === targetSequence)
         .at(-1),
     }));
@@ -928,18 +992,21 @@ export async function loadCalculatedTeamReturnsForCalcutta(
       result.set(value.teamId, calculated);
     }
   }
-  if (enforceHistoricalParity && calcutta[0].isComplete) {
+  // team_results contains only the canonical season-wide legacy economics.
+  // Comparing another pool's snapshots and primary costs against those rows
+  // would incorrectly reject an otherwise complete non-canonical ledger.
+  if (enforceHistoricalParity && calcutta[0].isCanonical && calcutta[0].isComplete) {
     const legacy = await db
       .select({ teamId: teamResultsTable.teamId, realizedReturn: teamResultsTable.realizedReturn })
       .from(teamResultsTable)
       .where(eq(teamResultsTable.seasonId, calcutta[0].seasonId));
     const parity = compareHistoricalPayoutParity(
-      auctionRows.length,
+      entryRows.length,
       legacy.map((row) => ({ teamId: row.teamId, grossReturn: Number(row.realizedReturn) })),
       result,
     );
     if (!parity.isAuthoritative) {
-      return new Map(auctionRows.map((row) => [row.teamId, { rulesConfigured: true }]));
+      return new Map(entryRows.map((row) => [row.teamId, { rulesConfigured: true }]));
     }
   }
   return result;

@@ -89,7 +89,11 @@ test("Week 0 calculation reconciles points, shares, pot, and round totals", () =
   const snapshots = Array.from({ length: 32 }, (_, index) =>
     teamSnapshot(index),
   );
-  const result = calculateWeekZeroValuations(snapshots, 48_300);
+  const result = calculateWeekZeroValuations(
+    snapshots,
+    48_300,
+    new Date("2026-08-19T12:05:00Z"),
+  );
 
   assert.equal(result.valuations.length, 32);
   assert.ok(Math.abs(result.rawPointTotal - 11_420) < 1e-6);
@@ -151,7 +155,11 @@ test("missing and low-quality markets are visible in team status", () => {
     }),
   });
 
-  const result = calculateWeekZeroValuations(snapshots, 10_000);
+  const result = calculateWeekZeroValuations(
+    snapshots,
+    10_000,
+    new Date("2026-08-19T12:05:00Z"),
+  );
   assert.equal(result.valuations[0].marketStatus, "incomplete");
   assert.equal(result.valuations[1].marketStatus, "stale");
   assert.equal(result.statusCounts.incomplete, 1);
@@ -216,17 +224,19 @@ test("recapture rows retain stable Week 0 conflict identities", () => {
   );
   const first = buildWeekZeroSnapshotRows(calculation, {
     seasonId: 2,
+    entryIdByTeam: new Map(calculation.valuations.map((row) => [row.teamId, row.teamId + 100])),
     snapshotDate: "2026-08-19",
     capturedAt: new Date("2026-08-19T12:00:00Z"),
   });
   const recapture = buildWeekZeroSnapshotRows(calculation, {
     seasonId: 2,
+    entryIdByTeam: new Map(calculation.valuations.map((row) => [row.teamId, row.teamId + 100])),
     snapshotDate: "2026-08-19",
     capturedAt: new Date("2026-08-20T12:00:00Z"),
   });
 
   const identity = (row) =>
-    `${row.teamId}:${row.seasonId}:${row.snapshotKey}`;
+    `${row.entryId}:${row.snapshotKey}`;
   assert.equal(new Set(first.map(identity)).size, 32);
   assert.deepEqual(first.map(identity), recapture.map(identity));
   assert.ok(

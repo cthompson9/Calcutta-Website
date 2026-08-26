@@ -4,6 +4,8 @@ import {
   useGetTeams,
   useCaptureWeekZeroMtm,
   useGetBidders,
+  getGetMtmSnapshotsQueryKey,
+  getGetTeamsQueryKey,
 } from "@workspace/api-client-react";
 import type { MtmData, MtmWeekData, MtmTeamWeekMarketStatus } from "@workspace/api-client-react";
 import { formatCurrency } from "@/lib/utils";
@@ -31,7 +33,7 @@ const OWNER_COLORS = [
 // ── Auth-gated MTM upsert (requires ADMIN_API_KEY as Bearer token) ─────────────
 
 async function upsertMtmSnapshot(
-  payload: { teamId: number; seasonYear: number; weekNum?: number; mtmValue: number; snapshotDate?: string },
+  payload: { teamId: number; seasonYear: number; calcuttaId?: number; weekNum?: number; mtmValue: number; snapshotDate?: string },
   adminKey: string,
 ): Promise<{ ok: boolean; error?: string }> {
   try {
@@ -57,8 +59,18 @@ async function upsertMtmSnapshot(
 // ── Page ──────────────────────────────────────────────────────────────────────
 
 export default function MtmTracker() {
-  const { year } = useSeason();
-  const { data, isLoading, refetch } = useGetMtmSnapshots({ season: year });
+  const { year, selectedCalcutta } = useSeason();
+  const isNflCalcutta = selectedCalcutta?.sport === "NFL";
+  const calcuttaId = isNflCalcutta ? selectedCalcutta.id : undefined;
+  const { data, isLoading, refetch } = useGetMtmSnapshots(
+    { season: year, calcuttaId },
+    {
+      query: {
+        enabled: isNflCalcutta,
+        queryKey: getGetMtmSnapshotsQueryKey({ season: year, calcuttaId }),
+      },
+    },
+  );
   const { data: bidders } = useGetBidders({});
   const consortiumByName = bidderConsortiumsByName(bidders);
   const [adminKey, setAdminKey] = useState<string | null>(
@@ -93,7 +105,7 @@ export default function MtmTracker() {
       </header>
 
       {/* Admin data-entry panel */}
-      {adminKey && (
+      {adminKey && isNflCalcutta && (
         <div className="border border-primary/30 bg-primary/5">
           <button
             onClick={() => setShowEntry((v) => !v)}
@@ -109,6 +121,7 @@ export default function MtmTracker() {
             <div className="border-t border-primary/20 p-4">
               <MtmEntryForm
                 year={year}
+                calcuttaId={calcuttaId}
                 adminKey={adminKey}
                 onSuccess={() => {
                   void refetch();
@@ -211,14 +224,16 @@ type EntryRow = { teamId: string; mtmValue: string; snapshotDate: string };
 
 function MtmEntryForm({
   year,
+  calcuttaId,
   adminKey,
   onSuccess,
 }: {
   year: number;
+  calcuttaId?: number;
   adminKey: string;
   onSuccess: () => void;
 }) {
-  const { data: teams } = useGetTeams({ season: year });
+  const { data: teams } = useGetTeams({ season: year, calcuttaId });
 
   const [entries, setEntries] = useState<EntryRow[]>([
     { teamId: "", mtmValue: "", snapshotDate: "" },
@@ -261,6 +276,7 @@ function MtmEntryForm({
         {
           teamId: parseInt(r.teamId),
           seasonYear: year,
+          calcuttaId,
           mtmValue: parseFloat(r.mtmValue),
           snapshotDate: r.snapshotDate || undefined,
         },
@@ -325,7 +341,7 @@ function MtmEntryForm({
     let authFailed = false;
 
     for (const r of parsed) {
-      const result = await upsertMtmSnapshot({ ...r, seasonYear: year }, adminKey);
+      const result = await upsertMtmSnapshot({ ...r, seasonYear: year, calcuttaId }, adminKey);
       if (result.ok) {
         done++;
       } else {
@@ -349,7 +365,7 @@ function MtmEntryForm({
   async function handleKalshiCapture() {
     setCaptureError("");
     try {
-      const res = await captureWeekZero.mutateAsync({ data: { seasonYear: year } });
+      const res = await captureWeekZero.mutateAsync({ data: { seasonYear: year, calcuttaId } });
       toast.success(`Captured ${res.teamCount} teams. Total Pot: ${formatCurrency(res.potSize)}`);
       onSuccess();
     } catch (error: unknown) {

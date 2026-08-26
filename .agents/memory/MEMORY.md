@@ -1,4 +1,4 @@
-- [Schema design](schema-design.md) — auction prices and primary ownership are season-scoped; empty seasons never inherit legacy prices or owners.
+- [Schema design](schema-design.md) — ownership costs, trades, returns, and MTM are Calcutta-entry scoped; season rows are legacy compatibility only.
 - [Seed approach](seed-approach.md) — 2025 season results seeded via lib/db/src/seed2025.ts using `node --import tsx/esm/index.mjs`; 2025=id1, 2026=id2.
 - [MCP endpoints](mcp-endpoints.md) — 18 tools total at POST /api/mcp (streamable HTTP, stateless); MCP_API_KEY gates all access; ADMIN_API_KEY gates set_trade_status tool parameter.
 - [Trade workflow](trade-workflow.md) — trades start pending; only audited approvals affect positions, and approved trades can be reasoned, audited voids.

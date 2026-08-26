@@ -12,4 +12,5 @@ export interface NflStandingsImportInput {
      * @maximum 2100
      */
   seasonYear: number;
+  calcuttaId?: number;
 }

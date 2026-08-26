@@ -24,10 +24,13 @@ import {
   teamsTable,
   biddersTable,
   teamResultsTable,
-  teamSeasonAuctionsTable,
+  calcuttaEntriesTable,
+  positionsTable,
   seasonsTable,
 } from "@workspace/db";
 import { loadSeasonOwnership } from "../lib/seasonOwnership";
+import { resolveCalcuttaId } from "../lib/calcuttaContext";
+import { loadCalculatedTeamReturnsForCalcutta } from "../lib/calcuttaReturns";
 
 const router: IRouter = Router();
 
@@ -77,10 +80,52 @@ function val(res: Response, v: string | number | null) {
   res.json({ value: v });
 }
 
+function selectedCalcuttaId(value: unknown): number | undefined {
+  if (typeof value !== "string") return undefined;
+  const id = Number(value);
+  return Number.isInteger(id) && id > 0 ? id : -1;
+}
+
 // Effective current owners for a team (post-trades)
-async function getTeamOwners(teamId: number, seasonId: number): Promise<string[]> {
-  const ownership = await loadSeasonOwnership(seasonId);
+async function getTeamOwners(teamId: number, seasonId: number, calcuttaId?: number): Promise<string[]> {
+  const resolved = await resolveCalcuttaId(db, { seasonId, calcuttaId });
+  if (!resolved) return [];
+  const ownership = await loadSeasonOwnership(seasonId, resolved);
   return (ownership.currentOwnersByTeam.get(teamId) ?? []).map((o) => o.bidderName);
+}
+
+async function getTeamCost(teamId: number, seasonId: number, calcuttaId?: number): Promise<number | null> {
+  const resolved = await resolveCalcuttaId(db, { seasonId, calcuttaId });
+  if (!resolved) return null;
+  const rows = await db
+    .select({ costBasis: positionsTable.costBasis })
+    .from(calcuttaEntriesTable)
+    .innerJoin(positionsTable, and(
+      eq(positionsTable.entryId, calcuttaEntriesTable.id),
+      eq(positionsTable.source, "primary"),
+    ))
+    .where(and(
+      eq(calcuttaEntriesTable.calcuttaId, resolved),
+      eq(calcuttaEntriesTable.teamId, teamId),
+    ));
+  return rows.length > 0
+    ? rows.reduce((sum, row) => sum + Number(row.costBasis), 0)
+    : null;
+}
+
+async function getTeamFinancials(teamId: number, calcuttaId: number) {
+  const rows = await db
+    .select({
+      realizedReturn: calcuttaEntriesTable.realizedReturn,
+      markToMarket: calcuttaEntriesTable.markToMarket,
+    })
+    .from(calcuttaEntriesTable)
+    .where(and(
+      eq(calcuttaEntriesTable.calcuttaId, calcuttaId),
+      eq(calcuttaEntriesTable.teamId, teamId),
+    ))
+    .limit(1);
+  return rows[0] ?? null;
 }
 
 async function getTeamResult(teamId: number, seasonId: number | null) {
@@ -107,7 +152,7 @@ for (const n of [1, 2, 3, 4, 5]) {
     const seasonId = await resolveSeasonId(season);
     const team = await findTeam(teamName);
     if (!team || !seasonId) { val(res, null); return; }
-    const owners = await getTeamOwners(team.id, seasonId);
+    const owners = await getTeamOwners(team.id, seasonId, selectedCalcuttaId(req.query.calcuttaId));
     val(res, owners[n - 1] ?? null);
   });
 }
@@ -120,12 +165,7 @@ router.get("/mcp/get_team_cost", async (req, res): Promise<void> => {
   const seasonId = await resolveSeasonId(season);
   const team = await findTeam(teamName);
   if (!team || !seasonId) { val(res, null); return; }
-  const auctionRows = await db
-    .select({ bidAmount: teamSeasonAuctionsTable.bidAmount })
-    .from(teamSeasonAuctionsTable)
-    .where(and(eq(teamSeasonAuctionsTable.teamId, team.id), eq(teamSeasonAuctionsTable.seasonId, seasonId)))
-    .limit(1);
-  val(res, auctionRows[0] ? parseFloat(auctionRows[0].bidAmount) : null);
+  val(res, await getTeamCost(team.id, seasonId, selectedCalcuttaId(req.query.calcuttaId)));
 });
 
 // GET /mcp/get_team_points — starting points (always 150 for this pool)
@@ -148,8 +188,15 @@ router.get("/mcp/get_team_return", async (req, res): Promise<void> => {
   const seasonId = await resolveSeasonId(season);
   const team = await findTeam(teamName);
   if (!team || !seasonId) { val(res, null); return; }
-  const result = await getTeamResult(team.id, seasonId);
-  val(res, result ? parseFloat(result.realizedReturn) : null);
+  const calcuttaId = await resolveCalcuttaId(db, {
+    seasonId,
+    calcuttaId: selectedCalcuttaId(req.query.calcuttaId),
+  });
+  if (!calcuttaId) { val(res, null); return; }
+  const entryFinancial = await getTeamFinancials(team.id, calcuttaId);
+  if (!entryFinancial) { val(res, null); return; }
+  const calculated = (await loadCalculatedTeamReturnsForCalcutta(calcuttaId)).get(team.id);
+  val(res, calculated?.realized?.grossReturn ?? Number(entryFinancial.realizedReturn));
 });
 
 // GET /mcp/get_team_wins
@@ -185,14 +232,21 @@ router.get("/mcp/get_team_mtm", async (req, res): Promise<void> => {
   const resolvedSeasonId = await resolveSeasonId(season);
   const team = await findTeam(teamName);
   if (!team || resolvedSeasonId == null) { val(res, null); return; }
-  const result = await getTeamResult(team.id, resolvedSeasonId);
-  const auctionRows = await db
-    .select({ bidAmount: teamSeasonAuctionsTable.bidAmount })
-    .from(teamSeasonAuctionsTable)
-    .where(and(eq(teamSeasonAuctionsTable.teamId, team.id), eq(teamSeasonAuctionsTable.seasonId, resolvedSeasonId)))
-    .limit(1);
-  const cost = parseFloat(auctionRows[0]?.bidAmount ?? "0");
-  val(res, result ? parseFloat(result.markToMarket) - cost : null);
+  const selectedId = selectedCalcuttaId(req.query.calcuttaId);
+  const calcuttaId = await resolveCalcuttaId(db, {
+    seasonId: resolvedSeasonId,
+    calcuttaId: selectedId,
+  });
+  if (!calcuttaId) { val(res, null); return; }
+  const cost = await getTeamCost(
+    team.id,
+    resolvedSeasonId,
+    selectedId,
+  );
+  const entryFinancial = await getTeamFinancials(team.id, calcuttaId);
+  if (!entryFinancial || cost == null) { val(res, null); return; }
+  const calculated = (await loadCalculatedTeamReturnsForCalcutta(calcuttaId)).get(team.id);
+  val(res, (calculated?.mtm?.grossReturn ?? Number(entryFinancial.markToMarket)) - cost);
 });
 
 // GET /mcp/get_team_draftorder
@@ -208,8 +262,20 @@ router.get("/mcp/get_team_draftorder", async (req, res): Promise<void> => {
 });
 
 // Owner endpoints — uses effective ownership (post-trade) via shared helper
-async function getOwnerAgg(bidderId: number, seasonId: number) {
-  const ownership = await loadSeasonOwnership(seasonId);
+async function getOwnerAgg(bidderId: number, seasonId: number, calcuttaId?: number) {
+  const resolved = await resolveCalcuttaId(db, { seasonId, calcuttaId });
+  if (!resolved) return { totalCost: 0, totalReturn: 0, totalMtm: 0 };
+  const ownership = await loadSeasonOwnership(seasonId, resolved);
+  const calculatedReturns = await loadCalculatedTeamReturnsForCalcutta(resolved);
+  const entryRows = await db
+    .select({
+      teamId: calcuttaEntriesTable.teamId,
+      realizedReturn: calcuttaEntriesTable.realizedReturn,
+      markToMarket: calcuttaEntriesTable.markToMarket,
+    })
+    .from(calcuttaEntriesTable)
+    .where(eq(calcuttaEntriesTable.calcuttaId, resolved));
+  const entryFinancials = new Map(entryRows.map((entry) => [entry.teamId, entry]));
   const teamMap = ownership.byBidder.get(bidderId);
   if (!teamMap) return { totalCost: 0, totalReturn: 0, totalMtm: 0 };
 
@@ -218,27 +284,21 @@ async function getOwnerAgg(bidderId: number, seasonId: number) {
   let totalMtm = 0;
 
   for (const [teamId, entry] of teamMap) {
-    // Use season auction price; missing → 0
-    const auctionRows = await db
-      .select({ bidAmount: teamSeasonAuctionsTable.bidAmount })
-      .from(teamSeasonAuctionsTable)
-      .where(and(eq(teamSeasonAuctionsTable.teamId, teamId), eq(teamSeasonAuctionsTable.seasonId, seasonId)))
-      .limit(1);
-    const auctionPrice = auctionRows[0] ? parseFloat(auctionRows[0].bidAmount) : 0;
-    totalCost += auctionPrice * entry.originalShare + entry.tradePaid - entry.tradeReceived;
+    totalCost += entry.originalCostBasis + entry.tradePaid - entry.tradeReceived;
 
     // Keep owner financial reporting signed so approved short positions receive
     // the inverse of a long holder's return and mark-to-market result.
     const effectiveShare = entry.effectiveShare;
     if (Math.abs(effectiveShare) > 0.00005) {
-      const resultRows = await db
-        .select()
-        .from(teamResultsTable)
-        .where(and(eq(teamResultsTable.teamId, teamId), eq(teamResultsTable.seasonId, seasonId)))
-        .limit(1);
-      if (resultRows[0]) {
-        totalReturn += parseFloat(resultRows[0].realizedReturn) * effectiveShare;
-        totalMtm += parseFloat(resultRows[0].markToMarket) * effectiveShare;
+      const entryFinancial = entryFinancials.get(teamId);
+      if (entryFinancial) {
+        const calculated = calculatedReturns.get(teamId);
+        totalReturn += (
+          calculated?.realized?.grossReturn ?? Number(entryFinancial.realizedReturn)
+        ) * effectiveShare;
+        totalMtm += (
+          calculated?.mtm?.grossReturn ?? Number(entryFinancial.markToMarket)
+        ) * effectiveShare;
       }
     }
   }
@@ -254,7 +314,7 @@ router.get("/mcp/get_owner_cost", async (req, res): Promise<void> => {
   const seasonId = await resolveSeasonId(season);
   const bidder = await findBidder(ownerName);
   if (!bidder || !seasonId) { val(res, null); return; }
-  const agg = await getOwnerAgg(bidder.id, seasonId);
+  const agg = await getOwnerAgg(bidder.id, seasonId, selectedCalcuttaId(req.query.calcuttaId));
   val(res, Math.round(agg.totalCost * 100) / 100);
 });
 
@@ -266,7 +326,7 @@ router.get("/mcp/get_owner_return", async (req, res): Promise<void> => {
   const seasonId = await resolveSeasonId(season);
   const bidder = await findBidder(ownerName);
   if (!bidder || !seasonId) { val(res, null); return; }
-  const agg = await getOwnerAgg(bidder.id, seasonId);
+  const agg = await getOwnerAgg(bidder.id, seasonId, selectedCalcuttaId(req.query.calcuttaId));
   val(res, Math.round(agg.totalReturn * 100) / 100);
 });
 
@@ -278,7 +338,7 @@ router.get("/mcp/get_owner_mtm", async (req, res): Promise<void> => {
   const seasonId = await resolveSeasonId(season);
   const bidder = await findBidder(ownerName);
   if (!bidder || !seasonId) { val(res, null); return; }
-  const agg = await getOwnerAgg(bidder.id, seasonId);
+  const agg = await getOwnerAgg(bidder.id, seasonId, selectedCalcuttaId(req.query.calcuttaId));
   val(res, Math.round((agg.totalMtm - agg.totalCost) * 100) / 100);
 });
 

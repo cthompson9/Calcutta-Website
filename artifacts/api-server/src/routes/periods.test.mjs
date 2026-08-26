@@ -11,10 +11,30 @@ let seasonsTable;
 let teamsTable;
 let teamSeasonAuctionsTable;
 let teamResultsTable;
+let calcuttasTable;
+let calcuttaEntriesTable;
+let positionsTable;
+let biddersTable;
+let payoutRulesTable;
+let sportPeriodsTable;
+let teamPeriodSnapshotsTable;
 let app;
 
 if (DATABASE_URL) {
-  ({ db, seasonsTable, teamsTable, teamSeasonAuctionsTable, teamResultsTable } = await import("@workspace/db"));
+  ({
+    db,
+    seasonsTable,
+    teamsTable,
+    teamSeasonAuctionsTable,
+    teamResultsTable,
+    calcuttasTable,
+    calcuttaEntriesTable,
+    positionsTable,
+    biddersTable,
+    payoutRulesTable,
+    sportPeriodsTable,
+    teamPeriodSnapshotsTable,
+  } = await import("@workspace/db"));
   ({ default: app } = await import("../app.ts"));
 }
 
@@ -74,6 +94,31 @@ describe("period snapshot reporting", { skip: !DATABASE_URL || !ADMIN_KEY }, () 
       realizedReturn: "999.00",
       markToMarket: "999.00",
     });
+    const [calcutta] = await db.insert(calcuttasTable).values({
+      seasonId,
+      year: seasonYear,
+      name: `${seasonYear} NFL Calcutta`,
+      sport: "NFL",
+      isCanonical: true,
+    }).returning();
+    const entries = await db.insert(calcuttaEntriesTable).values([
+      { calcuttaId: calcutta.id, teamId },
+      {
+        calcuttaId: calcutta.id,
+        teamId: legacyTeamId,
+        realizedReturn: "999.00",
+        markToMarket: "999.00",
+      },
+    ]).returning();
+    const [bidder] = await db.select({ id: biddersTable.id }).from(biddersTable).limit(1);
+    assert.ok(bidder, "an NFL bidder fixture must exist");
+    await db.insert(positionsTable).values(entries.map((entry) => ({
+      entryId: entry.id,
+      bidderId: bidder.id,
+      ownershipShare: "1.000000",
+      source: "primary",
+      costBasis: entry.teamId === teamId ? "100.00" : "300.00",
+    })));
     ({ server, baseUrl } = await startServer(app));
   });
 
@@ -315,5 +360,137 @@ describe("period snapshot reporting", { skip: !DATABASE_URL || !ADMIN_KEY }, () 
       { wins: mtm.wins, playoffBerth: mtm.playoffBerth, markToMarket: mtm.markToMarket },
       { wins: 0, playoffBerth: false, markToMarket: 0 },
     );
+  });
+
+  test("fans one season game ledger rebuild out to every existing NFL Calcutta", async () => {
+    const [alternate] = await db.insert(calcuttasTable).values({
+      seasonId,
+      year: seasonYear,
+      name: `${seasonYear} Alternate game-ledger NFL Calcutta`,
+      sport: "NFL",
+      isCanonical: false,
+    }).returning();
+    const alternateEntries = await db.insert(calcuttaEntriesTable).values([
+      { calcuttaId: alternate.id, teamId },
+      { calcuttaId: alternate.id, teamId: legacyTeamId },
+    ]).returning();
+    const [bidder] = await db.select({ id: biddersTable.id }).from(biddersTable).limit(1);
+    assert.ok(bidder);
+    await db.insert(positionsTable).values(alternateEntries.map((entry) => ({
+      entryId: entry.id,
+      bidderId: bidder.id,
+      ownershipShare: "1.000000",
+      source: "primary",
+      costBasis: entry.teamId === teamId ? "1000.00" : "3000.00",
+    })));
+    await db.insert(payoutRulesTable).values([
+      ["win", "10.00"], ["tie", "5.00"], ["pt_diff", "1.00"],
+      ["playoff_berth", "50.00"], ["div_round", "100.00"],
+      ["conf_round", "200.00"], ["sb_berth", "400.00"], ["win_super_bowl", "800.00"],
+    ].map(([metric, dollarsPerUnit]) => ({
+      calcuttaId: alternate.id,
+      metric,
+      dollarsPerUnit,
+      playoffMultiplier: "1.00",
+    })));
+
+    const response = await fetch(`${baseUrl}/api/nfl-games`, {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/json",
+        Authorization: `Bearer ${ADMIN_KEY}`,
+      },
+      body: JSON.stringify({
+        seasonYear,
+        periodSequence: 1,
+        source: "integration",
+        sourceGameId: `two-pool-${seasonId}`,
+        homeTeamId: teamId,
+        awayTeamId: legacyTeamId,
+        homeScore: 27,
+        awayScore: 20,
+        actualKickoffAt: "2025-09-07T17:00:00.000Z",
+      }),
+    });
+    assert.equal(response.status, 201);
+
+    const [canonicalResponse, alternateResponse] = await Promise.all([
+      fetch(`${baseUrl}/api/results?season=${seasonYear}&period=1&basis=realized`),
+      fetch(`${baseUrl}/api/results?season=${seasonYear}&calcuttaId=${alternate.id}&period=1&basis=realized`),
+    ]);
+    assert.equal(canonicalResponse.status, 200);
+    assert.equal(alternateResponse.status, 200);
+    const canonical = (await canonicalResponse.json()).find((row) => row.teamId === teamId);
+    const selected = (await alternateResponse.json()).find((row) => row.teamId === teamId);
+    assert.deepEqual(
+      { wins: canonical.wins, ptDiff: canonical.ptDiff, cost: canonical.cost },
+      { wins: 1, ptDiff: 7, cost: 100 },
+    );
+    assert.deepEqual(
+      { wins: selected.wins, ptDiff: selected.ptDiff, cost: selected.cost },
+      { wins: 1, ptDiff: 7, cost: 1000 },
+    );
+    assert.ok(selected.realizedReturn > canonical.realizedReturn);
+    assert.ok(Math.abs(selected.realizedReturn - canonical.realizedReturn * 10) < 0.02);
+  });
+
+  test("calculates a completed noncanonical Calcutta from its own costs and snapshots", async () => {
+    await db
+      .update(seasonsTable)
+      .set({ isComplete: true })
+      .where(eq(seasonsTable.id, seasonId));
+    const [alternate] = await db.insert(calcuttasTable).values({
+      seasonId,
+      year: seasonYear,
+      name: `${seasonYear} Alternate completed NFL Calcutta`,
+      sport: "NFL",
+      isCanonical: false,
+    }).returning();
+    const [entry] = await db.insert(calcuttaEntriesTable).values({
+      calcuttaId: alternate.id,
+      teamId,
+      realizedReturn: "777.00",
+    }).returning();
+    const [bidder] = await db.select({ id: biddersTable.id }).from(biddersTable).limit(1);
+    assert.ok(bidder);
+    await db.insert(positionsTable).values({
+      entryId: entry.id,
+      bidderId: bidder.id,
+      ownershipShare: "1.000000",
+      source: "primary",
+      costBasis: "2000.00",
+    });
+    await db.insert(payoutRulesTable).values([
+      ["win", "10.00"], ["tie", "5.00"], ["pt_diff", "1.00"],
+      ["playoff_berth", "50.00"], ["div_round", "100.00"],
+      ["conf_round", "200.00"], ["sb_berth", "400.00"], ["win_super_bowl", "800.00"],
+    ].map(([metric, dollarsPerUnit]) => ({
+      calcuttaId: alternate.id,
+      metric,
+      dollarsPerUnit,
+      playoffMultiplier: "1.00",
+    })));
+    const [canonicalResponse, alternateResponse] = await Promise.all([
+      fetch(`${baseUrl}/api/results?season=${seasonYear}&period=0&basis=realized`),
+      fetch(`${baseUrl}/api/results?season=${seasonYear}&calcuttaId=${alternate.id}&period=0&basis=realized`),
+    ]);
+    assert.equal(canonicalResponse.status, 200);
+    assert.equal(alternateResponse.status, 200);
+    const canonical = (await canonicalResponse.json()).find((row) => row.teamId === teamId);
+    const selected = (await alternateResponse.json()).find((row) => row.teamId === teamId);
+    assert.equal(canonical.realizedReturn, 0);
+    assert.equal(canonical.cost, 100);
+    assert.equal(selected.realizedReturn, 26.27);
+    assert.equal(selected.netReturn, -1973.73);
+    assert.equal(selected.cost, 2000);
+
+    const availability = await fetch(
+      `${baseUrl}/api/results/availability?season=${seasonYear}&calcuttaId=${alternate.id}&basis=realized`,
+    );
+    assert.equal(availability.status, 200);
+    assert.deepEqual(await availability.json(), {
+      latestPeriod: 0,
+      previousPeriod: null,
+    });
   });
 });

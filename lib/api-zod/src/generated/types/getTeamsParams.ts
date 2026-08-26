@@ -20,4 +20,8 @@ bidderId?: number | null;
  * @nullable
  */
 season?: number | null;
+/**
+ * @nullable
+ */
+calcuttaId?: number | null;
 };

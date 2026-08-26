@@ -6,3 +6,6 @@ export { nflPayoutsMigration } from "./0009NflPayouts";
 export { tradeVoidingMigration } from "./0010TradeVoiding";
 export { mcpOAuthMigration } from "./0011McpOAuth";
 export { platformSchemaMigration } from "./0012PlatformSchema";
+export { ownershipInversionMigration } from "./0013OwnershipInversion";
+export { mtmEntryScopeMigration } from "./0014MtmEntryScope";
+export { entryResultEconomicsMigration } from "./0015EntryResultEconomics";

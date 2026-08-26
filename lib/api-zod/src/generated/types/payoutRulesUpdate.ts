@@ -9,6 +9,7 @@ import type { PayoutRuleInput } from './payoutRuleInput';
 
 export interface PayoutRulesUpdate {
   seasonYear: number;
+  calcuttaId?: number;
   /** @minItems 1 */
   rules: PayoutRuleInput[];
 }

@@ -126,6 +126,7 @@ export interface WeekZeroCalculation {
 }
 
 export interface WeekZeroSnapshotRow {
+  entryId: number;
   teamId: number;
   seasonId: number;
   weekNum: number;
@@ -147,42 +148,50 @@ export function buildWeekZeroSnapshotRows(
   calculation: WeekZeroCalculation,
   context: {
     seasonId: number;
+    entryIdByTeam: ReadonlyMap<number, number>;
     snapshotDate: string;
     capturedAt: Date;
   },
 ): WeekZeroSnapshotRow[] {
-  return calculation.valuations.map((valuation) => ({
-    teamId: valuation.teamId,
-    seasonId: context.seasonId,
-    weekNum: 0,
-    snapshotDate: context.snapshotDate,
-    mtmValue: valuation.fairValue.toString(),
-    snapshotKey: WEEK_ZERO_SNAPSHOT_KEY,
-    source: "kalshi",
-    capturedAt: context.capturedAt,
-    marketStatus: valuation.marketStatus,
-    bankedPoints: valuation.bankedPoints.toString(),
-    seasonEquityPoints: valuation.seasonEquityPoints.toString(),
-    bonusEquityPoints: valuation.bonusEquityPoints.toString(),
-    totalPoints: valuation.totalPoints.toString(),
-    normalizedShare: valuation.normalizedShare.toString(),
-    marketData: {
-      winTotalLine: valuation.winTotalLine,
-      winTotalOverProbability: valuation.winTotalOverProbability,
-      rawExpectedWins: valuation.rawExpectedWins,
-      expectedWins: valuation.expectedWins,
-      playoffProbability: valuation.playoffProbability,
-      divisionalProbability: valuation.divisionalProbability,
-      conferenceGameProbability: valuation.conferenceGameProbability,
-      superBowlProbability: valuation.superBowlProbability,
-      championshipProbability: valuation.championshipProbability,
-      contractSetId: valuation.contractSetId,
-      marketStatusReasons: valuation.marketStatusReasons,
-      regularSeasonMethod: valuation.regularSeasonMethod,
-      intermediateRoundMethod: valuation.intermediateRoundMethod,
-      quotes: valuation.quotes,
-    },
-  }));
+  return calculation.valuations.map((valuation) => {
+    const entryId = context.entryIdByTeam.get(valuation.teamId);
+    if (entryId == null) {
+      throw new Error(`No selected Calcutta entry exists for team ${valuation.teamId}.`);
+    }
+    return {
+      entryId,
+      teamId: valuation.teamId,
+      seasonId: context.seasonId,
+      weekNum: 0,
+      snapshotDate: context.snapshotDate,
+      mtmValue: valuation.fairValue.toString(),
+      snapshotKey: WEEK_ZERO_SNAPSHOT_KEY,
+      source: "kalshi",
+      capturedAt: context.capturedAt,
+      marketStatus: valuation.marketStatus,
+      bankedPoints: valuation.bankedPoints.toString(),
+      seasonEquityPoints: valuation.seasonEquityPoints.toString(),
+      bonusEquityPoints: valuation.bonusEquityPoints.toString(),
+      totalPoints: valuation.totalPoints.toString(),
+      normalizedShare: valuation.normalizedShare.toString(),
+      marketData: {
+        winTotalLine: valuation.winTotalLine,
+        winTotalOverProbability: valuation.winTotalOverProbability,
+        rawExpectedWins: valuation.rawExpectedWins,
+        expectedWins: valuation.expectedWins,
+        playoffProbability: valuation.playoffProbability,
+        divisionalProbability: valuation.divisionalProbability,
+        conferenceGameProbability: valuation.conferenceGameProbability,
+        superBowlProbability: valuation.superBowlProbability,
+        championshipProbability: valuation.championshipProbability,
+        contractSetId: valuation.contractSetId,
+        marketStatusReasons: valuation.marketStatusReasons,
+        regularSeasonMethod: valuation.regularSeasonMethod,
+        intermediateRoundMethod: valuation.intermediateRoundMethod,
+        quotes: valuation.quotes,
+      },
+    };
+  });
 }
 
 function clamp(value: number, minimum = 0, maximum = 1): number {

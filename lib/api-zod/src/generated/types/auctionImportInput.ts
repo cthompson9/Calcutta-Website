@@ -9,4 +9,5 @@
 export interface AuctionImportInput {
   /** Season year to replace from the configured complete AuctionPro export. */
   seasonYear: number;
+  calcuttaId?: number;
 }

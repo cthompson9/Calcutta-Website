@@ -5,6 +5,7 @@ import {
   useGetResultsByOwner,
   getGetResultsByOwnerQueryKey,
   useGetBidders,
+  getGetBiddersQueryKey,
   useGetSportPeriods,
   useGetSeasons,
   useGetResultsCompare,
@@ -58,7 +59,9 @@ import { ReleaseNotes } from "@/components/ReleaseNotes";
 type TabId = "byOwner" | "byTeam" | "compare";
 
 export default function Results() {
-  const { year } = useSeason();
+  const { year, selectedCalcutta } = useSeason();
+  const isNflCalcutta = selectedCalcutta?.sport === "NFL";
+  const calcuttaId = isNflCalcutta ? selectedCalcutta.id : undefined;
   const [tab, setTab] = useState<TabId>("byOwner");
   const [expandedOwner, setExpandedOwner] = useState<number | null>(null);
   const [period, setPeriod] = useState<number | undefined>(undefined);
@@ -70,12 +73,12 @@ export default function Results() {
 
   const { data: periods } = useGetSportPeriods({ sport: "NFL" });
   const { data: allSeasons } = useGetSeasons();
-  const availabilityParams = { season: year, basis: viewBasis };
+  const availabilityParams = { season: year, calcuttaId, basis: viewBasis };
   const { data: availability } = useGetResultsAvailability(
     availabilityParams,
     {
       query: {
-        enabled: tab === "byOwner" || tab === "byTeam",
+        enabled: isNflCalcutta && (tab === "byOwner" || tab === "byTeam"),
         queryKey: getGetResultsAvailabilityQueryKey(availabilityParams),
       },
     },
@@ -96,25 +99,27 @@ export default function Results() {
   }, [allSeasons, compareSeasons.length]);
 
   const { data: teamResults, isLoading: loadingTeams } = useGetResults(
-    { season: year, period: selectedPeriod, basis: teamBasis },
+    { season: year, calcuttaId, period: selectedPeriod, basis: teamBasis },
     {
       query: {
-        enabled: tab === "byTeam" && (period != null || availability !== undefined),
-        queryKey: getGetResultsQueryKey({ season: year, period: selectedPeriod, basis: teamBasis }),
+        enabled: isNflCalcutta && tab === "byTeam" && (period != null || availability !== undefined),
+        queryKey: getGetResultsQueryKey({ season: year, calcuttaId, period: selectedPeriod, basis: teamBasis }),
       },
     },
   );
   const { data: ownerResults, isLoading: loadingOwners } = useGetResultsByOwner(
     {
       season: year,
+      calcuttaId,
       period: selectedPeriod,
       basis: consortiumBasis,
     },
     {
       query: {
-        enabled: tab === "byOwner",
+        enabled: isNflCalcutta && tab === "byOwner",
         queryKey: getGetResultsByOwnerQueryKey({
           season: year,
+          calcuttaId,
           period: selectedPeriod,
           basis: consortiumBasis,
         }),
@@ -128,12 +133,13 @@ export default function Results() {
         : undefined
       : availability?.previousPeriod ?? undefined;
   const { data: previousOwnerResults } = useGetResultsByOwner(
-    { season: year, period: previousPeriod, basis: consortiumBasis },
+    { season: year, calcuttaId, period: previousPeriod, basis: consortiumBasis },
     {
       query: {
-        enabled: tab === "byOwner" && previousPeriod != null,
+        enabled: isNflCalcutta && tab === "byOwner" && previousPeriod != null,
         queryKey: getGetResultsByOwnerQueryKey({
           season: year,
+          calcuttaId,
           period: previousPeriod,
           basis: consortiumBasis,
         }),
@@ -141,29 +147,29 @@ export default function Results() {
     },
   );
   const { data: auctionSummary } = useGetAuctionSummary(
-    { season: year },
+    { season: year, calcuttaId },
     {
       query: {
-        enabled: tab === "byOwner",
-        queryKey: getGetAuctionSummaryQueryKey({ season: year }),
+        enabled: isNflCalcutta && tab === "byOwner",
+        queryKey: getGetAuctionSummaryQueryKey({ season: year, calcuttaId }),
       },
     },
   );
   const { data: mtmData } = useGetMtmSnapshots(
-    { season: year },
+    { season: year, calcuttaId },
     {
       query: {
-        enabled: tab === "byOwner",
-        queryKey: getGetMtmSnapshotsQueryKey({ season: year }),
+        enabled: isNflCalcutta && tab === "byOwner",
+        queryKey: getGetMtmSnapshotsQueryKey({ season: year, calcuttaId }),
       },
     },
   );
   const { data: trades } = useGetTrades(
-    { season: year },
+    { season: year, calcuttaId },
     {
       query: {
-        enabled: tab === "byOwner",
-        queryKey: getGetTradesQueryKey({ season: year }),
+        enabled: isNflCalcutta && tab === "byOwner",
+        queryKey: getGetTradesQueryKey({ season: year, calcuttaId }),
       },
     },
   );
@@ -179,7 +185,10 @@ export default function Results() {
     { query: { enabled: tab === "compare" && compareSeasons.length >= 2, queryKey: getGetResultsCompareQueryKey(compareParams) } }
   );
 
-  const { data: bidders } = useGetBidders({ season: year });
+  const { data: bidders } = useGetBidders(
+    { season: year, calcuttaId },
+    { query: { enabled: isNflCalcutta, queryKey: getGetBiddersQueryKey({ season: year, calcuttaId }) } },
+  );
   const consortiumByBidderId = useMemo(() => bidderConsortiums(bidders), [bidders]);
 
   const isLoading =

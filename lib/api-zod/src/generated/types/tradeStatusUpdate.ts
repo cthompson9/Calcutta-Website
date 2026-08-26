@@ -7,10 +7,12 @@
  */
 
 export type TradeStatusUpdate = {
+  calcuttaId?: number;
   status: 'approved' | 'rejected';
   /** Must be true to record this irreversible commissioner decision. */
   confirmed: true;
 } | {
+  calcuttaId?: number;
   status: 'voided';
   /** Must be true to explicitly confirm this irreversible void. */
   confirmed: true;

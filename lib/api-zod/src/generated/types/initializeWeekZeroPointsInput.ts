@@ -9,4 +9,5 @@
 export interface InitializeWeekZeroPointsInput {
   /** NFL season to initialize */
   seasonYear: number;
+  calcuttaId?: number;
 }

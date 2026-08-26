@@ -2,7 +2,7 @@ import { and, eq, isNull, sql } from "drizzle-orm";
 import {
   db,
   mtmSnapshotsTable,
-  teamSeasonAuctionsTable,
+  calcuttaEntriesTable,
 } from "@workspace/db";
 import { WEEK_ZERO_SNAPSHOT_KEY } from "./weekZeroValuation";
 
@@ -10,6 +10,7 @@ export const MTM_SEASON_LOCK_NAMESPACE = 7_140;
 
 export type ManualMtmWriteInput = {
   seasonId: number;
+  calcuttaId: number;
   teamId: number;
   snapshotDate: string;
   mtmValue: number;
@@ -23,27 +24,27 @@ export async function writeManualMtmSnapshot(input: ManualMtmWriteInput) {
 
   return db.transaction(async (tx) => {
     await tx.execute(
-      sql`select pg_advisory_xact_lock(${MTM_SEASON_LOCK_NAMESPACE}, ${input.seasonId})`,
+      sql`select pg_advisory_xact_lock(${MTM_SEASON_LOCK_NAMESPACE}, ${input.calcuttaId})`,
     );
     const auctionedTeam = await tx
-      .select({ teamId: teamSeasonAuctionsTable.teamId })
-      .from(teamSeasonAuctionsTable)
+      .select({ entryId: calcuttaEntriesTable.id })
+      .from(calcuttaEntriesTable)
       .where(
         and(
-          eq(teamSeasonAuctionsTable.teamId, input.teamId),
-          eq(teamSeasonAuctionsTable.seasonId, input.seasonId),
+          eq(calcuttaEntriesTable.teamId, input.teamId),
+          eq(calcuttaEntriesTable.calcuttaId, input.calcuttaId),
         ),
       )
       .limit(1);
     if (!auctionedTeam[0]) return { kind: "not_auctioned" as const };
+    const entryId = auctionedTeam[0].entryId;
 
     const existingAtDate = await tx
       .select({ snapshotKey: mtmSnapshotsTable.snapshotKey })
       .from(mtmSnapshotsTable)
       .where(
         and(
-          eq(mtmSnapshotsTable.teamId, input.teamId),
-          eq(mtmSnapshotsTable.seasonId, input.seasonId),
+          eq(mtmSnapshotsTable.entryId, entryId),
           eq(mtmSnapshotsTable.snapshotDate, input.snapshotDate),
         ),
       )
@@ -55,6 +56,7 @@ export async function writeManualMtmSnapshot(input: ManualMtmWriteInput) {
     const [snapshot] = await tx
       .insert(mtmSnapshotsTable)
       .values({
+        entryId,
         teamId: input.teamId,
         seasonId: input.seasonId,
         weekNum: input.weekNum ?? null,
@@ -63,8 +65,7 @@ export async function writeManualMtmSnapshot(input: ManualMtmWriteInput) {
       })
       .onConflictDoUpdate({
         target: [
-          mtmSnapshotsTable.teamId,
-          mtmSnapshotsTable.seasonId,
+          mtmSnapshotsTable.entryId,
           mtmSnapshotsTable.snapshotDate,
         ],
         set: {

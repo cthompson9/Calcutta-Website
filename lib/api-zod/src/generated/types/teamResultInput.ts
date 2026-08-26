@@ -10,6 +10,7 @@ import type { TeamResultInputPlayoffStatus } from './teamResultInputPlayoffStatu
 export interface TeamResultInput {
   teamId: number;
   seasonYear: number;
+  calcuttaId?: number;
   /** @minimum 0 */
   wins?: number;
   /** @minimum 0 */

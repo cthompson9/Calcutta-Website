@@ -25,7 +25,10 @@ import { useToast } from "@/hooks/use-toast";
 import { useSeason } from "@/hooks/useSeason";
 
 export default function Teams() {
-  const { year } = useSeason();
+  const { year, selectedCalcutta } = useSeason();
+  const isNflCalcutta = selectedCalcutta?.sport === "NFL";
+  const calcuttaId = isNflCalcutta ? selectedCalcutta.id : undefined;
+  const teamParams = { season: year, calcuttaId };
   const [search, setSearch] = useState("");
   const [confFilter, setConfFilter] = useState<"ALL" | "AFC" | "NFC">("ALL");
   const [divFilter, setDivFilter] = useState<"ALL" | "East" | "North" | "South" | "West">("ALL");
@@ -36,7 +39,9 @@ export default function Teams() {
   const [editingTeam, setEditingTeam] = useState<Team | null>(null);
   const [isCreateOpen, setIsCreateOpen] = useState(false);
 
-  const { data: teams, isLoading } = useGetTeams({ season: year });
+  const { data: teams, isLoading } = useGetTeams(teamParams, {
+    query: { enabled: isNflCalcutta, queryKey: getGetTeamsQueryKey(teamParams) },
+  });
   const { data: bidders } = useGetBidders();
 
   const handleSort = (col: keyof Team | "owners") => {
@@ -82,7 +87,7 @@ export default function Teams() {
             Browse & manage {year} auction roster
           </p>
         </div>
-        <Button data-testid="button-add-team" onClick={() => setIsCreateOpen(true)} className="min-h-11 uppercase font-bold tracking-wider font-mono">
+        <Button data-testid="button-add-team" onClick={() => setIsCreateOpen(true)} disabled={!isNflCalcutta} className="min-h-11 uppercase font-bold tracking-wider font-mono">
           <Plus className="w-4 h-4 mr-2" /> Add Team
         </Button>
       </header>
@@ -234,6 +239,7 @@ export default function Teams() {
         onOpenChange={setIsCreateOpen} 
         bidders={bidders || []}
         seasonYear={year}
+        calcuttaId={calcuttaId}
       />
       {editingTeam && (
         <TeamDialog 
@@ -242,6 +248,7 @@ export default function Teams() {
           onOpenChange={(o) => !o && setEditingTeam(null)} 
           bidders={bidders || []}
           seasonYear={year}
+          calcuttaId={calcuttaId}
         />
       )}
     </div>
@@ -254,12 +261,14 @@ function TeamDialog({
   onOpenChange,
   bidders,
   seasonYear,
+  calcuttaId,
 }: {
   team?: Team;
   open: boolean;
   onOpenChange: (o: boolean) => void;
   bidders: any[];
   seasonYear: number;
+  calcuttaId?: number;
 }) {
   const isEdit = !!team;
   const queryClient = useQueryClient();
@@ -296,12 +305,17 @@ function TeamDialog({
   };
 
   const handleSave = () => {
+    if (!calcuttaId) {
+      toast({ title: "NFL Calcutta required", description: "Team management is available only for an NFL Calcutta.", variant: "destructive" });
+      return;
+    }
     const data: any = {
       name,
       conference,
       division,
       bidAmount: Number(bidAmount) || 0,
       season: seasonYear,
+      calcuttaId,
       owners: owners.filter(o => o.bidderId).map(o => ({
         bidderId: Number(o.bidderId),
         ownershipShare: Number(o.share)
@@ -317,9 +331,9 @@ function TeamDialog({
     if (isEdit) {
       updateMut.mutate({ id: team.id, data }, {
         onSuccess: () => {
-          queryClient.invalidateQueries({ queryKey: getGetTeamsQueryKey() });
-          queryClient.invalidateQueries({ queryKey: getGetAuctionSummaryQueryKey() });
-          queryClient.invalidateQueries({ queryKey: getGetBiddersQueryKey() });
+          queryClient.invalidateQueries({ queryKey: getGetTeamsQueryKey({ season: seasonYear, calcuttaId }) });
+          queryClient.invalidateQueries({ queryKey: getGetAuctionSummaryQueryKey({ season: seasonYear, calcuttaId }) });
+          queryClient.invalidateQueries({ queryKey: getGetBiddersQueryKey({ season: seasonYear, calcuttaId }) });
           onOpenChange(false);
           toast({ title: "Team updated" });
         }
@@ -327,9 +341,9 @@ function TeamDialog({
     } else {
       createMut.mutate({ data }, {
         onSuccess: () => {
-          queryClient.invalidateQueries({ queryKey: getGetTeamsQueryKey() });
-          queryClient.invalidateQueries({ queryKey: getGetAuctionSummaryQueryKey() });
-          queryClient.invalidateQueries({ queryKey: getGetBiddersQueryKey() });
+          queryClient.invalidateQueries({ queryKey: getGetTeamsQueryKey({ season: seasonYear, calcuttaId }) });
+          queryClient.invalidateQueries({ queryKey: getGetAuctionSummaryQueryKey({ season: seasonYear, calcuttaId }) });
+          queryClient.invalidateQueries({ queryKey: getGetBiddersQueryKey({ season: seasonYear, calcuttaId }) });
           onOpenChange(false);
           reset();
           toast({ title: "Team created" });
@@ -343,9 +357,9 @@ function TeamDialog({
     if (confirm("Delete this team completely?")) {
       deleteMut.mutate({ id: team.id }, {
         onSuccess: () => {
-          queryClient.invalidateQueries({ queryKey: getGetTeamsQueryKey() });
-          queryClient.invalidateQueries({ queryKey: getGetAuctionSummaryQueryKey() });
-          queryClient.invalidateQueries({ queryKey: getGetBiddersQueryKey() });
+          queryClient.invalidateQueries({ queryKey: getGetTeamsQueryKey({ season: seasonYear, calcuttaId }) });
+          queryClient.invalidateQueries({ queryKey: getGetAuctionSummaryQueryKey({ season: seasonYear, calcuttaId }) });
+          queryClient.invalidateQueries({ queryKey: getGetBiddersQueryKey({ season: seasonYear, calcuttaId }) });
           onOpenChange(false);
           toast({ title: "Team deleted" });
         }

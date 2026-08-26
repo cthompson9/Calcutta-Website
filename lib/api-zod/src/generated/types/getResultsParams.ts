@@ -11,6 +11,10 @@ import type { GetResultsConference } from './getResultsConference';
 export type GetResultsParams = {
 season: number;
 /**
+ * @nullable
+ */
+calcuttaId?: number | null;
+/**
  * NFL period sequence through which cumulative returns are calculated.
  * @minimum 0
  * @maximum 22

@@ -12,4 +12,9 @@ export type GetBiddersParams = {
  * @nullable
  */
 season?: number | null;
+/**
+ * When supplied with season, filter participants to this Calcutta. Omit both filters for the global bidder directory.
+ * @nullable
+ */
+calcuttaId?: number | null;
 };

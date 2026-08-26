@@ -9,6 +9,9 @@ import {
   refreshJobStatusSignatureMigration,
   mcpOAuthMigration,
   platformSchemaMigration,
+  ownershipInversionMigration,
+  mtmEntryScopeMigration,
+  entryResultEconomicsMigration,
 } from "./migrations";
 
 const migrations = [
@@ -20,6 +23,9 @@ const migrations = [
   tradeVoidingMigration,
   mcpOAuthMigration,
   platformSchemaMigration,
+  ownershipInversionMigration,
+  mtmEntryScopeMigration,
+  entryResultEconomicsMigration,
 ] as const;
 
 /**

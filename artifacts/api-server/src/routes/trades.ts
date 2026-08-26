@@ -5,10 +5,9 @@ import {
   teamsTable,
   biddersTable,
   tradesTable,
-  teamBiddersTable,
-  teamSeasonAuctionsTable,
   seasonsTable,
-  syncSeasonPositions,
+  positionsTable,
+  calcuttaEntriesTable,
 } from "@workspace/db";
 import {
   GetTradesQueryParams,
@@ -19,10 +18,8 @@ import {
   SetTradeStatusBody,
   SetTradeStatusParams,
 } from "@workspace/api-zod";
-import {
-  OWNERSHIP_SEASON_LOCK_NAMESPACE,
-  validatePrimaryOwnership,
-} from "../lib/ownershipShares";
+import { OWNERSHIP_SEASON_LOCK_NAMESPACE } from "../lib/ownershipShares";
+import { resolveCalcuttaId } from "../lib/calcuttaContext";
 
 const router: IRouter = Router();
 
@@ -46,11 +43,12 @@ const MAX_TRADE_PERCENTAGE = 100;
 async function validateTradeOwnership(args: {
   seasonId: number;
   teamId: number;
+  entryId?: number;
   fromBidderId: number;
   toBidderId: number;
   percentage: number;
 }, query: Pick<typeof db, "select"> = db, requireCompletePrimaryOwnership = false): Promise<string | null> {
-  const { seasonId, teamId, fromBidderId, toBidderId, percentage } = args;
+  const { fromBidderId, toBidderId, percentage } = args;
 
   if (fromBidderId === toBidderId) {
     return "Seller and buyer must be different owners.";
@@ -64,42 +62,24 @@ async function validateTradeOwnership(args: {
     return `Trade percentage must be between ${MIN_TRADE_PERCENTAGE}% and ${MAX_TRADE_PERCENTAGE}%.`;
   }
 
-  // Team must be auctioned in this season
-  const auctionRow = await query
-    .select({ teamId: teamSeasonAuctionsTable.teamId })
-    .from(teamSeasonAuctionsTable)
-    .where(
-      and(
-        eq(teamSeasonAuctionsTable.teamId, teamId),
-        eq(teamSeasonAuctionsTable.seasonId, seasonId),
-      ),
-    )
-    .limit(1);
-  if (!auctionRow[0]) {
-    return "Team is not auctioned in this season and cannot be traded.";
+  const primaryOwners = await query
+    .select({
+      bidderId: positionsTable.bidderId,
+      ownershipShare: positionsTable.ownershipShare,
+    })
+    .from(positionsTable)
+    .where(and(
+      eq(positionsTable.entryId, args.entryId!),
+      eq(positionsTable.source, "primary"),
+    ));
+  if (primaryOwners.length === 0) {
+    return "Team has no primary positions in the selected Calcutta and cannot be traded.";
   }
 
   if (requireCompletePrimaryOwnership) {
-    const primaryOwners = await query
-      .select({
-        bidderId: teamBiddersTable.bidderId,
-        ownershipShare: teamBiddersTable.ownershipShare,
-      })
-      .from(teamBiddersTable)
-      .where(
-        and(
-          eq(teamBiddersTable.teamId, teamId),
-          eq(teamBiddersTable.seasonId, seasonId),
-        ),
-      );
-    const primarySplit = validatePrimaryOwnership(
-      primaryOwners.map((owner) => ({
-        bidderId: owner.bidderId,
-        share: Number(owner.ownershipShare),
-      })),
-    );
-    if (!primarySplit.ok) {
-      return `The team's original auction ownership is incomplete or invalid: ${primarySplit.error}`;
+    const total = primaryOwners.reduce((sum, owner) => sum + Number(owner.ownershipShare), 0);
+    if (Math.abs(total - 1) > 0.0000005) {
+      return "The team's original auction ownership is incomplete or invalid.";
     }
   }
 
@@ -205,9 +185,14 @@ router.get("/trades", async (req, res): Promise<void> => {
     res.status(400).json({ error: parsed.error.message });
     return;
   }
-  const { season } = parsed.data;
+  const { season } = parsed.data as typeof parsed.data & { calcuttaId?: number };
   const seasonId = await resolveSeasonId(season);
   if (!seasonId) {
+    res.json([]);
+    return;
+  }
+  const calcuttaId = await resolveCalcuttaId(db, { seasonId, calcuttaId: parsed.data.calcuttaId });
+  if (!calcuttaId) {
     res.json([]);
     return;
   }
@@ -235,7 +220,10 @@ router.get("/trades", async (req, res): Promise<void> => {
     .from(tradesTable)
     .innerJoin(teamsTable, eq(tradesTable.teamId, teamsTable.id))
     .innerJoin(biddersTable, eq(tradesTable.fromBidderId, biddersTable.id))
-    .where(eq(tradesTable.seasonId, seasonId))
+    .where(and(
+      eq(tradesTable.seasonId, seasonId),
+      sql`${tradesTable.entryId} in (select id from calcutta_entries where calcutta_id = ${calcuttaId})`,
+    ))
     .orderBy(tradesTable.tradeDate);
 
   const biddersAll = await db
@@ -281,7 +269,7 @@ router.post("/trades", async (req, res): Promise<void> => {
     res.status(400).json({ error: parsed.error.message });
     return;
   }
-  const data = parsed.data;
+  const data = parsed.data as typeof parsed.data & { calcuttaId?: number };
   if (data.price !== undefined && (!Number.isFinite(data.price) || data.price < 0)) {
     res.status(400).json({ error: "Trade price must be a non-negative number." });
     return;
@@ -296,6 +284,18 @@ router.post("/trades", async (req, res): Promise<void> => {
     await tx.execute(
       sql`select pg_advisory_xact_lock(${OWNERSHIP_SEASON_LOCK_NAMESPACE}, ${seasonId})`,
     );
+    const calcuttaId = await resolveCalcuttaId(tx, { seasonId, calcuttaId: data.calcuttaId });
+    if (!calcuttaId) return { kind: "invalid" as const, error: "Calcutta not found for this season." };
+    const entryRows = await tx
+      .select({ id: calcuttaEntriesTable.id })
+      .from(calcuttaEntriesTable)
+      .where(and(
+        eq(calcuttaEntriesTable.calcuttaId, calcuttaId),
+        eq(calcuttaEntriesTable.teamId, data.teamId),
+      ))
+      .limit(1);
+    const entryId = entryRows[0]?.id;
+    if (!entryId) return { kind: "invalid" as const, error: "Team is not an entry in the selected Calcutta." };
     const validationError = await validateTradeOwnership(
       {
         seasonId,
@@ -303,6 +303,7 @@ router.post("/trades", async (req, res): Promise<void> => {
         fromBidderId: data.fromBidderId,
         toBidderId: data.toBidderId,
         percentage: data.percentage ?? 100,
+        entryId,
       },
       tx,
     );
@@ -310,17 +311,14 @@ router.post("/trades", async (req, res): Promise<void> => {
 
     let price = data.price;
     if (price === undefined || price === null) {
-      const auctionRow = await tx
-        .select({ bidAmount: teamSeasonAuctionsTable.bidAmount })
-        .from(teamSeasonAuctionsTable)
-        .where(
-          and(
-            eq(teamSeasonAuctionsTable.teamId, data.teamId),
-            eq(teamSeasonAuctionsTable.seasonId, seasonId),
-          ),
-        )
-        .limit(1);
-      const bidAmt = Number(auctionRow[0]?.bidAmount ?? "0");
+      const primaryRows = await tx
+        .select({ costBasis: positionsTable.costBasis })
+        .from(positionsTable)
+        .where(and(
+          eq(positionsTable.entryId, entryId),
+          eq(positionsTable.source, "primary"),
+        ));
+      const bidAmt = primaryRows.reduce((sum, row) => sum + Number(row.costBasis), 0);
       price = Math.round(bidAmt * ((data.percentage ?? 100) / 100) * 100) / 100;
     }
 
@@ -329,6 +327,7 @@ router.post("/trades", async (req, res): Promise<void> => {
       .values({
         seasonId,
         teamId: data.teamId,
+        entryId,
         fromBidderId: data.fromBidderId,
         toBidderId: data.toBidderId,
         price: price.toFixed(2),
@@ -400,6 +399,7 @@ router.patch("/trades/:id", async (req: Request, res: Response): Promise<void> =
         fromBidderId: fresh[0].fromBidderId,
         toBidderId: fresh[0].toBidderId,
         percentage: body.data.percentage,
+        entryId: fresh[0].entryId,
       }, tx);
       if (validationError) return { kind: "invalid" as const, error: validationError };
     }
@@ -496,6 +496,7 @@ router.patch("/trades/:id/status", async (req: Request, res: Response): Promise<
         fromBidderId: fresh[0].fromBidderId,
         toBidderId: fresh[0].toBidderId,
         percentage: Number(fresh[0].percentage),
+        entryId: fresh[0].entryId,
       }, tx, true);
       if (validationError) return { kind: "invalid" as const, error: validationError };
     }
@@ -513,12 +514,16 @@ router.patch("/trades/:id/status", async (req: Request, res: Response): Promise<
       updates.decisionSource = "commissioner_api";
     }
     await tx.update(tradesTable).set(updates).where(eq(tradesTable.id, id));
-    if (
-      body.data.status === "approved" ||
-      body.data.status === "voided" ||
-      (body.data.status === "rejected" && fresh[0].status === "approved")
-    ) {
-      await syncSeasonPositions(tx, fresh[0].seasonId);
+    if (body.data.status === "approved") {
+      const share = Number(fresh[0].percentage) / 100;
+      const price = Number(fresh[0].price);
+      await tx.insert(positionsTable).values([
+        { entryId: fresh[0].entryId, bidderId: fresh[0].fromBidderId, ownershipShare: (-share).toFixed(6), source: "trade", costBasis: (-price).toFixed(2), tradeId: fresh[0].id },
+        { entryId: fresh[0].entryId, bidderId: fresh[0].toBidderId, ownershipShare: share.toFixed(6), source: "trade", costBasis: price.toFixed(2), tradeId: fresh[0].id },
+      ]);
+    } else if (fresh[0].status === "approved") {
+      // Rejected corrections and voids remove only this trade's signed legs.
+      await tx.delete(positionsTable).where(eq(positionsTable.tradeId, fresh[0].id));
     }
     return { kind: "recorded" as const };
   });

@@ -1,22 +1,16 @@
 ---
 name: Schema design
-description: NFL auction season boundaries for prices, primary ownership, results, trades, and M2M data.
+description: Calcutta-entry boundaries for prices, ownership, trades, period returns, and MTM data.
 ---
 
-## New tables added
+## Calcutta ownership and price boundaries
 
-- `seasons`: year (unique), is_active, is_complete, label
-- `team_results`: composite PK (team_id, season_id); stores wins, pt_diff, playoff flags, realized_return, mark_to_market
-- `trades`: season_id, team_id, from_bidder_id, to_bidder_id, price, trade_date
-- `mtm_snapshots`: unique(team_id, season_id, week_num); week 0 = pre-season
-- `team_season_auctions`: unique(team_id, season_id); authoritative auction price for that season
+Primary ownership and its cost basis belong to a Calcutta entry. Approved trades add signed entry positions; pending or rejected trades do not affect effective ownership.
 
-## Season ownership and price boundaries
+Selected-pool auction economics come from the entry's primary position cost basis. Season-level auction rows are legacy compatibility data for canonical imports and standings, not the source for selected-Calcutta financial reads.
 
-Primary ownership is keyed by team, bidder, and season. Approved trades overlay those primary shares to produce current ownership; pending or rejected trades do not.
+MTM marks and Week 0 captures are also keyed by Calcutta entry, so two pools containing the same team can retain different prices and valuations.
 
-Auction price reads and writes use the season auction record. The legacy global team price is only a one-time 2025 backfill source and must never be a runtime fallback.
+**Why:** Season/team keys are insufficient when multiple Calcuttas share an NFL season. They silently leak ownership costs, returns, or MTM writes between pools.
 
-**Why:** Reusing global prices or active-season owners silently leaks 2025 economics into a new, empty season and makes cross-season comparisons incorrect.
-
-**How to apply:** Require an explicit season for financial views, return empty/zero data when that season has no auction rows, and keep the unfiltered bidder endpoint only as the global identity directory for selecting new buyers.
+**How to apply:** Resolve the selected Calcutta first, then read or write through its entries. Omitted Calcutta IDs may resolve to the canonical NFL pool for legacy callers, but runtime financial data must never fall back across entries.

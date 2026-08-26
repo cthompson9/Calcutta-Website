@@ -8,6 +8,7 @@
 
 export interface WeekZeroCaptureInput {
   seasonYear: number;
+  calcuttaId?: number;
   /** Optional Week 0 calendar date as YYYY-MM-DD. The first successful capture fixes this date for idempotent retries. */
   snapshotDate?: string;
 }

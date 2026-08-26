@@ -11,6 +11,10 @@ import type { GetResultsByOwnerMembershipView } from './getResultsByOwnerMembers
 export type GetResultsByOwnerParams = {
 season: number;
 /**
+ * @nullable
+ */
+calcuttaId?: number | null;
+/**
  * NFL period sequence through which cumulative returns are calculated.
  * @minimum 0
  * @maximum 22

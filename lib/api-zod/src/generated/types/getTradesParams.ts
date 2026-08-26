@@ -8,4 +8,8 @@
 
 export type GetTradesParams = {
 season: number;
+/**
+ * @nullable
+ */
+calcuttaId?: number | null;
 };

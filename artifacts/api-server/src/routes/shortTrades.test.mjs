@@ -19,10 +19,11 @@ let db;
 let biddersTable;
 let seasonsTable;
 let teamsTable;
-let teamBiddersTable;
 let teamSeasonAuctionsTable;
 let tradesTable;
 let positionsTable;
+let calcuttasTable;
+let calcuttaEntriesTable;
 let app;
 let loadSeasonOwnership;
 let resolveOrCreateBidder;
@@ -33,10 +34,11 @@ if (canRun) {
     biddersTable,
     seasonsTable,
     teamsTable,
-    teamBiddersTable,
     teamSeasonAuctionsTable,
     tradesTable,
     positionsTable,
+    calcuttasTable,
+    calcuttaEntriesTable,
   } = await import("@workspace/db"));
   ({ default: app } = await import("../app.ts"));
   ({ loadSeasonOwnership } = await import("../lib/seasonOwnership.ts"));
@@ -69,7 +71,32 @@ describe("short trades and new trade participants", { skip: !canRun }, () => {
   let newBuyer;
   let server;
   let baseUrl;
+  let calcuttaId;
   const createdBidderIds = [];
+
+  test("bidder edits accept selected-Calcutta context without writing it to the global identity", async () => {
+    const suffix = Math.random().toString(36).slice(2);
+    const createResponse = await fetch(`${baseUrl}/api/bidders`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ name: `Editable bidder ${suffix}` }),
+    });
+    assert.equal(createResponse.status, 201);
+    const created = await createResponse.json();
+    createdBidderIds.push(created.id);
+
+    const updateResponse = await fetch(`${baseUrl}/api/bidders/${created.id}`, {
+      method: "PATCH",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
+        name: `Renamed bidder ${suffix}`,
+        calcuttaId,
+      }),
+    });
+    assert.equal(updateResponse.status, 200);
+    const updated = await updateResponse.json();
+    assert.equal(updated.name, `Renamed bidder ${suffix}`);
+  });
 
   before(async () => {
     seasonYear = 1_000_000_000 + Math.floor(Math.random() * 100_000_000);
@@ -107,18 +134,32 @@ describe("short trades and new trade participants", { skip: !canRun }, () => {
     primaryBuyer = createdPrimaryBuyer;
     createdBidderIds.push(primaryBuyer.id);
 
-    await db.insert(teamBiddersTable).values([
+    const [calcutta] = await db.insert(calcuttasTable).values({
+      seasonId,
+      year: seasonYear,
+      name: `${seasonYear} NFL Calcutta`,
+      sport: "NFL",
+      isCanonical: true,
+    }).returning();
+    calcuttaId = calcutta.id;
+    const [entry] = await db.insert(calcuttaEntriesTable).values({
+      calcuttaId,
+      teamId,
+    }).returning();
+    await db.insert(positionsTable).values([
       {
-        seasonId,
-        teamId,
+        entryId: entry.id,
         bidderId: primaryOwner.id,
-        ownershipShare: "0.5000",
+        ownershipShare: "0.500000",
+        source: "primary",
+        costBasis: "500.00",
       },
       {
-        seasonId,
-        teamId,
+        entryId: entry.id,
         bidderId: primaryBuyer.id,
-        ownershipShare: "0.5000",
+        ownershipShare: "0.500000",
+        source: "primary",
+        costBasis: "500.00",
       },
     ]);
 
@@ -238,7 +279,7 @@ describe("short trades and new trade participants", { skip: !canRun }, () => {
     return Math.round(total * 10_000) / 10_000;
   }
 
-  test("MCP primary ownership corrections rebuild normalized primary positions", { skip: !MCP_KEY }, async () => {
+  test("MCP primary ownership corrections write normalized primary positions", { skip: !MCP_KEY }, async () => {
     const result = await callMcpTool("set_team_primary_ownership", {
       team: (await db.select({ name: teamsTable.name }).from(teamsTable).where(eq(teamsTable.id, teamId)))[0].name,
       owners: [
@@ -371,11 +412,16 @@ describe("short trades and new trade participants", { skip: !canRun }, () => {
       teamId: auditTeam.id,
       bidAmount: "1000.00",
     });
-    await db.insert(teamBiddersTable).values({
-      seasonId,
+    const [auditEntry] = await db.insert(calcuttaEntriesTable).values({
+      calcuttaId,
       teamId: auditTeam.id,
+    }).returning();
+    await db.insert(positionsTable).values({
+      entryId: auditEntry.id,
       bidderId: primaryOwner.id,
-      ownershipShare: "1.0000",
+      ownershipShare: "1.000000",
+      source: "primary",
+      costBasis: "1000.00",
     });
     const [auditSeller] = await db
       .insert(biddersTable)

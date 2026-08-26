@@ -8,4 +8,8 @@
 
 export type GetPayoutRulesParams = {
 season: number;
+/**
+ * @nullable
+ */
+calcuttaId?: number | null;
 };

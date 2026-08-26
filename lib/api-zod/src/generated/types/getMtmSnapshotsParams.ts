@@ -11,5 +11,9 @@ season: number;
 /**
  * @nullable
  */
+calcuttaId?: number | null;
+/**
+ * @nullable
+ */
 teamId?: number | null;
 };

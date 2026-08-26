@@ -110,11 +110,13 @@ export interface BidderSummary {
 export interface BidderInput {
   /** @minLength 1 */
   name: string;
+  calcuttaId?: number;
 }
 
 export interface BidderUpdate {
   /** @minLength 1 */
   name?: string;
+  calcuttaId?: number;
 }
 
 export type TeamConference = typeof TeamConference[keyof typeof TeamConference];
@@ -212,6 +214,7 @@ export interface TeamInput {
   /** @minimum 0 */
   bidAmount: number;
   season?: number;
+  calcuttaId?: number;
   /** @minItems 1 */
   owners: OwnerInput[];
 }
@@ -242,6 +245,7 @@ export interface TeamUpdate {
   /** @minimum 0 */
   bidAmount?: number;
   season?: number;
+  calcuttaId?: number;
   /** @minItems 1 */
   owners?: OwnerInput[];
 }
@@ -305,6 +309,7 @@ export interface NflStandingsImportInput {
      * @maximum 2100
      */
   seasonYear: number;
+  calcuttaId?: number;
 }
 
 export type NflStandingsImportTeamPreviewPlayoffStatus = typeof NflStandingsImportTeamPreviewPlayoffStatus[keyof typeof NflStandingsImportTeamPreviewPlayoffStatus];
@@ -397,6 +402,7 @@ export interface PayoutRuleRow {
 
 export interface PayoutRulesUpdate {
   seasonYear: number;
+  calcuttaId?: number;
   /** @minItems 1 */
   rules: PayoutRuleInput[];
 }
@@ -422,6 +428,7 @@ export const TeamPeriodSnapshotInputPlayoffStatus = {
 export interface TeamPeriodSnapshotInput {
   teamId: number;
   seasonYear: number;
+  calcuttaId?: number;
   /**
      * @minimum 0
      * @maximum 22
@@ -524,6 +531,7 @@ export interface TeamPeriodSnapshotRow {
 export interface InitializeWeekZeroPointsInput {
   /** NFL season to initialize */
   seasonYear: number;
+  calcuttaId?: number;
 }
 
 export interface WeekZeroPointsInitialization {
@@ -668,6 +676,7 @@ export const TeamResultInputPlayoffStatus = {
 export interface TeamResultInput {
   teamId: number;
   seasonYear: number;
+  calcuttaId?: number;
   /** @minimum 0 */
   wins?: number;
   /** @minimum 0 */
@@ -750,6 +759,7 @@ export interface TradeRow {
 
 export interface TradeInput {
   seasonYear: number;
+  calcuttaId?: number;
   teamId: number;
   fromBidderId: number;
   toBidderId: number;
@@ -762,6 +772,7 @@ export interface TradeInput {
 }
 
 export interface TradeUpdate {
+  calcuttaId?: number;
   price?: number;
   percentage?: number;
   tradeDate?: string;
@@ -769,10 +780,12 @@ export interface TradeUpdate {
 }
 
 export type TradeStatusUpdate = {
+  calcuttaId?: number;
   status: 'approved' | 'rejected';
   /** Must be true to record this irreversible commissioner decision. */
   confirmed: true;
 } | {
+  calcuttaId?: number;
   status: 'voided';
   /** Must be true to explicitly confirm this irreversible void. */
   confirmed: true;
@@ -974,6 +987,7 @@ export interface MtmData {
 export interface MtmSnapshotInput {
   teamId: number;
   seasonYear: number;
+  calcuttaId?: number;
   /** Optional week label (0=pre-season, 1–18=regular, 19+=playoffs) */
   weekNum?: number;
   /** Date as YYYY-MM-DD. Defaults to today. Same-day submissions overwrite the previous value. */
@@ -983,6 +997,7 @@ export interface MtmSnapshotInput {
 
 export interface WeekZeroCaptureInput {
   seasonYear: number;
+  calcuttaId?: number;
   /** Optional Week 0 calendar date as YYYY-MM-DD. The first successful capture fixes this date for idempotent retries. */
   snapshotDate?: string;
 }
@@ -1031,6 +1046,7 @@ export interface AuctionSummary {
 export interface AuctionImportInput {
   /** Season year to replace from the configured complete AuctionPro export. */
   seasonYear: number;
+  calcuttaId?: number;
 }
 
 export interface AuctionImportResult {
@@ -1052,6 +1068,10 @@ bidderId?: number | null;
  * @nullable
  */
 season?: number | null;
+/**
+ * @nullable
+ */
+calcuttaId?: number | null;
 };
 
 export type GetTeamsConference = typeof GetTeamsConference[keyof typeof GetTeamsConference];
@@ -1078,10 +1098,19 @@ export type GetBiddersParams = {
  * @nullable
  */
 season?: number | null;
+/**
+ * When supplied with season, filter participants to this Calcutta. Omit both filters for the global bidder directory.
+ * @nullable
+ */
+calcuttaId?: number | null;
 };
 
 export type GetResultsParams = {
 season: number;
+/**
+ * @nullable
+ */
+calcuttaId?: number | null;
 /**
  * NFL period sequence through which cumulative returns are calculated.
  * @minimum 0
@@ -1114,6 +1143,10 @@ export const GetResultsConference = {
 
 export type GetResultsByOwnerParams = {
 season: number;
+/**
+ * @nullable
+ */
+calcuttaId?: number | null;
 /**
  * NFL period sequence through which cumulative returns are calculated.
  * @minimum 0
@@ -1148,6 +1181,10 @@ export const GetResultsByOwnerMembershipView = {
 
 export type GetResultsAvailabilityParams = {
 season: number;
+/**
+ * @nullable
+ */
+calcuttaId?: number | null;
 /**
  * Snapshot basis used to identify recorded reporting periods.
  */
@@ -1217,14 +1254,26 @@ sport?: string;
 
 export type GetPayoutRulesParams = {
 season: number;
+/**
+ * @nullable
+ */
+calcuttaId?: number | null;
 };
 
 export type GetTradesParams = {
 season: number;
+/**
+ * @nullable
+ */
+calcuttaId?: number | null;
 };
 
 export type GetMtmSnapshotsParams = {
 season: number;
+/**
+ * @nullable
+ */
+calcuttaId?: number | null;
 /**
  * @nullable
  */
@@ -1236,5 +1285,9 @@ export type GetAuctionSummaryParams = {
  * Season year (YYYY). Required. Returns empty/zero data if the season has no auction rows.
  */
 season: number;
+/**
+ * @nullable
+ */
+calcuttaId?: number | null;
 };
 

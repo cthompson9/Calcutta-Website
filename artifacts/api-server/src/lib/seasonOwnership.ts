@@ -13,7 +13,6 @@ import {
   db,
   positionsTable,
   seasonsTable,
-  teamBiddersTable,
   teamResultsTable,
   teamsTable,
   tradesTable,
@@ -32,8 +31,12 @@ import {
 // ── Types ─────────────────────────────────────────────────────────────────────
 
 export interface OwnerEntry {
-  /** Fraction held at auction time (from team_bidders). */
+  /** Fraction held at auction time (from primary position rows). */
   originalShare: number;
+  /** Original auction cost recorded on this bidder's primary ledger positions. */
+  originalCostBasis: number;
+  /** Alias for the primary-position cost basis, retained for position-oriented callers. */
+  primaryCostBasis: number;
   /** Current fraction after all approved trades (can be 0 if fully sold). */
   effectiveShare: number;
   /** Cash paid to acquire shares via trades (as toBidder). */
@@ -175,6 +178,8 @@ function getOrCreateEntry(
   if (!teamMap.has(teamId)) {
     teamMap.set(teamId, {
       originalShare: 0,
+      originalCostBasis: 0,
+      primaryCostBasis: 0,
       effectiveShare: 0,
       tradePaid: 0,
       tradeReceived: 0,
@@ -189,33 +194,36 @@ function getOrCreateEntry(
  * Load and compute all season ownership data for a given seasonId.
  *
  * Steps:
- *  1. Fetch all team_bidders rows for the season (primary auction owners).
- *  2. Fetch all APPROVED trades for the season.
- *  3. Apply trades to derive effectiveShare, tradePaid, tradeReceived.
+ *  1. Fetch every signed position in the selected Calcutta ledger.
+ *  2. Derive original ownership from primary rows and current ownership from
+ *     the signed sum of all rows (including trade legs).
+ *  3. Derive trade cash and display history from those same ledger rows.
  *  4. Fetch bidder names for all participants.
  *  5. Build currentOwnersByTeam (effectiveShare > 0 per team).
  */
-export async function loadSeasonOwnership(seasonId: number): Promise<SeasonOwnership> {
-  // 1. Primary ownership from team_bidders
-  const legacyPrimaryRows = await db
-    .select({
-      teamId: teamBiddersTable.teamId,
-      bidderId: teamBiddersTable.bidderId,
-      ownershipShare: teamBiddersTable.ownershipShare,
-    })
-    .from(teamBiddersTable)
-    .where(eq(teamBiddersTable.seasonId, seasonId));
-  const normalizedPrimaryRows = await db
+export async function loadSeasonOwnership(
+  seasonId: number,
+  calcuttaId?: number,
+): Promise<SeasonOwnership> {
+  // Positions are the ownership ledger.  The season-only form is retained only
+  // as a canonical-NFL selection compatibility shim, never as a legacy read.
+  const positionRows = await db
     .select({
       teamId: calcuttaEntriesTable.teamId,
       bidderId: positionsTable.bidderId,
       ownershipShare: positionsTable.ownershipShare,
+      costBasis: positionsTable.costBasis,
+      source: positionsTable.source,
+      tradeId: positionsTable.tradeId,
+      tradeFromBidderId: tradesTable.fromBidderId,
+      tradeToBidderId: tradesTable.toBidderId,
     })
     .from(positionsTable)
     .innerJoin(
       calcuttaEntriesTable,
       eq(calcuttaEntriesTable.id, positionsTable.entryId),
     )
+    .leftJoin(tradesTable, eq(tradesTable.id, positionsTable.tradeId))
     .innerJoin(
       calcuttasTable,
       eq(calcuttasTable.id, calcuttaEntriesTable.calcuttaId),
@@ -224,60 +232,38 @@ export async function loadSeasonOwnership(seasonId: number): Promise<SeasonOwner
       and(
         eq(calcuttasTable.seasonId, seasonId),
         eq(calcuttasTable.sport, "NFL"),
-        eq(calcuttasTable.isCanonical, true),
-        eq(positionsTable.source, "primary"),
+        calcuttaId == null
+          ? eq(calcuttasTable.isCanonical, true)
+          : eq(calcuttasTable.id, calcuttaId),
       ),
     );
-  const primaryRows =
-    normalizedPrimaryRows.length > 0 ? normalizedPrimaryRows : legacyPrimaryRows;
-
-  // 2. Approved trades
-  const approvedTrades = await db
-    .select({
-      id: tradesTable.id,
-      teamId: tradesTable.teamId,
-      fromBidderId: tradesTable.fromBidderId,
-      toBidderId: tradesTable.toBidderId,
-      percentage: tradesTable.percentage,
-      price: tradesTable.price,
-    })
-    .from(tradesTable)
-    .where(and(eq(tradesTable.seasonId, seasonId), eq(tradesTable.status, "approved")));
+  const primaryRows = positionRows.filter((row) => row.source === "primary");
 
   // 3. Build byBidder map
   const byBidder: Map<number, TeamOwnerMap> = new Map();
 
-  // Seed from primary ownership
-  for (const row of primaryRows) {
+  // All signed rows determine effective ownership. Primary rows alone retain
+  // the immutable auction split; trade cash comes from signed cost basis.
+  for (const row of positionRows) {
     const share = parseFloat(row.ownershipShare);
     const entry = getOrCreateEntry(byBidder, row.bidderId, row.teamId);
-    entry.originalShare += share;
     entry.effectiveShare += share;
-  }
-
-  // Apply approved trades
-  for (const trade of approvedTrades) {
-    const tradeShare = parseFloat(trade.percentage) / 100;
-    const tradePrice = parseFloat(trade.price);
-
-    // fromBidder loses share and receives cash
-    const fromEntry = getOrCreateEntry(byBidder, trade.fromBidderId, trade.teamId);
-    fromEntry.effectiveShare -= tradeShare;
-    fromEntry.tradeReceived += tradePrice;
-
-    // toBidder gains share and pays cash
-    const toEntry = getOrCreateEntry(byBidder, trade.toBidderId, trade.teamId);
-    toEntry.effectiveShare += tradeShare;
-    toEntry.tradePaid += tradePrice;
+    if (row.source === "primary") {
+      entry.originalShare += share;
+      const cost = Number(row.costBasis);
+      entry.originalCostBasis += cost;
+      entry.primaryCostBasis += cost;
+    }
+    if (row.source === "trade") {
+      const cost = Number(row.costBasis);
+      if (cost > 0) entry.tradePaid += cost;
+      if (cost < 0) entry.tradeReceived -= cost;
+    }
   }
 
   // 4. Collect participant IDs and fetch names
   const participantIds = new Set<number>();
-  for (const row of primaryRows) participantIds.add(row.bidderId);
-  for (const trade of approvedTrades) {
-    participantIds.add(trade.fromBidderId);
-    participantIds.add(trade.toBidderId);
-  }
+  for (const row of positionRows) participantIds.add(row.bidderId);
 
   const bidderNames = new Map<number, string>();
   if (participantIds.size > 0) {
@@ -289,9 +275,7 @@ export async function loadSeasonOwnership(seasonId: number): Promise<SeasonOwner
     }
   }
 
-  // 5. Build source-specific ownership history for Results. This intentionally
-  // does not alter effective ownership: every approved trade has both a signed
-  // seller leg and a signed buyer leg.
+  // 5. Build source-specific ownership history directly from ledger rows.
   const ownershipSegmentsByTeam = new Map<number, OwnershipSegment[]>();
   const addOwnershipSegment = (teamId: number, segment: OwnershipSegment) => {
     if (!ownershipSegmentsByTeam.has(teamId))
@@ -308,30 +292,20 @@ export async function loadSeasonOwnership(seasonId: number): Promise<SeasonOwner
     });
   }
 
-  for (const trade of approvedTrades) {
-    const ownershipShare = parseFloat(trade.percentage) / 100;
-    const fromBidderName = bidderNames.get(trade.fromBidderId) ?? "Unknown";
-    const toBidderName = bidderNames.get(trade.toBidderId) ?? "Unknown";
-
-    addOwnershipSegment(trade.teamId, {
-      bidderId: trade.fromBidderId,
-      bidderName: fromBidderName,
-      ownershipShare: -ownershipShare,
+  for (const row of positionRows.filter((position) => position.source === "trade")) {
+    const sold = Number(row.ownershipShare) < 0;
+    const counterpartyBidderId = sold ? row.tradeToBidderId : row.tradeFromBidderId;
+    addOwnershipSegment(row.teamId, {
+      bidderId: row.bidderId,
+      bidderName: bidderNames.get(row.bidderId) ?? "Unknown",
+      ownershipShare: Number(row.ownershipShare),
       source: "trade",
-      tradeDirection: "sold",
-      tradeId: trade.id,
-      counterpartyBidderId: trade.toBidderId,
-      counterpartyBidderName: toBidderName,
-    });
-    addOwnershipSegment(trade.teamId, {
-      bidderId: trade.toBidderId,
-      bidderName: toBidderName,
-      ownershipShare,
-      source: "trade",
-      tradeDirection: "acquired",
-      tradeId: trade.id,
-      counterpartyBidderId: trade.fromBidderId,
-      counterpartyBidderName: fromBidderName,
+      tradeDirection: sold ? "sold" : "acquired",
+      tradeId: row.tradeId ?? undefined,
+      counterpartyBidderId: counterpartyBidderId ?? undefined,
+      counterpartyBidderName: counterpartyBidderId == null
+        ? undefined
+        : bidderNames.get(counterpartyBidderId) ?? "Unknown",
     });
   }
 
@@ -415,7 +389,7 @@ export async function loadCrossCalcuttaRollup(args: {
   const empty: CrossCalcuttaRollup = { groupBy, calcuttas, rows: [] };
   if (!calcuttas.length) return empty;
 
-  const [positionRows, memberships, calculatedByCalcutta, payoutRulesByCalcutta, legacyRows] =
+  const [positionRows, memberships, calculatedByCalcutta, payoutRulesByCalcutta, entryEconomicsRows] =
     await Promise.all([
       db
         .select({
@@ -460,13 +434,13 @@ export async function loadCrossCalcuttaRollup(args: {
       ),
       db
         .select({
-          seasonId: teamResultsTable.seasonId,
-          teamId: teamResultsTable.teamId,
-          realizedReturn: teamResultsTable.realizedReturn,
-          markToMarket: teamResultsTable.markToMarket,
+          calcuttaId: calcuttaEntriesTable.calcuttaId,
+          teamId: calcuttaEntriesTable.teamId,
+          realizedReturn: calcuttaEntriesTable.realizedReturn,
+          markToMarket: calcuttaEntriesTable.markToMarket,
         })
-        .from(teamResultsTable)
-        .where(inArray(teamResultsTable.seasonId, calcuttas.map((calcutta) => calcutta.seasonId))),
+        .from(calcuttaEntriesTable)
+        .where(inArray(calcuttaEntriesTable.calcuttaId, calcuttas.map((calcutta) => calcutta.id))),
     ]);
 
   const consortiumByCalcutta = new Map(memberships);
@@ -485,8 +459,8 @@ export async function loadCrossCalcuttaRollup(args: {
       ] as const;
     }),
   );
-  const legacyBySeasonTeam = new Map(
-    legacyRows.map((row) => [`${row.seasonId}:${row.teamId}`, row]),
+  const entryEconomicsByCalcuttaTeam = new Map(
+    entryEconomicsRows.map((row) => [`${row.calcuttaId}:${row.teamId}`, row]),
   );
 
   type Position = {
@@ -556,7 +530,9 @@ export async function loadCrossCalcuttaRollup(args: {
       payoutRulesConfiguredByCalcutta.get(position.calcuttaId) ?? false;
     const realized = calculated?.realized?.grossReturn;
     const mtm = calculated?.mtm?.grossReturn;
-    const legacy = legacyBySeasonTeam.get(`${position.seasonId}:${position.teamId}`);
+    const entryEconomics = entryEconomicsByCalcuttaTeam.get(
+      `${position.calcuttaId}:${position.teamId}`,
+    );
     const selected = calculated?.[selectedBasis];
     const coverageTarget = coverageTargetByCalcutta.get(position.calcuttaId) ?? null;
     const snapshotAvailable =
@@ -570,13 +546,13 @@ export async function loadCrossCalcuttaRollup(args: {
         ? 0
         : payoutRulesConfigured
           ? realized ?? 0
-          : Number(legacy?.realizedReturn ?? 0);
+          : Number(entryEconomics?.realizedReturn ?? 0);
     const mtmValue =
       payoutRulesConfigured && !snapshotAvailable
         ? 0
         : payoutRulesConfigured
           ? mtm ?? 0
-          : Number(legacy?.markToMarket ?? 0);
+          : Number(entryEconomics?.markToMarket ?? 0);
     const coveragePeriod = NFL_PERIOD_TEMPLATE.find(
       (period) => period.sequence === coverageTarget,
     );

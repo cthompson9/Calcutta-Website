@@ -4,15 +4,15 @@ import { and, eq, inArray, sql } from "drizzle-orm";
 import {
   db,
   biddersTable,
+  calcuttasTable,
   ownershipAdjustmentsTable,
   seasonsTable,
-  teamBiddersTable,
   teamResultsTable,
   teamSeasonAuctionsTable,
   teamsTable,
   tradesTable,
   importRunsTable,
-  syncSeasonPositions,
+  positionsTable,
 } from "@workspace/db";
 import {
   ImportAuctionDataBody,
@@ -32,6 +32,7 @@ import {
   OWNERSHIP_SEASON_LOCK_NAMESPACE,
   validatePrimaryOwnership,
 } from "../lib/ownershipShares";
+import { getOrCreateCalcuttaEntry, resolveCalcuttaId } from "../lib/calcuttaContext";
 
 const router: IRouter = Router();
 const COMPLETE_NFL_TEAM_COUNT = 32;
@@ -72,7 +73,7 @@ type ResolvedImportTeam = {
 
 class ApprovedTradeConflictError extends Error {
   constructor() {
-    super("This season has approved trades. Import would replace the primary auction ownership and is blocked to preserve trade history.");
+    super("The selected Calcutta has approved trades. Import would replace its primary auction ownership and is blocked to preserve trade history.");
     this.name = "ApprovedTradeConflictError";
   }
 }
@@ -171,12 +172,33 @@ router.post("/auction/import", async (req, res): Promise<void> => {
       (count, team) => count + team.owners.length,
       0,
     );
-    const sourceHash = sourceFingerprint(sourcePayload);
 
     const importOutcome = await db.transaction(async (tx) => {
       await tx.execute(
         sql`select pg_advisory_xact_lock(${OWNERSHIP_SEASON_LOCK_NAMESPACE}, ${seasonRows[0]!.id})`,
       );
+      const calcuttaId = await resolveCalcuttaId(tx, {
+        seasonId: seasonRows[0]!.id,
+        calcuttaId: (parsed.data as typeof parsed.data & { calcuttaId?: number }).calcuttaId,
+      });
+      if (!calcuttaId) throw new AuctionProImportError("Calcutta not found for this season.", 404);
+      const calcutta = await tx
+        .select({
+          sport: calcuttasTable.sport,
+          isCanonical: calcuttasTable.isCanonical,
+        })
+        .from(calcuttasTable)
+        .where(eq(calcuttasTable.id, calcuttaId))
+        .limit(1);
+      if (!calcutta[0]) throw new AuctionProImportError("Calcutta not found for this season.", 404);
+      const syncLegacyAuctionPrices =
+        calcutta[0].sport === "NFL" && calcutta[0].isCanonical;
+      const entryIds = new Map<number, number>();
+      for (const team of importedTeams) {
+        entryIds.set(team.teamId, await getOrCreateCalcuttaEntry(tx, calcuttaId, team.teamId));
+      }
+      // A source replay applies independently to each selected Calcutta.
+      const sourceHash = sourceFingerprint({ sourcePayload, calcuttaId });
       const previousRun = await tx
         .select({
           importedTeams: importRunsTable.importedTeams,
@@ -204,43 +226,43 @@ router.post("/auction/import", async (req, res): Promise<void> => {
           and(
             eq(tradesTable.seasonId, seasonRows[0]!.id),
             eq(tradesTable.status, "approved"),
-            inArray(tradesTable.teamId, teamIds),
+            inArray(tradesTable.entryId, [...entryIds.values()]),
           ),
         )
         .limit(1);
       if (approvedTrades[0]) throw new ApprovedTradeConflictError();
 
-      await tx
-        .delete(teamBiddersTable)
-        .where(
-          and(
-            eq(teamBiddersTable.seasonId, seasonRows[0]!.id),
-            inArray(teamBiddersTable.teamId, teamIds),
-          ),
-        );
-      await tx
-        .delete(teamSeasonAuctionsTable)
-        .where(
-          and(
-            eq(teamSeasonAuctionsTable.seasonId, seasonRows[0]!.id),
-            inArray(teamSeasonAuctionsTable.teamId, teamIds),
-          ),
-        );
-
-      await tx.insert(teamSeasonAuctionsTable).values(
-        importedTeams.map((team) => ({
-          teamId: team.teamId,
-          seasonId: seasonRows[0]!.id,
-          bidAmount: String(team.bidAmount),
-        })),
+      await tx.delete(positionsTable).where(
+        and(inArray(positionsTable.entryId, [...entryIds.values()]), eq(positionsTable.source, "primary")),
       );
-      await tx.insert(teamBiddersTable).values(
+      // This is a season/team compatibility table, so only the canonical NFL
+      // ledger may maintain it. Selected positions retain each pool's price.
+      if (syncLegacyAuctionPrices) {
+        await tx
+          .delete(teamSeasonAuctionsTable)
+          .where(
+            and(
+              eq(teamSeasonAuctionsTable.seasonId, seasonRows[0]!.id),
+              inArray(teamSeasonAuctionsTable.teamId, teamIds),
+            ),
+          );
+
+        await tx.insert(teamSeasonAuctionsTable).values(
+          importedTeams.map((team) => ({
+            teamId: team.teamId,
+            seasonId: seasonRows[0]!.id,
+            bidAmount: String(team.bidAmount),
+          })),
+        );
+      }
+      await tx.insert(positionsTable).values(
         importedTeams.flatMap((team) =>
           team.owners.map((owner) => ({
-            teamId: team.teamId,
+            entryId: entryIds.get(team.teamId)!,
             bidderId: owner.bidderId,
-            seasonId: seasonRows[0]!.id,
-            ownershipShare: String(owner.share),
+            ownershipShare: owner.share.toFixed(6),
+            source: "primary",
+            costBasis: (team.bidAmount * owner.share).toFixed(2),
           })),
         ),
       );
@@ -269,7 +291,6 @@ router.post("/auction/import", async (req, res): Promise<void> => {
         requestedBy: "admin_api",
         requestId: req.id == null ? null : String(req.id),
       });
-      await syncSeasonPositions(tx, seasonRows[0]!.id);
       return { importedTeams: importedTeams.length, importedOwners };
     });
 
@@ -297,9 +318,10 @@ router.post("/auction/import", async (req, res): Promise<void> => {
 
 // ── POST /auction/import/draft-order ─────────────────────────────────────────
 // Fetches the public AuctionPro live draft-order endpoint and atomically
-// replaces the season's auction prices, single-owner ownership, and draft
-// order in team_results. Requires ADMIN_API_KEY. Blocked if approved trades
-// already exist for any of the 32 teams.
+// replaces the selected Calcutta's single-owner ownership and auction cost
+// basis, plus draft order in team_results. It maintains legacy season auction
+// prices only for the canonical NFL Calcutta. Requires ADMIN_API_KEY. Blocked
+// if the selected entries have approved trades.
 
 router.post("/auction/import/draft-order", async (req, res): Promise<void> => {
   if (!isAdminRequest(req)) {
@@ -380,12 +402,33 @@ router.post("/auction/import/draft-order", async (req, res): Promise<void> => {
     }
 
     const teamIds = resolved.map((r) => r.teamId);
-    const sourceHash = sourceFingerprint(rawEntries);
 
     const importOutcome = await db.transaction(async (tx) => {
       await tx.execute(
         sql`select pg_advisory_xact_lock(${OWNERSHIP_SEASON_LOCK_NAMESPACE}, ${seasonRows[0]!.id})`,
       );
+      const calcuttaId = await resolveCalcuttaId(tx, {
+        seasonId: seasonRows[0]!.id,
+        calcuttaId: (parsed.data as typeof parsed.data & { calcuttaId?: number }).calcuttaId,
+      });
+      if (!calcuttaId) throw new DraftOrderImportError("Calcutta not found for this season.", 404);
+      const calcutta = await tx
+        .select({
+          sport: calcuttasTable.sport,
+          isCanonical: calcuttasTable.isCanonical,
+        })
+        .from(calcuttasTable)
+        .where(eq(calcuttasTable.id, calcuttaId))
+        .limit(1);
+      if (!calcutta[0]) throw new DraftOrderImportError("Calcutta not found for this season.", 404);
+      const syncLegacyAuctionPrices =
+        calcutta[0].sport === "NFL" && calcutta[0].isCanonical;
+      const entryIds = new Map<number, number>();
+      for (const team of resolved) {
+        entryIds.set(team.teamId, await getOrCreateCalcuttaEntry(tx, calcuttaId, team.teamId));
+      }
+      // A source replay applies independently to each selected Calcutta.
+      const sourceHash = sourceFingerprint({ rawEntries, calcuttaId });
       const previousRun = await tx
         .select({
           importedTeams: importRunsTable.importedTeams,
@@ -414,44 +457,42 @@ router.post("/auction/import/draft-order", async (req, res): Promise<void> => {
           and(
             eq(tradesTable.seasonId, seasonRows[0]!.id),
             eq(tradesTable.status, "approved"),
-            inArray(tradesTable.teamId, teamIds),
+            inArray(tradesTable.entryId, [...entryIds.values()]),
           ),
         )
         .limit(1);
       if (approvedTrades[0]) throw new ApprovedTradeConflictError();
 
-      // Replace auction prices and primary ownership
-      await tx
-        .delete(teamBiddersTable)
-        .where(
-          and(
-            eq(teamBiddersTable.seasonId, seasonRows[0]!.id),
-            inArray(teamBiddersTable.teamId, teamIds),
-          ),
-        );
-      await tx
-        .delete(teamSeasonAuctionsTable)
-        .where(
-          and(
-            eq(teamSeasonAuctionsTable.seasonId, seasonRows[0]!.id),
-            inArray(teamSeasonAuctionsTable.teamId, teamIds),
-          ),
-        );
-
-      await tx.insert(teamSeasonAuctionsTable).values(
-        resolved.map((r) => ({
-          teamId: r.teamId,
-          seasonId: seasonRows[0]!.id,
-          bidAmount: String(r.bidAmount),
-        })),
+      // Replace selected Calcutta primary ownership and cost basis.
+      await tx.delete(positionsTable).where(
+        and(inArray(positionsTable.entryId, [...entryIds.values()]), eq(positionsTable.source, "primary")),
       );
+      if (syncLegacyAuctionPrices) {
+        await tx
+          .delete(teamSeasonAuctionsTable)
+          .where(
+            and(
+              eq(teamSeasonAuctionsTable.seasonId, seasonRows[0]!.id),
+              inArray(teamSeasonAuctionsTable.teamId, teamIds),
+            ),
+          );
 
-      await tx.insert(teamBiddersTable).values(
+        await tx.insert(teamSeasonAuctionsTable).values(
+          resolved.map((r) => ({
+            teamId: r.teamId,
+            seasonId: seasonRows[0]!.id,
+            bidAmount: String(r.bidAmount),
+          })),
+        );
+      }
+
+      await tx.insert(positionsTable).values(
         resolved.map((r) => ({
-          teamId: r.teamId,
+          entryId: entryIds.get(r.teamId)!,
           bidderId: r.bidderId,
-          seasonId: seasonRows[0]!.id,
-          ownershipShare: "1",
+          ownershipShare: "1.000000",
+          source: "primary",
+          costBasis: r.bidAmount.toFixed(2),
         })),
       );
 
@@ -495,7 +536,6 @@ router.post("/auction/import/draft-order", async (req, res): Promise<void> => {
         requestedBy: "admin_api",
         requestId: req.id == null ? null : String(req.id),
       });
-      await syncSeasonPositions(tx, seasonRows[0]!.id);
       return { importedTeams: resolved.length, importedOwners: resolved.length };
     });
 

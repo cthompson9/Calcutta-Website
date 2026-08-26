@@ -8,6 +8,7 @@
 
 export interface TradeInput {
   seasonYear: number;
+  calcuttaId?: number;
   teamId: number;
   fromBidderId: number;
   toBidderId: number;

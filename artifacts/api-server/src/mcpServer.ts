@@ -14,11 +14,10 @@ import {
   teamsTable,
   biddersTable,
   teamResultsTable,
-  teamSeasonAuctionsTable,
+  positionsTable,
   seasonsTable,
   tradesTable,
   mtmSnapshotsTable,
-  teamBiddersTable,
   ownershipAdjustmentsTable,
   consortiaTable,
   consortiumMembershipsTable,
@@ -27,7 +26,6 @@ import {
   sportPeriodsTable,
   teamPeriodSnapshotsTable,
   payoutRulesTable,
-  syncSeasonPositions,
 } from "@workspace/db";
 import type { Router, IRouter, Request, Response } from "express";
 import { Router as ExpressRouter } from "express";
@@ -46,9 +44,10 @@ import {
   ensureNflSportPeriods,
   getOrCreateCalcuttaEntry,
   getOrCreateCanonicalCalcutta,
-  hasConfiguredPayoutRules,
-  loadCalculatedTeamReturns,
+  hasConfiguredPayoutRulesForCalcutta,
+  loadCalculatedTeamReturnsForCalcutta,
 } from "./lib/calcuttaReturns";
+import { resolveCalcuttaId as resolveSelectedCalcuttaId } from "./lib/calcuttaContext";
 import { loadCurrentBidderConsortiums } from "./lib/consortiumMemberships";
 import { applyNflStandingsImport, NflStandingsImportError } from "./lib/nflStandingsImport";
 import {
@@ -177,6 +176,7 @@ async function resolveWritableSeasonYear(): Promise<number> {
 async function validateMcpTradeApproval(trade: {
   seasonId: number;
   teamId: number;
+  entryId: number;
   fromBidderId: number;
   toBidderId: number;
   percentage: string;
@@ -190,29 +190,21 @@ async function validateMcpTradeApproval(trade: {
     return "Trade percentage must be between 1% and 100%.";
   }
 
-  const auctionRow = await query
-    .select({ teamId: teamSeasonAuctionsTable.teamId })
-    .from(teamSeasonAuctionsTable)
+  const primaryOwners = await query
+    .select({
+      bidderId: positionsTable.bidderId,
+      ownershipShare: positionsTable.ownershipShare,
+    })
+    .from(positionsTable)
     .where(and(
-      eq(teamSeasonAuctionsTable.teamId, trade.teamId),
-      eq(teamSeasonAuctionsTable.seasonId, trade.seasonId),
-    ))
-    .limit(1);
-  if (!auctionRow[0]) {
-    return "Team is not auctioned in this season and cannot be traded.";
+      eq(positionsTable.entryId, trade.entryId),
+      eq(positionsTable.source, "primary"),
+    ));
+  if (primaryOwners.length === 0) {
+    return "Team has no primary positions in the selected Calcutta and cannot be traded.";
   }
 
   if (requireCompletePrimaryOwnership) {
-    const primaryOwners = await query
-      .select({
-        bidderId: teamBiddersTable.bidderId,
-        ownershipShare: teamBiddersTable.ownershipShare,
-      })
-      .from(teamBiddersTable)
-      .where(and(
-        eq(teamBiddersTable.teamId, trade.teamId),
-        eq(teamBiddersTable.seasonId, trade.seasonId),
-      ));
     const split = validatePrimaryOwnership(
       primaryOwners.map((owner) => ({
         bidderId: owner.bidderId,
@@ -238,59 +230,86 @@ async function getTeamResult(teamId: number, seasonId: number) {
   return rows[0] ?? null;
 }
 
-async function getTeamCost(teamId: number, seasonId: number): Promise<number> {
+async function getTeamCost(
+  teamId: number,
+  seasonId: number,
+  calcuttaId?: number,
+): Promise<number | null> {
+  const resolvedCalcuttaId = await resolveSelectedCalcuttaId(db, { seasonId, calcuttaId });
+  if (!resolvedCalcuttaId) return null;
   const rows = await db
-    .select({ bidAmount: teamSeasonAuctionsTable.bidAmount })
-    .from(teamSeasonAuctionsTable)
+    .select({ costBasis: positionsTable.costBasis })
+    .from(calcuttaEntriesTable)
+    .innerJoin(positionsTable, and(
+      eq(positionsTable.entryId, calcuttaEntriesTable.id),
+      eq(positionsTable.source, "primary"),
+    ))
     .where(and(
-      eq(teamSeasonAuctionsTable.teamId, teamId),
-      eq(teamSeasonAuctionsTable.seasonId, seasonId),
+      eq(calcuttaEntriesTable.teamId, teamId),
+      eq(calcuttaEntriesTable.calcuttaId, resolvedCalcuttaId),
+    ));
+  return rows.length > 0
+    ? rows.reduce((sum, row) => sum + Number(row.costBasis), 0)
+    : null;
+}
+
+async function getTeamFinancials(teamId: number, calcuttaId: number) {
+  const rows = await db
+    .select({
+      realizedReturn: calcuttaEntriesTable.realizedReturn,
+      markToMarket: calcuttaEntriesTable.markToMarket,
+    })
+    .from(calcuttaEntriesTable)
+    .where(and(
+      eq(calcuttaEntriesTable.teamId, teamId),
+      eq(calcuttaEntriesTable.calcuttaId, calcuttaId),
     ))
     .limit(1);
-  return Number(rows[0]?.bidAmount ?? 0);
+  return rows[0] ?? null;
 }
 
 /** Returns effective current owner names for a team in a season (post-trades). */
-async function getTeamOwners(teamId: number, seasonId: number): Promise<string[]> {
-  const ownership = await loadSeasonOwnership(seasonId);
+async function getTeamOwners(teamId: number, seasonId: number, calcuttaId?: number): Promise<string[]> {
+  const resolvedCalcuttaId = await resolveSelectedCalcuttaId(db, { seasonId, calcuttaId });
+  if (!resolvedCalcuttaId) return [];
+  const ownership = await loadSeasonOwnership(seasonId, resolvedCalcuttaId);
   return (ownership.currentOwnersByTeam.get(teamId) ?? []).map((o) => o.bidderName);
 }
 
 /** Aggregate cost/return/mtm for a bidder using effective ownership (post-trades). */
-async function getOwnerAgg(bidderId: number, seasonId: number) {
-  const ownership = await loadSeasonOwnership(seasonId);
-  const calculatedReturns = await loadCalculatedTeamReturns(seasonId);
-  const payoutRulesConfigured = await hasConfiguredPayoutRules(seasonId);
+async function getOwnerAgg(bidderId: number, seasonId: number, calcuttaId?: number) {
+  const resolvedCalcuttaId = await resolveSelectedCalcuttaId(db, { seasonId, calcuttaId });
+  if (!resolvedCalcuttaId) {
+    return { totalCost: 0, totalReturn: 0, totalMtm: 0, totalNetMtm: 0 };
+  }
+  const ownership = await loadSeasonOwnership(seasonId, resolvedCalcuttaId);
+  const calculatedReturns = await loadCalculatedTeamReturnsForCalcutta(resolvedCalcuttaId);
+  const entryRows = await db
+    .select({
+      teamId: calcuttaEntriesTable.teamId,
+      realizedReturn: calcuttaEntriesTable.realizedReturn,
+      markToMarket: calcuttaEntriesTable.markToMarket,
+    })
+    .from(calcuttaEntriesTable)
+    .where(eq(calcuttaEntriesTable.calcuttaId, resolvedCalcuttaId));
+  const entryFinancials = new Map(entryRows.map((entry) => [entry.teamId, entry]));
   const teamMap = ownership.byBidder.get(bidderId);
   if (!teamMap) return { totalCost: 0, totalReturn: 0, totalMtm: 0, totalNetMtm: 0 };
 
   let totalCost = 0, totalReturn = 0, totalMtm = 0;
   for (const [teamId, entry] of teamMap) {
-    // Use season auction price; missing row → 0
-    const auctionRows = await db
-      .select({ bidAmount: teamSeasonAuctionsTable.bidAmount })
-      .from(teamSeasonAuctionsTable)
-      .where(and(eq(teamSeasonAuctionsTable.teamId, teamId), eq(teamSeasonAuctionsTable.seasonId, seasonId)))
-      .limit(1);
-    const auctionPrice = auctionRows[0] ? parseFloat(auctionRows[0].bidAmount) : 0;
-    totalCost += auctionPrice * entry.originalShare + entry.tradePaid - entry.tradeReceived;
+    totalCost += entry.originalCostBasis + entry.tradePaid - entry.tradeReceived;
 
     // Short positions use the same signed economic treatment as owner results.
     const effectiveShare = entry.effectiveShare;
     if (Math.abs(effectiveShare) > 0.00005) {
-      const resultRows = await db
-        .select()
-        .from(teamResultsTable)
-        .where(and(eq(teamResultsTable.teamId, teamId), eq(teamResultsTable.seasonId, seasonId)))
-        .limit(1);
-      if (resultRows[0] || payoutRulesConfigured) {
+      const entryFinancial = entryFinancials.get(teamId);
+      if (entryFinancial) {
         const calculated = calculatedReturns.get(teamId);
-        const realized = payoutRulesConfigured && calculated?.realized
-          ? calculated.realized.grossReturn
-          : parseFloat(resultRows[0].realizedReturn);
-        const mtm = payoutRulesConfigured && calculated?.mtm
-          ? calculated.mtm.grossReturn
-          : parseFloat(resultRows[0].markToMarket);
+        const realized = calculated?.realized?.grossReturn
+          ?? Number(entryFinancial.realizedReturn);
+        const mtm = calculated?.mtm?.grossReturn
+          ?? Number(entryFinancial.markToMarket);
         totalReturn += realized * effectiveShare;
         totalMtm += mtm * effectiveShare;
       }
@@ -318,6 +337,7 @@ function buildMcpServer() {
   const teamInput = { team: z.string().describe("Full or partial team name, e.g. 'Seattle Seahawks' or 'Seahawks'") };
   const ownerInput = { owner: z.string().describe("Full or partial owner name, e.g. 'Zachary Long' or 'Zachary'") };
   const seasonInput = { season: z.number().optional().describe("Season year (e.g. 2025). Defaults to most recent completed season.") };
+  const calcuttaInput = { calcuttaId: z.number().int().positive().optional().describe("Selected NFL Calcutta ID. Defaults to the season's canonical NFL Calcutta.") };
 
   // ── Team owner tools ──────────────────────────────────────────────────────
 
@@ -325,14 +345,14 @@ function buildMcpServer() {
     server.tool(
       `get_team_owner${n}`,
       `Returns the ${["first", "second", "third", "fourth", "fifth"][n - 1]} owner of an NFL team in a given season. Returns null if the team has fewer than ${n} owner(s).`,
-      { ...teamInput, ...seasonInput },
-      async ({ team, season }) => {
+      { ...teamInput, ...seasonInput, ...calcuttaInput },
+      async ({ team, season, calcuttaId }) => {
         const t = await findTeam(team);
         if (!t) return text(null);
         const year = season ?? await defaultSeasonYear();
         const sid = await resolveSeasonId(year);
         if (!sid) return text(null);
-        const owners = await getTeamOwners(t.id, sid);
+        const owners = await getTeamOwners(t.id, sid, calcuttaId);
         return text(owners[n - 1] ?? null);
       },
     );
@@ -343,19 +363,14 @@ function buildMcpServer() {
   server.tool(
     "get_team_cost",
     "Returns the auction bid price paid for the team in a given season (in dollars).",
-    { ...teamInput, ...seasonInput },
-    async ({ team, season }) => {
+    { ...teamInput, ...seasonInput, ...calcuttaInput },
+    async ({ team, season, calcuttaId }) => {
       const t = await findTeam(team);
       if (!t) return text(null);
       const year = season ?? await defaultSeasonYear();
       const sid = await resolveSeasonId(year);
       if (!sid) return text(null);
-      const rows = await db
-        .select({ bidAmount: teamSeasonAuctionsTable.bidAmount })
-        .from(teamSeasonAuctionsTable)
-        .where(and(eq(teamSeasonAuctionsTable.teamId, t.id), eq(teamSeasonAuctionsTable.seasonId, sid)))
-        .limit(1);
-      return text(rows[0] ? parseFloat(rows[0].bidAmount) : null);
+      return text(await getTeamCost(t.id, sid, calcuttaId));
     },
   );
 
@@ -436,22 +451,21 @@ function buildMcpServer() {
   server.tool(
     "get_team_return",
     "Returns the realized dollar return (payouts received) for a team in a given season.",
-    { ...teamInput, ...seasonInput },
-    async ({ team, season }) => {
+    { ...teamInput, ...seasonInput, ...calcuttaInput },
+    async ({ team, season, calcuttaId }) => {
       const t = await findTeam(team);
       if (!t) return text(null);
       const year = season ?? await defaultSeasonYear();
       const sid = await resolveSeasonId(year);
       if (!sid) return text(null);
-      const r = await getTeamResult(t.id, sid);
-      const calculated = (await loadCalculatedTeamReturns(sid)).get(t.id);
-      const payoutRulesConfigured = await hasConfiguredPayoutRules(sid);
+      const resolvedCalcuttaId = await resolveSelectedCalcuttaId(db, { seasonId: sid, calcuttaId });
+      if (!resolvedCalcuttaId) return text(null);
+      const entryFinancial = await getTeamFinancials(t.id, resolvedCalcuttaId);
+      if (!entryFinancial) return text(null);
+      const calculated = (await loadCalculatedTeamReturnsForCalcutta(resolvedCalcuttaId)).get(t.id);
       return text(
-        payoutRulesConfigured && calculated?.realized
-          ? calculated.realized.grossReturn
-          : r
-            ? parseFloat(r.realizedReturn)
-            : null,
+        calculated?.realized?.grossReturn
+          ?? Number(entryFinancial.realizedReturn),
       );
     },
   );
@@ -459,23 +473,23 @@ function buildMcpServer() {
   server.tool(
     "get_team_mtm",
     "Returns net MTM (mark-to-market gross value minus the auction price) for a team in a given season.",
-    { ...teamInput, ...seasonInput },
-    async ({ team, season }) => {
+    { ...teamInput, ...seasonInput, ...calcuttaInput },
+    async ({ team, season, calcuttaId }) => {
       const t = await findTeam(team);
       if (!t) return text(null);
       const year = season ?? await defaultSeasonYear();
       const sid = await resolveSeasonId(year);
       if (!sid) return text(null);
-      const r = await getTeamResult(t.id, sid);
-      const cost = await getTeamCost(t.id, sid);
-      const calculated = (await loadCalculatedTeamReturns(sid)).get(t.id);
-      const payoutRulesConfigured = await hasConfiguredPayoutRules(sid);
+      const cost = await getTeamCost(t.id, sid, calcuttaId);
+      if (cost == null) return text(null);
+      const resolvedCalcuttaId = await resolveSelectedCalcuttaId(db, { seasonId: sid, calcuttaId });
+      if (!resolvedCalcuttaId) return text(null);
+      const entryFinancial = await getTeamFinancials(t.id, resolvedCalcuttaId);
+      if (!entryFinancial) return text(null);
+      const calculated = (await loadCalculatedTeamReturnsForCalcutta(resolvedCalcuttaId)).get(t.id);
       return text(
-        payoutRulesConfigured && calculated?.mtm
-          ? calculated.mtm.grossReturn - cost
-          : r
-            ? parseFloat(r.markToMarket) - cost
-            : null,
+        (calculated?.mtm?.grossReturn
+          ?? Number(entryFinancial.markToMarket)) - cost,
       );
     },
   );
@@ -500,14 +514,14 @@ function buildMcpServer() {
   server.tool(
     "get_owner_cost",
     "Returns the total auction spend for an owner in a given season (accounting for split ownership).",
-    { ...ownerInput, ...seasonInput },
-    async ({ owner, season }) => {
+    { ...ownerInput, ...seasonInput, ...calcuttaInput },
+    async ({ owner, season, calcuttaId }) => {
       const b = await findBidder(owner);
       if (!b) return text(null);
       const year = season ?? await defaultSeasonYear();
       const sid = await resolveSeasonId(year);
       if (!sid) return text(null);
-      const agg = await getOwnerAgg(b.id, sid);
+      const agg = await getOwnerAgg(b.id, sid, calcuttaId);
       return text(Math.round(agg.totalCost * 100) / 100);
     },
   );
@@ -515,14 +529,14 @@ function buildMcpServer() {
   server.tool(
     "get_owner_return",
     "Returns the total realized return (payouts received) for an owner in a given season.",
-    { ...ownerInput, ...seasonInput },
-    async ({ owner, season }) => {
+    { ...ownerInput, ...seasonInput, ...calcuttaInput },
+    async ({ owner, season, calcuttaId }) => {
       const b = await findBidder(owner);
       if (!b) return text(null);
       const year = season ?? await defaultSeasonYear();
       const sid = await resolveSeasonId(year);
       if (!sid) return text(null);
-      const agg = await getOwnerAgg(b.id, sid);
+      const agg = await getOwnerAgg(b.id, sid, calcuttaId);
       return text(Math.round(agg.totalReturn * 100) / 100);
     },
   );
@@ -530,14 +544,14 @@ function buildMcpServer() {
   server.tool(
     "get_owner_mtm",
     "Returns total net MTM for an owner in a given season (gross market value minus signed cost basis).",
-    { ...ownerInput, ...seasonInput },
-    async ({ owner, season }) => {
+    { ...ownerInput, ...seasonInput, ...calcuttaInput },
+    async ({ owner, season, calcuttaId }) => {
       const b = await findBidder(owner);
       if (!b) return text(null);
       const year = season ?? await defaultSeasonYear();
       const sid = await resolveSeasonId(year);
       if (!sid) return text(null);
-      const agg = await getOwnerAgg(b.id, sid);
+      const agg = await getOwnerAgg(b.id, sid, calcuttaId);
       return text(Math.round(agg.totalNetMtm * 100) / 100);
     },
   );
@@ -682,10 +696,11 @@ function buildMcpServer() {
         share: z.number().positive().max(1).describe("Ownership fraction, e.g. 0.5 for 50%"),
       })).min(1).describe("Complete replacement ownership split; all shares must total 1."),
       season: z.number().optional().describe("Season year. Defaults to the active season."),
+      calcuttaId: z.number().int().positive().optional().describe("Selected NFL Calcutta ID. Defaults to the season's canonical NFL Calcutta."),
       note: z.string().max(500).optional().describe("Optional correction rationale kept in the audit record."),
       adminKey: z.string().describe("Admin API key — only the pool admin can correct primary ownership."),
     },
-    async ({ team, owners, season, note, adminKey }) => {
+    async ({ team, owners, season, calcuttaId, note, adminKey }) => {
       const expectedKey = process.env["ADMIN_API_KEY"];
       if (!expectedKey || adminKey !== expectedKey) {
         return text("Error: Invalid admin key. Only the pool admin can correct primary ownership.");
@@ -722,34 +737,56 @@ function buildMcpServer() {
         await tx.execute(
           sql`select pg_advisory_xact_lock(${OWNERSHIP_SEASON_LOCK_NAMESPACE}, ${seasonId})`,
         );
-        const [auctionRow, approvedTrade] = await Promise.all([
+        const calcutta = calcuttaId == null
+          ? await getOrCreateCanonicalCalcutta(tx, { seasonId, year })
+          : (await tx
+            .select({ id: calcuttasTable.id })
+            .from(calcuttasTable)
+            .where(and(
+              eq(calcuttasTable.id, calcuttaId),
+              eq(calcuttasTable.seasonId, seasonId),
+              eq(calcuttasTable.sport, NFL_SPORT),
+            ))
+            .limit(1))[0];
+        if (!calcutta) return "calcutta_not_found" as const;
+        const entry = await getOrCreateCalcuttaEntry(tx, {
+          calcuttaId: calcutta.id,
+          teamId: teamMatch.id,
+        });
+        const [primaryRows, approvedTrade] = await Promise.all([
           tx
-            .select({ teamId: teamSeasonAuctionsTable.teamId })
-            .from(teamSeasonAuctionsTable)
-            .where(and(eq(teamSeasonAuctionsTable.teamId, teamMatch.id), eq(teamSeasonAuctionsTable.seasonId, seasonId)))
-            .limit(1),
+            .select({ costBasis: positionsTable.costBasis })
+            .from(positionsTable)
+            .where(and(
+              eq(positionsTable.entryId, entry.id),
+              eq(positionsTable.source, "primary"),
+            )),
           tx
             .select({ id: tradesTable.id })
             .from(tradesTable)
             .where(and(
-              eq(tradesTable.teamId, teamMatch.id),
-              eq(tradesTable.seasonId, seasonId),
+              eq(tradesTable.entryId, entry.id),
               eq(tradesTable.status, "approved"),
             ))
             .limit(1),
         ]);
-        if (!auctionRow[0]) return "not_auctioned" as const;
+        if (primaryRows.length === 0) return "not_auctioned" as const;
         if (approvedTrade[0]) return "approved_trade" as const;
 
+        const auctionCost = primaryRows.reduce(
+          (sum, row) => sum + Number(row.costBasis),
+          0,
+        );
         await tx
-          .delete(teamBiddersTable)
-          .where(and(eq(teamBiddersTable.teamId, teamMatch.id), eq(teamBiddersTable.seasonId, seasonId)));
-        await tx.insert(teamBiddersTable).values(
+          .delete(positionsTable)
+          .where(and(eq(positionsTable.entryId, entry.id), eq(positionsTable.source, "primary")));
+        await tx.insert(positionsTable).values(
           resolvedOwners.map((owner) => ({
-            teamId: teamMatch.id,
+            entryId: entry.id,
             bidderId: owner.bidderId,
-            seasonId,
-            ownershipShare: String(split.owners.find((entry) => entry.bidderId === owner.bidderId)!.share),
+            ownershipShare: split.owners.find((entry) => entry.bidderId === owner.bidderId)!.share.toFixed(6),
+            source: "primary" as const,
+            costBasis: (auctionCost * split.owners.find((entry) => entry.bidderId === owner.bidderId)!.share).toFixed(2),
           })),
         );
         await tx.insert(ownershipAdjustmentsTable).values({
@@ -765,11 +802,13 @@ function buildMcpServer() {
             })),
           },
         });
-        await syncSeasonPositions(tx, seasonId);
         return "updated" as const;
       });
+      if (writeOutcome === "calcutta_not_found") {
+        return text(`Error: Calcutta ${calcuttaId} is not an NFL Calcutta for ${year}.`);
+      }
       if (writeOutcome === "not_auctioned") {
-        return text(`Error: ${teamMatch.name} is not auctioned in ${year}.`);
+        return text(`Error: ${teamMatch.name} has no primary cost basis in the selected Calcutta.`);
       }
       if (writeOutcome === "approved_trade") {
         return text("Error: This team has approved trades. Preserve that history with a trade correction instead of replacing its primary split.");
@@ -795,9 +834,10 @@ function buildMcpServer() {
       price:       z.number().optional().describe("Trade price in dollars. If omitted, defaults to team's draft cost × percentage / 100."),
       tradeDate:   z.string().optional().describe("Trade date as YYYY-MM-DD. Defaults to today."),
       season:      z.number().optional().describe("Season year. Defaults to current active season."),
+      calcuttaId:  z.number().int().positive().optional().describe("Selected NFL Calcutta ID. Defaults to the season's canonical NFL Calcutta."),
       notes:       z.string().optional().describe("Optional notes about the trade"),
     },
-    async ({ team, fromOwner, toOwner, percentage = 100, price, tradeDate, season, notes }) => {
+    async ({ team, fromOwner, toOwner, percentage = 100, price, tradeDate, season, calcuttaId, notes }) => {
       const t = await findTeam(team);
       if (!t) return text(`Team not found: ${team}`);
 
@@ -830,10 +870,34 @@ function buildMcpServer() {
         await tx.execute(
           sql`select pg_advisory_xact_lock(${OWNERSHIP_SEASON_LOCK_NAMESPACE}, ${sid})`,
         );
+        const calcutta = calcuttaId == null
+          ? await getOrCreateCanonicalCalcutta(tx, { seasonId: sid, year })
+          : (await tx
+            .select({ id: calcuttasTable.id })
+            .from(calcuttasTable)
+            .where(and(
+              eq(calcuttasTable.id, calcuttaId),
+              eq(calcuttasTable.seasonId, sid),
+              eq(calcuttasTable.sport, NFL_SPORT),
+            ))
+            .limit(1))[0];
+        if (!calcutta) return { kind: "invalid" as const, error: `Calcutta ${calcuttaId} is not an NFL Calcutta for ${year}.` };
+        const entry = (await tx
+          .select({ id: calcuttaEntriesTable.id })
+          .from(calcuttaEntriesTable)
+          .where(and(
+            eq(calcuttaEntriesTable.calcuttaId, calcutta.id),
+            eq(calcuttaEntriesTable.teamId, t.id),
+          ))
+          .limit(1))[0];
+        if (!entry) {
+          return { kind: "invalid" as const, error: "Team is not an entry in the selected Calcutta." };
+        }
         const validationError = await validateMcpTradeApproval(
           {
             seasonId: sid,
             teamId: t.id,
+            entryId: entry.id,
             fromBidderId: from.id,
             toBidderId: to.id,
             percentage: percentage.toString(),
@@ -845,12 +909,15 @@ function buildMcpServer() {
         let effectivePrice = price;
         if (effectivePrice === undefined) {
           const auctionRows = await tx
-            .select({ bidAmount: teamSeasonAuctionsTable.bidAmount })
-            .from(teamSeasonAuctionsTable)
-            .where(and(eq(teamSeasonAuctionsTable.teamId, t.id), eq(teamSeasonAuctionsTable.seasonId, sid)))
-            .limit(1);
+            .select({ costBasis: positionsTable.costBasis })
+            .from(positionsTable)
+            .where(and(
+              eq(positionsTable.entryId, entry.id),
+              eq(positionsTable.source, "primary"),
+            ));
           effectivePrice = Math.round(
-            Number(auctionRows[0]?.bidAmount ?? "0") * (percentage / 100) * 100,
+            auctionRows.reduce((sum, row) => sum + Number(row.costBasis), 0) *
+              (percentage / 100) * 100,
           ) / 100;
         }
 
@@ -859,6 +926,7 @@ function buildMcpServer() {
           .values({
             seasonId: sid,
             teamId: t.id,
+            entryId: entry.id,
             fromBidderId: from.id,
             toBidderId: to.id,
             price: effectivePrice.toFixed(2),
@@ -984,12 +1052,32 @@ function buildMcpServer() {
           updates.decisionSource = "commissioner_mcp";
         }
         await tx.update(tradesTable).set(updates).where(eq(tradesTable.id, tradeId));
-        if (
-          status === "approved" ||
-          status === "voided" ||
-          (status === "rejected" && fresh[0].status === "approved")
-        ) {
-          await syncSeasonPositions(tx, fresh[0].seasonId);
+        if (status === "approved") {
+          const share = Number(fresh[0].percentage) / 100;
+          const price = Number(fresh[0].price);
+          await tx.insert(positionsTable).values([
+            {
+              entryId: fresh[0].entryId,
+              bidderId: fresh[0].fromBidderId,
+              ownershipShare: (-share).toFixed(6),
+              source: "trade",
+              costBasis: (-price).toFixed(2),
+              tradeId: fresh[0].id,
+            },
+            {
+              entryId: fresh[0].entryId,
+              bidderId: fresh[0].toBidderId,
+              ownershipShare: share.toFixed(6),
+              source: "trade",
+              costBasis: price.toFixed(2),
+              tradeId: fresh[0].id,
+            },
+          ]);
+        } else if (fresh[0].status === "approved") {
+          await tx.delete(positionsTable).where(and(
+            eq(positionsTable.entryId, fresh[0].entryId),
+            eq(positionsTable.tradeId, fresh[0].id),
+          ));
         }
         return { kind: "updated" as const };
       });
@@ -1058,15 +1146,18 @@ function buildMcpServer() {
       basis: z.enum(["realized", "mtm"]).default("realized"),
       period: z.number().int().min(0).max(22).optional(),
       season: z.number().optional().describe("Season year, defaulting to the active season"),
+      ...calcuttaInput,
     },
-    async ({ team, basis, period, season }) => {
+    async ({ team, basis, period, season, calcuttaId }) => {
       const t = await findTeam(team);
       if (!t) return text(`Team not found: ${team}`);
       const year = season ?? await defaultSeasonYear();
       const sid = await resolveSeasonId(year);
       if (!sid) return text(`Season ${year} not found`);
-      const calculated = (await loadCalculatedTeamReturns(sid, period)).get(t.id);
-      if (!await hasConfiguredPayoutRules(sid)) {
+      const resolvedCalcuttaId = await resolveSelectedCalcuttaId(db, { seasonId: sid, calcuttaId });
+      if (!resolvedCalcuttaId) return text(null);
+      const calculated = (await loadCalculatedTeamReturnsForCalcutta(resolvedCalcuttaId, period)).get(t.id);
+      if (!await hasConfiguredPayoutRulesForCalcutta(resolvedCalcuttaId)) {
         return text(`No payout rules are configured for ${year}; no calculated period return is available.`);
       }
       const value = calculated?.[basis];
@@ -1102,9 +1193,10 @@ function buildMcpServer() {
       sbBerth: z.number().min(0).max(1).default(0),
       winSuperBowl: z.number().min(0).max(1).default(0),
       playoffStatus: z.enum(["unknown", "alive", "clinched", "eliminated"]).default("unknown"),
+      ...calcuttaInput,
       adminKey: z.string().describe("Admin API key"),
     },
-    async ({ team, season, period, basis, adminKey, ...metrics }) => {
+    async ({ team, season, period, basis, calcuttaId, adminKey, ...metrics }) => {
       if (!process.env["ADMIN_API_KEY"] || adminKey !== process.env["ADMIN_API_KEY"]) {
         return text("Error: Invalid admin key. Only the pool admin can write period snapshots.");
       }
@@ -1115,14 +1207,21 @@ function buildMcpServer() {
       const saved = await db.transaction(async (tx) => {
         await tx.execute(sql`select pg_advisory_xact_lock(${OWNERSHIP_SEASON_LOCK_NAMESPACE}, ${sid})`);
         await ensureNflSportPeriods(tx);
-        const auctioned = await tx
-          .select({ teamId: teamSeasonAuctionsTable.teamId })
-          .from(teamSeasonAuctionsTable)
-          .where(and(eq(teamSeasonAuctionsTable.teamId, t.id), eq(teamSeasonAuctionsTable.seasonId, sid)))
-          .limit(1);
-        if (!auctioned[0]) return null;
-        const calcutta = await getOrCreateCanonicalCalcutta(tx, { seasonId: sid, year: season });
-        const entry = await getOrCreateCalcuttaEntry(tx, { calcuttaId: calcutta.id, teamId: t.id });
+        const resolvedCalcuttaId = await resolveSelectedCalcuttaId(tx, { seasonId: sid, calcuttaId });
+        if (!resolvedCalcuttaId) return null;
+        const entry = (await tx
+          .select({ id: calcuttaEntriesTable.id })
+          .from(calcuttaEntriesTable)
+          .innerJoin(positionsTable, and(
+            eq(positionsTable.entryId, calcuttaEntriesTable.id),
+            eq(positionsTable.source, "primary"),
+          ))
+          .where(and(
+            eq(calcuttaEntriesTable.calcuttaId, resolvedCalcuttaId),
+            eq(calcuttaEntriesTable.teamId, t.id),
+          ))
+          .limit(1))[0];
+        if (!entry) return null;
         const [periodRow] = await tx
           .select({
             id: sportPeriodsTable.id,
@@ -1177,7 +1276,10 @@ function buildMcpServer() {
       if (saved === "missing_regular_baseline") {
         return text("Error: Save a Week 18 cumulative baseline for this team and basis before recording a playoff snapshot.");
       }
-      const grossReturn = (await loadCalculatedTeamReturns(sid, period)).get(t.id)?.[basis]?.grossReturn ?? 0;
+      const resolvedCalcuttaId = await resolveSelectedCalcuttaId(db, { seasonId: sid, calcuttaId });
+      const grossReturn = resolvedCalcuttaId
+        ? (await loadCalculatedTeamReturnsForCalcutta(resolvedCalcuttaId, period)).get(t.id)?.[basis]?.grossReturn ?? 0
+        : 0;
       return text(JSON.stringify({ team: t.name, season, basis, period, periodLabel: saved, grossReturn }));
     },
   );
@@ -1275,9 +1377,10 @@ function buildMcpServer() {
       team:     z.string().describe("Full or partial team name, e.g. 'Seattle Seahawks' or 'Seahawks'"),
       seed:     z.number().int().min(1).max(7).nullable().describe("Playoff seed 1–7 (1 = best), or null to clear"),
       season:   z.number().optional().describe("Season year (e.g. 2025). Defaults to most recent completed season."),
+      ...calcuttaInput,
       adminKey: z.string().describe("Admin API key — only the pool admin knows this"),
     },
-    async ({ team, seed, season, adminKey }) => {
+    async ({ team, seed, season, calcuttaId, adminKey }) => {
       const expectedKey = process.env["ADMIN_API_KEY"];
       if (!expectedKey || adminKey !== expectedKey) {
         return text("Error: Invalid admin key. Only the pool admin can set seeds.");
@@ -1291,15 +1394,22 @@ function buildMcpServer() {
         await tx.execute(
           sql`select pg_advisory_xact_lock(${OWNERSHIP_SEASON_LOCK_NAMESPACE}, ${sid})`,
         );
+        const resolvedCalcuttaId = await resolveSelectedCalcuttaId(tx, {
+          seasonId: sid,
+          calcuttaId,
+        });
+        if (!resolvedCalcuttaId) return false;
         const auctionedTeam = await tx
-          .select({ teamId: teamSeasonAuctionsTable.teamId })
-          .from(teamSeasonAuctionsTable)
-          .where(
-            and(
-              eq(teamSeasonAuctionsTable.teamId, t.id),
-              eq(teamSeasonAuctionsTable.seasonId, sid),
-            ),
-          )
+          .select({ id: positionsTable.id })
+          .from(calcuttaEntriesTable)
+          .innerJoin(positionsTable, and(
+            eq(positionsTable.entryId, calcuttaEntriesTable.id),
+            eq(positionsTable.source, "primary"),
+          ))
+          .where(and(
+            eq(calcuttaEntriesTable.teamId, t.id),
+            eq(calcuttaEntriesTable.calcuttaId, resolvedCalcuttaId),
+          ))
           .limit(1);
         if (!auctionedTeam[0]) return false;
         await tx
@@ -1329,9 +1439,10 @@ function buildMcpServer() {
       snapshotDate: z.string().optional().describe("Date as YYYY-MM-DD. Defaults to today. Submitting the same date again overwrites the previous value for that team."),
       weekNum:      z.number().int().min(0).max(22).optional().describe("Optional week label (0=pre-season, 1–18=regular, 19+=playoffs). Stored for display only."),
       season:       z.number().optional().describe("Season year (e.g. 2026). Defaults to the active season."),
+      ...calcuttaInput,
       adminKey:     z.string().describe("Admin API key — only the pool admin knows this"),
     },
-    async ({ team, mtmValue, snapshotDate, weekNum, season, adminKey }) => {
+    async ({ team, mtmValue, snapshotDate, weekNum, season, calcuttaId, adminKey }) => {
       const expectedKey = process.env["ADMIN_API_KEY"];
       if (!expectedKey || adminKey !== expectedKey) {
         return text("Error: Invalid admin key. Only the pool admin can record MTM values.");
@@ -1352,11 +1463,19 @@ function buildMcpServer() {
 
       const sid = await resolveSeasonId(year);
       if (!sid) return text(`Season ${year} not found`);
+      const resolvedCalcuttaId = await resolveSelectedCalcuttaId(db, {
+        seasonId: sid,
+        calcuttaId,
+      });
+      if (!resolvedCalcuttaId) {
+        return text(`Error: Calcutta ${calcuttaId ?? "canonical"} is not an NFL Calcutta for ${year}.`);
+      }
 
       const today = snapshotDate ?? todayInNewYork();
 
       const writeOutcome = await writeManualMtmSnapshot({
         seasonId: sid,
+        calcuttaId: resolvedCalcuttaId,
         teamId: t.id,
         snapshotDate: today,
         mtmValue,

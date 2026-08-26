@@ -9,6 +9,7 @@
 export interface MtmSnapshotInput {
   teamId: number;
   seasonYear: number;
+  calcuttaId?: number;
   /** Optional week label (0=pre-season, 1–18=regular, 19+=playoffs) */
   weekNum?: number;
   /** Date as YYYY-MM-DD. Defaults to today. Same-day submissions overwrite the previous value. */
