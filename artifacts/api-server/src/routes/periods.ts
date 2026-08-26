@@ -30,9 +30,12 @@ import {
   aggregateNflRegularSeasonGames,
   compareHistoricalPayoutParity,
   ensureNflSportPeriods,
+  hasCompleteNormalizedSnapshot,
   initializeNflWeekZeroSnapshots,
   loadCalculatedTeamReturnsForCalcutta,
   normalizeNflGame,
+  type NormalizedSnapshotWrite,
+  upsertNormalizedSnapshotMetrics,
   validateNflPayoutRules,
 } from "../lib/calcuttaReturns";
 import { resolveCalcuttaId } from "../lib/calcuttaContext";
@@ -121,6 +124,33 @@ async function rebuildNflRealizedSnapshots(
         await tx.insert(teamPeriodSnapshotsTable).values(snapshot).onConflictDoUpdate({
           target: [teamPeriodSnapshotsTable.entryId, teamPeriodSnapshotsTable.periodId, teamPeriodSnapshotsTable.basis],
           set: snapshot,
+        });
+        await upsertNormalizedSnapshotMetrics(tx, {
+          entryId: entry.entryId,
+          periodId: period[0].id,
+          basis: "realized",
+          snapshot: {
+            wins: stats.wins,
+            losses: stats.losses,
+            ties: stats.ties,
+            ptDiff: stats.ordinaryPtDiff +
+              NFL_MARQUEE_MULTIPLIER * stats.marqueePtDiff,
+            ordinaryWins: stats.ordinaryWins,
+            marqueeWins: stats.marqueeWins,
+            ordinaryTies: stats.ordinaryTies,
+            marqueeTies: stats.marqueeTies,
+            ordinaryPtDiff: stats.ordinaryPtDiff,
+            marqueePtDiff: stats.marqueePtDiff,
+            playoffBerth: 0,
+            divRound: 0,
+            confRound: 0,
+            sbBerth: 0,
+            winSuperBowl: 0,
+            playoffStatus: "unknown",
+          },
+          source: "nfl_games",
+          sourceData: { throughWeek: sequence },
+          snapshotAt: snapshot.capturedAt,
         });
         snapshotsWritten += 1;
       }
@@ -384,23 +414,12 @@ router.post("/period-snapshots", async (req, res): Promise<void> => {
       .limit(1);
     if (!period[0]) return { kind: "period_not_found" as const };
     if (period[0].isPlayoff) {
-      const baseline = await tx
-        .select({ id: teamPeriodSnapshotsTable.id })
-        .from(teamPeriodSnapshotsTable)
-        .innerJoin(
-          sportPeriodsTable,
-          eq(sportPeriodsTable.id, teamPeriodSnapshotsTable.periodId),
-        )
-        .where(
-          and(
-            eq(teamPeriodSnapshotsTable.entryId, entry.id),
-            eq(teamPeriodSnapshotsTable.basis, data.basis),
-            eq(sportPeriodsTable.sport, NFL_SPORT),
-            eq(sportPeriodsTable.sequence, 18),
-          ),
-        )
-        .limit(1);
-      if (!baseline[0]) return { kind: "missing_regular_baseline" as const };
+      const hasBaseline = await hasCompleteNormalizedSnapshot(tx, {
+        entryId: entry.id,
+        basis: data.basis,
+        periodSequence: 18,
+      });
+      if (!hasBaseline) return { kind: "missing_regular_baseline" as const };
     }
     if (data.basis === "realized" && data.periodSequence <= 18) {
       const ledgerGame = await tx
@@ -411,27 +430,55 @@ router.post("/period-snapshots", async (req, res): Promise<void> => {
       if (ledgerGame[0]) return { kind: "game_ledger_authoritative" as const };
     }
 
+    const wins = data.wins ?? 0;
+    const ties = data.ties ?? 0;
+    const ptDiff = data.ptDiff ?? 0;
+    const marqueeWins = data.marqueeWins ?? 0;
+    const marqueeTies = data.marqueeTies ?? 0;
+    const marqueePtDiff = data.marqueePtDiff ?? 0;
+    const snapshot: NormalizedSnapshotWrite = {
+      wins,
+      losses: data.losses ?? 0,
+      ties,
+      ptDiff,
+      ordinaryWins: data.ordinaryWins ?? Math.max(0, wins - marqueeWins),
+      marqueeWins,
+      ordinaryTies: data.ordinaryTies ?? Math.max(0, ties - marqueeTies),
+      marqueeTies,
+      ordinaryPtDiff: data.ordinaryPtDiff ??
+        (data.marqueePtDiff == null
+          ? ptDiff
+          : ptDiff - NFL_MARQUEE_MULTIPLIER * marqueePtDiff),
+      marqueePtDiff,
+      playoffBerth: data.playoffBerth ?? 0,
+      divRound: data.divRound ?? 0,
+      confRound: data.confRound ?? 0,
+      sbBerth: data.sbBerth ?? 0,
+      winSuperBowl: data.winSuperBowl ?? 0,
+      playoffStatus: data.playoffStatus ?? "unknown",
+    };
+    const capturedAt = new Date();
     const values = {
       entryId: entry.id,
       periodId: period[0].id,
       basis: data.basis,
-      wins: (data.wins ?? 0).toString(),
-      losses: (data.losses ?? 0).toString(),
-      ties: (data.ties ?? 0).toString(),
-      ptDiff: (data.ptDiff ?? 0).toString(),
-      ordinaryWins: (data.ordinaryWins ?? 0).toString(),
-      marqueeWins: (data.marqueeWins ?? 0).toString(),
-      ordinaryTies: (data.ordinaryTies ?? 0).toString(),
-      marqueeTies: (data.marqueeTies ?? 0).toString(),
-      ordinaryPtDiff: (data.ordinaryPtDiff ?? 0).toString(),
-      marqueePtDiff: (data.marqueePtDiff ?? 0).toString(),
-      playoffBerth: (data.playoffBerth ?? 0).toString(),
-      divRound: (data.divRound ?? 0).toString(),
-      confRound: (data.confRound ?? 0).toString(),
-      sbBerth: (data.sbBerth ?? 0).toString(),
-      winSuperBowl: (data.winSuperBowl ?? 0).toString(),
-      playoffStatus: data.playoffStatus ?? "unknown",
-      capturedAt: new Date(),
+      wins: snapshot.wins.toString(),
+      losses: snapshot.losses.toString(),
+      ties: snapshot.ties.toString(),
+      ptDiff: snapshot.ptDiff.toString(),
+      ordinaryWins: snapshot.ordinaryWins.toString(),
+      marqueeWins: snapshot.marqueeWins.toString(),
+      ordinaryTies: snapshot.ordinaryTies.toString(),
+      marqueeTies: snapshot.marqueeTies.toString(),
+      ordinaryPtDiff: snapshot.ordinaryPtDiff.toString(),
+      marqueePtDiff: snapshot.marqueePtDiff.toString(),
+      playoffBerth: snapshot.playoffBerth.toString(),
+      divRound: snapshot.divRound.toString(),
+      confRound: snapshot.confRound.toString(),
+      sbBerth: snapshot.sbBerth.toString(),
+      winSuperBowl: snapshot.winSuperBowl.toString(),
+      playoffStatus: snapshot.playoffStatus,
+      capturedAt,
     };
     await tx
       .insert(teamPeriodSnapshotsTable)
@@ -444,6 +491,14 @@ router.post("/period-snapshots", async (req, res): Promise<void> => {
         ],
         set: values,
       });
+    await upsertNormalizedSnapshotMetrics(tx, {
+      entryId: entry.id,
+      periodId: period[0].id,
+      basis: data.basis,
+      snapshot,
+      source: "manual",
+      snapshotAt: capturedAt,
+    });
     return {
       kind: "saved" as const,
       periodLabel: period[0].label,

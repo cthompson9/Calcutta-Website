@@ -6,6 +6,7 @@ import {
   payoutRulesTable,
   positionsTable,
   seasonsTable,
+  snapshotMetricsTable,
   sportPeriodsTable,
   teamPeriodSnapshotsTable,
   teamResultsTable,
@@ -103,6 +104,252 @@ export type SnapshotState = SnapshotMetrics & {
   isPlayoff: boolean;
   playoffStatus: PlayoffStatus;
 };
+
+export const REALIZED_GAME_METRICS = [
+  "wins",
+  "losses",
+  "ties",
+  "pt_diff",
+  "ordinary_wins",
+  "marquee_wins",
+  "ordinary_ties",
+  "marquee_ties",
+  "ordinary_pt_diff",
+  "marquee_pt_diff",
+] as const;
+
+export const REALIZED_PLAYOFF_METRICS = [
+  "playoff_berth",
+  "div_round",
+  "conf_round",
+  "sb_berth",
+  "win_super_bowl",
+] as const;
+
+export type NormalizedMetricSnapshotRow = {
+  entryId: number;
+  teamId: number;
+  basis: string;
+  sequence: number;
+  label: string;
+  isPlayoff: boolean;
+  metric: string;
+  value: string | number;
+  sourceData?: Record<string, unknown> | null;
+};
+
+export type NormalizedSnapshotWrite = {
+  wins: number;
+  losses: number;
+  ties: number;
+  ptDiff: number;
+  ordinaryWins: number;
+  marqueeWins: number;
+  ordinaryTies: number;
+  marqueeTies: number;
+  ordinaryPtDiff: number;
+  marqueePtDiff: number;
+  playoffBerth: number;
+  divRound: number;
+  confRound: number;
+  sbBerth: number;
+  winSuperBowl: number;
+  playoffStatus: PlayoffStatus;
+};
+
+export function normalizedMetricValues(
+  basis: SnapshotBasis,
+  snapshot: NormalizedSnapshotWrite,
+): Array<{ metric: string; value: string }> {
+  const byMetric: Record<string, number> = {
+    win: snapshot.wins,
+    tie: snapshot.ties,
+    wins: snapshot.wins,
+    losses: snapshot.losses,
+    ties: snapshot.ties,
+    pt_diff: snapshot.ptDiff,
+    ordinary_wins: snapshot.ordinaryWins,
+    marquee_wins: snapshot.marqueeWins,
+    ordinary_ties: snapshot.ordinaryTies,
+    marquee_ties: snapshot.marqueeTies,
+    ordinary_pt_diff: snapshot.ordinaryPtDiff,
+    marquee_pt_diff: snapshot.marqueePtDiff,
+    playoff_berth: snapshot.playoffBerth,
+    div_round: snapshot.divRound,
+    conf_round: snapshot.confRound,
+    sb_berth: snapshot.sbBerth,
+    win_super_bowl: snapshot.winSuperBowl,
+  };
+  const metrics = basis === "mtm"
+    ? RETURN_METRICS
+    : [...REALIZED_GAME_METRICS, ...REALIZED_PLAYOFF_METRICS];
+  return metrics.map((metric) => ({
+    metric,
+    value: String(byMetric[metric]),
+  }));
+}
+
+type MetricWriter = Pick<typeof db, "insert">;
+
+export async function upsertNormalizedSnapshotMetrics(
+  writer: MetricWriter,
+  args: {
+    entryId: number;
+    periodId: number;
+    basis: SnapshotBasis;
+    snapshot: NormalizedSnapshotWrite;
+    source: string;
+    sourceData?: Record<string, unknown>;
+    snapshotAt: Date;
+  },
+): Promise<void> {
+  for (const metric of normalizedMetricValues(args.basis, args.snapshot)) {
+    const row = {
+      entryId: args.entryId,
+      periodId: args.periodId,
+      basis: args.basis,
+      ...metric,
+      source: args.source,
+      sourceData: {
+        ...args.sourceData,
+        playoffStatus: args.snapshot.playoffStatus,
+      },
+      snapshotAt: args.snapshotAt,
+    };
+    await writer.insert(snapshotMetricsTable).values(row).onConflictDoUpdate({
+      target: [
+        snapshotMetricsTable.entryId,
+        snapshotMetricsTable.periodId,
+        snapshotMetricsTable.basis,
+        snapshotMetricsTable.metric,
+      ],
+      set: row,
+    });
+  }
+}
+
+type MetricReader = Pick<typeof db, "select">;
+
+export async function hasCompleteNormalizedSnapshot(
+  reader: MetricReader,
+  args: {
+    entryId: number;
+    basis: SnapshotBasis;
+    periodSequence: number;
+  },
+): Promise<boolean> {
+  const rows = await reader
+    .select({ metric: snapshotMetricsTable.metric })
+    .from(snapshotMetricsTable)
+    .innerJoin(
+      sportPeriodsTable,
+      eq(sportPeriodsTable.id, snapshotMetricsTable.periodId),
+    )
+    .where(and(
+      eq(snapshotMetricsTable.entryId, args.entryId),
+      eq(snapshotMetricsTable.basis, args.basis),
+      eq(sportPeriodsTable.sport, NFL_SPORT),
+      eq(sportPeriodsTable.sequence, args.periodSequence),
+    ));
+  const present = new Set(rows.map((row) => row.metric));
+  const required = args.basis === "mtm"
+    ? RETURN_METRICS
+    : args.periodSequence > 18
+      ? [...REALIZED_GAME_METRICS, ...REALIZED_PLAYOFF_METRICS]
+      : REALIZED_GAME_METRICS;
+  return required.every((metric) => present.has(metric));
+}
+
+function readPlayoffStatus(
+  rows: NormalizedMetricSnapshotRow[],
+): PlayoffStatus {
+  const status = rows
+    .map((row) => row.sourceData?.["playoffStatus"])
+    .find((value) => typeof value === "string");
+  return status === "alive" ||
+    status === "clinched" ||
+    status === "eliminated"
+    ? status
+    : "unknown";
+}
+
+/**
+ * Converts the basis-specific normalized metric vocabularies into complete
+ * cumulative calculation snapshots. A partial metric set is omitted rather
+ * than zero-filled so callers can expose non-authoritative coverage.
+ */
+export function buildSnapshotStatesFromMetricRows(
+  rows: NormalizedMetricSnapshotRow[],
+): Map<number, Map<SnapshotBasis, SnapshotState[]>> {
+  const groups = new Map<string, NormalizedMetricSnapshotRow[]>();
+  for (const row of rows) {
+    if (row.basis !== "realized" && row.basis !== "mtm") continue;
+    const key = `${row.entryId}:${row.basis}:${row.sequence}`;
+    const group = groups.get(key) ?? [];
+    group.push(row);
+    groups.set(key, group);
+  }
+
+  const grouped = new Map<number, Map<SnapshotBasis, SnapshotState[]>>();
+  for (const metricRows of groups.values()) {
+    const first = metricRows[0];
+    const basis = first.basis as SnapshotBasis;
+    const values = new Map<string, number>();
+    let valid = true;
+    for (const row of metricRows) {
+      const value = Number(row.value);
+      if (!Number.isFinite(value)) {
+        valid = false;
+        break;
+      }
+      values.set(row.metric, value);
+    }
+    const required = basis === "mtm"
+      ? RETURN_METRICS
+      : first.isPlayoff
+        ? [...REALIZED_GAME_METRICS, ...REALIZED_PLAYOFF_METRICS]
+        : REALIZED_GAME_METRICS;
+    if (!valid || required.some((metric) => !values.has(metric))) continue;
+
+    const snapshot: SnapshotState = {
+      sequence: first.sequence,
+      label: first.label,
+      isPlayoff: first.isPlayoff,
+      playoffStatus: readPlayoffStatus(metricRows),
+      wins: values.get(basis === "mtm" ? "win" : "wins")!,
+      losses: basis === "realized" ? values.get("losses")! : 0,
+      ties: values.get(basis === "mtm" ? "tie" : "ties")!,
+      ptDiff: values.get("pt_diff")!,
+      playoffBerth: values.get("playoff_berth") ?? 0,
+      divRound: values.get("div_round") ?? 0,
+      confRound: values.get("conf_round") ?? 0,
+      sbBerth: values.get("sb_berth") ?? 0,
+      winSuperBowl: values.get("win_super_bowl") ?? 0,
+      ...(basis === "realized"
+        ? {
+            ordinaryWins: values.get("ordinary_wins")!,
+            marqueeWins: values.get("marquee_wins")!,
+            ordinaryTies: values.get("ordinary_ties")!,
+            marqueeTies: values.get("marquee_ties")!,
+            ordinaryPtDiff: values.get("ordinary_pt_diff")!,
+            marqueePtDiff: values.get("marquee_pt_diff")!,
+          }
+        : {}),
+    };
+    const byBasis = grouped.get(first.teamId) ??
+      new Map<SnapshotBasis, SnapshotState[]>();
+    const snapshots = byBasis.get(basis) ?? [];
+    snapshots.push(snapshot);
+    byBasis.set(basis, snapshots);
+    grouped.set(first.teamId, byBasis);
+  }
+  for (const byBasis of grouped.values()) {
+    for (const snapshots of byBasis.values()) {
+      snapshots.sort((left, right) => left.sequence - right.sequence);
+    }
+  }
+  return grouped;
+}
 
 type RuleValue = {
   metric: ReturnMetric;
@@ -432,6 +679,13 @@ export function calculateNflTeamValues(
 
 type CalcuttaWriter = Pick<typeof db, "insert" | "select" | "selectDistinct">;
 
+function weekZeroMetricValues(basis: SnapshotBasis) {
+  const metrics = basis === "mtm"
+    ? RETURN_METRICS
+    : [...REALIZED_GAME_METRICS, ...REALIZED_PLAYOFF_METRICS];
+  return metrics.map((metric) => ({ metric, value: "0" }));
+}
+
 export async function ensureNflSportPeriods(writer: CalcuttaWriter = db): Promise<void> {
   for (const period of NFL_PERIOD_TEMPLATE) {
     await writer
@@ -562,6 +816,28 @@ export async function initializeNflWeekZeroSnapshots(
           ],
         })
         .returning({ id: teamPeriodSnapshotsTable.id });
+      const capturedAt = new Date();
+      for (const metric of weekZeroMetricValues(basis)) {
+        await writer
+          .insert(snapshotMetricsTable)
+          .values({
+            entryId: entry.entryId,
+            periodId: period[0].id,
+            basis,
+            ...metric,
+            source: "week_zero",
+            sourceData: { playoffStatus: "unknown" },
+            snapshotAt: capturedAt,
+          })
+          .onConflictDoNothing({
+            target: [
+              snapshotMetricsTable.entryId,
+              snapshotMetricsTable.periodId,
+              snapshotMetricsTable.basis,
+              snapshotMetricsTable.metric,
+            ],
+          });
+      }
       if (!inserted) continue;
       if (basis === "realized") realizedSnapshotsWritten += 1;
       else mtmSnapshotsWritten += 1;
@@ -702,50 +978,6 @@ export async function hasConfiguredPayoutRulesForCalcutta(
   }))).ok;
 }
 
-function parseSnapshot(row: {
-  sequence: number;
-  label: string;
-  isPlayoff: boolean;
-  playoffStatus: string;
-  wins: string;
-  losses: string;
-  ties: string;
-  ptDiff: string;
-  playoffBerth: string;
-  divRound: string;
-  confRound: string;
-  sbBerth: string;
-  winSuperBowl: string;
-  ordinaryWins: string;
-  marqueeWins: string;
-  ordinaryTies: string;
-  marqueeTies: string;
-  ordinaryPtDiff: string;
-  marqueePtDiff: string;
-}): SnapshotState {
-  return {
-    sequence: row.sequence,
-    label: row.label,
-    isPlayoff: row.isPlayoff,
-    playoffStatus: row.playoffStatus as PlayoffStatus,
-    wins: Number(row.wins),
-    losses: Number(row.losses),
-    ties: Number(row.ties),
-    ptDiff: Number(row.ptDiff),
-    playoffBerth: Number(row.playoffBerth),
-    divRound: Number(row.divRound),
-    confRound: Number(row.confRound),
-    sbBerth: Number(row.sbBerth),
-    winSuperBowl: Number(row.winSuperBowl),
-    ordinaryWins: Number(row.ordinaryWins),
-    marqueeWins: Number(row.marqueeWins),
-    ordinaryTies: Number(row.ordinaryTies),
-    marqueeTies: Number(row.marqueeTies),
-    ordinaryPtDiff: Number(row.ordinaryPtDiff),
-    marqueePtDiff: Number(row.marqueePtDiff),
-  };
-}
-
 /**
  * Loads the current calculated return for every team that has snapshot data.
  * Existing legacy results remain the reporting fallback until payout rules have
@@ -779,40 +1011,65 @@ export async function loadCalculatedTeamReturns(
 export async function loadReturnSnapshotPeriods(
   seasonId: number,
   basis: SnapshotBasis,
+  selectedCalcuttaId?: number,
 ): Promise<number[]> {
-  const calcutta = await db
-    .select({ id: calcuttasTable.id })
-    .from(calcuttasTable)
-    .where(
-      and(
+  const calcutta = selectedCalcuttaId == null
+    ? await db
+      .select({ id: calcuttasTable.id })
+      .from(calcuttasTable)
+      .where(
+        and(
+          eq(calcuttasTable.seasonId, seasonId),
+          eq(calcuttasTable.sport, NFL_SPORT),
+          eq(calcuttasTable.isCanonical, true),
+        ),
+      )
+      .limit(1)
+    : await db
+      .select({ id: calcuttasTable.id })
+      .from(calcuttasTable)
+      .where(and(
+        eq(calcuttasTable.id, selectedCalcuttaId),
         eq(calcuttasTable.seasonId, seasonId),
         eq(calcuttasTable.sport, NFL_SPORT),
-        eq(calcuttasTable.isCanonical, true),
-      ),
-    )
-    .limit(1);
+      ))
+      .limit(1);
   if (!calcutta[0]) return [];
 
   const rows = await db
     .select({ sequence: sportPeriodsTable.sequence })
     .from(calcuttaEntriesTable)
     .innerJoin(
-      teamPeriodSnapshotsTable,
-      eq(teamPeriodSnapshotsTable.entryId, calcuttaEntriesTable.id),
+      snapshotMetricsTable,
+      eq(snapshotMetricsTable.entryId, calcuttaEntriesTable.id),
     )
     .innerJoin(
       sportPeriodsTable,
-      eq(sportPeriodsTable.id, teamPeriodSnapshotsTable.periodId),
+      eq(sportPeriodsTable.id, snapshotMetricsTable.periodId),
     )
     .where(
       and(
         eq(calcuttaEntriesTable.calcuttaId, calcutta[0].id),
-        eq(teamPeriodSnapshotsTable.basis, basis),
+        eq(snapshotMetricsTable.basis, basis),
       ),
     )
     .orderBy(asc(sportPeriodsTable.sequence));
 
-  return [...new Set(rows.map((row) => row.sequence))];
+  const candidates = [...new Set(rows.map((row) => row.sequence))];
+  const complete: number[] = [];
+  for (const sequence of candidates) {
+    const calculated = await loadCalculatedTeamReturnsForCalcutta(
+      calcutta[0].id,
+      sequence,
+    );
+    if (
+      calculated.size > 0 &&
+      [...calculated.values()].every((team) => team[basis] != null)
+    ) {
+      complete.push(sequence);
+    }
+  }
+  return complete;
 }
 
 /**
@@ -900,52 +1157,31 @@ export async function loadCalculatedTeamReturnsForCalcutta(
       ? []
       : [lte(sportPeriodsTable.sequence, periodSequence)]),
   ];
-  const snapshots = await db
+  const metricRows = await db
     .select({
+      entryId: calcuttaEntriesTable.id,
       teamId: calcuttaEntriesTable.teamId,
-      basis: teamPeriodSnapshotsTable.basis,
+      basis: snapshotMetricsTable.basis,
       sequence: sportPeriodsTable.sequence,
       label: sportPeriodsTable.label,
       isPlayoff: sportPeriodsTable.isPlayoff,
-      playoffStatus: teamPeriodSnapshotsTable.playoffStatus,
-      wins: teamPeriodSnapshotsTable.wins,
-      losses: teamPeriodSnapshotsTable.losses,
-      ties: teamPeriodSnapshotsTable.ties,
-      ptDiff: teamPeriodSnapshotsTable.ptDiff,
-      playoffBerth: teamPeriodSnapshotsTable.playoffBerth,
-      divRound: teamPeriodSnapshotsTable.divRound,
-      confRound: teamPeriodSnapshotsTable.confRound,
-      sbBerth: teamPeriodSnapshotsTable.sbBerth,
-      winSuperBowl: teamPeriodSnapshotsTable.winSuperBowl,
-      ordinaryWins: teamPeriodSnapshotsTable.ordinaryWins,
-      marqueeWins: teamPeriodSnapshotsTable.marqueeWins,
-      ordinaryTies: teamPeriodSnapshotsTable.ordinaryTies,
-      marqueeTies: teamPeriodSnapshotsTable.marqueeTies,
-      ordinaryPtDiff: teamPeriodSnapshotsTable.ordinaryPtDiff,
-      marqueePtDiff: teamPeriodSnapshotsTable.marqueePtDiff,
+      metric: snapshotMetricsTable.metric,
+      value: snapshotMetricsTable.value,
+      sourceData: snapshotMetricsTable.sourceData,
     })
     .from(calcuttaEntriesTable)
     .innerJoin(
-      teamPeriodSnapshotsTable,
-      eq(teamPeriodSnapshotsTable.entryId, calcuttaEntriesTable.id),
+      snapshotMetricsTable,
+      eq(snapshotMetricsTable.entryId, calcuttaEntriesTable.id),
     )
     .innerJoin(
       sportPeriodsTable,
-      eq(sportPeriodsTable.id, teamPeriodSnapshotsTable.periodId),
+      eq(sportPeriodsTable.id, snapshotMetricsTable.periodId),
     )
     .where(and(...where))
     .orderBy(asc(sportPeriodsTable.sequence));
 
-  const grouped = new Map<number, Map<SnapshotBasis, SnapshotState[]>>();
-  for (const row of snapshots) {
-    const basis = row.basis as SnapshotBasis;
-    if (basis !== "realized" && basis !== "mtm") continue;
-    const teamRows = grouped.get(row.teamId) ?? new Map<SnapshotBasis, SnapshotState[]>();
-    const basisRows = teamRows.get(basis) ?? [];
-    basisRows.push(parseSnapshot(row));
-    teamRows.set(basis, basisRows);
-    grouped.set(row.teamId, teamRows);
-  }
+  const grouped = buildSnapshotStatesFromMetricRows(metricRows);
 
   const result = new Map<number, CalculatedTeamReturns>();
   for (const team of entryRows) result.set(team.teamId, { rulesConfigured: true });

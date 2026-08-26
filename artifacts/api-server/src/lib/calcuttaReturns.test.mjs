@@ -2,6 +2,7 @@ import assert from "node:assert/strict";
 import test from "node:test";
 import {
   aggregateNflRegularSeasonGames,
+  buildSnapshotStatesFromMetricRows,
   calculateNflPoints,
   calculateNflTeamValues,
   calculateReturnFromSnapshots,
@@ -244,4 +245,78 @@ test("historical parity stays visibly non-authoritative for partial coverage or 
   );
   assert.equal(mismatch.isAuthoritative, false);
   assert.equal(mismatch.mismatches[0].difference, 1);
+});
+
+test("normalized realized and MTM vocabularies produce equivalent calculation snapshots", () => {
+  const common = {
+    entryId: 11,
+    teamId: 22,
+    sequence: 4,
+    label: "Week 4",
+    isPlayoff: false,
+  };
+  const realizedValues = {
+    wins: 3,
+    losses: 1,
+    ties: 0,
+    pt_diff: 14,
+    ordinary_wins: 2,
+    marquee_wins: 1,
+    ordinary_ties: 0,
+    marquee_ties: 0,
+    ordinary_pt_diff: 10,
+    marquee_pt_diff: 2,
+  };
+  const mtmValues = {
+    win: 3,
+    tie: 0,
+    pt_diff: 14,
+    playoff_berth: 0.7,
+    div_round: 0.4,
+    conf_round: 0.2,
+    sb_berth: 0.1,
+    win_super_bowl: 0.05,
+  };
+  const rows = [
+    ...Object.entries(realizedValues).map(([metric, value]) => ({
+      ...common,
+      basis: "realized",
+      metric,
+      value,
+    })),
+    ...Object.entries(mtmValues).map(([metric, value]) => ({
+      ...common,
+      basis: "mtm",
+      metric,
+      value,
+    })),
+  ];
+  const snapshots = buildSnapshotStatesFromMetricRows(rows).get(22);
+  assert.equal(snapshots.get("realized")[0].wins, 3);
+  assert.equal(snapshots.get("realized")[0].marqueeWins, 1);
+  assert.equal(snapshots.get("mtm")[0].wins, 3);
+  assert.equal(snapshots.get("mtm")[0].playoffBerth, 0.7);
+});
+
+test("partial normalized metric sets remain non-authoritative instead of becoming zeros", () => {
+  const rows = [
+    "win",
+    "tie",
+    "pt_diff",
+    "playoff_berth",
+    "div_round",
+    "conf_round",
+    "sb_berth",
+    // win_super_bowl is deliberately absent.
+  ].map((metric) => ({
+    entryId: 1,
+    teamId: 2,
+    basis: "mtm",
+    sequence: 0,
+    label: "Week 0",
+    isPlayoff: false,
+    metric,
+    value: 0,
+  }));
+  assert.equal(buildSnapshotStatesFromMetricRows(rows).size, 0);
 });

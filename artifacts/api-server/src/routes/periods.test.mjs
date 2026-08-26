@@ -1,10 +1,11 @@
 import assert from "node:assert/strict";
 import http from "node:http";
 import { after, before, describe, test } from "node:test";
-import { eq } from "drizzle-orm";
+import { and, eq } from "drizzle-orm";
 
 const DATABASE_URL = process.env.DATABASE_URL;
 const ADMIN_KEY = process.env.ADMIN_API_KEY;
+const MCP_KEY = process.env.MCP_API_KEY;
 
 let db;
 let seasonsTable;
@@ -18,6 +19,7 @@ let biddersTable;
 let payoutRulesTable;
 let sportPeriodsTable;
 let teamPeriodSnapshotsTable;
+let snapshotMetricsTable;
 let app;
 
 if (DATABASE_URL) {
@@ -34,6 +36,7 @@ if (DATABASE_URL) {
     payoutRulesTable,
     sportPeriodsTable,
     teamPeriodSnapshotsTable,
+    snapshotMetricsTable,
   } = await import("@workspace/db"));
   ({ default: app } = await import("../app.ts"));
 }
@@ -52,6 +55,28 @@ function stopServer(server) {
   return new Promise((resolve, reject) =>
     server.close((error) => (error ? reject(error) : resolve())),
   );
+}
+
+async function mcpRequest(baseUrl, id, method, params = {}) {
+  const response = await fetch(`${baseUrl}/api/mcp`, {
+    method: "POST",
+    headers: {
+      Accept: "application/json, text/event-stream",
+      Authorization: `Bearer ${MCP_KEY}`,
+      "Content-Type": "application/json",
+    },
+    body: JSON.stringify({ jsonrpc: "2.0", id, method, params }),
+  });
+  const body = await response.text();
+  assert.equal(response.status, 200, body);
+  const json = body.trim().startsWith("event:")
+    ? body.split("\n").find((line) => line.startsWith("data: "))?.slice(6)
+    : body;
+  return JSON.parse(json);
+}
+
+function mcpText(response) {
+  return response.result?.content?.find((item) => item.type === "text")?.text ?? "";
 }
 
 describe("period snapshot reporting", { skip: !DATABASE_URL || !ADMIN_KEY }, () => {
@@ -360,6 +385,63 @@ describe("period snapshot reporting", { skip: !DATABASE_URL || !ADMIN_KEY }, () 
       { wins: mtm.wins, playoffBerth: mtm.playoffBerth, markToMarket: mtm.markToMarket },
       { wins: 0, playoffBerth: false, markToMarket: 0 },
     );
+  });
+
+  test("MCP snapshot writes become authoritative only with complete pool coverage", { skip: !MCP_KEY }, async () => {
+    const teamRows = await db
+      .select({ id: teamsTable.id, name: teamsTable.name })
+      .from(teamsTable);
+    const names = new Map(teamRows.map((team) => [team.id, team.name]));
+    for (const [index, selectedTeamId] of [teamId, legacyTeamId].entries()) {
+      const response = await mcpRequest(baseUrl, 100 + index, "tools/call", {
+        name: "set_team_period_snapshot",
+        arguments: {
+          team: names.get(selectedTeamId),
+          season: seasonYear,
+          period: 3,
+          basis: "mtm",
+          wins: index + 1,
+          adminKey: ADMIN_KEY,
+        },
+      });
+      const result = JSON.parse(mcpText(response));
+      assert.equal(result.period, 3);
+      if (index === 1) assert.ok(result.grossReturn > 0);
+    }
+
+    const available = await fetch(
+      `${baseUrl}/api/results/availability?season=${seasonYear}&basis=mtm`,
+    ).then((response) => response.json());
+    assert.equal(available.latestPeriod, 3);
+
+    const [entry] = await db
+      .select({ id: calcuttaEntriesTable.id })
+      .from(calcuttaEntriesTable)
+      .innerJoin(
+        calcuttasTable,
+        eq(calcuttasTable.id, calcuttaEntriesTable.calcuttaId),
+      )
+      .where(and(
+        eq(calcuttaEntriesTable.teamId, teamId),
+        eq(calcuttasTable.seasonId, seasonId),
+        eq(calcuttasTable.isCanonical, true),
+      ))
+      .limit(1);
+    const [period] = await db
+      .select({ id: sportPeriodsTable.id })
+      .from(sportPeriodsTable)
+      .where(eq(sportPeriodsTable.sequence, 3))
+      .limit(1);
+    await db.delete(snapshotMetricsTable).where(and(
+      eq(snapshotMetricsTable.entryId, entry.id),
+      eq(snapshotMetricsTable.periodId, period.id),
+      eq(snapshotMetricsTable.basis, "mtm"),
+      eq(snapshotMetricsTable.metric, "win_super_bowl"),
+    ));
+    const incomplete = await fetch(
+      `${baseUrl}/api/results/availability?season=${seasonYear}&basis=mtm`,
+    ).then((response) => response.json());
+    assert.notEqual(incomplete.latestPeriod, 3);
   });
 
   test("fans one season game ledger rebuild out to every existing NFL Calcutta", async () => {

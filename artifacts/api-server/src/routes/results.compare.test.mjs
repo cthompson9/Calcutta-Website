@@ -20,6 +20,7 @@ let calcuttasTable;
 let calcuttaEntriesTable;
 let sportPeriodsTable;
 let teamPeriodSnapshotsTable;
+let snapshotMetricsTable;
 let positionsTable;
 let app;
 let runDatabaseMigrations;
@@ -39,6 +40,7 @@ if (DATABASE_URL) {
     calcuttaEntriesTable,
     sportPeriodsTable,
     teamPeriodSnapshotsTable,
+    snapshotMetricsTable,
     positionsTable,
     runDatabaseMigrations,
   } = await import("@workspace/db"));
@@ -338,9 +340,31 @@ describe("cross-Calcutta return comparison", { skip: !DATABASE_URL }, () => {
       .from(sportPeriodsTable)
       .where(inArray(sportPeriodsTable.sequence, [1, 2]));
     const periodId = new Map(periods.map((period) => [period.sequence, period.id]));
-    await db.insert(teamPeriodSnapshotsTable).values([
-      { entryId: staleEntry.id, periodId: periodId.get(1), basis: "realized", wins: "1" },
-      { entryId: freshSnapshotEntry.id, periodId: periodId.get(2), basis: "realized", wins: "2" },
+    const realizedMetricRows = (entryId, selectedPeriodId, wins) => {
+      const values = {
+        wins,
+        losses: 0,
+        ties: 0,
+        pt_diff: 0,
+        ordinary_wins: wins,
+        marquee_wins: 0,
+        ordinary_ties: 0,
+        marquee_ties: 0,
+        ordinary_pt_diff: 0,
+        marquee_pt_diff: 0,
+      };
+      return Object.entries(values).map(([metric, value]) => ({
+        entryId,
+        periodId: selectedPeriodId,
+        basis: "realized",
+        metric,
+        value: String(value),
+        source: "test",
+      }));
+    };
+    await db.insert(snapshotMetricsTable).values([
+      ...realizedMetricRows(staleEntry.id, periodId.get(1), 1),
+      ...realizedMetricRows(freshSnapshotEntry.id, periodId.get(2), 2),
     ]);
 
     const response = await fetch(

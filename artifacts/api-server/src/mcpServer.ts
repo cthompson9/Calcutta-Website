@@ -23,6 +23,7 @@ import {
   consortiumMembershipsTable,
   calcuttasTable,
   calcuttaEntriesTable,
+  nflGamesTable,
   sportPeriodsTable,
   teamPeriodSnapshotsTable,
   payoutRulesTable,
@@ -44,8 +45,11 @@ import {
   ensureNflSportPeriods,
   getOrCreateCalcuttaEntry,
   getOrCreateCanonicalCalcutta,
+  hasCompleteNormalizedSnapshot,
   hasConfiguredPayoutRulesForCalcutta,
   loadCalculatedTeamReturnsForCalcutta,
+  type NormalizedSnapshotWrite,
+  upsertNormalizedSnapshotMetrics,
 } from "./lib/calcuttaReturns";
 import { resolveCalcuttaId as resolveSelectedCalcuttaId } from "./lib/calcuttaContext";
 import { loadCurrentBidderConsortiums } from "./lib/consortiumMemberships";
@@ -1232,24 +1236,31 @@ function buildMcpServer() {
           .where(and(eq(sportPeriodsTable.sport, NFL_SPORT), eq(sportPeriodsTable.sequence, period)));
         if (!periodRow) throw new Error("NFL period was not seeded.");
         if (periodRow.isPlayoff) {
-          const baseline = await tx
-            .select({ id: teamPeriodSnapshotsTable.id })
-            .from(teamPeriodSnapshotsTable)
-            .innerJoin(
-              sportPeriodsTable,
-              eq(sportPeriodsTable.id, teamPeriodSnapshotsTable.periodId),
-            )
-            .where(
-              and(
-                eq(teamPeriodSnapshotsTable.entryId, entry.id),
-                eq(teamPeriodSnapshotsTable.basis, basis),
-                eq(sportPeriodsTable.sport, NFL_SPORT),
-                eq(sportPeriodsTable.sequence, 18),
-              ),
-            )
-            .limit(1);
-          if (!baseline[0]) return "missing_regular_baseline";
+          const hasBaseline = await hasCompleteNormalizedSnapshot(tx, {
+            entryId: entry.id,
+            basis,
+            periodSequence: 18,
+          });
+          if (!hasBaseline) return "missing_regular_baseline";
         }
+        if (basis === "realized" && period <= 18) {
+          const ledgerGame = await tx
+            .select({ id: nflGamesTable.id })
+            .from(nflGamesTable)
+            .where(eq(nflGamesTable.seasonId, sid))
+            .limit(1);
+          if (ledgerGame[0]) return "game_ledger_authoritative";
+        }
+        const snapshot: NormalizedSnapshotWrite = {
+          ...metrics,
+          ordinaryWins: metrics.wins,
+          marqueeWins: 0,
+          ordinaryTies: metrics.ties,
+          marqueeTies: 0,
+          ordinaryPtDiff: metrics.ptDiff,
+          marqueePtDiff: 0,
+        };
+        const capturedAt = new Date();
         const values = {
           entryId: entry.id,
           periodId: periodRow.id,
@@ -1264,17 +1275,34 @@ function buildMcpServer() {
           sbBerth: metrics.sbBerth.toString(),
           winSuperBowl: metrics.winSuperBowl.toString(),
           playoffStatus: metrics.playoffStatus,
-          capturedAt: new Date(),
+          ordinaryWins: snapshot.ordinaryWins.toString(),
+          marqueeWins: snapshot.marqueeWins.toString(),
+          ordinaryTies: snapshot.ordinaryTies.toString(),
+          marqueeTies: snapshot.marqueeTies.toString(),
+          ordinaryPtDiff: snapshot.ordinaryPtDiff.toString(),
+          marqueePtDiff: snapshot.marqueePtDiff.toString(),
+          capturedAt,
         };
         await tx.insert(teamPeriodSnapshotsTable).values(values).onConflictDoUpdate({
           target: [teamPeriodSnapshotsTable.entryId, teamPeriodSnapshotsTable.periodId, teamPeriodSnapshotsTable.basis],
           set: values,
+        });
+        await upsertNormalizedSnapshotMetrics(tx, {
+          entryId: entry.id,
+          periodId: periodRow.id,
+          basis,
+          snapshot,
+          source: "mcp",
+          snapshotAt: capturedAt,
         });
         return periodRow.label;
       });
       if (!saved) return text(`Error: ${t.name} was not auctioned in ${season}.`);
       if (saved === "missing_regular_baseline") {
         return text("Error: Save a Week 18 cumulative baseline for this team and basis before recording a playoff snapshot.");
+      }
+      if (saved === "game_ledger_authoritative") {
+        return text("Error: Realized regular-season snapshots are derived from the NFL game ledger. Update the final game instead.");
       }
       const resolvedCalcuttaId = await resolveSelectedCalcuttaId(db, { seasonId: sid, calcuttaId });
       const grossReturn = resolvedCalcuttaId

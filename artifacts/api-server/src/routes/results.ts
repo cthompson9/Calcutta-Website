@@ -30,6 +30,7 @@ import {
   hasConfiguredPayoutRulesForCalcutta,
   initializeNflWeekZeroSnapshots,
   loadCalculatedTeamReturnsForCalcutta,
+  loadReturnSnapshotPeriods,
   type CalculatedTeamReturns,
 } from "../lib/calcuttaReturns";
 import { LEAGUE_POINT_TOTAL } from "../lib/weekZeroValuation";
@@ -205,7 +206,7 @@ function resultFromCalculatedSnapshots(
     losses: latest.losses,
     ties: latest.ties,
     ptDiff: latest.ptDiff,
-    playoffStatus: legacy?.playoffStatus ?? "unknown",
+    playoffStatus: latest.playoffStatus,
     startingPoints: legacy?.startingPoints ?? "150",
     draftOrder: legacy?.draftOrder ?? null,
     seed: legacy?.seed ?? null,
@@ -839,23 +840,10 @@ router.get("/results/availability", async (req, res): Promise<void> => {
   }
   await ensureWeekZeroReportingBaseline(seasonId, resolvedCalcuttaId);
 
-  const snapshotRows = await db
-    .select({ sequence: sportPeriodsTable.sequence })
-    .from(calcuttaEntriesTable)
-    .innerJoin(
-      teamPeriodSnapshotsTable,
-      eq(teamPeriodSnapshotsTable.entryId, calcuttaEntriesTable.id),
-    )
-    .innerJoin(
-      sportPeriodsTable,
-      eq(sportPeriodsTable.id, teamPeriodSnapshotsTable.periodId),
-    )
-    .where(and(
-      eq(calcuttaEntriesTable.calcuttaId, resolvedCalcuttaId),
-      eq(teamPeriodSnapshotsTable.basis, parsed.data.basis ?? "realized"),
-    ));
-  const periods = [...new Set(snapshotRows.map((row) => row.sequence))].sort(
-    (a, b) => a - b,
+  const periods = await loadReturnSnapshotPeriods(
+    seasonId,
+    parsed.data.basis ?? "realized",
+    resolvedCalcuttaId,
   );
   res.json({
     latestPeriod: periods.at(-1) ?? null,
