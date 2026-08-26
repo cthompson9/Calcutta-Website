@@ -1,6 +1,47 @@
 import { CircleHelp, ExternalLink, Sparkles } from "lucide-react";
 import { releaseNotes } from "@/components/ReleaseNotes";
 
+const claudeSetupSteps = [
+  {
+    title: "Open Claude Settings",
+    description: "Open your Claude account menu in the lower-left corner and select Settings.",
+    image: "screen-1-settings.png",
+    alt: "Claude account menu with Settings selected",
+  },
+  {
+    title: "Open Connectors",
+    description: "Select Connectors in the sidebar, open the Add menu, and choose Add custom connector.",
+    image: "screen-2-connectors.png",
+    alt: "Claude Settings Connectors page with Add custom connector selected",
+  },
+  {
+    title: "Enter the connector details",
+    description: "Name the connector Calcutta MCP and enter the MCP URL shown below, then select Continue.",
+    image: "screen-3-custom-connector.png",
+    alt: "Claude Add custom connector form with the Calcutta MCP name and URL",
+  },
+  {
+    title: "Keep automatic OAuth registration",
+    description:
+      "Leave Always required selected. Under OAuth client, choose No client ID — register one automatically, then select Add. Do not choose Use your own OAuth client.",
+    image: "screen-4-oauth.png",
+    alt: "Claude custom connector authentication settings with automatic OAuth client registration selected",
+  },
+  {
+    title: "Start the connection",
+    description: "When the connector appears as unfinished in your list, select Connect.",
+    image: "screen-5-connect.png",
+    alt: "Claude connector list showing the Calcutta MCP Connect button",
+  },
+  {
+    title: "Authorize Calcutta MCP",
+    description:
+      "Enter the MCP API key on the Calcutta authorization page and select Connect. Use the MCP API key only; the commissioner admin key is never needed.",
+    image: "screen-6-api-key.png",
+    alt: "Calcutta authorization page asking for the MCP API key",
+  },
+] as const;
+
 export default function WhatsNew() {
   return (
     <div className="mx-auto max-w-4xl space-y-6 md:space-y-8 p-4 md:p-8">
@@ -100,19 +141,42 @@ export default function WhatsNew() {
               <p className="font-mono text-xs font-bold uppercase tracking-wide text-foreground">
                 Claude custom connector
               </p>
-              <ol className="list-decimal space-y-1 pl-4 text-xs">
-                <li>
-                  Add{" "}
-                  <code className="border border-border bg-background px-1 py-0.5 font-mono text-foreground">
-                    https://nfl-calcutta.replit.app/api/mcp
-                  </code>{" "}
-                  as the connector URL.
-                </li>
-                <li>
-                  Complete the Calcutta browser authorization page with the MCP API key.
-                  Claude applies the resulting access token automatically.
-                </li>
-              </ol>
+              <p className="text-xs">
+                Follow the six screens below in order. Claude is the OAuth client, so
+                you do not need to create or enter an OAuth client ID or secret.
+              </p>
+              <div className="mt-4 space-y-4">
+                {claudeSetupSteps.map((step, index) => (
+                  <figure
+                    key={step.image}
+                    className="overflow-hidden border border-border bg-background"
+                    data-testid={`claude-setup-step-${index + 1}`}
+                  >
+                    <div className="grid gap-3 p-3 md:grid-cols-[minmax(0,0.9fr)_minmax(0,1.1fr)] md:items-start">
+                      <figcaption className="text-xs leading-relaxed">
+                        <p className="font-mono font-bold uppercase tracking-wide text-foreground">
+                          Step {index + 1}: {step.title}
+                        </p>
+                        <p className="mt-1">{step.description}</p>
+                        {index === 2 && (
+                          <p className="mt-2 border-l-2 border-primary pl-2 text-foreground">
+                            Connector URL:{" "}
+                            <code className="break-all font-mono">
+                              https://nfl-calcutta.replit.app/api/mcp
+                            </code>
+                          </p>
+                        )}
+                      </figcaption>
+                      <img
+                        src={`${import.meta.env.BASE_URL}claude-setup/${step.image}`}
+                        alt={step.alt}
+                        loading="lazy"
+                        className="h-auto w-full border border-border object-contain"
+                      />
+                    </div>
+                  </figure>
+                ))}
+              </div>
             </div>
             <p>
               For direct API access, use this app&apos;s base URL plus the relevant{" "}
