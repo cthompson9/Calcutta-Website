@@ -30,12 +30,14 @@ const canRun = Boolean(DATABASE_URL && ADMIN_KEY);
 let db, mtmSnapshotsTable, seasonsTable, teamsTable, teamSeasonAuctionsTable, calcuttasTable, calcuttaEntriesTable, positionsTable, biddersTable;
 let app;
 let WEEK_ZERO_SNAPSHOT_KEY;
+let runCanonicalMtmRefresh;
 
 if (canRun) {
   ({ db, mtmSnapshotsTable, seasonsTable, teamsTable, teamSeasonAuctionsTable, calcuttasTable, calcuttaEntriesTable, positionsTable, biddersTable } =
     await import("@workspace/db"));
   ({ default: app } = await import("../app.ts"));
   ({ WEEK_ZERO_SNAPSHOT_KEY } = await import("../lib/weekZeroValuation.ts"));
+  ({ runCanonicalMtmRefresh } = await import("../lib/jobMtmRefresh.ts"));
 }
 
 // ── Kalshi fetch mock ────────────────────────────────────────────────────────
@@ -410,6 +412,62 @@ describe(
             "all rows must retain the protected Week 0 key",
           );
           await deleteSnapshotsByIds(rows.map((row) => row.id));
+        } finally {
+          globalThis.fetch = realFetch;
+          const leaked = await snapshotsAtDate(DATE);
+          await deleteSnapshotsByIds(leaked.map((row) => row.id));
+        }
+      },
+    );
+
+    test(
+      "canonical MTM job is duplicate-safe and repairs a partial prior mark",
+      async () => {
+        const now = new Date("9999-09-08T12:00:00.000Z");
+        const DATE = "9999-09-08";
+        globalThis.fetch = makeKalshiMock(realFetch);
+        try {
+          const first = await runCanonicalMtmRefresh({
+            seasonYear: 9999,
+            now,
+          });
+          assert.deepEqual(first, {
+            ran: true,
+            periodSeq: 0,
+            teamsUpdated: 32,
+          });
+          const duplicate = await runCanonicalMtmRefresh({
+            seasonYear: 9999,
+            now,
+          });
+          assert.deepEqual(duplicate, {
+            ran: false,
+            reason: "already-marked",
+            periodSeq: 0,
+            teamsUpdated: 0,
+          });
+
+          const firstRows = await snapshotsAtDate(DATE);
+          assert.equal(firstRows.length, 32);
+          await deleteSnapshotsByIds([firstRows[0].id]);
+
+          const repaired = await runCanonicalMtmRefresh({
+            seasonYear: 9999,
+            now,
+          });
+          assert.deepEqual(repaired, {
+            ran: true,
+            periodSeq: 0,
+            teamsUpdated: 32,
+          });
+          const repairedRows = await snapshotsAtDate(DATE);
+          assert.equal(repairedRows.length, 32);
+          assert.ok(
+            repairedRows.every(
+              (row) => row.snapshotKey === WEEK_ZERO_SNAPSHOT_KEY,
+            ),
+          );
+          await deleteSnapshotsByIds(repairedRows.map((row) => row.id));
         } finally {
           globalThis.fetch = realFetch;
           const leaked = await snapshotsAtDate(DATE);

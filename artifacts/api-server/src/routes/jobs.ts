@@ -9,6 +9,7 @@ import {
   refreshJobStatesTable,
   seasonsTable,
 } from "@workspace/db";
+import { runCanonicalMtmRefresh } from "../lib/jobMtmRefresh";
 import {
   resolveNflStandingsRefreshSeasonYear,
   runNflStandingsRefresh,
@@ -30,7 +31,7 @@ const JOB_LOCK_KEY = 64;
 
 const RefreshJobBody = z
   .object({
-    job: z.literal("standings").default("standings"),
+    job: z.enum(["standings", "mtm"]).default("standings"),
     force: z.boolean().optional().default(false),
   })
   .strict();
@@ -137,7 +138,7 @@ async function recordObservedGameStatus(
     });
 }
 
-async function withRefreshJobLock<T>(
+export async function withRefreshJobLock<T>(
   run: () => Promise<T>,
 ): Promise<{ acquired: true; value: T } | { acquired: false }> {
   const client = await pool.connect();
@@ -173,9 +174,19 @@ router.post("/jobs/refresh", async (req, res): Promise<void> => {
   }
 
   const startedAtMs = Date.now();
+  const job = parsed.data.job;
   try {
     const locked = await withRefreshJobLock(async () => {
       const seasonYear = await resolveNflStandingsRefreshSeasonYear();
+      if (job === "mtm") {
+        const result = await runCanonicalMtmRefresh({ seasonYear });
+        return {
+          job,
+          ...result,
+          durationMs: Date.now() - startedAtMs,
+        };
+      }
+
       const seasonRows = await db
         .select({ id: seasonsTable.id })
         .from(seasonsTable)
@@ -254,7 +265,7 @@ router.post("/jobs/refresh", async (req, res): Promise<void> => {
 
     if (!locked.acquired) {
       res.json({
-        job: "standings",
+        job,
         ran: false,
         reason: "already-running",
         durationMs: Date.now() - startedAtMs,
@@ -266,10 +277,13 @@ router.post("/jobs/refresh", async (req, res): Promise<void> => {
   } catch (error) {
     req.log.error(
       { error: error instanceof Error ? error.message : String(error) },
-      "External standings refresh failed",
+      "External refresh job failed",
     );
     res.status(500).json({
-      error: error instanceof Error ? error.message : "Standings refresh failed.",
+      job,
+      ran: false,
+      error: error instanceof Error ? error.message : "Refresh job failed.",
+      durationMs: Date.now() - startedAtMs,
     });
   }
 });

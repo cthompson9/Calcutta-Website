@@ -1,19 +1,38 @@
-name: Calcutta standings refresh
+name: Calcutta refresh
 
 on:
   schedule:
     - cron: "*/5 * * * *"
+    - cron: "0 10,11 * * 2"
   workflow_dispatch:
+    inputs:
+      job:
+        description: "Job to run (standings | mtm)"
+        default: "standings"
+        type: choice
+        options:
+          - standings
+          - mtm
 
 jobs:
   tick:
     runs-on: ubuntu-latest
     timeout-minutes: 3
     steps:
-      - name: Trigger standings refresh
+      - name: Determine job type
+        id: job
         run: |
-          curl -fsS --max-time 60 --retry 2 --retry-delay 10 \
+          if [ "${{ github.event_name }}" = "workflow_dispatch" ]; then
+            echo "name=${{ inputs.job }}" >> "$GITHUB_OUTPUT"
+          elif [ "${{ github.event.schedule }}" = "0 10,11 * * 2" ]; then
+            echo "name=mtm" >> "$GITHUB_OUTPUT"
+          else
+            echo "name=standings" >> "$GITHUB_OUTPUT"
+          fi
+      - name: Trigger refresh
+        run: |
+          curl -fsS --max-time 120 --retry 2 --retry-delay 10 \
             -X POST "${{ secrets.CALCUTTA_APP_URL }}/api/jobs/refresh" \
             -H "Authorization: Bearer ${{ secrets.CALCUTTA_JOB_SECRET }}" \
             -H "Content-Type: application/json" \
-            -d '{"job":"standings"}'
+            -d "{\"job\":\"${{ steps.job.outputs.name }}\"}"
