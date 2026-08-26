@@ -24,3 +24,4 @@
 - [External refresh scheduling](deployment-scheduling.md) — GitHub Actions triggers a guarded refresh endpoint so the Autoscale website stays as the only Replit deployment.
 - [GitHub sync authorization](github-sync-authorization.md) — use Replit’s Git pane for normal pushes when the GitHub connector cannot update refs or merge branches.
 - [Sticky table scrolling](sticky-table-scrolling.md) — long, horizontally responsive reports use bounded native table scrollers so header rows stay locked across browsers.
+- [Legacy trade entry derivation](legacy-trade-entry-derivation.md) — pre-Phase-2 season/team trade writes resolve only through one canonical NFL Calcutta, never generic Calcutta membership.

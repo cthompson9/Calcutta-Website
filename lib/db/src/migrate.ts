@@ -8,6 +8,7 @@ import {
   refreshJobStatesMigration,
   refreshJobStatusSignatureMigration,
   mcpOAuthMigration,
+  platformSchemaMigration,
 } from "./migrations";
 
 const migrations = [
@@ -18,6 +19,7 @@ const migrations = [
   nflPayoutsMigration,
   tradeVoidingMigration,
   mcpOAuthMigration,
+  platformSchemaMigration,
 ] as const;
 
 /**

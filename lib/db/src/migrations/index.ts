@@ -5,3 +5,4 @@ export { refreshJobStatusSignatureMigration } from "./0008RefreshJobStatusSignat
 export { nflPayoutsMigration } from "./0009NflPayouts";
 export { tradeVoidingMigration } from "./0010TradeVoiding";
 export { mcpOAuthMigration } from "./0011McpOAuth";
+export { platformSchemaMigration } from "./0012PlatformSchema";

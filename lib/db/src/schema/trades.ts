@@ -13,6 +13,7 @@ import {
 import { teamsTable } from "./teams";
 import { seasonsTable } from "./seasons";
 import { biddersTable } from "./bidders";
+import { calcuttaEntriesTable } from "./calcuttaEntries";
 import { createInsertSchema } from "drizzle-zod";
 import { z } from "zod/v4";
 
@@ -26,6 +27,14 @@ export const tradesTable = pgTable(
     teamId: integer("team_id")
       .notNull()
       .references(() => teamsTable.id, { onDelete: "cascade" }),
+    /**
+     * Phase 1 keeps existing season/team writes compatible: a database trigger
+     * derives this value until Phase 2 moves write paths to entry-first inputs.
+     */
+    entryId: integer("entry_id")
+      .notNull()
+      .default(sql`null`)
+      .references(() => calcuttaEntriesTable.id, { onDelete: "restrict" }),
     fromBidderId: integer("from_bidder_id")
       .notNull()
       .references(() => biddersTable.id),
@@ -64,6 +73,7 @@ export const tradesTable = pgTable(
     index("trades_season_idx").on(t.seasonId),
     // Filter by team within a season
     index("trades_season_team_idx").on(t.seasonId, t.teamId),
+    index("trades_entry_idx").on(t.entryId),
     // Filter pending approvals
     index("trades_status_idx").on(t.status),
   ],

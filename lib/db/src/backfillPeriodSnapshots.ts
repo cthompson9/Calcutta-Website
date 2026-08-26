@@ -1,10 +1,11 @@
-import { and, eq } from "drizzle-orm";
+import { and, eq, inArray } from "drizzle-orm";
 import {
   calcuttasTable,
   calcuttaEntriesTable,
   db,
   seasonsTable,
   sportPeriodsTable,
+  snapshotMetricsTable,
   teamPeriodSnapshotsTable,
   teamResultsTable,
 } from "./index";
@@ -73,9 +74,65 @@ async function removeSparsePlayoffSnapshots() {
   }
 }
 
+/**
+ * Mirrors the legacy sparse-playoff guard for V2 rows. Snapshot metric writers
+ * arrive with the calculation engine; keeping both guards makes that cutover
+ * safe without changing the current reporting fallback.
+ */
+async function removeSparsePlayoffMetrics() {
+  const playoffMetrics = await db
+    .select({
+      entryId: snapshotMetricsTable.entryId,
+      basis: snapshotMetricsTable.basis,
+    })
+    .from(snapshotMetricsTable)
+    .innerJoin(
+      sportPeriodsTable,
+      eq(sportPeriodsTable.id, snapshotMetricsTable.periodId),
+    )
+    .where(and(eq(sportPeriodsTable.sport, "NFL"), eq(sportPeriodsTable.isPlayoff, true)));
+
+  const playoffPeriods = await db
+    .select({ id: sportPeriodsTable.id })
+    .from(sportPeriodsTable)
+    .where(and(eq(sportPeriodsTable.sport, "NFL"), eq(sportPeriodsTable.isPlayoff, true)));
+  const playoffPeriodIds = playoffPeriods.map((period) => period.id);
+
+  for (const metric of playoffMetrics) {
+    const baseline = await db
+      .select({ id: snapshotMetricsTable.id })
+      .from(snapshotMetricsTable)
+      .innerJoin(
+        sportPeriodsTable,
+        eq(sportPeriodsTable.id, snapshotMetricsTable.periodId),
+      )
+      .where(
+        and(
+          eq(snapshotMetricsTable.entryId, metric.entryId),
+          eq(snapshotMetricsTable.basis, metric.basis),
+          eq(sportPeriodsTable.sport, "NFL"),
+          eq(sportPeriodsTable.sequence, 18),
+        ),
+      )
+      .limit(1);
+    if (!baseline[0] && playoffPeriodIds.length) {
+      await db
+        .delete(snapshotMetricsTable)
+        .where(
+          and(
+            eq(snapshotMetricsTable.entryId, metric.entryId),
+            eq(snapshotMetricsTable.basis, metric.basis),
+            inArray(snapshotMetricsTable.periodId, playoffPeriodIds),
+          ),
+        );
+    }
+  }
+}
+
 async function main() {
   await seedNflPeriods();
   await removeSparsePlayoffSnapshots();
+  await removeSparsePlayoffMetrics();
   const seasons = await db.select().from(seasonsTable);
   for (const season of seasons) {
     const name = `${season.year} NFL Calcutta`;

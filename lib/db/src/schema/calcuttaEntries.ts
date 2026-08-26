@@ -1,4 +1,4 @@
-import { index, integer, pgTable, serial, uniqueIndex } from "drizzle-orm/pg-core";
+import { index, integer, jsonb, pgTable, serial, uniqueIndex } from "drizzle-orm/pg-core";
 import { createInsertSchema } from "drizzle-zod";
 import { z } from "zod/v4";
 import { calcuttasTable } from "./calcuttas";
@@ -14,6 +14,7 @@ export const calcuttaEntriesTable = pgTable(
     teamId: integer("team_id")
       .notNull()
       .references(() => teamsTable.id, { onDelete: "cascade" }),
+    metadata: jsonb("metadata").$type<Record<string, unknown> | null>(),
   },
   (t) => [
     uniqueIndex("calcutta_entries_calcutta_team_idx").on(t.calcuttaId, t.teamId),

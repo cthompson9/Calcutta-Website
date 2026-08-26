@@ -13,6 +13,8 @@ export const calcuttasTable = pgTable(
     name: text("name").notNull(),
     year: integer("year").notNull(),
     sport: text("sport").notNull().default("NFL"),
+    competitionFormat: text("competition_format").notNull().default("NFL_REGULAR_SEASON"),
+    status: text("status").notNull().default("active"),
     isCanonical: boolean("is_canonical").notNull().default(true),
     /** Deterministic date used for historical consortium membership rollups. */
     asOfDate: date("as_of_date", { mode: "string" }),
