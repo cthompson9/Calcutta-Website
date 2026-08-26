@@ -1,0 +1,160 @@
+# Calcutta Platform — Master Roadmap (Phases 0–8)
+
+Purpose: re-sequence ALL in-flight work into small, independently-gated phases
+for the Replit agent. One phase = one concern = one session = one checkpoint.
+Never give the agent two phases at once. A phase begins only when the prior
+phase's gates are green (exceptions noted). If a phase fails its gates, roll
+back to the checkpoint and report — never "fix forward" into the next phase.
+
+Existing handoff docs referenced below: `HANDOFF.md` (repo cleanup),
+`CRON-HANDOFF.md` (jobs endpoint + GitHub cron), `CALCUTTA_V2.1_HANDOFF.md`
+(schema + endpoints spec).
+
+Timeline anchor: NFL kickoff ~Sep 10. Phases 0–5 must land before kickoff.
+Phase 6 is gated on Craig's rubric values. Phases 7–8 have slack.
+
+---
+
+## Phase 0 — Baseline cleanup  [SKIP IF ALREADY APPLIED]
+**Prompt:** `HANDOFF.md` verbatim.
+**Scope:** delete dead code/dirs, migration 0006 (drop `bidders.consortium_id`,
+`teams.bid_amount`), lockfile regen.
+**Gates:** its own §4 gates.
+**Time:** 1 session.
+
+## Phase 1 — All additive schema, one migration wave
+**Prompt:** to be drafted by Claude ("Phase 1 handoff") — it re-slices
+CALCUTTA_V2.1_HANDOFF.md §§1, 2, 3, 3b, 4 plus inversion prep into a single
+schema-only release. NOTHING in this phase changes runtime behavior.
+**Scope (one migration file, next version number):**
+1. `calcuttas`: add `competition_format`, `status`; backfill
+   `NFL_REGULAR_SEASON` / `active`.
+2. `calcutta_entries`: add `metadata jsonb null`.
+3. Create `calcutta_rules`; seed 2026 (id 2) AND 2025 (id 1) NFL rubrics —
+   identical rules (Craig confirmed same rubric both years): banked=150,
+   win=10, everything else null pending Craig. Drop empty `payout_rules`.
+4. Create `events`, `event_market_snapshots`, `event_projections`
+   (V2.1 §3/§4 — season-scoped events, NO marquee columns).
+5. Create `snapshot_metrics`; drop empty `team_period_snapshots` (verify zero
+   rows first). Retarget `backfillPeriodSnapshots.ts` to the new shape and to
+   also seed `sport_periods` (23 NFL periods) — retarget only, do not run it.
+6. Add `entry_id` (nullable FK) to `trades` and `positions`; backfill both
+   from `(team_id/entry mapping, season_id)` via `calcutta_entries`; then set
+   NOT NULL. This is inversion prep and the piece CFB strictly requires.
+**Gates:** migration applies cleanly in dev; every `trades` and `positions`
+row has a non-null `entry_id` that round-trips to the original
+(team_id, season_id); all V2.1 gate-1 SQL checks; typecheck + full test
+suites; app boots and existing pages render unchanged (this phase must be
+invisible to users).
+**Time:** 1 session. **Rollback:** single checkpoint; migration is additive
+except two zero-row table drops.
+
+## Phase 2 — Ownership inversion (the only high-risk phase)
+**Prompt:** to be drafted by Claude ("Phase 2 handoff") — gets its own
+document with the same rigor as HANDOFF.md.
+**Scope:** write paths (auction import, team edits, trade approval; REST and
+MCP) write `positions` directly keyed by `entry_id`; the aggregate 100%-net
+check and the primary-immutability guard move onto `positions`;
+`team_bidders` becomes a read-only SQL view over primary positions;
+`syncSeasonPositions` and the `loadSeasonOwnership` legacy fallback retire;
+`ownership_adjustments` audit writes continue unchanged.
+**Gates:** (a) effective ownership for every (entry, bidder) byte-identical
+before/after — one diff query over all 172+ position rows, zero tolerance;
+(b) full API suite (44+ tests) + db suite green; (c) create-team, import
+replay, and trade approve/reject exercised end-to-end in dev including one
+short and one >100% position; (d) browser smoke test.
+**Timing:** immediately after Phase 1, target before Sep 5. HOLD RULE: if not
+green by Sep 5, ship Phases 3–5 on the old write paths and run Phase 2 in the
+next trade-quiet window — Phase 1 alone unblocks CFB.
+**Time:** 1–2 sessions + Craig review of the diff query output.
+
+## Phase 3 — Jobs endpoint + external cron
+**Prompt:** `CRON-HANDOFF.md` verbatim (Part B to the agent; Part A is
+Craig's GitHub setup).
+**Scope:** `POST /api/jobs/refresh`, `JOB_RUNNER_SECRET`, advisory-lock
+concurrency, fast-exit, GitHub Actions workflow.
+**Dependency note:** independent of Phases 1–2; sequenced here so the refresh
+logic lands on final write paths. May run in parallel with Phase 2 if
+sessions allow — it touches no ownership code.
+**Time:** 1 session + 10 min GitHub setup.
+
+## Phase 4 — Schedule ingestion + realized scraper
+**Prompt:** to be drafted by Claude after Phase 1 lands.
+**Scope:** (a) one-time import of the official 2026 NFL schedule into
+`events` (kickoffs; TBD stays null); (b) extend the `standings` job to upsert
+scores/status into `events` from the ESPN scoreboard; (c) after each final,
+recompute realized metrics per team per current period and upsert
+`snapshot_metrics` basis='realized' (win, pt_diff, marquee_pt_diff via the
+§3 derivation function, stage flags); (d) run the retargeted 2025 backfill so
+2025 realized metrics exist for the Phase 6 regression gate.
+**Gates:** 272 events loaded with correct kickoffs spot-checked (incl. the
+Week 3 NYJ@DET 1:00 PM example → not marquee); force-run writes idempotent
+metric rows; 2025 backfill row counts reconcile to `team_results`.
+**Time:** 1–2 sessions. Must land before kickoff.
+
+## Phase 5 — MTM writer on the metric model
+**Prompt:** to be drafted by Claude.
+**Scope:** Kalshi capture keeps writing raw `mtm_snapshots` (unchanged,
+audit/raw layer) AND writes derived expectations into `snapshot_metrics`
+basis='mtm' for the current period (expected wins, stage probabilities;
+pt-diff expectation policy per Craig's earlier cheap-vs-clever call — default:
+realized-to-date + 0). Tuesday-mark idempotency per CRON-HANDOFF §B4.
+**Gates:** one full capture produces exactly one metric row per
+(team, metric); re-run is a no-op; Week 0 numbers reproduce from the stored
+raw data.
+**Time:** 1 session. Before kickoff.
+
+## Phase 6 — Calc engine + regression gate  [BLOCKED ON CRAIG]
+**Blocker:** six NFL rubric values — pt-diff points rate + five stage bonuses
+(playoff berth, divisional, conference, SB berth, SB win). Needed by ~Sep 3
+to keep this pre-kickoff.
+**Prompt:** to be drafted by Claude once values arrive.
+**Scope:** the generic engine — per (calcutta, period, basis): join
+`calcutta_rules` × `snapshot_metrics` by calculation/metric vocabulary;
+buckets points / fixed_pct / shared_pool per V2.1 §3b(c); points→share→$
+with pot = Σ auction proceeds; owner/consortium rollups via positions ×
+memberships. Retire uploaded returns: `team_results.realized_return` etc.
+become derived (columns stay for now; writes stop).
+**Gates:** (a) THE regression gate — engine(2025, final period, realized)
+reproduces all 32 uploaded 2025 `realized_return` values exactly;
+(b) Σ payouts = 100.0000% of pot for both seasons/bases; (c) Week 0 MTM
+values reproduce within rounding.
+**Time:** 1–2 sessions.
+
+## Phase 7 — V2.1 agent endpoints (MCP + REST)  [FLEXIBLE SLOT]
+**Prompt:** CALCUTTA_V2.1_HANDOFF.md §§5–8 (schema sections already consumed
+by Phase 1 — tell the agent explicitly to implement ONLY the endpoints).
+**Scope:** the seven Phase-1-of-V2 endpoints, name resolution, consortium
+leaderboard, MCP tool descriptions with the agent playbook.
+**Sequencing:** any time after Phase 1; return fields are null until Phase 6.
+If Craig wants portfolio/rubric tools in MCP sooner (the original V2
+motivation), run this right after Phase 2 and accept nulls.
+**Time:** 1–2 sessions.
+
+## Phase 8 — CFB Playoff Calcutta bring-up  [Oct–Nov, rubric TBD]
+**Prompt:** to be drafted by Claude when the rubric firms up.
+**Scope:** NO schema. (a) audit + fix any "the active season" singular
+assumption — NFL and CFB seasons run active simultaneously Sep–Jan, so
+active-season lookups must become Calcutta-scoped (list produced by grepping
+`is_active`); (b) new `seasons` row (verify nothing assumes year uniqueness),
+CFB teams into `teams`, `calcuttas` row for Calcutta XIII with
+`competition_format='CFB_PLAYOFF'`, entries, rubric into `calcutta_rules`;
+(c) CFB periods into `sport_periods`; (d) events/schedule load.
+**Gates:** NFL Calcutta completely unaffected (its endpoints/returns
+byte-identical pre/post); CFB portfolio endpoint returns correct auction
+ownership after the CFB auction import.
+
+---
+
+## Sequencing rules for Craig
+
+1. Feed one phase per agent session. Include the line: "Do not begin any work
+   from later phases even if you see the roadmap referenced."
+2. Checkpoint before each phase; gates green before the next.
+3. Parallel-safe pairs if you want speed: Phase 3 with Phase 2; Phase 7 with
+   Phases 4–5. Never parallel: Phase 2 with anything touching routes it
+   rewrites; Phase 1 with anything (it owns the migration).
+4. Publish cadence: after Phases 1, 2, 5, 6 minimum. Phases 3–4 can ride
+   along with the next publish.
+5. Standing blocker list: rubric values (Phase 6, ~Sep 3), GitHub setup
+   (Phase 3, Craig, 10 min), CFB rubric (Phase 8, by Halloween).
