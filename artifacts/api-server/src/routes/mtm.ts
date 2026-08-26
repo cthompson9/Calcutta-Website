@@ -7,6 +7,8 @@ import {
   seasonsTable,
   calcuttaEntriesTable,
   positionsTable,
+  snapshotMetricsTable,
+  sportPeriodsTable,
 } from "@workspace/db";
 import {
   CaptureWeekZeroMtmBody,
@@ -28,6 +30,11 @@ import {
   MTM_SEASON_LOCK_NAMESPACE,
   writeManualMtmSnapshot,
 } from "../lib/manualMtm";
+import { ensureNflSportPeriods, NFL_SPORT } from "../lib/calcuttaReturns";
+import {
+  buildMtmMetricRows,
+  replaceMtmMetricRows,
+} from "../lib/mtmMetrics";
 
 function isAdminRequest(req: Request): boolean {
   const adminKey = process.env["ADMIN_API_KEY"];
@@ -519,6 +526,37 @@ router.post("/mtm/week-zero/capture", async (req, res): Promise<void> => {
         }
       }
 
+      await ensureNflSportPeriods(tx);
+      const period = await tx
+        .select({ id: sportPeriodsTable.id })
+        .from(sportPeriodsTable)
+        .where(
+          and(
+            eq(sportPeriodsTable.sport, NFL_SPORT),
+            eq(sportPeriodsTable.sequence, 0),
+          ),
+        )
+        .limit(1);
+      if (!period[0]) throw new Error("NFL Week 0 period was not seeded.");
+
+      const realizedPtDiffRows = await tx
+        .select({
+          entryId: snapshotMetricsTable.entryId,
+          value: snapshotMetricsTable.value,
+        })
+        .from(snapshotMetricsTable)
+        .where(
+          and(
+            inArray(snapshotMetricsTable.entryId, [...entryIdByTeam.values()]),
+            eq(snapshotMetricsTable.periodId, period[0].id),
+            eq(snapshotMetricsTable.basis, "realized"),
+            eq(snapshotMetricsTable.metric, "pt_diff"),
+          ),
+        );
+      const realizedPtDiffByEntry = new Map(
+        realizedPtDiffRows.map((row) => [row.entryId, Number(row.value)]),
+      );
+
       const snapshotRows = buildWeekZeroSnapshotRows(calculation, {
         seasonId,
         entryIdByTeam,
@@ -538,6 +576,23 @@ router.post("/mtm/week-zero/capture", async (req, res): Promise<void> => {
             set: values,
           });
       }
+      const metricRows = buildMtmMetricRows(calculation, {
+        periodId: period[0].id,
+        periodSequence: 0,
+        snapshotKey: WEEK_ZERO_SNAPSHOT_KEY,
+        snapshotDate: canonicalSnapshotDate,
+        capturedAt,
+        entryIdByTeam,
+        realizedPtDiffByEntry,
+      });
+      await replaceMtmMetricRows(
+        tx,
+        {
+          entryIds: [...entryIdByTeam.values()],
+          periodId: period[0].id,
+        },
+        metricRows,
+      );
       return canonicalSnapshotDate;
     });
   } catch (error) {

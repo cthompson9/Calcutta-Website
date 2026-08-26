@@ -27,13 +27,13 @@ const ADMIN_KEY = process.env.ADMIN_API_KEY;
 const canRun = Boolean(DATABASE_URL && ADMIN_KEY);
 
 // Deferred imports — must not execute when DATABASE_URL is absent (lib/db throws)
-let db, mtmSnapshotsTable, seasonsTable, teamsTable, teamSeasonAuctionsTable, calcuttasTable, calcuttaEntriesTable, positionsTable, biddersTable;
+let db, mtmSnapshotsTable, snapshotMetricsTable, sportPeriodsTable, seasonsTable, teamsTable, teamSeasonAuctionsTable, calcuttasTable, calcuttaEntriesTable, positionsTable, biddersTable;
 let app;
 let WEEK_ZERO_SNAPSHOT_KEY;
 let runCanonicalMtmRefresh;
 
 if (canRun) {
-  ({ db, mtmSnapshotsTable, seasonsTable, teamsTable, teamSeasonAuctionsTable, calcuttasTable, calcuttaEntriesTable, positionsTable, biddersTable } =
+  ({ db, mtmSnapshotsTable, snapshotMetricsTable, sportPeriodsTable, seasonsTable, teamsTable, teamSeasonAuctionsTable, calcuttasTable, calcuttaEntriesTable, positionsTable, biddersTable } =
     await import("@workspace/db"));
   ({ default: app } = await import("../app.ts"));
   ({ WEEK_ZERO_SNAPSHOT_KEY } = await import("../lib/weekZeroValuation.ts"));
@@ -56,7 +56,10 @@ const ALL_TEAM_TICKERS = [
  *   - Returns deterministic fake market data for any Kalshi event URL.
  *   - Optionally waits `delayMs` before responding (used to control race timing).
  */
-function makeKalshiMock(realFetch, { delayMs = 0 } = {}) {
+function makeKalshiMock(
+  realFetch,
+  { delayMs = 0, omitChampionshipTicker = null } = {},
+) {
   return async function mockedFetch(url, options) {
     const urlStr = url.toString();
     if (!urlStr.includes("external-api.kalshi.com")) {
@@ -92,6 +95,14 @@ function makeKalshiMock(realFetch, { delayMs = 0 } = {}) {
         yes_ask_size_fp: "500",
         updated_time: "2026-08-19T12:00:00Z",
       }));
+      if (
+        omitChampionshipTicker &&
+        eventTicker.startsWith("KXSB-")
+      ) {
+        markets = markets.filter(
+          (market) => !market.ticker.endsWith(`-${omitChampionshipTicker}`),
+        );
+      }
     }
 
     return new Response(JSON.stringify({ event: { markets } }), {
@@ -301,6 +312,7 @@ describe(
           id: mtmSnapshotsTable.id,
           snapshotKey: mtmSnapshotsTable.snapshotKey,
           mtmValue: mtmSnapshotsTable.mtmValue,
+          marketStatus: mtmSnapshotsTable.marketStatus,
         })
         .from(mtmSnapshotsTable)
         .where(
@@ -316,6 +328,26 @@ describe(
       await db
         .delete(mtmSnapshotsTable)
         .where(inArray(mtmSnapshotsTable.id, ids));
+    }
+
+    async function mtmMetricRowsForEntries(entryIds) {
+      return db
+        .select({
+          id: snapshotMetricsTable.id,
+          entryId: snapshotMetricsTable.entryId,
+          metric: snapshotMetricsTable.metric,
+          value: snapshotMetricsTable.value,
+          source: snapshotMetricsTable.source,
+          sourceData: snapshotMetricsTable.sourceData,
+          snapshotAt: snapshotMetricsTable.snapshotAt,
+        })
+        .from(snapshotMetricsTable)
+        .where(
+          and(
+            inArray(snapshotMetricsTable.entryId, entryIds),
+            eq(snapshotMetricsTable.basis, "mtm"),
+          ),
+        );
     }
 
     // ── Baseline test A: manual blocked by existing Week 0 row ────────────
@@ -347,6 +379,39 @@ describe(
           assert.equal(rows[0].mtmValue, "100.0000", "Week 0 value must not be overwritten");
         } finally {
           await deleteSnapshotsByIds([weekZeroId]);
+        }
+      },
+    );
+
+    test(
+      "an incomplete market capture keeps raw audit rows but publishes no derived metrics",
+      async () => {
+        const DATE = "9999-09-09";
+        globalThis.fetch = makeKalshiMock(realFetch, {
+          omitChampionshipTicker: "ARI",
+        });
+        try {
+          const response = await postWeekZeroCapture({ snapshotDate: DATE });
+          assert.equal(response.status, 200);
+          const rawRows = await snapshotsAtDate(DATE);
+          assert.equal(rawRows.length, 32);
+          assert.equal(
+            rawRows.filter((row) => row.marketStatus === "incomplete").length,
+            1,
+          );
+          const metrics = await mtmMetricRowsForEntries(
+            [...entryIdByTeam.values()],
+          );
+          assert.equal(
+            metrics.length,
+            0,
+            "league-normalized assertions must be withheld for an incomplete capture",
+          );
+          await deleteSnapshotsByIds(rawRows.map((row) => row.id));
+        } finally {
+          globalThis.fetch = realFetch;
+          const leaked = await snapshotsAtDate(DATE);
+          await deleteSnapshotsByIds(leaked.map((row) => row.id));
         }
       },
     );
@@ -402,6 +467,20 @@ describe(
         try {
           const firstCapture = await postWeekZeroCapture({ snapshotDate: DATE });
           assert.equal(firstCapture.status, 200, "initial Week 0 capture must succeed");
+          const firstMetrics = await mtmMetricRowsForEntries(
+            [...entryIdByTeam.values()],
+          );
+          assert.equal(
+            firstMetrics.length,
+            32 * 8,
+            "one MTM row per team and calculation metric must be stored",
+          );
+          assert.ok(firstMetrics.every((row) =>
+            row.source === "kalshi" &&
+            row.sourceData.rawSnapshotKey === WEEK_ZERO_SNAPSHOT_KEY &&
+            row.sourceData.rawSnapshotDate === DATE
+          ));
+
           const recapture = await postWeekZeroCapture({ snapshotDate: DATE });
           assert.equal(recapture.status, 200, "Week 0 recapture must use the partial unique index");
 
@@ -410,6 +489,14 @@ describe(
           assert.ok(
             rows.every((row) => row.snapshotKey === WEEK_ZERO_SNAPSHOT_KEY),
             "all rows must retain the protected Week 0 key",
+          );
+          const recapturedMetrics = await mtmMetricRowsForEntries(
+            [...entryIdByTeam.values()],
+          );
+          assert.equal(
+            recapturedMetrics.length,
+            32 * 8,
+            "recapture must replace rather than duplicate derived metrics",
           );
           await deleteSnapshotsByIds(rows.map((row) => row.id));
         } finally {
@@ -436,6 +523,12 @@ describe(
             periodSeq: 0,
             teamsUpdated: 32,
           });
+          const firstMetrics = await mtmMetricRowsForEntries(
+            [...entryIdByTeam.values()],
+          );
+          assert.equal(firstMetrics.length, 32 * 8);
+          const firstMetricIds = firstMetrics.map((row) => row.id).sort((a, b) => a - b);
+
           const duplicate = await runCanonicalMtmRefresh({
             seasonYear: 9999,
             now,
@@ -449,6 +542,14 @@ describe(
 
           const firstRows = await snapshotsAtDate(DATE);
           assert.equal(firstRows.length, 32);
+          const duplicateMetrics = await mtmMetricRowsForEntries(
+            [...entryIdByTeam.values()],
+          );
+          assert.deepEqual(
+            duplicateMetrics.map((row) => row.id).sort((a, b) => a - b),
+            firstMetricIds,
+            "an already-marked Tuesday retry must not rewrite derived metrics",
+          );
           await deleteSnapshotsByIds([firstRows[0].id]);
 
           const repaired = await runCanonicalMtmRefresh({
@@ -466,6 +567,14 @@ describe(
             repairedRows.every(
               (row) => row.snapshotKey === WEEK_ZERO_SNAPSHOT_KEY,
             ),
+          );
+          const repairedMetrics = await mtmMetricRowsForEntries(
+            [...entryIdByTeam.values()],
+          );
+          assert.equal(
+            repairedMetrics.length,
+            32 * 8,
+            "repairing a partial raw mark must leave complete derived coverage",
           );
           await deleteSnapshotsByIds(repairedRows.map((row) => row.id));
         } finally {
@@ -535,6 +644,13 @@ describe(
           const canonicalBefore = await snapshotsAtDate(WEEK_ZERO_DATE);
           assert.equal(canonicalBefore.length, 32);
           const canonicalIds = new Set(canonicalBefore.map((row) => row.id));
+          const canonicalMetricsBefore = await mtmMetricRowsForEntries(
+            [...entryIdByTeam.values()],
+          );
+          assert.equal(canonicalMetricsBefore.length, 32 * 8);
+          const canonicalMetricIds = canonicalMetricsBefore
+            .map((row) => row.id)
+            .sort((a, b) => a - b);
 
           const secondCapture = await postWeekZeroCapture({
             calcuttaId: secondCalcutta.id,
@@ -550,6 +666,18 @@ describe(
             ),
             "the alternate capture must not replace canonical snapshot identities",
           );
+          const canonicalMetricsAfter = await mtmMetricRowsForEntries(
+            [...entryIdByTeam.values()],
+          );
+          assert.deepEqual(
+            canonicalMetricsAfter.map((row) => row.id).sort((a, b) => a - b),
+            canonicalMetricIds,
+            "the alternate capture must not replace canonical metric rows",
+          );
+          const alternateMetrics = await mtmMetricRowsForEntries(
+            secondEntries.map((entry) => entry.id),
+          );
+          assert.equal(alternateMetrics.length, 32 * 8);
         } finally {
           globalThis.fetch = realFetch;
           await db.delete(mtmSnapshotsTable).where(and(
@@ -557,6 +685,64 @@ describe(
             inArray(mtmSnapshotsTable.snapshotDate, [MANUAL_DATE, WEEK_ZERO_DATE]),
           ));
           await db.delete(calcuttasTable).where(eq(calcuttasTable.id, secondCalcutta.id));
+        }
+      },
+    );
+
+    test(
+      "canonical in-season capture refuses partial realized point-differential coverage",
+      async () => {
+        const [weekOne] = await db
+          .select({ id: sportPeriodsTable.id })
+          .from(sportPeriodsTable)
+          .where(
+            and(
+              eq(sportPeriodsTable.sport, "NFL"),
+              eq(sportPeriodsTable.sequence, 1),
+            ),
+          )
+          .limit(1);
+        assert.ok(weekOne, "NFL Week 1 period must be seeded");
+        const entryIds = [...entryIdByTeam.values()];
+        const snapshotAt = new Date("9999-09-10T12:00:00.000Z");
+        const realizedRows = [
+          ...entryIds.map((entryId) => ({
+            entryId,
+            periodId: weekOne.id,
+            basis: "realized",
+            metric: "wins",
+            value: "1",
+            source: "test",
+            snapshotAt,
+          })),
+          ...entryIds.slice(1).map((entryId) => ({
+            entryId,
+            periodId: weekOne.id,
+            basis: "realized",
+            metric: "pt_diff",
+            value: "3",
+            source: "test",
+            snapshotAt,
+          })),
+        ];
+        await db.insert(snapshotMetricsTable).values(realizedRows);
+
+        try {
+          await assert.rejects(
+            () => runCanonicalMtmRefresh({
+              seasonYear: 9999,
+              now: snapshotAt,
+            }),
+            /requires realized point-differential coverage for all 32 entries; found 31/,
+          );
+        } finally {
+          await db.delete(snapshotMetricsTable).where(
+            and(
+              inArray(snapshotMetricsTable.entryId, entryIds),
+              eq(snapshotMetricsTable.periodId, weekOne.id),
+              eq(snapshotMetricsTable.basis, "realized"),
+            ),
+          );
         }
       },
     );

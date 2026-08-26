@@ -6,8 +6,8 @@ import {
   mtmSnapshotsTable,
   positionsTable,
   seasonsTable,
+  snapshotMetricsTable,
   sportPeriodsTable,
-  teamPeriodSnapshotsTable,
   teamsTable,
 } from "@workspace/db";
 import { captureKalshiWeekZero } from "./kalshiWeekZero";
@@ -19,6 +19,11 @@ import {
   calculateWeekZeroValuations,
   WEEK_ZERO_SNAPSHOT_KEY,
 } from "./weekZeroValuation";
+import {
+  buildMtmMetricRows,
+  hasCompleteMtmMetricCoverage,
+  replaceMtmMetricRows,
+} from "./mtmMetrics";
 
 export function latestFullyCoveredNflPeriod(
   rows: Array<{ entryId: number; sequence: number }>,
@@ -104,18 +109,19 @@ export async function runCanonicalMtmRefresh(input: {
   const entryIds = entries.map((entry) => entry.entryId);
   const realizedCoverage = await db
     .select({
-      entryId: teamPeriodSnapshotsTable.entryId,
+      entryId: snapshotMetricsTable.entryId,
       sequence: sportPeriodsTable.sequence,
     })
-    .from(teamPeriodSnapshotsTable)
+    .from(snapshotMetricsTable)
     .innerJoin(
       sportPeriodsTable,
-      eq(sportPeriodsTable.id, teamPeriodSnapshotsTable.periodId),
+      eq(sportPeriodsTable.id, snapshotMetricsTable.periodId),
     )
     .where(
       and(
-        inArray(teamPeriodSnapshotsTable.entryId, entryIds),
-        eq(teamPeriodSnapshotsTable.basis, "realized"),
+        inArray(snapshotMetricsTable.entryId, entryIds),
+        eq(snapshotMetricsTable.basis, "realized"),
+        eq(snapshotMetricsTable.metric, "wins"),
         eq(sportPeriodsTable.sport, NFL_SPORT),
       ),
     );
@@ -127,6 +133,7 @@ export async function runCanonicalMtmRefresh(input: {
     .select({
       sequence: sportPeriodsTable.sequence,
       label: sportPeriodsTable.label,
+      id: sportPeriodsTable.id,
     })
     .from(sportPeriodsTable)
     .where(
@@ -153,7 +160,21 @@ export async function runCanonicalMtmRefresh(input: {
         eq(mtmSnapshotsTable.snapshotKey, snapshotKey),
       ),
     );
-  if (new Set(existing.map((row) => row.entryId)).size === entries.length) {
+  const existingMetricRows = await db
+    .select({
+      entryId: snapshotMetricsTable.entryId,
+      metric: snapshotMetricsTable.metric,
+    })
+    .from(snapshotMetricsTable)
+    .where(and(
+      inArray(snapshotMetricsTable.entryId, entryIds),
+      eq(snapshotMetricsTable.periodId, period[0].id),
+      eq(snapshotMetricsTable.basis, "mtm"),
+    ));
+  if (
+    new Set(existing.map((row) => row.entryId)).size === entries.length &&
+    hasCompleteMtmMetricCoverage(existingMetricRows, entryIds)
+  ) {
     return {
       ran: false,
       reason: "already-marked",
@@ -210,6 +231,30 @@ export async function runCanonicalMtmRefresh(input: {
       `Canonical MTM refresh requires primary-position costs for all 32 entries; found ${costByEntry.size}.`,
     );
   }
+  const realizedPtDiffRows = await db
+    .select({
+      entryId: snapshotMetricsTable.entryId,
+      value: snapshotMetricsTable.value,
+    })
+    .from(snapshotMetricsTable)
+    .where(and(
+      inArray(snapshotMetricsTable.entryId, entryIds),
+      eq(snapshotMetricsTable.periodId, period[0].id),
+      eq(snapshotMetricsTable.basis, "realized"),
+      eq(snapshotMetricsTable.metric, "pt_diff"),
+    ));
+  const realizedPtDiffByEntry = new Map(
+    realizedPtDiffRows.map((row) => [row.entryId, Number(row.value)]),
+  );
+  if (
+    period[0].sequence > 0 &&
+    realizedPtDiffByEntry.size !== entries.length
+  ) {
+    throw new Error(
+      `Canonical MTM period ${period[0].sequence} requires realized point-differential coverage for all ${entries.length} entries; found ${realizedPtDiffByEntry.size}.`,
+    );
+  }
+
   const potSize = [...costByEntry.values()].reduce((sum, value) => sum + value, 0);
   const marketSnapshots = await captureKalshiWeekZero({
     seasonYear: input.seasonYear,
@@ -242,6 +287,15 @@ export async function runCanonicalMtmRefresh(input: {
       canonicalPeriodLabel: period[0].label,
     },
   }));
+  const metricRows = buildMtmMetricRows(calculation, {
+    periodId: period[0].id,
+    periodSequence: period[0].sequence,
+    snapshotKey,
+    snapshotDate,
+    capturedAt: now,
+    entryIdByTeam,
+    realizedPtDiffByEntry,
+  });
 
   const outcome = await db.transaction(async (tx) => {
     await tx.execute(
@@ -259,7 +313,21 @@ export async function runCanonicalMtmRefresh(input: {
           eq(mtmSnapshotsTable.snapshotKey, snapshotKey),
         ),
       );
-    if (new Set(current.map((row) => row.entryId)).size === entries.length) {
+    const currentMetricRows = await tx
+      .select({
+        entryId: snapshotMetricsTable.entryId,
+        metric: snapshotMetricsTable.metric,
+      })
+      .from(snapshotMetricsTable)
+      .where(and(
+        inArray(snapshotMetricsTable.entryId, entryIds),
+        eq(snapshotMetricsTable.periodId, period[0].id),
+        eq(snapshotMetricsTable.basis, "mtm"),
+      ));
+    if (
+      new Set(current.map((row) => row.entryId)).size === entries.length &&
+      hasCompleteMtmMetricCoverage(currentMetricRows, entryIds)
+    ) {
       return "already-marked" as const;
     }
     if (
@@ -296,6 +364,10 @@ export async function runCanonicalMtmRefresh(input: {
           set: values,
         });
     }
+    await replaceMtmMetricRows(tx, {
+      entryIds,
+      periodId: period[0].id,
+    }, metricRows);
     return "saved" as const;
   });
 
