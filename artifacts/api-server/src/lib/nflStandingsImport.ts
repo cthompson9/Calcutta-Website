@@ -8,6 +8,10 @@ import {
   teamSeasonAuctionsTable,
   teamsTable,
 } from "@workspace/db";
+import {
+  syncNflEventsAndRealizedMetricsTx,
+  type EspnScoreboardPayload,
+} from "./nflEventSync";
 import { OWNERSHIP_SEASON_LOCK_NAMESPACE } from "./ownershipShares";
 
 export const NFL_STANDINGS_PHASE = "REG" as const;
@@ -434,6 +438,7 @@ export async function applyNflStandingsImport(args: {
   requestedBy: string;
   requestId?: string;
   periodSequence?: number;
+  eventPayload?: EspnScoreboardPayload;
 }) {
   if (args.periodSequence !== undefined) {
     throw new NflStandingsImportError(
@@ -462,6 +467,14 @@ export async function applyNflStandingsImport(args: {
       )
       .limit(1);
     if (replay[0]) {
+      const eventSync = args.eventPayload
+        ? await syncNflEventsAndRealizedMetricsTx(
+            tx,
+            resolved.seasonId,
+            args.seasonYear,
+            args.eventPayload,
+          )
+        : undefined;
       return {
         seasonYear: args.seasonYear,
         source: NFL_STANDINGS_SOURCE,
@@ -470,6 +483,7 @@ export async function applyNflStandingsImport(args: {
         fetchedAt: payload.fetchedAt,
         importedTeams: 0,
         replay: true,
+        ...(eventSync ? { eventSync } : {}),
       };
     }
 
@@ -505,6 +519,14 @@ export async function applyNflStandingsImport(args: {
       requestedBy: args.requestedBy,
       requestId: args.requestId ?? null,
     });
+    const eventSync = args.eventPayload
+      ? await syncNflEventsAndRealizedMetricsTx(
+          tx,
+          resolved.seasonId,
+          args.seasonYear,
+          args.eventPayload,
+        )
+      : undefined;
     return {
       seasonYear: args.seasonYear,
       source: NFL_STANDINGS_SOURCE,
@@ -513,6 +535,7 @@ export async function applyNflStandingsImport(args: {
       fetchedAt: payload.fetchedAt,
       importedTeams: resolved.teams.length,
       replay: false,
+      ...(eventSync ? { eventSync } : {}),
     };
   });
 }

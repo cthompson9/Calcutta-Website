@@ -3,6 +3,10 @@ import { desc, eq } from "drizzle-orm";
 import { db, seasonsTable } from "@workspace/db";
 import { currentYearInNewYork } from "./newYorkTime";
 import { applyNflStandingsImport } from "./nflStandingsImport";
+import {
+  fetchEspnNflEvents,
+  validateEspnRegularSeasonEvents,
+} from "./nflEventSync";
 
 export async function resolveNflStandingsRefreshSeasonYear(): Promise<number> {
   const active = await db
@@ -31,9 +35,15 @@ export async function runNflStandingsRefresh(input: {
   requestId?: string;
 }): Promise<Awaited<ReturnType<typeof applyNflStandingsImport>>> {
   const seasonYear = await resolveNflStandingsRefreshSeasonYear();
-  return applyNflStandingsImport({
+  // Fetch and validate the complete event ledger before committing standings.
+  // Provider outages or partial payloads therefore leave the refresh untouched.
+  const eventPayload = await fetchEspnNflEvents(seasonYear);
+  validateEspnRegularSeasonEvents(eventPayload, seasonYear);
+  const standings = await applyNflStandingsImport({
     seasonYear,
     requestedBy: input.requestedBy,
     requestId: input.requestId ?? randomUUID(),
+    eventPayload,
   });
+  return standings;
 }
