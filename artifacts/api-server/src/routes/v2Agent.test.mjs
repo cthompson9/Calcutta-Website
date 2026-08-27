@@ -1,7 +1,7 @@
 import assert from "node:assert/strict";
 import http from "node:http";
 import { after, before, describe, test } from "node:test";
-import { eq, inArray } from "drizzle-orm";
+import { and, eq, inArray } from "drizzle-orm";
 
 const DATABASE_URL = process.env.DATABASE_URL;
 const MCP_KEY = process.env.MCP_API_KEY;
@@ -158,6 +158,7 @@ describe("V2.1 agent read API", { skip: !DATABASE_URL }, () => {
     })));
     [period] = await db.select().from(sportPeriodsTable).where(eq(sportPeriodsTable.sequence, 1)).limit(1);
     await db.insert(snapshotMetricsTable).values({
+      calcuttaId: calcutta.id,
       entryId: entryA.id,
       periodId: period.id,
       basis: "realized",
@@ -294,6 +295,133 @@ describe("V2.1 agent read API", { skip: !DATABASE_URL }, () => {
     assert.ok(consortiumRow);
     assert.equal(consortiumRow.realized_return, null);
     assert.equal(consortiumRow.net_return, null);
+  });
+
+  test("uses the NFL default rubric without an override, fails closed for partial overrides, and never serializes entry sentinels", async () => {
+    const { loadCalculatedTeamReturnsForCalcutta, auditStoredEntryReturnDiscrepancies } =
+      await import("../lib/calcuttaReturns.ts");
+    const [defaultCalcutta, partialCalcutta, cfbCalcutta] = await db
+      .insert(calcuttasTable)
+      .values([
+        {
+          seasonId: season.id, year: season.year, name: `Default rubric ${season.year}`, sport: "NFL",
+          competitionFormat: "NFL_REGULAR_SEASON", isCanonical: false,
+        },
+        {
+          seasonId: season.id, year: season.year, name: `Partial rubric ${season.year}`, sport: "NFL",
+          competitionFormat: "NFL_REGULAR_SEASON", isCanonical: false,
+        },
+        {
+          seasonId: season.id, year: season.year, name: `No CFB rubric ${season.year}`, sport: "CFB",
+          competitionFormat: "CFB_REGULAR_SEASON", isCanonical: false,
+        },
+      ])
+      .returning();
+    const [defaultEntry, partialEntry, cfbEntry] = await db
+      .insert(calcuttaEntriesTable)
+      .values([
+        // These deliberately impossible values must never become output values.
+        { calcuttaId: defaultCalcutta.id, teamId: teamA.id, realizedReturn: "987654", realizedMultiple: "123", netReturn: "456", netPctReturn: "789", markToMarket: "654321" },
+        { calcuttaId: partialCalcutta.id, teamId: teamA.id },
+        { calcuttaId: cfbCalcutta.id, teamId: teamA.id },
+      ])
+      .returning();
+    await db.insert(positionsTable).values([
+      { entryId: defaultEntry.id, bidderId: owner.id, ownershipShare: "1", source: "primary", costBasis: "100" },
+      { entryId: partialEntry.id, bidderId: owner.id, ownershipShare: "1", source: "primary", costBasis: "100" },
+      { entryId: cfbEntry.id, bidderId: owner.id, ownershipShare: "1", source: "primary", costBasis: "100" },
+    ]);
+    const realized = {
+      wins: 1, losses: 0, ties: 0, pt_diff: 7,
+      ordinary_wins: 1, marquee_wins: 0, ordinary_ties: 0, marquee_ties: 0,
+      ordinary_pt_diff: 7, marquee_pt_diff: 0,
+      playoff_berth: 0, div_round: 0, conf_round: 0, sb_berth: 0, win_super_bowl: 0,
+    };
+    const mtm = {
+      win: 1, tie: 0, pt_diff: 7, playoff_berth: 0,
+      div_round: 0, conf_round: 0, sb_berth: 0, win_super_bowl: 0,
+    };
+    const [nflWeekOne] = await db
+      .select()
+      .from(sportPeriodsTable)
+      .where(and(
+        eq(sportPeriodsTable.sport, "NFL"),
+        eq(sportPeriodsTable.competition, "NFL_REGULAR_SEASON"),
+        eq(sportPeriodsTable.sequence, 1),
+      ))
+      .limit(1);
+    assert.ok(nflWeekOne);
+    await db.insert(snapshotMetricsTable).values([
+      ...Object.entries(realized).map(([metric, value]) => ({
+        calcuttaId: defaultCalcutta.id, entryId: defaultEntry.id, periodId: nflWeekOne.id,
+        basis: "realized", metric, value: String(value), source: "test",
+      })),
+      ...Object.entries(mtm).map(([metric, value]) => ({
+        calcuttaId: defaultCalcutta.id, entryId: defaultEntry.id, periodId: nflWeekOne.id,
+        basis: "mtm", metric, value: String(value), source: "test",
+      })),
+    ]);
+    await db.insert(payoutRulesTable).values({
+      calcuttaId: partialCalcutta.id, metric: "win", dollarsPerUnit: "10", playoffMultiplier: "1",
+    });
+
+    const calculated = await loadCalculatedTeamReturnsForCalcutta(defaultCalcutta.id, 1);
+    const values = calculated.get(teamA.id);
+    assert.ok(values?.realized?.grossReturn > 0);
+    assert.ok(values?.mtm?.grossReturn > 0);
+    assert.equal((await loadCalculatedTeamReturnsForCalcutta(partialCalcutta.id)).size, 0);
+    assert.equal((await loadCalculatedTeamReturnsForCalcutta(cfbCalcutta.id)).size, 0);
+
+    const audit = await auditStoredEntryReturnDiscrepancies(defaultCalcutta.id);
+    assert.equal(audit.ok, false);
+    assert.equal(audit.issues.filter((issue) => issue.kind === "mismatch").length, 5);
+    assert.deepEqual(
+      audit.issues.filter((issue) => issue.kind === "mismatch").map((issue) => issue.field).sort(),
+      ["markToMarket", "netPctReturn", "netReturn", "realizedMultiple", "realizedReturn"],
+    );
+
+    const legacyResponse = await fetch(
+      `${baseUrl}/api/results?season=${season.year}&calcuttaId=${defaultCalcutta.id}&period=1&basis=realized`,
+    );
+    const legacyRow = (await legacyResponse.json()).find((row) => row.teamId === teamA.id);
+    const projection = {
+      realizedReturn: legacyRow.realizedReturn,
+      realizedMultiple: legacyRow.realizedMultiple,
+      netReturn: legacyRow.netReturn,
+      netPctReturn: legacyRow.netPctReturn,
+      markToMarket: legacyRow.markToMarket,
+    };
+    const expected = {
+      realizedReturn: values.realized.grossReturn,
+      realizedMultiple: values.realized.grossReturn / 100,
+      netReturn: values.realized.grossReturn - 100,
+      netPctReturn: (values.realized.grossReturn - 100) / 100,
+      markToMarket: values.mtm.grossReturn,
+    };
+    assert.equal(JSON.stringify(projection), JSON.stringify(expected));
+    assert.doesNotMatch(JSON.stringify(projection), /987654|654321/);
+
+    const v2Response = await fetch(
+      `${baseUrl}/api/v2/owner/portfolio?season=${season.year}&owner=${encodeURIComponent(owner.name)}&calcuttaId=${defaultCalcutta.id}&period=1`,
+    );
+    const v2 = await v2Response.json();
+    const v2Team = v2.teams.find((row) => row.team_id === teamA.id);
+    assert.equal(v2Team.realized_return, values.realized.grossReturn);
+    assert.equal(v2Team.current_mtm, values.mtm.grossReturn);
+
+    await db.delete(snapshotMetricsTable).where(and(
+      eq(snapshotMetricsTable.calcuttaId, defaultCalcutta.id),
+      eq(snapshotMetricsTable.entryId, defaultEntry.id),
+      eq(snapshotMetricsTable.basis, "mtm"),
+    ));
+    const realizedOnlyAudit = await auditStoredEntryReturnDiscrepancies(defaultCalcutta.id);
+    assert.equal(realizedOnlyAudit.issues.filter((issue) => issue.kind === "mismatch").length, 4);
+    assert.deepEqual(
+      realizedOnlyAudit.issues
+        .filter((issue) => issue.kind === "partial_coverage")
+        .map((issue) => issue.field),
+      ["markToMarket"],
+    );
   });
 
   test("exposes matching authenticated MCP tools", { skip: !MCP_KEY }, async () => {

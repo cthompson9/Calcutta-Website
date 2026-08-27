@@ -1,18 +1,20 @@
 ---
-name: V2 agent value completeness
-description: Rules for legacy financial fallback and unavailable values in the V2 REST and MCP read contracts.
+name: Calculated value authority
+description: Authority and unavailable-value rules for calculated return fields across REST and MCP.
 ---
 
-When a Calcutta has a valid configured NFL payout rubric, missing normalized
-realized or MTM coverage must remain unavailable (`null`). Legacy entry
-economics are a compatibility fallback only when no valid rubric is configured.
-Aggregations must propagate unavailable values rather than converting them to
-zero.
+Stored Calcutta-entry economics are comparison-only audit observations, never
+runtime inputs or fallbacks. Missing normalized realized or MTM coverage must
+remain unavailable (`null`) in nullable contracts, and aggregations must
+propagate that state rather than converting it to zero. A completely absent NFL
+override uses the established adapter rubric; a partial override fails closed.
+Sports without an approved default rubric remain unavailable until configured.
 
-**Why:** A configured rubric means normalized Phase 6 calculations are the
-authoritative source. Falling back per team or treating missing values as zero
-creates plausible but false portfolio and consortium results.
+**Why:** Legacy columns can contain historical values calculated under another
+basis or untouched zero defaults. Falling back to them creates plausible but
+false portfolio and consortium results and can suppress valid calculations.
 
 **How to apply:** Use the same rule for owner portfolios, team/game values, and
-consortium rollups across both REST and MCP. Keep `calculation_status` and
-nullable fields explicit so agents can distinguish missing coverage from zero.
+consortium rollups across REST and MCP. Keep discrepancy reporting separate
+from calculation, and preserve explicit availability/coverage indicators where
+a legacy numeric response cannot represent null.

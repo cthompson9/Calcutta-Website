@@ -105,11 +105,6 @@ type ResultDisplay = {
   ptsToBreakeven?: number | null;
 };
 
-type EntryEconomics = Pick<
-  typeof calcuttaEntriesTable.$inferSelect,
-  "realizedReturn" | "realizedMultiple" | "netReturn" | "netPctReturn" | "markToMarket"
->;
-
 function calculatePtsToBreakeven(
   netReturn: number,
   totalPot: number,
@@ -130,7 +125,6 @@ function calculatePtsToBreakeven(
 
 function resultFromCalculatedSnapshots(
   legacy: typeof teamResultsTable.$inferSelect | null,
-  entryEconomics: EntryEconomics | null,
   calculated: CalculatedTeamReturns | undefined,
   cost: number,
   basis: "realized" | "mtm",
@@ -142,12 +136,12 @@ function resultFromCalculatedSnapshots(
     ? {
         ...legacy,
         isProjectedRecord: basis === "mtm",
-        realizedReturn: Number(entryEconomics?.realizedReturn ?? 0),
-        realizedMultiple: Number(entryEconomics?.realizedMultiple ?? 0),
-        netReturn: Number(entryEconomics?.netReturn ?? 0),
-        netPctReturn: Number(entryEconomics?.netPctReturn ?? 0),
-        markToMarket: Number(entryEconomics?.markToMarket ?? 0),
-        netMtm: Number(entryEconomics?.markToMarket ?? 0) - cost,
+        realizedReturn: 0,
+        realizedMultiple: 0,
+        netReturn: -cost,
+        netPctReturn: cost > 0 ? -1 : 0,
+        markToMarket: 0,
+        netMtm: -cost,
         dollarsPerPoint: null,
         ptsToBreakeven: null,
       }
@@ -155,12 +149,13 @@ function resultFromCalculatedSnapshots(
   if (!payoutRulesConfigured) return legacyDisplay;
   const selected = calculated?.[basis];
   if (!calculated || !selected) {
-    // Historical rows remain authoritative until a complete, reconciled
-    // snapshot ledger is available. Do not silently replace known returns
-    // with a zero just because a rubric was configured early.
+    // The legacy response contract requires numeric financial fields. Missing
+    // calculated coverage is represented explicitly by the surrounding
+    // coverage flags and zero-valued compatibility fields, never stored entry
+    // economics.
     if (legacyDisplay) return legacyDisplay;
-    const realizedReturn = Number(entryEconomics?.realizedReturn ?? 0);
-    const markToMarket = Number(entryEconomics?.markToMarket ?? 0);
+    const realizedReturn = 0;
+    const markToMarket = 0;
     return {
       isProjectedRecord: basis === "mtm",
       wins: 0,
@@ -177,9 +172,9 @@ function resultFromCalculatedSnapshots(
       sbBerth: false,
       winSuperBowl: false,
       realizedReturn,
-      realizedMultiple: Number(entryEconomics?.realizedMultiple ?? 0),
-      netReturn: Number(entryEconomics?.netReturn ?? realizedReturn - cost),
-      netPctReturn: Number(entryEconomics?.netPctReturn ?? (cost > 0 ? (realizedReturn - cost) / cost : 0)),
+      realizedMultiple: 0,
+      netReturn: realizedReturn - cost,
+      netPctReturn: cost > 0 ? (realizedReturn - cost) / cost : 0,
       markToMarket,
       netMtm: markToMarket - cost,
       dollarsPerPoint: null,
@@ -190,10 +185,8 @@ function resultFromCalculatedSnapshots(
 
   // Realized and MTM coverage are independent. A valid snapshot for the
   // selected view must never zero the other legacy financial field.
-  const realizedReturn = calculated.realized?.grossReturn
-    ?? Number(entryEconomics?.realizedReturn ?? 0);
-  const markToMarket = calculated.mtm?.grossReturn
-    ?? Number(entryEconomics?.markToMarket ?? 0);
+  const realizedReturn = calculated.realized?.grossReturn ?? 0;
+  const markToMarket = calculated.mtm?.grossReturn ?? 0;
   const netReturn = realizedReturn - cost;
   const netMtm = markToMarket - cost;
   const dollarsPerPoint =
@@ -530,11 +523,6 @@ router.get("/results", async (req, res): Promise<void> => {
       entryId: calcuttaEntriesTable.id,
       teamId: calcuttaEntriesTable.teamId,
       costBasis: positionsTable.costBasis,
-      realizedReturn: calcuttaEntriesTable.realizedReturn,
-      realizedMultiple: calcuttaEntriesTable.realizedMultiple,
-      netReturn: calcuttaEntriesTable.netReturn,
-      netPctReturn: calcuttaEntriesTable.netPctReturn,
-      markToMarket: calcuttaEntriesTable.markToMarket,
     })
     .from(calcuttaEntriesTable)
     .innerJoin(positionsTable, and(
@@ -546,10 +534,8 @@ router.get("/results", async (req, res): Promise<void> => {
       inArray(calcuttaEntriesTable.teamId, calcuttaTeamIds),
     ));
   const auctionPriceMap = new Map<number, number>();
-  const entryEconomicsMap = new Map<number, EntryEconomics>();
   for (const row of auctionRows) {
     auctionPriceMap.set(row.teamId, (auctionPriceMap.get(row.teamId) ?? 0) + Number(row.costBasis));
-    entryEconomicsMap.set(row.teamId, row);
   }
   const totalPot = [...auctionPriceMap.values()].reduce((sum, cost) => sum + cost, 0);
   const realizedCoverageComplete =
@@ -576,7 +562,6 @@ router.get("/results", async (req, res): Promise<void> => {
         t,
         resultFromCalculatedSnapshots(
           resultsMap.get(t.id) ?? null,
-          entryEconomicsMap.get(t.id) ?? null,
           calculatedResults.get(t.id),
           cost,
           selectedBasis,
@@ -647,11 +632,6 @@ router.get("/results/by-owner", async (req, res): Promise<void> => {
       entryId: calcuttaEntriesTable.id,
       teamId: calcuttaEntriesTable.teamId,
       costBasis: positionsTable.costBasis,
-      realizedReturn: calcuttaEntriesTable.realizedReturn,
-      realizedMultiple: calcuttaEntriesTable.realizedMultiple,
-      netReturn: calcuttaEntriesTable.netReturn,
-      netPctReturn: calcuttaEntriesTable.netPctReturn,
-      markToMarket: calcuttaEntriesTable.markToMarket,
     })
     .from(calcuttaEntriesTable)
     .innerJoin(positionsTable, and(
@@ -663,10 +643,8 @@ router.get("/results/by-owner", async (req, res): Promise<void> => {
       inArray(calcuttaEntriesTable.teamId, calcuttaTeamIds),
     ));
   const auctionPriceMap = new Map<number, number>();
-  const entryEconomicsMap = new Map<number, EntryEconomics>();
   for (const row of auctionRows) {
     auctionPriceMap.set(row.teamId, (auctionPriceMap.get(row.teamId) ?? 0) + Number(row.costBasis));
-    entryEconomicsMap.set(row.teamId, row);
   }
   const totalPot = [...auctionPriceMap.values()].reduce((sum, cost) => sum + cost, 0);
   const realizedCoverageComplete =
@@ -740,7 +718,6 @@ router.get("/results/by-owner", async (req, res): Promise<void> => {
       const seasonAuctionPrice = auctionPriceMap.get(teamId) ?? 0;
       const result = resultFromCalculatedSnapshots(
         resultsMap.get(teamId) ?? null,
-        entryEconomicsMap.get(teamId) ?? null,
         calculatedResults.get(teamId),
         seasonAuctionPrice,
         selectedBasis,
@@ -968,12 +945,6 @@ router.post("/results/upsert", async (req, res): Promise<void> => {
     if (!auctionedTeam[0]) return { kind: "not_auctioned" as const };
 
     const cost = auctionedTeam.reduce((sum, row) => sum + Number(row.costBasis), 0);
-    const realizedReturn = data.realizedReturn ?? 0;
-    const realizedMultiple =
-      data.realizedMultiple ?? (cost > 0 ? realizedReturn / cost : 0);
-    const netReturn = data.netReturn ?? realizedReturn - cost;
-    const netPctReturn = data.netPctReturn ?? (cost > 0 ? netReturn / cost : 0);
-    const markToMarket = data.markToMarket ?? 0;
     const objectiveValues = {
       wins: wins.toString(),
       losses,
@@ -987,19 +958,6 @@ router.post("/results/upsert", async (req, res): Promise<void> => {
       sbBerth: data.sbBerth ?? false,
       winSuperBowl: data.winSuperBowl ?? false,
     };
-    const financialValues = {
-      realizedReturn: realizedReturn.toFixed(6),
-      realizedMultiple: realizedMultiple.toFixed(7),
-      netReturn: netReturn.toFixed(6),
-      netPctReturn: netPctReturn.toFixed(7),
-      markToMarket: markToMarket.toFixed(6),
-    };
-    const [entry] = await tx
-      .update(calcuttaEntriesTable)
-      .set(financialValues)
-      .where(eq(calcuttaEntriesTable.id, auctionedTeam[0].entryId))
-      .returning();
-    if (!entry) throw new Error("Selected Calcutta entry disappeared during result upsert.");
     const [row] = await tx
       .insert(teamResultsTable)
       .values({
@@ -1013,7 +971,7 @@ router.post("/results/upsert", async (req, res): Promise<void> => {
         set: objectiveValues,
       })
       .returning();
-    return { kind: "saved" as const, row, entry, cost };
+    return { kind: "saved" as const, row, cost };
   });
   if (writeOutcome.kind === "not_auctioned") {
     res.status(400).json({
@@ -1021,16 +979,18 @@ router.post("/results/upsert", async (req, res): Promise<void> => {
     });
     return;
   }
+  const cost = writeOutcome.cost;
+  const calculated = await loadCalculatedTeamReturnsForCalcutta(resolvedCalcuttaId);
+  const realizedReturn = calculated.get(data.teamId)?.realized?.grossReturn ?? 0;
+  const markToMarket = calculated.get(data.teamId)?.mtm?.grossReturn ?? 0;
   const row = {
     ...writeOutcome.row,
-    ...writeOutcome.entry,
-    realizedReturn: writeOutcome.entry.realizedReturn ?? "0",
-    realizedMultiple: writeOutcome.entry.realizedMultiple ?? "0",
-    netReturn: writeOutcome.entry.netReturn ?? "0",
-    netPctReturn: writeOutcome.entry.netPctReturn ?? "0",
-    markToMarket: writeOutcome.entry.markToMarket ?? "0",
+    realizedReturn,
+    realizedMultiple: cost > 0 ? realizedReturn / cost : 0,
+    netReturn: realizedReturn - cost,
+    netPctReturn: cost > 0 ? (realizedReturn - cost) / cost : 0,
+    markToMarket,
   };
-  const cost = writeOutcome.cost;
 
   // Build response in TeamResultRow shape
   const teamInfo = await db

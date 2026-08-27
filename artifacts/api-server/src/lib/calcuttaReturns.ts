@@ -1,4 +1,4 @@
-import { and, asc, eq, lte } from "drizzle-orm";
+import { and, asc, eq, lte, sql } from "drizzle-orm";
 import {
   calcuttasTable,
   calcuttaEntriesTable,
@@ -175,6 +175,7 @@ type MetricWriter = Pick<typeof db, "insert">;
 export async function upsertNormalizedSnapshotMetrics(
   writer: MetricWriter,
   args: {
+    calcuttaId: number;
     entryId: number;
     periodId: number;
     basis: SnapshotBasis;
@@ -186,6 +187,7 @@ export async function upsertNormalizedSnapshotMetrics(
 ): Promise<void> {
   for (const metric of normalizedMetricValues(args.basis, args.snapshot)) {
     const row = {
+      calcuttaId: args.calcuttaId,
       entryId: args.entryId,
       periodId: args.periodId,
       basis: args.basis,
@@ -199,11 +201,13 @@ export async function upsertNormalizedSnapshotMetrics(
     };
     await writer.insert(snapshotMetricsTable).values(row).onConflictDoUpdate({
       target: [
+        snapshotMetricsTable.calcuttaId,
         snapshotMetricsTable.entryId,
         snapshotMetricsTable.periodId,
         snapshotMetricsTable.basis,
         snapshotMetricsTable.metric,
       ],
+      targetWhere: sql`${snapshotMetricsTable.entryId} is not null`,
       set: row,
     });
   }
@@ -214,6 +218,7 @@ type MetricReader = Pick<typeof db, "select">;
 export async function hasCompleteNormalizedSnapshot(
   reader: MetricReader,
   args: {
+    calcuttaId: number;
     entryId: number;
     basis: SnapshotBasis;
     periodSequence: number;
@@ -229,6 +234,7 @@ export async function hasCompleteNormalizedSnapshot(
       eq(sportPeriodsTable.id, snapshotMetricsTable.periodId),
     )
     .where(and(
+      eq(snapshotMetricsTable.calcuttaId, args.calcuttaId),
       eq(snapshotMetricsTable.entryId, args.entryId),
       eq(snapshotMetricsTable.basis, args.basis),
       eq(sportPeriodsTable.sport, adapter.sport),
@@ -609,6 +615,142 @@ export function compareHistoricalPayoutParity(
   };
 }
 
+/**
+ * Comparison-only migration diagnostic for the five deprecated entry economics
+ * columns. Stored values are deliberately never supplied to the calculator.
+ * Callers should treat `ok: false` as a review gate, not a runtime fallback.
+ */
+export type EntryReturnDiscrepancyAudit = {
+  ok: boolean;
+  calcuttaId: number;
+  auditedEntries: number;
+  issues: Array<{
+    entryId: number;
+    teamId: number;
+    kind: "missing_calculation_input" | "ambiguous_cost_basis" | "partial_coverage" | "mismatch";
+    field?: "realizedReturn" | "realizedMultiple" | "netReturn" | "netPctReturn" | "markToMarket";
+    stored?: number;
+    calculated?: number;
+    message: string;
+  }>;
+};
+
+export async function auditStoredEntryReturnDiscrepancies(
+  calcuttaId: number,
+  tolerance = 0.01,
+): Promise<EntryReturnDiscrepancyAudit> {
+  const entries = await db
+    .select({
+      entryId: calcuttaEntriesTable.id,
+      teamId: calcuttaEntriesTable.teamId,
+      realizedReturn: calcuttaEntriesTable.realizedReturn,
+      realizedMultiple: calcuttaEntriesTable.realizedMultiple,
+      netReturn: calcuttaEntriesTable.netReturn,
+      netPctReturn: calcuttaEntriesTable.netPctReturn,
+      markToMarket: calcuttaEntriesTable.markToMarket,
+    })
+    .from(calcuttaEntriesTable)
+    .where(eq(calcuttaEntriesTable.calcuttaId, calcuttaId));
+  const primaryPositions = await db
+    .select({
+      entryId: positionsTable.entryId,
+      costBasis: positionsTable.costBasis,
+    })
+    .from(positionsTable)
+    .innerJoin(calcuttaEntriesTable, eq(calcuttaEntriesTable.id, positionsTable.entryId))
+    .where(and(
+      eq(calcuttaEntriesTable.calcuttaId, calcuttaId),
+      eq(positionsTable.source, "primary"),
+    ));
+  const costRows = new Map<number, number[]>();
+  for (const position of primaryPositions) {
+    const costs = costRows.get(position.entryId) ?? [];
+    costs.push(Number(position.costBasis));
+    costRows.set(position.entryId, costs);
+  }
+  const rulesConfigured = await hasConfiguredPayoutRulesForCalcutta(calcuttaId);
+  const calculated = rulesConfigured
+    ? await loadCalculatedTeamReturnsForCalcutta(calcuttaId, undefined, false)
+    : new Map<number, CalculatedTeamReturns>();
+  const issues: EntryReturnDiscrepancyAudit["issues"] = [];
+  for (const entry of entries) {
+    if (!rulesConfigured) {
+      issues.push({
+        entryId: entry.entryId, teamId: entry.teamId, kind: "missing_calculation_input",
+        message: "A complete payout-rule configuration is required for comparison.",
+      });
+      continue;
+    }
+    const costs = costRows.get(entry.entryId) ?? [];
+    if (!costs.length) {
+      issues.push({
+        entryId: entry.entryId, teamId: entry.teamId, kind: "missing_calculation_input",
+        message: "No primary position supplies this entry's cost basis.",
+      });
+      continue;
+    }
+    if (costs.some((cost) => !Number.isFinite(cost))) {
+      issues.push({
+        entryId: entry.entryId, teamId: entry.teamId, kind: "ambiguous_cost_basis",
+        message: "Primary position cost basis is not finite.",
+      });
+      continue;
+    }
+    const returns = calculated.get(entry.teamId);
+    if (!returns?.realized) {
+      issues.push({
+        entryId: entry.entryId, teamId: entry.teamId, kind: "partial_coverage",
+        field: "realizedReturn",
+        message: "Realized normalized calculation snapshots are required for comparison.",
+      });
+      issues.push({
+        entryId: entry.entryId, teamId: entry.teamId, kind: "partial_coverage",
+        field: "realizedMultiple",
+        message: "Realized normalized calculation snapshots are required for comparison.",
+      });
+      issues.push({
+        entryId: entry.entryId, teamId: entry.teamId, kind: "partial_coverage",
+        field: "netReturn",
+        message: "Realized normalized calculation snapshots are required for comparison.",
+      });
+      issues.push({
+        entryId: entry.entryId, teamId: entry.teamId, kind: "partial_coverage",
+        field: "netPctReturn",
+        message: "Realized normalized calculation snapshots are required for comparison.",
+      });
+    }
+    const cost = costs.reduce((sum, value) => sum + value, 0);
+    const expected: Partial<Record<NonNullable<EntryReturnDiscrepancyAudit["issues"][number]["field"]>, number>> = {
+      ...(returns?.realized ? {
+        realizedReturn: returns.realized.grossReturn,
+        realizedMultiple: cost > 0 ? returns.realized.grossReturn / cost : 0,
+        netReturn: returns.realized.grossReturn - cost,
+        netPctReturn: cost > 0 ? (returns.realized.grossReturn - cost) / cost : 0,
+      } : {}),
+      ...(returns?.mtm ? { markToMarket: returns.mtm.grossReturn } : {}),
+    };
+    if (!returns?.mtm) {
+      issues.push({
+        entryId: entry.entryId, teamId: entry.teamId, kind: "partial_coverage",
+        field: "markToMarket",
+        message: "MTM normalized calculation snapshots are required for comparison.",
+      });
+    }
+    for (const field of Object.keys(expected) as Array<keyof typeof expected>) {
+      const stored = Number(entry[field]);
+      const value = expected[field]!;
+      if (!Number.isFinite(stored) || Math.abs(stored - value) > tolerance) {
+        issues.push({
+          entryId: entry.entryId, teamId: entry.teamId, kind: "mismatch", field,
+          stored, calculated: value,
+          message: `Stored ${field} differs from its calculated entry-scoped value.`,
+        });
+      }
+    }
+  }
+  return { ok: issues.length === 0, calcuttaId, auditedEntries: entries.length, issues };
+}
+
 function ruleAmount(rules: RuleValue[], metric: ReturnMetric): number {
   return rules.find((rule) => rule.metric === metric)?.dollarsPerUnit ?? 0;
 }
@@ -841,6 +983,7 @@ export async function initializeNflWeekZeroSnapshots(
         await writer
           .insert(snapshotMetricsTable)
           .values({
+            calcuttaId: args.calcuttaId,
             entryId: entry.entryId,
             periodId: period[0].id,
             basis,
@@ -851,11 +994,13 @@ export async function initializeNflWeekZeroSnapshots(
           })
           .onConflictDoNothing({
             target: [
+              snapshotMetricsTable.calcuttaId,
               snapshotMetricsTable.entryId,
               snapshotMetricsTable.periodId,
               snapshotMetricsTable.basis,
               snapshotMetricsTable.metric,
             ],
+            where: sql`${snapshotMetricsTable.entryId} is not null`,
           });
       }
       if (!inserted) continue;
@@ -960,17 +1105,9 @@ export type CalculatedTeamReturns = {
 };
 
 export async function hasConfiguredPayoutRules(seasonId: number): Promise<boolean> {
-  const rows = await db
-    .select({
-      metric: payoutRulesTable.metric,
-      dollarsPerUnit: payoutRulesTable.dollarsPerUnit,
-      playoffMultiplier: payoutRulesTable.playoffMultiplier,
-    })
+  const calcutta = await db
+    .select({ id: calcuttasTable.id })
     .from(calcuttasTable)
-    .innerJoin(
-      payoutRulesTable,
-      eq(payoutRulesTable.calcuttaId, calcuttasTable.id),
-    )
     .where(
       and(
         eq(calcuttasTable.seasonId, seasonId),
@@ -978,11 +1115,10 @@ export async function hasConfiguredPayoutRules(seasonId: number): Promise<boolea
         eq(calcuttasTable.isCanonical, true),
       ),
     )
-  return validateNflPayoutRules(rows.map((row) => ({
-    metric: row.metric,
-    dollarsPerUnit: Number(row.dollarsPerUnit),
-    playoffMultiplier: Number(row.playoffMultiplier),
-  }))).ok;
+    .limit(1);
+  return calcutta[0]
+    ? hasConfiguredPayoutRulesForCalcutta(calcutta[0].id)
+    : false;
 }
 
 async function configureAdapterForCalcutta(
@@ -1035,17 +1171,20 @@ export async function hasConfiguredPayoutRulesForCalcutta(
   );
   if (!adapter) return false;
   const configuredAdapter = await configureAdapterForCalcutta(adapter, calcuttaId);
-  return validateCompetitionScoringRules(configuredAdapter, rows.map((row) => ({
+  const configuredRules = rows.map((row) => ({
     metric: row.metric,
     dollarsPerUnit: row.dollarsPerUnit == null ? null : Number(row.dollarsPerUnit),
     playoffMultiplier: row.playoffMultiplier == null ? null : Number(row.playoffMultiplier),
-  }))).ok;
+  }));
+  const effectiveRules =
+    configuredRules.length === 0 && configuredAdapter.defaultRules != null
+      ? configuredAdapter.defaultRules
+      : configuredRules;
+  return validateCompetitionScoringRules(configuredAdapter, effectiveRules).ok;
 }
 
 /**
  * Loads the current calculated return for every team that has snapshot data.
- * Existing legacy results remain the reporting fallback until payout rules have
- * been configured for the Calcutta.
  */
 export async function loadCalculatedTeamReturns(
   seasonId: number,
@@ -1114,6 +1253,7 @@ export async function loadReturnSnapshotPeriods(
     .where(
       and(
         eq(calcuttaEntriesTable.calcuttaId, calcutta[0].id),
+        eq(snapshotMetricsTable.calcuttaId, calcutta[0].id),
         eq(snapshotMetricsTable.basis, basis),
         eq(sportPeriodsTable.sport, NFL_SCORING_ADAPTER.sport),
         eq(sportPeriodsTable.competition, NFL_SCORING_ADAPTER.competitionFormat),
@@ -1146,7 +1286,7 @@ export async function loadReturnSnapshotPeriods(
 export async function loadCalculatedTeamReturnsForCalcutta(
   calcuttaId: number,
   periodSequence?: number,
-  enforceHistoricalParity = true,
+  enforceHistoricalParity = false,
 ): Promise<Map<number, CalculatedTeamReturns>> {
   const calcutta = await db
     .select({
@@ -1183,14 +1323,10 @@ export async function loadCalculatedTeamReturnsForCalcutta(
   }));
   const validation = validateCompetitionScoringRules(adapter, configuredRules);
   const rulesValid = validation.ok;
-  // Week 0 contains only the fixed 150-point opening allocation. It is safe to
-  // calculate with the established default rubric when a new pool has not yet
-  // saved custom rates; later periods keep the existing configuration guard.
-  const useDefaultWeekZeroRules =
-    periodSequence === 0 &&
-    rawRules.length === 0 &&
-    adapter.defaultRules != null;
-  if (!rulesValid && !useDefaultWeekZeroRules) return new Map();
+  // A completely absent override uses the adapter's established rubric. A
+  // partial or invalid override still fails closed instead of blending defaults.
+  const useDefaultRules = rawRules.length === 0 && adapter.defaultRules != null;
+  if (!rulesValid && !useDefaultRules) return new Map();
   const rules = rulesValid
     ? validation.rules
     : adapter.defaultRules!.map((rule) => ({
@@ -1235,6 +1371,7 @@ export async function loadCalculatedTeamReturnsForCalcutta(
 
   const where = [
     eq(calcuttaEntriesTable.calcuttaId, calcuttaId),
+    eq(snapshotMetricsTable.calcuttaId, calcuttaId),
     eq(sportPeriodsTable.sport, calcutta[0].sport),
     eq(sportPeriodsTable.competition, calcutta[0].competitionFormat),
     ...(periodSequence == null

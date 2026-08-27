@@ -549,13 +549,16 @@ router.post("/mtm/week-zero/capture", async (req, res): Promise<void> => {
         .where(
           and(
             inArray(snapshotMetricsTable.entryId, [...entryIdByTeam.values()]),
+            eq(snapshotMetricsTable.calcuttaId, calcuttaId),
             eq(snapshotMetricsTable.periodId, period[0].id),
             eq(snapshotMetricsTable.basis, "realized"),
             eq(snapshotMetricsTable.metric, "pt_diff"),
           ),
         );
       const realizedPtDiffByEntry = new Map(
-        realizedPtDiffRows.map((row) => [row.entryId, Number(row.value)]),
+        realizedPtDiffRows.flatMap((row) =>
+          row.entryId == null ? [] : [[row.entryId, Number(row.value)] as const],
+        ),
       );
 
       const snapshotRows = buildWeekZeroSnapshotRows(calculation, {
@@ -579,6 +582,7 @@ router.post("/mtm/week-zero/capture", async (req, res): Promise<void> => {
       }
       const metricRows = buildMtmMetricRows(calculation, {
         periodId: period[0].id,
+        calcuttaId,
         periodSequence: 0,
         snapshotKey: WEEK_ZERO_SNAPSHOT_KEY,
         snapshotDate: canonicalSnapshotDate,
@@ -590,6 +594,7 @@ router.post("/mtm/week-zero/capture", async (req, res): Promise<void> => {
         tx,
         {
           entryIds: [...entryIdByTeam.values()],
+          calcuttaId,
           periodId: period[0].id,
         },
         metricRows,

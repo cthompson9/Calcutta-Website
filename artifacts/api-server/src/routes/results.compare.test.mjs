@@ -234,14 +234,14 @@ describe("cross-Calcutta return comparison", { skip: !DATABASE_URL }, () => {
     const row = comparison.rows.find((item) => item.bidderId === bidder.id);
     assert.ok(row);
     assert.equal(row.calcuttas[0].consortium, historicConsortium.name);
-    assert.equal(row.calcuttas[0].totalNetMtm, 40);
+    assert.equal(row.calcuttas[0].totalNetMtm, -100);
     assert.equal(row.calcuttas[0].signedShare, 1);
     assert.equal(row.calcuttas[1].consortium, currentConsortium.name);
     assert.equal(row.calcuttas[1].snapshotAvailable, false);
     assert.equal(row.calcuttas[1].snapshotTeamCount, 0);
     assert.equal(row.calcuttas[1].totalNetMtm, -100);
     assert.equal(row.aggregate.snapshotAvailable, false);
-    assert.equal(row.aggregate.missingSnapshotCount, 1);
+    assert.equal(row.aggregate.missingSnapshotCount, 2);
   });
 
   test("groups historical and current consortium rollups independently", async () => {
@@ -259,7 +259,7 @@ describe("cross-Calcutta return comparison", { skip: !DATABASE_URL }, () => {
     assert.ok(!currentRows.some((row) => row.name === historicConsortium.name));
   });
 
-  test("legacy MCP HTTP endpoints isolate selected-Calcutta financials and preserve canonical fallback", async () => {
+  test("legacy MCP HTTP endpoints never expose stored entry return sentinels", async () => {
     const query = (path, params) => fetch(
       `${baseUrl}/api${path}?${new URLSearchParams(params)}`,
     ).then(async (response) => {
@@ -270,31 +270,36 @@ describe("cross-Calcutta return comparison", { skip: !DATABASE_URL }, () => {
     assert.equal(await query("/mcp/get_team_return", {
       team: teamName,
       season: String(years[0]),
-    }), 125);
+    }), null);
     assert.equal(await query("/mcp/get_team_return", {
       team: teamName,
       season: String(years[0]),
       calcuttaId: String(secondaryCalcuttaId),
-    }), 333);
+    }), null);
     assert.equal(await query("/mcp/get_team_mtm", {
       team: teamName,
       season: String(years[0]),
-    }), 40);
+    }), null);
     assert.equal(await query("/mcp/get_team_mtm", {
       team: teamName,
       season: String(years[0]),
       calcuttaId: String(secondaryCalcuttaId),
-    }), 244);
+    }), null);
     assert.equal(await query("/mcp/get_owner_return", {
       owner: bidder.name,
       season: String(years[0]),
       calcuttaId: String(secondaryCalcuttaId),
-    }), 333);
+    }), null);
     assert.equal(await query("/mcp/get_owner_mtm", {
       owner: bidder.name,
       season: String(years[0]),
       calcuttaId: String(secondaryCalcuttaId),
-    }), 244);
+    }), null);
+    const response = await fetch(`${baseUrl}/api/mcp/get_team_return?${new URLSearchParams({
+      team: teamName,
+      season: String(years[0]),
+    })}`);
+    assert.equal(await response.text(), JSON.stringify({ value: null }));
   });
 
   test("flags a stale selected-basis snapshot instead of mixing periods", async () => {
@@ -354,6 +359,7 @@ describe("cross-Calcutta return comparison", { skip: !DATABASE_URL }, () => {
         marquee_pt_diff: 0,
       };
       return Object.entries(values).map(([metric, value]) => ({
+        calcuttaId: newerCalcutta.id,
         entryId,
         periodId: selectedPeriodId,
         basis: "realized",
@@ -432,7 +438,7 @@ describe("cross-Calcutta return comparison", { skip: !DATABASE_URL }, () => {
         calcuttaId: secondaryCalcuttaId,
       },
     });
-    assert.equal(mcpText(selectedTeamReturn), "333");
+    assert.equal(mcpText(selectedTeamReturn), "null");
     const selectedOwnerMtm = await mcpRequest(baseUrl, 21, "tools/call", {
       name: "get_owner_mtm",
       arguments: {
@@ -441,7 +447,7 @@ describe("cross-Calcutta return comparison", { skip: !DATABASE_URL }, () => {
         calcuttaId: secondaryCalcuttaId,
       },
     });
-    assert.equal(mcpText(selectedOwnerMtm), "244");
+    assert.equal(mcpText(selectedOwnerMtm), "null");
 
     const absentYear = years[1] + 1;
     const [absentSeason] = await db

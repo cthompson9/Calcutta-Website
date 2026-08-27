@@ -389,7 +389,7 @@ export async function loadCrossCalcuttaRollup(args: {
   const empty: CrossCalcuttaRollup = { groupBy, calcuttas, rows: [] };
   if (!calcuttas.length) return empty;
 
-  const [positionRows, memberships, calculatedByCalcutta, payoutRulesByCalcutta, entryEconomicsRows] =
+  const [positionRows, memberships, calculatedByCalcutta, payoutRulesByCalcutta] =
     await Promise.all([
       db
         .select({
@@ -432,15 +432,6 @@ export async function loadCrossCalcuttaRollup(args: {
           await hasConfiguredPayoutRulesForCalcutta(calcutta.id),
         ] as const),
       ),
-      db
-        .select({
-          calcuttaId: calcuttaEntriesTable.calcuttaId,
-          teamId: calcuttaEntriesTable.teamId,
-          realizedReturn: calcuttaEntriesTable.realizedReturn,
-          markToMarket: calcuttaEntriesTable.markToMarket,
-        })
-        .from(calcuttaEntriesTable)
-        .where(inArray(calcuttaEntriesTable.calcuttaId, calcuttas.map((calcutta) => calcutta.id))),
     ]);
 
   const consortiumByCalcutta = new Map(memberships);
@@ -458,9 +449,6 @@ export async function loadCrossCalcuttaRollup(args: {
         latestSequences.length ? Math.max(...latestSequences) : null,
       ] as const;
     }),
-  );
-  const entryEconomicsByCalcuttaTeam = new Map(
-    entryEconomicsRows.map((row) => [`${row.calcuttaId}:${row.teamId}`, row]),
   );
 
   type Position = {
@@ -530,29 +518,23 @@ export async function loadCrossCalcuttaRollup(args: {
       payoutRulesConfiguredByCalcutta.get(position.calcuttaId) ?? false;
     const realized = calculated?.realized?.grossReturn;
     const mtm = calculated?.mtm?.grossReturn;
-    const entryEconomics = entryEconomicsByCalcuttaTeam.get(
-      `${position.calcuttaId}:${position.teamId}`,
-    );
     const selected = calculated?.[selectedBasis];
     const coverageTarget = coverageTargetByCalcutta.get(position.calcuttaId) ?? null;
     const snapshotAvailable =
-      !payoutRulesConfigured ||
-      (coverageTarget != null && selected?.latest.sequence === coverageTarget);
+      payoutRulesConfigured &&
+      coverageTarget != null &&
+      selected?.latest.sequence === coverageTarget;
     // Never blend stale calculated values into a selected-period comparison.
     // Cost and exposure remain visible, while the cell/aggregate coverage flags
     // make the missing return explicit to clients.
     const realizedValue =
       payoutRulesConfigured && !snapshotAvailable
         ? 0
-        : payoutRulesConfigured
-          ? realized ?? 0
-          : Number(entryEconomics?.realizedReturn ?? 0);
+        : realized ?? 0;
     const mtmValue =
       payoutRulesConfigured && !snapshotAvailable
         ? 0
-        : payoutRulesConfigured
-          ? mtm ?? 0
-          : Number(entryEconomics?.markToMarket ?? 0);
+        : mtm ?? 0;
     const coveragePeriod = NFL_PERIOD_TEMPLATE.find(
       (period) => period.sequence === coverageTarget,
     );

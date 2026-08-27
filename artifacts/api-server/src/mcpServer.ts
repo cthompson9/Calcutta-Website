@@ -256,21 +256,6 @@ async function getTeamCost(
     : null;
 }
 
-async function getTeamFinancials(teamId: number, calcuttaId: number) {
-  const rows = await db
-    .select({
-      realizedReturn: calcuttaEntriesTable.realizedReturn,
-      markToMarket: calcuttaEntriesTable.markToMarket,
-    })
-    .from(calcuttaEntriesTable)
-    .where(and(
-      eq(calcuttaEntriesTable.teamId, teamId),
-      eq(calcuttaEntriesTable.calcuttaId, calcuttaId),
-    ))
-    .limit(1);
-  return rows[0] ?? null;
-}
-
 /** Returns effective current owner names for a team in a season (post-trades). */
 async function getTeamOwners(teamId: number, seasonId: number, calcuttaId?: number): Promise<string[]> {
   const resolvedCalcuttaId = await resolveSelectedCalcuttaId(db, { seasonId, calcuttaId });
@@ -287,38 +272,30 @@ async function getOwnerAgg(bidderId: number, seasonId: number, calcuttaId?: numb
   }
   const ownership = await loadSeasonOwnership(seasonId, resolvedCalcuttaId);
   const calculatedReturns = await loadCalculatedTeamReturnsForCalcutta(resolvedCalcuttaId);
-  const entryRows = await db
-    .select({
-      teamId: calcuttaEntriesTable.teamId,
-      realizedReturn: calcuttaEntriesTable.realizedReturn,
-      markToMarket: calcuttaEntriesTable.markToMarket,
-    })
-    .from(calcuttaEntriesTable)
-    .where(eq(calcuttaEntriesTable.calcuttaId, resolvedCalcuttaId));
-  const entryFinancials = new Map(entryRows.map((entry) => [entry.teamId, entry]));
   const teamMap = ownership.byBidder.get(bidderId);
   if (!teamMap) return { totalCost: 0, totalReturn: 0, totalMtm: 0, totalNetMtm: 0 };
 
   let totalCost = 0, totalReturn = 0, totalMtm = 0;
+  let returnsAvailable = true, mtmAvailable = true;
   for (const [teamId, entry] of teamMap) {
     totalCost += entry.originalCostBasis + entry.tradePaid - entry.tradeReceived;
 
     // Short positions use the same signed economic treatment as owner results.
     const effectiveShare = entry.effectiveShare;
     if (Math.abs(effectiveShare) > 0.00005) {
-      const entryFinancial = entryFinancials.get(teamId);
-      if (entryFinancial) {
-        const calculated = calculatedReturns.get(teamId);
-        const realized = calculated?.realized?.grossReturn
-          ?? Number(entryFinancial.realizedReturn);
-        const mtm = calculated?.mtm?.grossReturn
-          ?? Number(entryFinancial.markToMarket);
-        totalReturn += realized * effectiveShare;
-        totalMtm += mtm * effectiveShare;
-      }
+      const calculated = calculatedReturns.get(teamId);
+      if (calculated?.realized) totalReturn += calculated.realized.grossReturn * effectiveShare;
+      else returnsAvailable = false;
+      if (calculated?.mtm) totalMtm += calculated.mtm.grossReturn * effectiveShare;
+      else mtmAvailable = false;
     }
   }
-  return { totalCost, totalReturn, totalMtm, totalNetMtm: totalMtm - totalCost };
+  return {
+    totalCost,
+    totalReturn: returnsAvailable ? totalReturn : null,
+    totalMtm: mtmAvailable ? totalMtm : null,
+    totalNetMtm: mtmAvailable ? totalMtm - totalCost : null,
+  };
 }
 
 // ─── Text helper ─────────────────────────────────────────────────────────────
@@ -615,13 +592,8 @@ function buildMcpServer() {
       if (!sid) return text(null);
       const resolvedCalcuttaId = await resolveSelectedCalcuttaId(db, { seasonId: sid, calcuttaId });
       if (!resolvedCalcuttaId) return text(null);
-      const entryFinancial = await getTeamFinancials(t.id, resolvedCalcuttaId);
-      if (!entryFinancial) return text(null);
       const calculated = (await loadCalculatedTeamReturnsForCalcutta(resolvedCalcuttaId)).get(t.id);
-      return text(
-        calculated?.realized?.grossReturn
-          ?? Number(entryFinancial.realizedReturn),
-      );
+      return text(calculated?.realized?.grossReturn);
     },
   );
 
@@ -639,13 +611,8 @@ function buildMcpServer() {
       if (cost == null) return text(null);
       const resolvedCalcuttaId = await resolveSelectedCalcuttaId(db, { seasonId: sid, calcuttaId });
       if (!resolvedCalcuttaId) return text(null);
-      const entryFinancial = await getTeamFinancials(t.id, resolvedCalcuttaId);
-      if (!entryFinancial) return text(null);
       const calculated = (await loadCalculatedTeamReturnsForCalcutta(resolvedCalcuttaId)).get(t.id);
-      return text(
-        (calculated?.mtm?.grossReturn
-          ?? Number(entryFinancial.markToMarket)) - cost,
-      );
+      return text(calculated?.mtm ? calculated.mtm.grossReturn - cost : null);
     },
   );
 
@@ -692,7 +659,7 @@ function buildMcpServer() {
       const sid = await resolveSeasonId(year);
       if (!sid) return text(null);
       const agg = await getOwnerAgg(b.id, sid, calcuttaId);
-      return text(Math.round(agg.totalReturn * 100) / 100);
+      return text(agg.totalReturn == null ? null : Math.round(agg.totalReturn * 100) / 100);
     },
   );
 
@@ -707,7 +674,7 @@ function buildMcpServer() {
       const sid = await resolveSeasonId(year);
       if (!sid) return text(null);
       const agg = await getOwnerAgg(b.id, sid, calcuttaId);
-      return text(Math.round(agg.totalNetMtm * 100) / 100);
+      return text(agg.totalNetMtm == null ? null : Math.round(agg.totalNetMtm * 100) / 100);
     },
   );
 
@@ -1391,6 +1358,7 @@ function buildMcpServer() {
         if (!periodRow) throw new Error("NFL period was not seeded.");
         if (periodRow.isPlayoff) {
           const hasBaseline = await hasCompleteNormalizedSnapshot(tx, {
+            calcuttaId: resolvedCalcuttaId,
             entryId: entry.id,
             basis,
             periodSequence: 18,
@@ -1442,6 +1410,7 @@ function buildMcpServer() {
           set: values,
         });
         await upsertNormalizedSnapshotMetrics(tx, {
+          calcuttaId: resolvedCalcuttaId,
           entryId: entry.id,
           periodId: periodRow.id,
           basis,

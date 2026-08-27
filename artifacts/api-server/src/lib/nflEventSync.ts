@@ -1,4 +1,4 @@
-import { and, eq, gte, inArray, lte } from "drizzle-orm";
+import { and, eq, gte, inArray, lte, sql } from "drizzle-orm";
 import {
   calcuttaEntriesTable,
   calcuttasTable,
@@ -220,6 +220,7 @@ async function rebuildRealizedMetrics(
   const entries = await tx.select({
     entryId: calcuttaEntriesTable.id,
     teamId: calcuttaEntriesTable.teamId,
+    calcuttaId: calcuttaEntriesTable.calcuttaId,
   }).from(calcuttaEntriesTable).innerJoin(
     calcuttasTable,
     eq(calcuttasTable.id, calcuttaEntriesTable.calcuttaId),
@@ -243,6 +244,7 @@ async function rebuildRealizedMetrics(
   const regularPeriodIds = regularPeriods.map((period) => period.id);
   if (entryIds.length > 0 && regularPeriodIds.length > 0) {
     await tx.delete(snapshotMetricsTable).where(and(
+      inArray(snapshotMetricsTable.calcuttaId, [...new Set(entries.map((entry) => entry.calcuttaId))]),
       inArray(snapshotMetricsTable.entryId, entryIds),
       inArray(snapshotMetricsTable.periodId, regularPeriodIds),
       eq(snapshotMetricsTable.basis, "realized"),
@@ -292,6 +294,7 @@ async function rebuildRealizedMetrics(
       const capturedAt = new Date();
       for (let index = 0; index < REALIZED_METRICS.length; index += 1) {
         const row = {
+          calcuttaId: entry.calcuttaId,
           entryId: entry.entryId,
           periodId,
           basis: "realized" as const,
@@ -303,11 +306,13 @@ async function rebuildRealizedMetrics(
         };
         await tx.insert(snapshotMetricsTable).values(row).onConflictDoUpdate({
           target: [
+            snapshotMetricsTable.calcuttaId,
             snapshotMetricsTable.entryId,
             snapshotMetricsTable.periodId,
             snapshotMetricsTable.basis,
             snapshotMetricsTable.metric,
           ],
+          targetWhere: sql`${snapshotMetricsTable.entryId} is not null`,
           set: row,
         });
         rowsWritten += 1;

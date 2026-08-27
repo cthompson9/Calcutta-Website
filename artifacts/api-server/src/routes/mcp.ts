@@ -108,21 +108,6 @@ async function getTeamCost(teamId: number, seasonId: number, calcuttaId?: number
     : null;
 }
 
-async function getTeamFinancials(teamId: number, calcuttaId: number) {
-  const rows = await db
-    .select({
-      realizedReturn: calcuttaEntriesTable.realizedReturn,
-      markToMarket: calcuttaEntriesTable.markToMarket,
-    })
-    .from(calcuttaEntriesTable)
-    .where(and(
-      eq(calcuttaEntriesTable.calcuttaId, calcuttaId),
-      eq(calcuttaEntriesTable.teamId, teamId),
-    ))
-    .limit(1);
-  return rows[0] ?? null;
-}
-
 async function getTeamResult(teamId: number, seasonId: number | null) {
   if (!seasonId) return null;
   const rows = await db
@@ -188,10 +173,8 @@ router.get("/mcp/get_team_return", async (req, res): Promise<void> => {
     calcuttaId: selectedCalcuttaId(req.query.calcuttaId),
   });
   if (!calcuttaId) { val(res, null); return; }
-  const entryFinancial = await getTeamFinancials(team.id, calcuttaId);
-  if (!entryFinancial) { val(res, null); return; }
   const calculated = (await loadCalculatedTeamReturnsForCalcutta(calcuttaId)).get(team.id);
-  val(res, calculated?.realized?.grossReturn ?? Number(entryFinancial.realizedReturn));
+  val(res, calculated?.realized?.grossReturn ?? null);
 });
 
 // GET /mcp/get_team_wins
@@ -238,10 +221,9 @@ router.get("/mcp/get_team_mtm", async (req, res): Promise<void> => {
     resolvedSeasonId,
     selectedId,
   );
-  const entryFinancial = await getTeamFinancials(team.id, calcuttaId);
-  if (!entryFinancial || cost == null) { val(res, null); return; }
+  if (cost == null) { val(res, null); return; }
   const calculated = (await loadCalculatedTeamReturnsForCalcutta(calcuttaId)).get(team.id);
-  val(res, (calculated?.mtm?.grossReturn ?? Number(entryFinancial.markToMarket)) - cost);
+  val(res, calculated?.mtm ? calculated.mtm.grossReturn - cost : null);
 });
 
 // GET /mcp/get_team_draftorder
@@ -259,24 +241,17 @@ router.get("/mcp/get_team_draftorder", async (req, res): Promise<void> => {
 // Owner endpoints — uses effective ownership (post-trade) via shared helper
 async function getOwnerAgg(bidderId: number, seasonId: number, calcuttaId?: number) {
   const resolved = await resolveCalcuttaId(db, { seasonId, calcuttaId });
-  if (!resolved) return { totalCost: 0, totalReturn: 0, totalMtm: 0 };
+  if (!resolved) return { totalCost: 0, totalReturn: null, totalMtm: null };
   const ownership = await loadSeasonOwnership(seasonId, resolved);
   const calculatedReturns = await loadCalculatedTeamReturnsForCalcutta(resolved);
-  const entryRows = await db
-    .select({
-      teamId: calcuttaEntriesTable.teamId,
-      realizedReturn: calcuttaEntriesTable.realizedReturn,
-      markToMarket: calcuttaEntriesTable.markToMarket,
-    })
-    .from(calcuttaEntriesTable)
-    .where(eq(calcuttaEntriesTable.calcuttaId, resolved));
-  const entryFinancials = new Map(entryRows.map((entry) => [entry.teamId, entry]));
   const teamMap = ownership.byBidder.get(bidderId);
   if (!teamMap) return { totalCost: 0, totalReturn: 0, totalMtm: 0 };
 
   let totalCost = 0;
   let totalReturn = 0;
   let totalMtm = 0;
+  let returnsAvailable = true;
+  let mtmAvailable = true;
 
   for (const [teamId, entry] of teamMap) {
     totalCost += entry.originalCostBasis + entry.tradePaid - entry.tradeReceived;
@@ -285,20 +260,19 @@ async function getOwnerAgg(bidderId: number, seasonId: number, calcuttaId?: numb
     // the inverse of a long holder's return and mark-to-market result.
     const effectiveShare = entry.effectiveShare;
     if (Math.abs(effectiveShare) > 0.00005) {
-      const entryFinancial = entryFinancials.get(teamId);
-      if (entryFinancial) {
-        const calculated = calculatedReturns.get(teamId);
-        totalReturn += (
-          calculated?.realized?.grossReturn ?? Number(entryFinancial.realizedReturn)
-        ) * effectiveShare;
-        totalMtm += (
-          calculated?.mtm?.grossReturn ?? Number(entryFinancial.markToMarket)
-        ) * effectiveShare;
-      }
+      const calculated = calculatedReturns.get(teamId);
+      if (calculated?.realized) totalReturn += calculated.realized.grossReturn * effectiveShare;
+      else returnsAvailable = false;
+      if (calculated?.mtm) totalMtm += calculated.mtm.grossReturn * effectiveShare;
+      else mtmAvailable = false;
     }
   }
 
-  return { totalCost, totalReturn, totalMtm };
+  return {
+    totalCost,
+    totalReturn: returnsAvailable ? totalReturn : null,
+    totalMtm: mtmAvailable ? totalMtm : null,
+  };
 }
 
 // GET /mcp/get_owner_cost
@@ -322,7 +296,7 @@ router.get("/mcp/get_owner_return", async (req, res): Promise<void> => {
   const bidder = await findBidder(ownerName);
   if (!bidder || !seasonId) { val(res, null); return; }
   const agg = await getOwnerAgg(bidder.id, seasonId, selectedCalcuttaId(req.query.calcuttaId));
-  val(res, Math.round(agg.totalReturn * 100) / 100);
+  val(res, agg.totalReturn == null ? null : Math.round(agg.totalReturn * 100) / 100);
 });
 
 // GET /mcp/get_owner_mtm
@@ -334,7 +308,7 @@ router.get("/mcp/get_owner_mtm", async (req, res): Promise<void> => {
   const bidder = await findBidder(ownerName);
   if (!bidder || !seasonId) { val(res, null); return; }
   const agg = await getOwnerAgg(bidder.id, seasonId, selectedCalcuttaId(req.query.calcuttaId));
-  val(res, Math.round((agg.totalMtm - agg.totalCost) * 100) / 100);
+  val(res, agg.totalMtm == null ? null : Math.round((agg.totalMtm - agg.totalCost) * 100) / 100);
 });
 
 export default router;

@@ -25,6 +25,6 @@
 - [GitHub sync authorization](github-sync-authorization.md) — use Replit’s Git pane for normal pushes when the GitHub connector cannot update refs or merge branches.
 - [Sticky table scrolling](sticky-table-scrolling.md) — long, horizontally responsive reports use bounded native table scrollers so header rows stay locked across browsers.
 - [Legacy trade entry derivation](legacy-trade-entry-derivation.md) — pre-Phase-2 season/team trade writes resolve only through one canonical NFL Calcutta, never generic Calcutta membership.
-- [V2 agent value completeness](v2-agent-value-completeness.md) — configured but incomplete normalized returns stay null; legacy economics are fallback only when no valid rubric exists.
+- [Calculated value authority](v2-agent-value-completeness.md) — stored entry economics are audit observations only; incomplete normalized returns stay unavailable.
 - [Provider event reconciliation](provider-event-reconciliation.md) — CFB provider updates are scoped, non-destructive upserts unless the source proves snapshot completeness.
 - [Schema push safety](schema-push-safety.md) — never use an auto-generated push that proposes truncation on populated ownership or MTM tables; use guarded migrations instead.

@@ -120,6 +120,7 @@ export async function runCanonicalMtmRefresh(input: {
     .where(
       and(
         inArray(snapshotMetricsTable.entryId, entryIds),
+        eq(snapshotMetricsTable.calcuttaId, target.calcuttaId),
         eq(snapshotMetricsTable.basis, "realized"),
         eq(snapshotMetricsTable.metric, "wins"),
         eq(sportPeriodsTable.sport, NFL_SPORT),
@@ -127,7 +128,9 @@ export async function runCanonicalMtmRefresh(input: {
       ),
     );
   const requestedSequence = latestFullyCoveredNflPeriod(
-    realizedCoverage,
+    realizedCoverage.filter(
+      (row): row is { entryId: number; sequence: number } => row.entryId != null,
+    ),
     entries.length,
   );
   const period = await db
@@ -170,6 +173,7 @@ export async function runCanonicalMtmRefresh(input: {
     .from(snapshotMetricsTable)
     .where(and(
       inArray(snapshotMetricsTable.entryId, entryIds),
+      eq(snapshotMetricsTable.calcuttaId, target.calcuttaId),
       eq(snapshotMetricsTable.periodId, period[0].id),
       eq(snapshotMetricsTable.basis, "mtm"),
     ));
@@ -241,12 +245,15 @@ export async function runCanonicalMtmRefresh(input: {
     .from(snapshotMetricsTable)
     .where(and(
       inArray(snapshotMetricsTable.entryId, entryIds),
+      eq(snapshotMetricsTable.calcuttaId, target.calcuttaId),
       eq(snapshotMetricsTable.periodId, period[0].id),
       eq(snapshotMetricsTable.basis, "realized"),
       eq(snapshotMetricsTable.metric, "pt_diff"),
     ));
   const realizedPtDiffByEntry = new Map(
-    realizedPtDiffRows.map((row) => [row.entryId, Number(row.value)]),
+    realizedPtDiffRows.flatMap((row) =>
+      row.entryId == null ? [] : [[row.entryId, Number(row.value)] as const],
+    ),
   );
   if (
     period[0].sequence > 0 &&
@@ -291,6 +298,7 @@ export async function runCanonicalMtmRefresh(input: {
   }));
   const metricRows = buildMtmMetricRows(calculation, {
     periodId: period[0].id,
+    calcuttaId: target.calcuttaId,
     periodSequence: period[0].sequence,
     snapshotKey,
     snapshotDate,
@@ -323,6 +331,7 @@ export async function runCanonicalMtmRefresh(input: {
       .from(snapshotMetricsTable)
       .where(and(
         inArray(snapshotMetricsTable.entryId, entryIds),
+        eq(snapshotMetricsTable.calcuttaId, target.calcuttaId),
         eq(snapshotMetricsTable.periodId, period[0].id),
         eq(snapshotMetricsTable.basis, "mtm"),
       ));
@@ -368,6 +377,7 @@ export async function runCanonicalMtmRefresh(input: {
     }
     await replaceMtmMetricRows(tx, {
       entryIds,
+      calcuttaId: target.calcuttaId,
       periodId: period[0].id,
     }, metricRows);
     return "saved" as const;

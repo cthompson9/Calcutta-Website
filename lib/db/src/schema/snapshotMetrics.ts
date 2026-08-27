@@ -13,6 +13,7 @@ import {
 } from "drizzle-orm/pg-core";
 import { createInsertSchema } from "drizzle-zod";
 import { z } from "zod/v4";
+import { calcuttasTable } from "./calcuttas";
 import { calcuttaEntriesTable } from "./calcuttaEntries";
 import { sportPeriodsTable } from "./sportPeriods";
 
@@ -21,8 +22,10 @@ export const snapshotMetricsTable = pgTable(
   "snapshot_metrics",
   {
     id: serial("id").primaryKey(),
-    entryId: integer("entry_id")
+    calcuttaId: integer("calcutta_id")
       .notNull()
+      .references(() => calcuttasTable.id, { onDelete: "cascade" }),
+    entryId: integer("entry_id")
       .references(() => calcuttaEntriesTable.id, { onDelete: "cascade" }),
     periodId: integer("period_id")
       .notNull()
@@ -37,12 +40,19 @@ export const snapshotMetricsTable = pgTable(
     updatedAt: timestamp("updated_at", { withTimezone: true }).notNull().defaultNow().$onUpdate(() => new Date()),
   },
   (t) => [
-    uniqueIndex("snapshot_metrics_entry_period_basis_metric_idx").on(
+    uniqueIndex("snapshot_metrics_calcutta_entry_period_basis_metric_idx").on(
+      t.calcuttaId,
       t.entryId,
       t.periodId,
       t.basis,
       t.metric,
-    ),
+    ).where(sql`${t.entryId} is not null`),
+    uniqueIndex("snapshot_metrics_calcutta_period_basis_metric_idx").on(
+      t.calcuttaId,
+      t.periodId,
+      t.basis,
+      t.metric,
+    ).where(sql`${t.entryId} is null`),
     index("snapshot_metrics_entry_basis_idx").on(t.entryId, t.basis),
     index("snapshot_metrics_period_basis_idx").on(t.periodId, t.basis),
     check("snapshot_metrics_basis_supported", sql`${t.basis} IN ('realized', 'mtm')`),

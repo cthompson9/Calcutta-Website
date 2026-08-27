@@ -1,4 +1,4 @@
-import { and, eq, inArray } from "drizzle-orm";
+import { and, eq, inArray, sql } from "drizzle-orm";
 import {
   db,
   snapshotMetricsTable,
@@ -14,6 +14,7 @@ export type MtmMetric = (typeof MTM_METRICS)[number];
 type DbWriter = Pick<typeof db, "delete" | "insert">;
 
 export type MtmMetricRow = {
+  calcuttaId: number;
   entryId: number;
   periodId: number;
   basis: "mtm";
@@ -27,6 +28,7 @@ export type MtmMetricRow = {
 export function buildMtmMetricRows(
   calculation: WeekZeroCalculation,
   context: {
+    calcuttaId: number;
     periodId: number;
     periodSequence: number;
     snapshotKey: string;
@@ -91,6 +93,7 @@ export function buildMtmMetricRows(
 
     for (const [metric, value] of values) {
       rows.push({
+        calcuttaId: context.calcuttaId,
         entryId,
         periodId: context.periodId,
         basis: "mtm",
@@ -109,6 +112,7 @@ export function buildMtmMetricRows(
 export async function replaceMtmMetricRows(
   writer: DbWriter,
   context: {
+    calcuttaId: number;
     entryIds: number[];
     periodId: number;
   },
@@ -116,6 +120,7 @@ export async function replaceMtmMetricRows(
 ): Promise<number> {
   if (context.entryIds.length > 0) {
     await writer.delete(snapshotMetricsTable).where(and(
+      eq(snapshotMetricsTable.calcuttaId, context.calcuttaId),
       inArray(snapshotMetricsTable.entryId, context.entryIds),
       eq(snapshotMetricsTable.periodId, context.periodId),
       eq(snapshotMetricsTable.basis, "mtm"),
@@ -125,11 +130,13 @@ export async function replaceMtmMetricRows(
   for (const row of rows) {
     await writer.insert(snapshotMetricsTable).values(row).onConflictDoUpdate({
       target: [
+        snapshotMetricsTable.calcuttaId,
         snapshotMetricsTable.entryId,
         snapshotMetricsTable.periodId,
         snapshotMetricsTable.basis,
         snapshotMetricsTable.metric,
       ],
+      targetWhere: sql`${snapshotMetricsTable.entryId} is not null`,
       set: row,
     });
   }

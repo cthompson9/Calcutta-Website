@@ -1,4 +1,4 @@
-import { and, eq, inArray } from "drizzle-orm";
+import { and, eq, inArray, sql } from "drizzle-orm";
 import {
   calcuttasTable,
   calcuttaEntriesTable,
@@ -393,6 +393,7 @@ async function rebuildCfbRealizedMetrics(
     .select({
       entryId: calcuttaEntriesTable.id,
       teamId: calcuttaEntriesTable.teamId,
+      calcuttaId: calcuttaEntriesTable.calcuttaId,
     })
     .from(calcuttaEntriesTable)
     .innerJoin(
@@ -434,6 +435,7 @@ async function rebuildCfbRealizedMetrics(
       const sourceEvents = outcome?.sourceEvents ?? [];
       for (const metric of CFB_SCORING_ADAPTER.realizedMetrics) {
         const row = {
+          calcuttaId: entry.calcuttaId,
           entryId: entry.entryId,
           periodId,
           basis: "realized" as const,
@@ -454,11 +456,13 @@ async function rebuildCfbRealizedMetrics(
         };
         await tx.insert(snapshotMetricsTable).values(row).onConflictDoUpdate({
           target: [
+            snapshotMetricsTable.calcuttaId,
             snapshotMetricsTable.entryId,
             snapshotMetricsTable.periodId,
             snapshotMetricsTable.basis,
             snapshotMetricsTable.metric,
           ],
+          targetWhere: sql`${snapshotMetricsTable.entryId} is not null`,
           set: row,
         });
         metricsUpserted += 1;

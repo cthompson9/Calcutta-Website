@@ -707,6 +707,7 @@ describe(
         const snapshotAt = new Date("9999-09-10T12:00:00.000Z");
         const realizedRows = [
           ...entryIds.map((entryId) => ({
+            calcuttaId: testCalcuttaId,
             entryId,
             periodId: weekOne.id,
             basis: "realized",
@@ -716,6 +717,7 @@ describe(
             snapshotAt,
           })),
           ...entryIds.slice(1).map((entryId) => ({
+            calcuttaId: testCalcuttaId,
             entryId,
             periodId: weekOne.id,
             basis: "realized",
@@ -739,6 +741,7 @@ describe(
           await db.delete(snapshotMetricsTable).where(
             and(
               inArray(snapshotMetricsTable.entryId, entryIds),
+              eq(snapshotMetricsTable.calcuttaId, testCalcuttaId),
               eq(snapshotMetricsTable.periodId, weekOne.id),
               eq(snapshotMetricsTable.basis, "realized"),
             ),

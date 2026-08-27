@@ -299,14 +299,8 @@ function currentTeamMetrics(
 function valueSource(
   calculated: CalculatedTeamReturns | undefined,
   basis: "realized" | "mtm",
-  hasLegacy: boolean,
-  rulesConfigured: boolean,
 ): "calculated" | "legacy" | "unavailable" {
-  return calculated?.[basis]
-    ? "calculated"
-    : !rulesConfigured && hasLegacy
-      ? "legacy"
-      : "unavailable";
+  return calculated?.[basis] ? "calculated" : "unavailable";
 }
 
 async function buildPortfolio(
@@ -319,26 +313,11 @@ async function buildPortfolio(
   const ownership = await loadSeasonOwnership(context.seasonId, context.calcuttaId);
   const bidderTeams = ownership.byBidder.get(bidderId) ?? new Map<number, OwnerEntry>();
   const teamIds = [...bidderTeams.keys()];
-  const [teams, results, calculated, rulesConfigured] = await Promise.all([
+  const [teams, results, calculated] = await Promise.all([
     loadTeamsById(teamIds),
     loadTeamResults(context.seasonId),
     loadCalculatedTeamReturnsForCalcutta(context.calcuttaId, period),
-    hasConfiguredPayoutRulesForCalcutta(context.calcuttaId),
   ]);
-  const entryRows = teamIds.length
-    ? await db
-      .select({
-        teamId: calcuttaEntriesTable.teamId,
-        realizedReturn: calcuttaEntriesTable.realizedReturn,
-        markToMarket: calcuttaEntriesTable.markToMarket,
-      })
-      .from(calcuttaEntriesTable)
-      .where(and(
-        eq(calcuttaEntriesTable.calcuttaId, context.calcuttaId),
-        inArray(calcuttaEntriesTable.teamId, teamIds),
-      ))
-    : [];
-  const entryByTeam = new Map(entryRows.map((row) => [row.teamId, row]));
   const rows: TeamPortfolioRow[] = [];
   for (const [teamId, entry] of bidderTeams) {
     if (
@@ -348,13 +327,10 @@ async function buildPortfolio(
     ) continue;
     const team = teams.get(teamId);
     if (!team) continue;
-    const financial = entryByTeam.get(teamId);
     const calc = calculated.get(teamId);
-    const source = valueSource(calc, basis, financial != null, rulesConfigured);
-    const teamGrossRealized = calc?.realized?.grossReturn
-      ?? (!rulesConfigured && financial ? Number(financial.realizedReturn) : null);
-    const teamGrossMtm = calc?.mtm?.grossReturn
-      ?? (!rulesConfigured && financial ? Number(financial.markToMarket) : null);
+    const source = valueSource(calc, basis);
+    const teamGrossRealized = calc?.realized?.grossReturn ?? null;
+    const teamGrossMtm = calc?.mtm?.grossReturn ?? null;
     const costBasis = entry.originalCostBasis + entry.tradePaid - entry.tradeReceived;
     const realizedReturn = teamGrossRealized == null ? null : roundMoney(teamGrossRealized * entry.effectiveShare);
     const currentMtm = teamGrossMtm == null ? null : roundMoney(teamGrossMtm * entry.effectiveShare);
@@ -657,23 +633,12 @@ export async function getTeamSchedule(args: z.input<typeof teamScheduleQuery>) {
   const team = await resolveTeamForCalcutta(parsed.team, context.calcuttaId);
   if ("error" in team) return { status: 404, body: { error: team.error } };
   const ownership = await loadSeasonOwnership(context.seasonId, context.calcuttaId);
-  const [calculated, rulesConfigured] = await Promise.all([
+  const [calculated] = await Promise.all([
     loadCalculatedTeamReturnsForCalcutta(context.calcuttaId, parsed.period),
-    hasConfiguredPayoutRulesForCalcutta(context.calcuttaId),
   ]);
   const teamResult = (await loadTeamResults(context.seasonId)).get(team.id);
-  const entry = (await db.select({
-    realizedReturn: calcuttaEntriesTable.realizedReturn,
-    markToMarket: calcuttaEntriesTable.markToMarket,
-  }).from(calcuttaEntriesTable).where(and(
-    eq(calcuttaEntriesTable.calcuttaId, context.calcuttaId),
-    eq(calcuttaEntriesTable.teamId, team.id),
-  )).limit(1))[0];
   const teamCalc = calculated.get(team.id);
-  const value = teamCalc?.[parsed.basis]?.grossReturn
-    ?? (!rulesConfigured
-      ? (parsed.basis === "realized" ? Number(entry?.realizedReturn ?? NaN) : Number(entry?.markToMarket ?? NaN))
-      : NaN);
+  const value = teamCalc?.[parsed.basis]?.grossReturn;
   const teamView = (schedule.body as { games: ReturnType<typeof scheduleGameView>[] }).games;
   return {
     status: 200,
@@ -685,7 +650,7 @@ export async function getTeamSchedule(args: z.input<typeof teamScheduleQuery>) {
         ...game,
         opponent: game.away_team === team.name ? game.home_team : game.away_team,
         home_away: game.home_team === team.name ? "home" : "away",
-        current_calcutta_value: Number.isFinite(value) ? value : null,
+        current_calcutta_value: value ?? null,
         projected_ev_impact: null,
       })),
       ownership: ownership.currentOwnersByTeam.get(team.id) ?? [],
@@ -743,25 +708,13 @@ export async function getGame(args: z.input<typeof gameQuery>) {
   if (!awayTeam || !homeTeam) return { status: 500, body: { error: "Game references an unknown team." } };
   const extras = await latestMarketAndProjection([event.id]);
   const ownership = await loadSeasonOwnership(context.seasonId, context.calcuttaId);
-  const [calculated, rulesConfigured] = await Promise.all([
+  const [calculated] = await Promise.all([
     loadCalculatedTeamReturnsForCalcutta(context.calcuttaId, parsed.period),
-    hasConfiguredPayoutRulesForCalcutta(context.calcuttaId),
   ]);
-  const entryRows = await db.select({
-    teamId: calcuttaEntriesTable.teamId,
-    realizedReturn: calcuttaEntriesTable.realizedReturn,
-    markToMarket: calcuttaEntriesTable.markToMarket,
-  }).from(calcuttaEntriesTable).where(and(
-    eq(calcuttaEntriesTable.calcuttaId, context.calcuttaId),
-    inArray(calcuttaEntriesTable.teamId, [event.homeTeamId, event.awayTeamId]),
-  ));
-  const entryByTeam = new Map(entryRows.map((row) => [row.teamId, row]));
   const teamValue = (teamId: number) => {
     const calculatedValue = calculated.get(teamId)?.[parsed.basis]?.grossReturn;
     if (calculatedValue != null) return calculatedValue;
-    const entry = entryByTeam.get(teamId);
-    if (!entry || rulesConfigured) return null;
-    return Number(parsed.basis === "realized" ? entry.realizedReturn : entry.markToMarket);
+    return null;
   };
   return {
     status: 200,

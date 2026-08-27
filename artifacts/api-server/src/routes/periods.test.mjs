@@ -147,6 +147,31 @@ describe("period snapshot reporting", { skip: !DATABASE_URL || !ADMIN_KEY }, () 
     ({ server, baseUrl } = await startServer(app));
   });
 
+  test("protects and returns entry-return discrepancy diagnostics for the selected season", async () => {
+    const unauthorized = await fetch(
+      `${baseUrl}/api/entry-return-diagnostics?season=${seasonYear}`,
+    );
+    assert.equal(unauthorized.status, 401);
+    assert.deepEqual(await unauthorized.json(), { error: "Unauthorized" });
+
+    const invalidSelection = await fetch(
+      `${baseUrl}/api/entry-return-diagnostics?season=${seasonYear}&calcuttaId=0`,
+      { headers: { Authorization: `Bearer ${ADMIN_KEY}` } },
+    );
+    assert.equal(invalidSelection.status, 400);
+
+    const success = await fetch(
+      `${baseUrl}/api/entry-return-diagnostics?season=${seasonYear}`,
+      { headers: { Authorization: `Bearer ${ADMIN_KEY}` } },
+    );
+    assert.equal(success.status, 200);
+    const audit = await success.json();
+    assert.equal(typeof audit.ok, "boolean");
+    assert.equal(typeof audit.calcuttaId, "number");
+    assert.equal(typeof audit.auditedEntries, "number");
+    assert.ok(Array.isArray(audit.issues));
+  });
+
   after(async () => {
     if (server) await stopServer(server);
     if (seasonId) await db.delete(seasonsTable).where(eq(seasonsTable.id, seasonId));
@@ -413,7 +438,7 @@ describe("period snapshot reporting", { skip: !DATABASE_URL || !ADMIN_KEY }, () 
         realizedReturn: missingSnapshotTeam.realizedReturn,
         markToMarket: missingSnapshotTeam.markToMarket,
       },
-      { wins: 12, realizedReturn: 999, markToMarket: 999 },
+      { wins: 12, realizedReturn: 0, markToMarket: 0 },
     );
 
     const realizedAtWeekTwo = await fetch(
@@ -461,7 +486,7 @@ describe("period snapshot reporting", { skip: !DATABASE_URL || !ADMIN_KEY }, () 
     assert.equal(available.latestPeriod, 3);
 
     const [entry] = await db
-      .select({ id: calcuttaEntriesTable.id })
+      .select({ id: calcuttaEntriesTable.id, calcuttaId: calcuttaEntriesTable.calcuttaId })
       .from(calcuttaEntriesTable)
       .innerJoin(
         calcuttasTable,
@@ -483,6 +508,7 @@ describe("period snapshot reporting", { skip: !DATABASE_URL || !ADMIN_KEY }, () 
       ))
       .limit(1);
     await db.delete(snapshotMetricsTable).where(and(
+      eq(snapshotMetricsTable.calcuttaId, entry.calcuttaId),
       eq(snapshotMetricsTable.entryId, entry.id),
       eq(snapshotMetricsTable.periodId, period.id),
       eq(snapshotMetricsTable.basis, "mtm"),
@@ -610,7 +636,7 @@ describe("period snapshot reporting", { skip: !DATABASE_URL || !ADMIN_KEY }, () 
     assert.equal(alternateResponse.status, 200);
     const canonical = (await canonicalResponse.json()).find((row) => row.teamId === teamId);
     const selected = (await alternateResponse.json()).find((row) => row.teamId === teamId);
-    assert.equal(canonical.realizedReturn, 0);
+    assert.equal(canonical.realizedReturn, 5.25);
     assert.equal(canonical.cost, 100);
     assert.equal(selected.realizedReturn, 26.27);
     assert.equal(selected.netReturn, -1973.73);

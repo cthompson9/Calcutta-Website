@@ -29,6 +29,7 @@ import {
   NFL_MARQUEE_MULTIPLIER,
   NFL_SPORT,
   aggregateNflRegularSeasonGames,
+  auditStoredEntryReturnDiscrepancies,
   compareHistoricalPayoutParity,
   ensureCompetitionSportPeriods,
   ensureNflSportPeriods,
@@ -137,6 +138,7 @@ async function rebuildNflRealizedSnapshots(
           set: snapshot,
         });
         await upsertNormalizedSnapshotMetrics(tx, {
+          calcuttaId,
           entryId: entry.entryId,
           periodId: period[0].id,
           basis: "realized",
@@ -508,6 +510,7 @@ router.post("/period-snapshots", async (req, res): Promise<void> => {
     if (!period[0]) return { kind: "period_not_found" as const };
     if (period[0].isPlayoff) {
       const hasBaseline = await hasCompleteNormalizedSnapshot(tx, {
+        calcuttaId: resolvedCalcuttaId,
         entryId: entry.id,
         basis: data.basis,
         periodSequence: 18,
@@ -585,6 +588,7 @@ router.post("/period-snapshots", async (req, res): Promise<void> => {
         set: values,
       });
     await upsertNormalizedSnapshotMetrics(tx, {
+      calcuttaId: resolvedCalcuttaId,
       entryId: entry.id,
       periodId: period[0].id,
       basis: data.basis,
@@ -767,6 +771,41 @@ router.get("/payout-diagnostics", async (req, res): Promise<void> => {
     legacy.map((row) => ({ teamId: row.teamId, grossReturn: Number(row.realizedReturn) })),
     calculated,
   ));
+});
+
+// Comparison-only migration diagnostic for deprecated entry economics. This is
+// intentionally admin-protected because it exposes reconciliation details.
+router.get("/entry-return-diagnostics", async (req, res): Promise<void> => {
+  if (!isAdminRequest(req)) {
+    res.status(401).json({ error: "Unauthorized" });
+    return;
+  }
+  const seasonYear = Number(req.query.season);
+  const requestedCalcuttaId = req.query.calcuttaId == null
+    ? undefined
+    : Number(req.query.calcuttaId);
+  if (!Number.isInteger(seasonYear)) {
+    res.status(400).json({ error: "season must be an integer season year." });
+    return;
+  }
+  if (
+    requestedCalcuttaId != null &&
+    (!Number.isInteger(requestedCalcuttaId) || requestedCalcuttaId <= 0)
+  ) {
+    res.status(400).json({ error: "calcuttaId must be a positive integer." });
+    return;
+  }
+  const season = await resolveSeason(seasonYear);
+  if (!season) {
+    res.status(404).json({ error: `Season ${seasonYear} not found` });
+    return;
+  }
+  const calcutta = await resolveScoringCalcutta(season.id, requestedCalcuttaId);
+  if (!calcutta) {
+    res.status(400).json({ error: "Calcutta must belong to the requested season." });
+    return;
+  }
+  res.json(await auditStoredEntryReturnDiscrepancies(calcutta.id));
 });
 
 export default router;

@@ -15,6 +15,7 @@ import {
   sportScopedEventIngestionMigration,
   canonicalCalcuttaScopeMigration,
   competitionScoringMigration,
+  scopedSnapshotMetricsMigration,
 } from "./migrations";
 
 const migrations = [
@@ -32,6 +33,7 @@ const migrations = [
   sportScopedEventIngestionMigration,
   canonicalCalcuttaScopeMigration,
   competitionScoringMigration,
+  scopedSnapshotMetricsMigration,
 ] as const;
 
 /**

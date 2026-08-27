@@ -1,4 +1,4 @@
-import { and, eq, inArray } from "drizzle-orm";
+import { and, eq, inArray, isNotNull } from "drizzle-orm";
 import {
   calcuttasTable,
   calcuttaEntriesTable,
@@ -95,6 +95,7 @@ async function removeSparsePlayoffSnapshots() {
 async function removeSparsePlayoffMetrics() {
   const playoffMetrics = await db
     .select({
+      calcuttaId: snapshotMetricsTable.calcuttaId,
       entryId: snapshotMetricsTable.entryId,
       basis: snapshotMetricsTable.basis,
     })
@@ -107,6 +108,7 @@ async function removeSparsePlayoffMetrics() {
       eq(sportPeriodsTable.sport, "NFL"),
       eq(sportPeriodsTable.competition, "NFL_REGULAR_SEASON"),
       eq(sportPeriodsTable.isPlayoff, true),
+      isNotNull(snapshotMetricsTable.entryId),
     ));
 
   const playoffPeriods = await db
@@ -120,6 +122,7 @@ async function removeSparsePlayoffMetrics() {
   const playoffPeriodIds = playoffPeriods.map((period) => period.id);
 
   for (const metric of playoffMetrics) {
+    if (metric.entryId == null) continue;
     const baseline = await db
       .select({ id: snapshotMetricsTable.id })
       .from(snapshotMetricsTable)
@@ -130,6 +133,7 @@ async function removeSparsePlayoffMetrics() {
       .where(
         and(
           eq(snapshotMetricsTable.entryId, metric.entryId),
+          eq(snapshotMetricsTable.calcuttaId, metric.calcuttaId),
           eq(snapshotMetricsTable.basis, metric.basis),
           eq(sportPeriodsTable.sport, "NFL"),
           eq(sportPeriodsTable.competition, "NFL_REGULAR_SEASON"),
@@ -143,6 +147,7 @@ async function removeSparsePlayoffMetrics() {
         .where(
           and(
             eq(snapshotMetricsTable.entryId, metric.entryId),
+            eq(snapshotMetricsTable.calcuttaId, metric.calcuttaId),
             eq(snapshotMetricsTable.basis, metric.basis),
             inArray(snapshotMetricsTable.periodId, playoffPeriodIds),
           ),

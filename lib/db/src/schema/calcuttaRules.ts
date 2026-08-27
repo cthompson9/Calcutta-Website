@@ -26,6 +26,8 @@ export const calcuttaRulesTable = pgTable(
     ruleType: text("rule_type"),
     value: numeric("value", { precision: 16, scale: 6 }),
     multiplier: numeric("multiplier", { precision: 16, scale: 6 }),
+    calculation: text("calculation"),
+    condition: text("condition"),
     description: text("description"),
     active: boolean("active").notNull().default(true),
     createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),

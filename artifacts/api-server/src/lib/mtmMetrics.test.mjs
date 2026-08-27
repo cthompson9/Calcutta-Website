@@ -34,6 +34,7 @@ function calculation(valuations) {
 }
 
 const context = {
+  calcuttaId: 41,
   periodId: 18,
   periodSequence: 7,
   snapshotKey: "canonical-mtm-period-7",
@@ -56,6 +57,7 @@ test("MTM conversion writes the complete calculation vocabulary with provenance"
   assert.equal(values.get("win_super_bowl"), 0.05);
 
   assert.ok(rows.every((row) =>
+    row.calcuttaId === 41 &&
     row.entryId === 107 &&
     row.periodId === 18 &&
     row.basis === "mtm" &&

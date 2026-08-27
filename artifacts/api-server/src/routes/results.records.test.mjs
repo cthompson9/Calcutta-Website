@@ -223,7 +223,7 @@ describe("team result records", { skip: !DATABASE_URL || !ADMIN_KEY }, () => {
     );
   });
 
-  test("keeps manual financial results isolated between Calcuttas in one season", async () => {
+  test("does not persist manual financial results in either Calcutta", async () => {
     const [alternate] = await db.insert(calcuttasTable).values({
       seasonId,
       year: seasonYear,
@@ -272,9 +272,9 @@ describe("team result records", { skip: !DATABASE_URL || !ADMIN_KEY }, () => {
     assert.equal(alternateResponse.status, 200);
     const canonicalRow = (await canonicalResponse.json()).find((row) => row.teamId === teamId);
     const alternateRow = (await alternateResponse.json()).find((row) => row.teamId === teamId);
-    assert.equal(canonicalRow.realizedReturn, 111);
-    assert.equal(canonicalRow.markToMarket, 123);
-    assert.equal(alternateRow.realizedReturn, 222);
-    assert.equal(alternateRow.markToMarket, 234);
+    assert.notEqual(canonicalRow.realizedReturn, 111);
+    assert.notEqual(canonicalRow.markToMarket, 123);
+    assert.notEqual(alternateRow.realizedReturn, 222);
+    assert.notEqual(alternateRow.markToMarket, 234);
   });
 });
