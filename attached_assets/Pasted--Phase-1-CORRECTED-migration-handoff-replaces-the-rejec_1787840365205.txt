@@ -1,0 +1,187 @@
+# Phase 1 — CORRECTED migration handoff (replaces the rejected drizzle push)
+
+Paste everything below the line to the Replit agent.
+
+---
+
+The drizzle-kit push diff you generated is REJECTED. It contained
+`truncate table trades cascade` (which cascades into `positions` and erases
+all ownership), `truncate table mtm_snapshots cascade` (erases unrecoverable
+Week 0 historical marks), and `DROP TABLE team_bidders CASCADE` in the same
+apply — combined result: total loss of production ownership data. It also
+added five stored-return columns to `calcutta_entries` (explicitly rejected
+pattern) and weakened `snapshot_metrics` and `calcutta_rules` below spec.
+
+Abandon `drizzle-kit push` for this phase entirely. All DDL below ships as
+TWO startup migrations (next version numbers, wired into `migrate.ts` like
+0005/0006). Update the Drizzle schema files in the same commit so the ORM
+matches the final database state — but the migration runner owns the DDL.
+There are ZERO truncates and ZERO data-destroying statements in this phase.
+
+## Migration A — additive schema (no NOT NULL on populated tables yet)
+
+```sql
+-- 1. calcuttas
+alter table calcuttas add column if not exists competition_format text not null default 'NFL_REGULAR_SEASON';
+alter table calcuttas add column if not exists status text not null default 'active';
+create unique index if not exists calcuttas_canonical_season_sport_idx
+  on calcuttas (season_id, sport) where (is_canonical = true);
+
+-- 2. calcutta_entries: metadata ONLY.
+-- Do NOT add realized_return / realized_multiple / net_return /
+-- net_pct_return / mark_to_market. Returns are computed, never stored.
+alter table calcutta_entries add column if not exists metadata jsonb;
+
+-- 3. calcutta_rules (your version was missing condition + calculation)
+create table if not exists calcutta_rules (
+  id serial primary key,
+  calcutta_id integer not null references calcuttas(id) on delete cascade,
+  rule_name text not null,
+  rule_type text check (rule_type is null or rule_type in ('points','fixed_pct','shared_pool')),
+  calculation text,          -- join key into the snapshot_metrics vocabulary
+  condition text,            -- e.g. is_marquee, seed_diff>=3, conference_rounds_only, fallback_to:seed_diff>=7
+  value numeric(16,6),
+  multiplier numeric(16,6),
+  description text,
+  active boolean not null default true,
+  created_at timestamptz not null default now(),
+  updated_at timestamptz not null default now()
+);
+create unique index if not exists calcutta_rules_calcutta_rule_idx
+  on calcutta_rules (calcutta_id, rule_name);
+
+-- 4. events / event_market_snapshots / event_projections:
+-- your generated versions are APPROVED as-is (season scoping, sport +
+-- competition columns, probability bound checks, matchup and source unique
+-- indexes, no marquee columns). Recreate them here verbatim.
+
+-- 5. provider_team_identities: APPROVED as-is. Recreate verbatim.
+
+-- 6. snapshot_metrics — corrected: calcutta_id restored, entry_id NULLABLE
+-- (entry_id null = pool-level metric, e.g. total_upsets_3plus)
+create table if not exists snapshot_metrics (
+  id serial primary key,
+  calcutta_id integer not null references calcuttas(id) on delete cascade,
+  entry_id integer null references calcutta_entries(id) on delete cascade,
+  period_id integer not null references sport_periods(id) on delete cascade,
+  basis text not null check (basis in ('realized','mtm')),
+  metric text not null,
+  value numeric(16,6) not null,
+  source text not null default 'manual',
+  source_data jsonb,
+  snapshot_at timestamptz not null default now(),
+  created_at timestamptz not null default now(),
+  updated_at timestamptz not null default now()
+);
+-- uniqueness with a nullable column needs two partial indexes:
+create unique index if not exists snapshot_metrics_entry_row_idx
+  on snapshot_metrics (calcutta_id, entry_id, period_id, basis, metric)
+  where entry_id is not null;
+create unique index if not exists snapshot_metrics_pool_row_idx
+  on snapshot_metrics (calcutta_id, period_id, basis, metric)
+  where entry_id is null;
+create index if not exists snapshot_metrics_period_basis_idx
+  on snapshot_metrics (period_id, basis);
+
+-- 7. entry_id columns: ADD NULLABLE. No defaults, no NOT NULL yet.
+alter table trades add column if not exists entry_id integer references calcutta_entries(id) on delete restrict;
+alter table mtm_snapshots add column if not exists entry_id integer references calcutta_entries(id) on delete cascade;
+
+-- 8. refresh_job_states scoping: APPROVED as-is (sport + competition
+-- defaults + replacement unique index). Include verbatim.
+
+-- 9. drop empty tables only, with row-count guards in the migration code
+-- (assert 0 rows immediately before each drop, abort otherwise):
+drop table if exists payout_rules;
+drop table if exists team_period_snapshots;
+```
+
+Migration A also seeds `calcutta_rules` for calcutta_id 1 AND 2 (identical
+NFL rubrics): banked_points fixed 150; regular_season_win calculation
+'win' value 10; point_differential calculation 'pt_diff' value NULL;
+marquee_point_differential calculation 'pt_diff' condition 'is_marquee'
+multiplier 2.0 value NULL; the five stage-bonus rules value NULL. rule_type
+'points' on all.
+
+## Migration B — backfill, then tighten (runs after A, same release)
+
+```sql
+-- trades: resolve entry via the trade's season + canonical calcutta
+update trades t
+set entry_id = ce.id
+from calcuttas c
+join calcutta_entries ce on ce.calcutta_id = c.id
+where t.entry_id is null
+  and c.season_id = t.season_id
+  and c.is_canonical = true
+  and ce.team_id = t.team_id;
+
+-- mtm_snapshots: same resolution
+update mtm_snapshots m
+set entry_id = ce.id
+from calcuttas c
+join calcutta_entries ce on ce.calcutta_id = c.id
+where m.entry_id is null
+  and c.season_id = m.season_id
+  and c.is_canonical = true
+  and ce.team_id = m.team_id;
+```
+
+Migration B code then ASSERTS (abort the migration, do not proceed, if
+either fails):
+- `select count(*) from trades where entry_id is null` = 0
+- `select count(*) from mtm_snapshots where entry_id is null` = 0
+
+Only after both assertions pass:
+
+```sql
+alter table trades alter column entry_id set not null;
+alter table mtm_snapshots alter column entry_id set not null;
+create index if not exists trades_entry_idx on trades (entry_id);
+create unique index if not exists mtm_entry_date_idx on mtm_snapshots (entry_id, snapshot_date);
+create unique index if not exists mtm_entry_key_idx on mtm_snapshots (entry_id, snapshot_key) where snapshot_key is not null;
+create index if not exists mtm_snapshots_entry_idx on mtm_snapshots (entry_id);
+-- old team/season indexes may be dropped; the team_id/season_id COLUMNS stay
+-- (raw-layer provenance). Do not drop columns in this phase.
+
+-- team_bidders table -> view, guarded in migration code:
+-- assert positions has > 0 primary rows AND
+-- (select count(distinct (ce.team_id, c.season_id)) matches team_bidders coverage)
+-- before dropping. Then:
+drop table if exists team_bidders;
+create view team_bidders as (
+  select ce.team_id, p.bidder_id, c.season_id, p.ownership_share
+  from positions p
+  join calcutta_entries ce on ce.id = p.entry_id
+  join calcuttas c on c.id = ce.calcutta_id
+  where p.source = 'primary'
+);
+```
+
+(Your view definition was correct — it is preserved verbatim. Note it
+depends on `positions.entry_id` existing and being populated; if positions
+does not yet have entry_id from the Phase 2 work, add + backfill it here
+the same way as trades before creating the view.)
+
+## Hard rules
+
+1. NO `truncate` statements anywhere, ever, in any migration.
+2. NO stored return columns on `calcutta_entries` (or any ownership table).
+3. NOT NULL is applied only after an in-code zero-null assertion.
+4. Every `drop table` is preceded by an in-code row-count guard.
+5. `drizzle-kit push` is not used against dev or prod in this phase. If the
+   ORM schema and DB disagree afterward, fix the ORM schema files, never the
+   database.
+
+## Gates
+
+1. Both migrations apply on dev; app boots; existing pages render unchanged.
+2. Row counts unchanged: trades = pre-migration count, mtm_snapshots = 32,
+   positions untouched (compare to a pre-migration snapshot taken in step 0).
+3. Every trades/mtm row's entry_id round-trips to its original
+   (team_id, season_id).
+4. `team_bidders` answers as a VIEW with the same row count as before.
+5. `calcutta_rules`: 2 calcuttas × full rule set, 150/10 populated, six nulls.
+6. Typecheck + full suites green. Publish only after all gates; production
+   gets the identical migrations at boot — no interactive prompts exist in
+   this path, which is the point.
