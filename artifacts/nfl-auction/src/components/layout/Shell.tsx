@@ -5,11 +5,12 @@ import {
   ArrowLeftRight,
   TrendingUp,
   Sparkles,
+  CircleHelp,
 } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { ReactNode } from "react";
 import { SeasonToggle } from "@/components/SeasonToggle";
-import { formatCalcuttaLabel, useSeason } from "@/hooks/useSeason";
+import { useSeason } from "@/hooks/useSeason";
 
 interface ShellProps {
   children: ReactNode;
@@ -33,8 +34,12 @@ export function Shell({ children }: ShellProps) {
     { href: "/mtm", label: "MTM Tracker", mobileLabel: "MTM", icon: TrendingUp },
     { href: "/trades", label: "Trades", mobileLabel: "Trades", icon: ArrowLeftRight },
     { href: "/dashboard", label: "Auction Results", mobileLabel: "Auction", icon: LayoutDashboard },
-    { href: "/whats-new", label: "What's New", mobileLabel: "New", icon: Sparkles },
   ];
+  const utilityNavItems = [
+    { href: "/whats-new", label: "What's New", mobileLabel: "New", icon: Sparkles },
+    { href: "/faq", label: "FAQ", mobileLabel: "FAQ", icon: CircleHelp },
+  ];
+  const mobileNavItems = [...navItems, ...utilityNavItems];
 
   return (
     <div className="flex min-h-[100dvh] w-full flex-col md:flex-row bg-background md:bg-muted/20">
@@ -76,6 +81,28 @@ export function Shell({ children }: ShellProps) {
               </Link>
             );
           })}
+          <div className="mt-auto border-t border-sidebar-border pt-4">
+            {utilityNavItems.map((item) => {
+              const active =
+                location === item.href ||
+                location.startsWith(item.href);
+              return (
+                <Link key={item.href} href={item.href}>
+                  <div
+                    className={cn(
+                      "flex items-center gap-3 px-3 py-2.5 cursor-pointer transition-colors font-medium text-sm rounded-md",
+                      active
+                        ? "bg-sidebar-primary text-sidebar-primary-foreground"
+                        : "text-sidebar-foreground hover:bg-sidebar-accent hover:text-sidebar-accent-foreground",
+                    )}
+                  >
+                    <item.icon className="w-4 h-4" />
+                    {item.label}
+                  </div>
+                </Link>
+              );
+            })}
+          </div>
         </nav>
       </aside>
 
@@ -121,7 +148,7 @@ export function Shell({ children }: ShellProps) {
 
       {/* Mobile Tab Bar — show 5 most important */}
       <nav className="md:hidden fixed bottom-0 left-0 right-0 border-t border-border bg-background/95 backdrop-blur flex items-center justify-around z-50 h-[calc(3.5rem+env(safe-area-inset-bottom))] pb-[env(safe-area-inset-bottom)]">
-        {navItems.slice(0, 5).map((item) => {
+        {mobileNavItems.map((item) => {
           const active =
             location === item.href ||
             (item.href !== "/" && location.startsWith(item.href));
