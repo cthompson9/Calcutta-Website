@@ -59,6 +59,16 @@ import {
   matchesMcpApiKey,
   verifyMcpOAuthAccessToken,
 } from "./mcpOAuth";
+import {
+  getConsortiumLeaderboard,
+  getGame,
+  getOwnerPortfolio,
+  getOwnerPortfolioPerformance,
+  getOwnerSummary,
+  getPointsRubric,
+  getSchedule,
+  getTeamSchedule,
+} from "./routes/v2Agent";
 
 // ─── DB helpers ─────────────────────────────────────────────────────────────
 const CONSORTIUM_MEMBERSHIP_LOCK_NAMESPACE = 841204;
@@ -328,6 +338,18 @@ function text(v: string | number | null | undefined) {
   return { content: [{ type: "text" as const, text: String(v ?? "null") }] };
 }
 
+function jsonText(result: { status: number; body: unknown }) {
+  return {
+    content: [{
+      type: "text" as const,
+      text: JSON.stringify(result.status >= 400
+        ? { status: result.status, ...result.body as object }
+        : result.body, null, 2),
+    }],
+    isError: result.status >= 400,
+  };
+}
+
 // ─── Build MCP server (called per-request in stateless mode) ─────────────────
 
 function buildMcpServer() {
@@ -342,6 +364,146 @@ function buildMcpServer() {
   const ownerInput = { owner: z.string().describe("Full or partial owner name, e.g. 'Zachary Long' or 'Zachary'") };
   const seasonInput = { season: z.number().optional().describe("Season year (e.g. 2025). Defaults to most recent completed season.") };
   const calcuttaInput = { calcuttaId: z.number().int().positive().optional().describe("Selected NFL Calcutta ID. Defaults to the season's canonical NFL Calcutta.") };
+
+  // ── V2.1 agent tools ──────────────────────────────────────────────────────
+
+  const basisInput = {
+    basis: z.enum(["realized", "mtm"]).optional()
+      .describe("Value basis. Defaults to realized."),
+    period: z.number().int().min(0).max(22).optional()
+      .describe("Optional reporting period sequence. Omit for the latest complete normalized period."),
+  };
+  const dateInput = {
+    week: z.number().int().min(0).max(22).optional(),
+    dateFrom: z.string().regex(/^\d{4}-\d{2}-\d{2}$/).optional()
+      .describe("Inclusive New York calendar date, YYYY-MM-DD."),
+    dateTo: z.string().regex(/^\d{4}-\d{2}-\d{2}$/).optional()
+      .describe("Inclusive New York calendar date, YYYY-MM-DD."),
+  };
+  const requiredSeason = {
+    season: z.number().int().describe("NFL season year, e.g. 2025."),
+  };
+
+  server.tool(
+    "get_owner_portfolio",
+    "Returns every signed economic position for one owner in one NFL Calcutta, including split ownership, approved-trade cost basis, current MTM, realized return, record, and playoff status. Owner names support exact or unambiguous partial matching.",
+    { ...ownerInput, ...requiredSeason, ...calcuttaInput, ...basisInput },
+    async ({ owner, season, calcuttaId, basis, period }) =>
+      jsonText(await getOwnerPortfolio({ owner, season, calcuttaId, basis, period })),
+  );
+
+  server.tool(
+    "get_owner_summary",
+    "Returns an owner's Calcutta portfolio totals: team count, signed cost basis, current MTM, realized return, selected-basis total return, and ROI. Null is returned for unavailable calculated values or non-positive ROI denominators.",
+    { ...ownerInput, ...requiredSeason, ...calcuttaInput, ...basisInput },
+    async ({ owner, season, calcuttaId, basis, period }) =>
+      jsonText(await getOwnerSummary({ owner, season, calcuttaId, basis, period })),
+  );
+
+  server.tool(
+    "get_owner_portfolio_performance",
+    "Returns the team-by-team performance breakdown behind an owner's portfolio summary, using the same season, Calcutta, trade, short-position, and normalized-metric rules.",
+    { ...ownerInput, ...requiredSeason, ...calcuttaInput, ...basisInput },
+    async ({ owner, season, calcuttaId, basis, period }) =>
+      jsonText(await getOwnerPortfolioPerformance({ owner, season, calcuttaId, basis, period })),
+  );
+
+  server.tool(
+    "get_schedule",
+    "Returns canonical NFL games for a season with optional team, week, and inclusive New York date filters. Market and projection fields are included only when requested and remain null when no snapshot exists.",
+    {
+      ...requiredSeason,
+      ...calcuttaInput,
+      ...dateInput,
+      team: z.string().optional().describe("Exact or unambiguous partial NFL team name."),
+      includeMarket: z.boolean().optional(),
+      includeProjection: z.boolean().optional(),
+    },
+    async ({ season, calcuttaId, week, dateFrom, dateTo, team, includeMarket, includeProjection }) =>
+      jsonText(await getSchedule({
+        season,
+        calcuttaId,
+        week,
+        date_from: dateFrom,
+        date_to: dateTo,
+        team,
+        include_market: includeMarket,
+        include_projection: includeProjection,
+      })),
+  );
+
+  server.tool(
+    "get_team_schedule",
+    "Returns one NFL team's canonical schedule plus opponent/home-away context, Calcutta ownership, current selected-basis value, and nullable market/projection data.",
+    {
+      ...requiredSeason,
+      ...calcuttaInput,
+      ...dateInput,
+      ...basisInput,
+      team: z.string().describe("Exact or unambiguous partial NFL team name."),
+      includeMarket: z.boolean().optional(),
+      includeProjection: z.boolean().optional(),
+    },
+    async ({ season, calcuttaId, week, dateFrom, dateTo, team, basis, period, includeMarket, includeProjection }) =>
+      jsonText(await getTeamSchedule({
+        season,
+        calcuttaId,
+        week,
+        date_from: dateFrom,
+        date_to: dateTo,
+        team,
+        basis,
+        period,
+        include_market: includeMarket,
+        include_projection: includeProjection,
+      })),
+  );
+
+  server.tool(
+    "get_game",
+    "Returns one canonical NFL game's identity, teams, kickoff, score/status, marquee multiplier, latest market snapshot, latest model projection, and selected-Calcutta relevance. Accepts the stable source-prefixed game ID, source ID, or database ID.",
+    {
+      gameId: z.string().describe("Game ID returned by get_schedule."),
+      ...requiredSeason,
+      ...calcuttaInput,
+      ...basisInput,
+    },
+    async ({ gameId, season, calcuttaId, basis, period }) =>
+      jsonText(await getGame({
+        game_id: gameId,
+        season,
+        calcuttaId,
+        basis,
+        period,
+      })),
+  );
+
+  server.tool(
+    "get_points_rubric",
+    "Returns the complete selected-Calcutta scoring rubric with descriptive rule names, configured values, units, playoff multipliers, starting points, and the fixed marquee point-differential multiplier. Missing configuration is null, never inferred.",
+    { ...requiredSeason, ...calcuttaInput },
+    async ({ season, calcuttaId }) =>
+      jsonText(await getPointsRubric({ season, calcuttaId })),
+  );
+
+  server.tool(
+    "get_consortium_leaderboard",
+    "Returns a Calcutta-scoped consortium leaderboard using signed positions and each pool's historical roster by default. Current consortium membership is an explicit opt-in.",
+    {
+      ...requiredSeason,
+      ...calcuttaInput,
+      ...basisInput,
+      membershipView: z.enum(["historical", "current"]).optional(),
+    },
+    async ({ season, calcuttaId, basis, period, membershipView }) =>
+      jsonText(await getConsortiumLeaderboard({
+        season,
+        calcuttaId,
+        basis,
+        period,
+        membershipView,
+      })),
+  );
 
   // ── Team owner tools ──────────────────────────────────────────────────────
 

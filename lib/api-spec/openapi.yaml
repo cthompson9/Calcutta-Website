@@ -19,6 +19,7 @@ tags:
   - name: summary
   - name: auction
   - name: jobs
+  - name: agent
 
 paths:
   /healthz:
@@ -1181,6 +1182,204 @@ paths:
               schema:
                 $ref: "#/components/schemas/ErrorResponse"
 
+  /v2/owner/portfolio:
+    get:
+      operationId: getOwnerPortfolioV2
+      tags: [agent]
+      summary: Return every current signed position for one owner
+      parameters:
+        - $ref: "#/components/parameters/AgentOwner"
+        - $ref: "#/components/parameters/AgentSeason"
+        - $ref: "#/components/parameters/AgentCalcuttaId"
+        - $ref: "#/components/parameters/AgentPeriod"
+        - $ref: "#/components/parameters/AgentBasis"
+      responses:
+        "200":
+          description: Owner portfolio
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/AgentOwnerPortfolio"
+        "400":
+          $ref: "#/components/responses/AgentError"
+        "404":
+          $ref: "#/components/responses/AgentError"
+
+  /v2/owner/summary:
+    get:
+      operationId: getOwnerSummaryV2
+      tags: [agent]
+      summary: Return owner portfolio totals
+      parameters:
+        - $ref: "#/components/parameters/AgentOwner"
+        - $ref: "#/components/parameters/AgentSeason"
+        - $ref: "#/components/parameters/AgentCalcuttaId"
+        - $ref: "#/components/parameters/AgentPeriod"
+        - $ref: "#/components/parameters/AgentBasis"
+      responses:
+        "200":
+          description: Owner summary
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/AgentOwnerSummary"
+        "400":
+          $ref: "#/components/responses/AgentError"
+        "404":
+          $ref: "#/components/responses/AgentError"
+
+  /v2/owner/portfolio/performance:
+    get:
+      operationId: getOwnerPortfolioPerformanceV2
+      tags: [agent]
+      summary: Return team-by-team owner performance
+      parameters:
+        - $ref: "#/components/parameters/AgentOwner"
+        - $ref: "#/components/parameters/AgentSeason"
+        - $ref: "#/components/parameters/AgentCalcuttaId"
+        - $ref: "#/components/parameters/AgentPeriod"
+        - $ref: "#/components/parameters/AgentBasis"
+      responses:
+        "200":
+          description: Owner performance
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/AgentOwnerPerformance"
+        "400":
+          $ref: "#/components/responses/AgentError"
+        "404":
+          $ref: "#/components/responses/AgentError"
+
+  /v2/schedule:
+    get:
+      operationId: getScheduleV2
+      tags: [agent]
+      summary: Return canonical NFL games matching optional filters
+      parameters:
+        - $ref: "#/components/parameters/AgentSeason"
+        - $ref: "#/components/parameters/AgentCalcuttaId"
+        - $ref: "#/components/parameters/AgentTeam"
+        - $ref: "#/components/parameters/AgentWeek"
+        - $ref: "#/components/parameters/AgentDateFrom"
+        - $ref: "#/components/parameters/AgentDateTo"
+        - $ref: "#/components/parameters/AgentIncludeMarket"
+        - $ref: "#/components/parameters/AgentIncludeProjection"
+      responses:
+        "200":
+          description: Matching games
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/AgentSchedule"
+        "400":
+          $ref: "#/components/responses/AgentError"
+        "404":
+          $ref: "#/components/responses/AgentError"
+
+  /v2/team/schedule:
+    get:
+      operationId: getTeamScheduleV2
+      tags: [agent]
+      summary: Return one NFL team's schedule and current Calcutta context
+      parameters:
+        - $ref: "#/components/parameters/AgentSeason"
+        - $ref: "#/components/parameters/AgentCalcuttaId"
+        - $ref: "#/components/parameters/AgentTeamRequired"
+        - $ref: "#/components/parameters/AgentWeek"
+        - $ref: "#/components/parameters/AgentDateFrom"
+        - $ref: "#/components/parameters/AgentDateTo"
+        - $ref: "#/components/parameters/AgentIncludeMarket"
+        - $ref: "#/components/parameters/AgentIncludeProjection"
+        - $ref: "#/components/parameters/AgentPeriod"
+        - $ref: "#/components/parameters/AgentBasis"
+      responses:
+        "200":
+          description: Team schedule
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/AgentTeamSchedule"
+        "400":
+          $ref: "#/components/responses/AgentError"
+        "404":
+          $ref: "#/components/responses/AgentError"
+
+  /v2/game:
+    get:
+      operationId: getGameV2
+      tags: [agent]
+      summary: Return complete known information for one canonical NFL game
+      parameters:
+        - name: game_id
+          in: query
+          required: true
+          schema:
+            type: string
+        - $ref: "#/components/parameters/AgentSeason"
+        - $ref: "#/components/parameters/AgentCalcuttaId"
+        - $ref: "#/components/parameters/AgentPeriod"
+        - $ref: "#/components/parameters/AgentBasis"
+      responses:
+        "200":
+          description: Game detail
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/AgentGameDetail"
+        "400":
+          $ref: "#/components/responses/AgentError"
+        "404":
+          $ref: "#/components/responses/AgentError"
+
+  /v2/points-rubric:
+    get:
+      operationId: getPointsRubricV2
+      tags: [agent]
+      summary: Return the authoritative selected-Calcutta scoring rubric
+      parameters:
+        - $ref: "#/components/parameters/AgentSeason"
+        - $ref: "#/components/parameters/AgentCalcuttaId"
+      responses:
+        "200":
+          description: Points rubric
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/AgentPointsRubric"
+        "400":
+          $ref: "#/components/responses/AgentError"
+        "404":
+          $ref: "#/components/responses/AgentError"
+
+  /v2/leaderboard/consortia:
+    get:
+      operationId: getConsortiumLeaderboardV2
+      tags: [agent]
+      summary: Return a selected-Calcutta consortium leaderboard
+      parameters:
+        - $ref: "#/components/parameters/AgentSeason"
+        - $ref: "#/components/parameters/AgentCalcuttaId"
+        - $ref: "#/components/parameters/AgentPeriod"
+        - $ref: "#/components/parameters/AgentBasis"
+        - name: membershipView
+          in: query
+          schema:
+            type: string
+            enum: [historical, current]
+            default: historical
+      responses:
+        "200":
+          description: Consortium leaderboard
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/AgentConsortiumLeaderboard"
+        "400":
+          $ref: "#/components/responses/AgentError"
+        "404":
+          $ref: "#/components/responses/AgentError"
+
 components:
   securitySchemes:
     AdminBearerAuth:
@@ -1191,7 +1390,282 @@ components:
       type: http
       scheme: bearer
       description: Restricted job trigger token supplied through JOB_RUNNER_SECRET.
+  responses:
+    AgentError:
+      description: Invalid or unresolved agent request
+      content:
+        application/json:
+          schema:
+            $ref: "#/components/schemas/ErrorResponse"
+  parameters:
+    AgentOwner:
+      name: owner
+      in: query
+      required: true
+      description: Exact or unambiguous partial registered owner name.
+      schema: { type: string }
+    AgentSeason:
+      name: season
+      in: query
+      required: true
+      schema: { type: number }
+    AgentCalcuttaId:
+      name: calcuttaId
+      in: query
+      description: Defaults to the season's canonical NFL Calcutta.
+      schema: { type: number }
+    AgentPeriod:
+      name: period
+      in: query
+      schema: { type: number, minimum: 0, maximum: 22 }
+    AgentBasis:
+      name: basis
+      in: query
+      schema: { type: string, enum: [realized, mtm], default: realized }
+    AgentTeam:
+      name: team
+      in: query
+      description: NFL abbreviation, exact name, or unambiguous partial name.
+      schema: { type: string }
+    AgentTeamRequired:
+      name: team
+      in: query
+      required: true
+      description: NFL abbreviation, exact name, or unambiguous partial name.
+      schema: { type: string }
+    AgentWeek:
+      name: week
+      in: query
+      schema: { type: number, minimum: 0, maximum: 22 }
+    AgentDateFrom:
+      name: date_from
+      in: query
+      schema: { type: string, pattern: '^\d{4}-\d{2}-\d{2}$' }
+    AgentDateTo:
+      name: date_to
+      in: query
+      schema: { type: string, pattern: '^\d{4}-\d{2}-\d{2}$' }
+    AgentIncludeMarket:
+      name: include_market
+      in: query
+      schema: { type: boolean, default: false }
+    AgentIncludeProjection:
+      name: include_projection
+      in: query
+      schema: { type: boolean, default: false }
   schemas:
+    AgentPortfolioTeam:
+      type: object
+      required: [team_id, team, abbreviation, ownership_percentage, original_ownership_percentage, cost_basis, trade_paid, trade_received, current_mtm, realized_return, net_mtm, net_return, value_source, wins, losses, ties, point_differential, playoff_status, playoff_seed]
+      properties:
+        team_id: { type: number }
+        team: { type: string }
+        abbreviation: { type: ["string", "null"] }
+        ownership_percentage: { type: number }
+        original_ownership_percentage: { type: number }
+        cost_basis: { type: number }
+        trade_paid: { type: number }
+        trade_received: { type: number }
+        current_mtm: { type: ["number", "null"] }
+        realized_return: { type: ["number", "null"] }
+        net_mtm: { type: ["number", "null"] }
+        net_return: { type: ["number", "null"] }
+        value_source: { type: string, enum: [calculated, legacy, unavailable] }
+        wins: { type: ["number", "null"] }
+        losses: { type: ["number", "null"] }
+        ties: { type: ["number", "null"] }
+        point_differential: { type: ["number", "null"] }
+        playoff_status: { type: ["string", "null"] }
+        playoff_seed: { type: ["number", "null"] }
+    AgentOwnerPortfolio:
+      type: object
+      required: [owner, season, calcutta_id, basis, through_period, total_cost, current_mtm, realized_return, total_return, roi, calculation_status, teams]
+      properties:
+        owner: { type: string }
+        season: { type: number }
+        calcutta_id: { type: number }
+        basis: { type: string, enum: [realized, mtm] }
+        through_period: { type: ["number", "null"] }
+        total_cost: { type: number }
+        current_mtm: { type: ["number", "null"] }
+        realized_return: { type: ["number", "null"] }
+        total_return: { type: ["number", "null"] }
+        roi: { type: ["number", "null"] }
+        calculation_status: { type: string, enum: [calculated, legacy, mixed, unavailable] }
+        teams:
+          type: array
+          items: { $ref: "#/components/schemas/AgentPortfolioTeam" }
+    AgentOwnerSummary:
+      type: object
+      required: [owner, season, calcutta_id, team_count, total_cost, current_mtm, realized_return, total_return, roi, basis, through_period, calculation_status]
+      properties:
+        owner: { type: string }
+        season: { type: number }
+        calcutta_id: { type: number }
+        team_count: { type: number }
+        total_cost: { type: number }
+        current_mtm: { type: ["number", "null"] }
+        realized_return: { type: ["number", "null"] }
+        total_return: { type: ["number", "null"] }
+        roi: { type: ["number", "null"] }
+        basis: { type: string, enum: [realized, mtm] }
+        through_period: { type: ["number", "null"] }
+        calculation_status: { type: string, enum: [calculated, legacy, mixed, unavailable] }
+    AgentOwnerPerformance:
+      type: object
+      required: [owner, season, calcutta_id, basis, through_period, teams, calculation_status]
+      properties:
+        owner: { type: string }
+        season: { type: number }
+        calcutta_id: { type: number }
+        basis: { type: string, enum: [realized, mtm] }
+        through_period: { type: ["number", "null"] }
+        calculation_status: { type: string, enum: [calculated, legacy, mixed, unavailable] }
+        teams:
+          type: array
+          items: { $ref: "#/components/schemas/AgentPortfolioTeam" }
+    AgentMarket:
+      type: ["object", "null"]
+      required: [snapshot_at, source, spread, home_moneyline, away_moneyline, home_implied_probability, away_implied_probability, total]
+      properties:
+        snapshot_at: { type: string, format: date-time }
+        source: { type: string }
+        spread: { type: ["number", "null"] }
+        home_moneyline: { type: ["number", "null"] }
+        away_moneyline: { type: ["number", "null"] }
+        home_implied_probability: { type: ["number", "null"] }
+        away_implied_probability: { type: ["number", "null"] }
+        total: { type: ["number", "null"] }
+    AgentProjection:
+      type: ["object", "null"]
+      required: [snapshot_at, source, model_name, home_win_probability, away_win_probability, projected_home_score, projected_away_score, projected_point_differential]
+      properties:
+        snapshot_at: { type: string, format: date-time }
+        source: { type: string }
+        model_name: { type: string }
+        home_win_probability: { type: ["number", "null"] }
+        away_win_probability: { type: ["number", "null"] }
+        projected_home_score: { type: ["number", "null"] }
+        projected_away_score: { type: ["number", "null"] }
+        projected_point_differential: { type: ["number", "null"] }
+    AgentGame:
+      type: object
+      required: [game_id, source_game_id, database_id, week, date, kickoff_at, timezone, away_team, away_abbreviation, home_team, home_abbreviation, venue, network, status, away_score, home_score, is_marquee, point_diff_multiplier, source, updated_at, market, projection]
+      properties:
+        game_id: { type: string }
+        source_game_id: { type: string }
+        database_id: { type: number }
+        week: { type: number }
+        date: { type: string, format: date }
+        kickoff_at: { type: ["string", "null"] }
+        timezone: { type: string }
+        away_team: { type: string }
+        away_abbreviation: { type: ["string", "null"] }
+        home_team: { type: string }
+        home_abbreviation: { type: ["string", "null"] }
+        venue: { type: ["string", "null"] }
+        network: { type: ["string", "null"] }
+        status: { type: string }
+        away_score: { type: ["number", "null"] }
+        home_score: { type: ["number", "null"] }
+        is_marquee: { type: ["boolean", "null"] }
+        point_diff_multiplier: { type: ["number", "null"] }
+        source: { type: string }
+        updated_at: { type: string, format: date-time }
+        market: { $ref: "#/components/schemas/AgentMarket" }
+        projection: { $ref: "#/components/schemas/AgentProjection" }
+    AgentSchedule:
+      type: object
+      required: [season, calcutta_id, games]
+      properties:
+        season: { type: number }
+        calcutta_id: { type: number }
+        games:
+          type: array
+          items: { $ref: "#/components/schemas/AgentGame" }
+    AgentTeamScheduleGame:
+      allOf:
+        - $ref: "#/components/schemas/AgentGame"
+        - type: object
+          required: [opponent, home_away, current_calcutta_value, projected_ev_impact]
+          properties:
+            opponent: { type: string }
+            home_away: { type: string, enum: [home, away] }
+            current_calcutta_value: { type: ["number", "null"] }
+            projected_ev_impact: { type: ["number", "null"] }
+    AgentTeamSchedule:
+      type: object
+      required: [season, calcutta_id, team, games, ownership, record]
+      properties:
+        season: { type: number }
+        calcutta_id: { type: number }
+        team: { type: string }
+        games:
+          type: array
+          items: { $ref: "#/components/schemas/AgentTeamScheduleGame" }
+        ownership:
+          type: array
+          items:
+            type: object
+            additionalProperties: true
+        record:
+          type: ["object", "null"]
+          additionalProperties: true
+    AgentGameDetail:
+      type: object
+      required: [game, market, projection, calcutta]
+      properties:
+        game: { $ref: "#/components/schemas/AgentGame" }
+        market: { $ref: "#/components/schemas/AgentMarket" }
+        projection: { $ref: "#/components/schemas/AgentProjection" }
+        calcutta:
+          type: object
+          additionalProperties: true
+    AgentPointsRule:
+      type: object
+      required: [rule_name, metric, value, unit, multiplier, description]
+      properties:
+        rule_name: { type: string }
+        metric: { type: string }
+        value: { type: ["number", "null"] }
+        unit: { type: string }
+        multiplier: { type: ["number", "null"] }
+        description: { type: string }
+    AgentPointsRubric:
+      type: object
+      required: [season, calcutta_id, starting_points, rules]
+      properties:
+        season: { type: number }
+        calcutta_id: { type: number }
+        starting_points: { type: number }
+        rules:
+          type: array
+          items: { $ref: "#/components/schemas/AgentPointsRule" }
+    AgentConsortiumLeaderboardRow:
+      type: object
+      required: [rank, consortium, owner_count, total_cost, realized_return, current_mtm, net_return, net_mtm, roi]
+      properties:
+        rank: { type: number }
+        consortium: { type: string }
+        owner_count: { type: number }
+        total_cost: { type: number }
+        realized_return: { type: ["number", "null"] }
+        current_mtm: { type: ["number", "null"] }
+        net_return: { type: ["number", "null"] }
+        net_mtm: { type: ["number", "null"] }
+        roi: { type: ["number", "null"] }
+    AgentConsortiumLeaderboard:
+      type: object
+      required: [season, calcutta_id, basis, through_period, membership_view, rows]
+      properties:
+        season: { type: number }
+        calcutta_id: { type: number }
+        basis: { type: string, enum: [realized, mtm] }
+        through_period: { type: ["number", "null"] }
+        membership_view: { type: string, enum: [historical, current] }
+        rows:
+          type: array
+          items: { $ref: "#/components/schemas/AgentConsortiumLeaderboardRow" }
     HealthStatus:
       type: object
       properties:

@@ -5,6 +5,336 @@
  * NFL Auction Manager API
  * OpenAPI spec version: 0.1.0
  */
+export type AgentPortfolioTeamValueSource = typeof AgentPortfolioTeamValueSource[keyof typeof AgentPortfolioTeamValueSource];
+
+
+export const AgentPortfolioTeamValueSource = {
+  calculated: 'calculated',
+  legacy: 'legacy',
+  unavailable: 'unavailable',
+} as const;
+
+export interface AgentPortfolioTeam {
+  team_id: number;
+  team: string;
+  /** @nullable */
+  abbreviation: string | null;
+  ownership_percentage: number;
+  original_ownership_percentage: number;
+  cost_basis: number;
+  trade_paid: number;
+  trade_received: number;
+  /** @nullable */
+  current_mtm: number | null;
+  /** @nullable */
+  realized_return: number | null;
+  /** @nullable */
+  net_mtm: number | null;
+  /** @nullable */
+  net_return: number | null;
+  value_source: AgentPortfolioTeamValueSource;
+  /** @nullable */
+  wins: number | null;
+  /** @nullable */
+  losses: number | null;
+  /** @nullable */
+  ties: number | null;
+  /** @nullable */
+  point_differential: number | null;
+  /** @nullable */
+  playoff_status: string | null;
+  /** @nullable */
+  playoff_seed: number | null;
+}
+
+export type AgentOwnerPortfolioBasis = typeof AgentOwnerPortfolioBasis[keyof typeof AgentOwnerPortfolioBasis];
+
+
+export const AgentOwnerPortfolioBasis = {
+  realized: 'realized',
+  mtm: 'mtm',
+} as const;
+
+export type AgentOwnerPortfolioCalculationStatus = typeof AgentOwnerPortfolioCalculationStatus[keyof typeof AgentOwnerPortfolioCalculationStatus];
+
+
+export const AgentOwnerPortfolioCalculationStatus = {
+  calculated: 'calculated',
+  legacy: 'legacy',
+  mixed: 'mixed',
+  unavailable: 'unavailable',
+} as const;
+
+export interface AgentOwnerPortfolio {
+  owner: string;
+  season: number;
+  calcutta_id: number;
+  basis: AgentOwnerPortfolioBasis;
+  /** @nullable */
+  through_period: number | null;
+  total_cost: number;
+  /** @nullable */
+  current_mtm: number | null;
+  /** @nullable */
+  realized_return: number | null;
+  /** @nullable */
+  total_return: number | null;
+  /** @nullable */
+  roi: number | null;
+  calculation_status: AgentOwnerPortfolioCalculationStatus;
+  teams: AgentPortfolioTeam[];
+}
+
+export type AgentOwnerSummaryBasis = typeof AgentOwnerSummaryBasis[keyof typeof AgentOwnerSummaryBasis];
+
+
+export const AgentOwnerSummaryBasis = {
+  realized: 'realized',
+  mtm: 'mtm',
+} as const;
+
+export type AgentOwnerSummaryCalculationStatus = typeof AgentOwnerSummaryCalculationStatus[keyof typeof AgentOwnerSummaryCalculationStatus];
+
+
+export const AgentOwnerSummaryCalculationStatus = {
+  calculated: 'calculated',
+  legacy: 'legacy',
+  mixed: 'mixed',
+  unavailable: 'unavailable',
+} as const;
+
+export interface AgentOwnerSummary {
+  owner: string;
+  season: number;
+  calcutta_id: number;
+  team_count: number;
+  total_cost: number;
+  /** @nullable */
+  current_mtm: number | null;
+  /** @nullable */
+  realized_return: number | null;
+  /** @nullable */
+  total_return: number | null;
+  /** @nullable */
+  roi: number | null;
+  basis: AgentOwnerSummaryBasis;
+  /** @nullable */
+  through_period: number | null;
+  calculation_status: AgentOwnerSummaryCalculationStatus;
+}
+
+export type AgentOwnerPerformanceBasis = typeof AgentOwnerPerformanceBasis[keyof typeof AgentOwnerPerformanceBasis];
+
+
+export const AgentOwnerPerformanceBasis = {
+  realized: 'realized',
+  mtm: 'mtm',
+} as const;
+
+export type AgentOwnerPerformanceCalculationStatus = typeof AgentOwnerPerformanceCalculationStatus[keyof typeof AgentOwnerPerformanceCalculationStatus];
+
+
+export const AgentOwnerPerformanceCalculationStatus = {
+  calculated: 'calculated',
+  legacy: 'legacy',
+  mixed: 'mixed',
+  unavailable: 'unavailable',
+} as const;
+
+export interface AgentOwnerPerformance {
+  owner: string;
+  season: number;
+  calcutta_id: number;
+  basis: AgentOwnerPerformanceBasis;
+  /** @nullable */
+  through_period: number | null;
+  calculation_status: AgentOwnerPerformanceCalculationStatus;
+  teams: AgentPortfolioTeam[];
+}
+
+/**
+ * @nullable
+ */
+export type AgentMarket = {
+  snapshot_at: string;
+  source: string;
+  /** @nullable */
+  spread: number | null;
+  /** @nullable */
+  home_moneyline: number | null;
+  /** @nullable */
+  away_moneyline: number | null;
+  /** @nullable */
+  home_implied_probability: number | null;
+  /** @nullable */
+  away_implied_probability: number | null;
+  /** @nullable */
+  total: number | null;
+} | null;
+
+/**
+ * @nullable
+ */
+export type AgentProjection = {
+  snapshot_at: string;
+  source: string;
+  model_name: string;
+  /** @nullable */
+  home_win_probability: number | null;
+  /** @nullable */
+  away_win_probability: number | null;
+  /** @nullable */
+  projected_home_score: number | null;
+  /** @nullable */
+  projected_away_score: number | null;
+  /** @nullable */
+  projected_point_differential: number | null;
+} | null;
+
+export interface AgentGame {
+  game_id: string;
+  source_game_id: string;
+  database_id: number;
+  week: number;
+  date: string;
+  /** @nullable */
+  kickoff_at: string | null;
+  timezone: string;
+  away_team: string;
+  /** @nullable */
+  away_abbreviation: string | null;
+  home_team: string;
+  /** @nullable */
+  home_abbreviation: string | null;
+  /** @nullable */
+  venue: string | null;
+  /** @nullable */
+  network: string | null;
+  status: string;
+  /** @nullable */
+  away_score: number | null;
+  /** @nullable */
+  home_score: number | null;
+  /** @nullable */
+  is_marquee: boolean | null;
+  /** @nullable */
+  point_diff_multiplier: number | null;
+  source: string;
+  updated_at: string;
+  market: AgentMarket | null;
+  projection: AgentProjection | null;
+}
+
+export interface AgentSchedule {
+  season: number;
+  calcutta_id: number;
+  games: AgentGame[];
+}
+
+export type AgentTeamScheduleGameHomeAway = typeof AgentTeamScheduleGameHomeAway[keyof typeof AgentTeamScheduleGameHomeAway];
+
+
+export const AgentTeamScheduleGameHomeAway = {
+  home: 'home',
+  away: 'away',
+} as const;
+
+export type AgentTeamScheduleGame = AgentGame & ({
+  opponent: string;
+  home_away: AgentTeamScheduleGameHomeAway;
+  /** @nullable */
+  current_calcutta_value: number | null;
+  /** @nullable */
+  projected_ev_impact: number | null;
+});
+
+export type AgentTeamScheduleOwnershipItem = { [key: string]: unknown };
+
+/**
+ * @nullable
+ */
+export type AgentTeamScheduleRecord = { [key: string]: unknown } | null;
+
+export interface AgentTeamSchedule {
+  season: number;
+  calcutta_id: number;
+  team: string;
+  games: AgentTeamScheduleGame[];
+  ownership: AgentTeamScheduleOwnershipItem[];
+  /** @nullable */
+  record: AgentTeamScheduleRecord;
+}
+
+export type AgentGameDetailCalcutta = { [key: string]: unknown };
+
+export interface AgentGameDetail {
+  game: AgentGame;
+  market: AgentMarket | null;
+  projection: AgentProjection | null;
+  calcutta: AgentGameDetailCalcutta;
+}
+
+export interface AgentPointsRule {
+  rule_name: string;
+  metric: string;
+  /** @nullable */
+  value: number | null;
+  unit: string;
+  /** @nullable */
+  multiplier: number | null;
+  description: string;
+}
+
+export interface AgentPointsRubric {
+  season: number;
+  calcutta_id: number;
+  starting_points: number;
+  rules: AgentPointsRule[];
+}
+
+export interface AgentConsortiumLeaderboardRow {
+  rank: number;
+  consortium: string;
+  owner_count: number;
+  total_cost: number;
+  /** @nullable */
+  realized_return: number | null;
+  /** @nullable */
+  current_mtm: number | null;
+  /** @nullable */
+  net_return: number | null;
+  /** @nullable */
+  net_mtm: number | null;
+  /** @nullable */
+  roi: number | null;
+}
+
+export type AgentConsortiumLeaderboardBasis = typeof AgentConsortiumLeaderboardBasis[keyof typeof AgentConsortiumLeaderboardBasis];
+
+
+export const AgentConsortiumLeaderboardBasis = {
+  realized: 'realized',
+  mtm: 'mtm',
+} as const;
+
+export type AgentConsortiumLeaderboardMembershipView = typeof AgentConsortiumLeaderboardMembershipView[keyof typeof AgentConsortiumLeaderboardMembershipView];
+
+
+export const AgentConsortiumLeaderboardMembershipView = {
+  historical: 'historical',
+  current: 'current',
+} as const;
+
+export interface AgentConsortiumLeaderboard {
+  season: number;
+  calcutta_id: number;
+  basis: AgentConsortiumLeaderboardBasis;
+  /** @nullable */
+  through_period: number | null;
+  membership_view: AgentConsortiumLeaderboardMembershipView;
+  rows: AgentConsortiumLeaderboardRow[];
+}
+
 export interface HealthStatus {
   status: string;
 }
@@ -1056,6 +1386,53 @@ export interface AuctionImportResult {
   source: string;
 }
 
+/**
+ * Invalid or unresolved agent request
+ */
+export type AgentErrorResponse = ErrorResponse;
+
+/**
+ * Exact or unambiguous partial registered owner name.
+ */
+export type AgentOwnerParameter = string;
+
+export type AgentSeasonParameter = number;
+
+/**
+ * Defaults to the season's canonical NFL Calcutta.
+ */
+export type AgentCalcuttaIdParameter = number;
+
+export type AgentPeriodParameter = number;
+
+export type AgentBasisParameter = typeof AgentBasisParameter[keyof typeof AgentBasisParameter];
+
+
+export const AgentBasisParameter = {
+  realized: 'realized',
+  mtm: 'mtm',
+} as const;
+
+/**
+ * NFL abbreviation, exact name, or unambiguous partial name.
+ */
+export type AgentTeamParameter = string;
+
+/**
+ * NFL abbreviation, exact name, or unambiguous partial name.
+ */
+export type AgentTeamRequiredParameter = string;
+
+export type AgentWeekParameter = number;
+
+export type AgentDateFromParameter = string;
+
+export type AgentDateToParameter = string;
+
+export type AgentIncludeMarketParameter = boolean;
+
+export type AgentIncludeProjectionParameter = boolean;
+
 export type GetTeamsParams = {
 conference?: GetTeamsConference;
 division?: GetTeamsDivision;
@@ -1290,4 +1667,164 @@ season: number;
  */
 calcuttaId?: number | null;
 };
+
+export type GetOwnerPortfolioV2Params = {
+/**
+ * Exact or unambiguous partial registered owner name.
+ */
+owner: AgentOwnerParameter;
+season: AgentSeasonParameter;
+/**
+ * Defaults to the season's canonical NFL Calcutta.
+ */
+calcuttaId?: AgentCalcuttaIdParameter;
+/**
+ * @minimum 0
+ * @maximum 22
+ */
+period?: AgentPeriodParameter;
+basis?: AgentBasisParameter;
+};
+
+export type GetOwnerSummaryV2Params = {
+/**
+ * Exact or unambiguous partial registered owner name.
+ */
+owner: AgentOwnerParameter;
+season: AgentSeasonParameter;
+/**
+ * Defaults to the season's canonical NFL Calcutta.
+ */
+calcuttaId?: AgentCalcuttaIdParameter;
+/**
+ * @minimum 0
+ * @maximum 22
+ */
+period?: AgentPeriodParameter;
+basis?: AgentBasisParameter;
+};
+
+export type GetOwnerPortfolioPerformanceV2Params = {
+/**
+ * Exact or unambiguous partial registered owner name.
+ */
+owner: AgentOwnerParameter;
+season: AgentSeasonParameter;
+/**
+ * Defaults to the season's canonical NFL Calcutta.
+ */
+calcuttaId?: AgentCalcuttaIdParameter;
+/**
+ * @minimum 0
+ * @maximum 22
+ */
+period?: AgentPeriodParameter;
+basis?: AgentBasisParameter;
+};
+
+export type GetScheduleV2Params = {
+season: AgentSeasonParameter;
+/**
+ * Defaults to the season's canonical NFL Calcutta.
+ */
+calcuttaId?: AgentCalcuttaIdParameter;
+/**
+ * NFL abbreviation, exact name, or unambiguous partial name.
+ */
+team?: AgentTeamParameter;
+/**
+ * @minimum 0
+ * @maximum 22
+ */
+week?: AgentWeekParameter;
+/**
+ * @pattern ^\d{4}-\d{2}-\d{2}$
+ */
+date_from?: AgentDateFromParameter;
+/**
+ * @pattern ^\d{4}-\d{2}-\d{2}$
+ */
+date_to?: AgentDateToParameter;
+include_market?: AgentIncludeMarketParameter;
+include_projection?: AgentIncludeProjectionParameter;
+};
+
+export type GetTeamScheduleV2Params = {
+season: AgentSeasonParameter;
+/**
+ * Defaults to the season's canonical NFL Calcutta.
+ */
+calcuttaId?: AgentCalcuttaIdParameter;
+/**
+ * NFL abbreviation, exact name, or unambiguous partial name.
+ */
+team: AgentTeamRequiredParameter;
+/**
+ * @minimum 0
+ * @maximum 22
+ */
+week?: AgentWeekParameter;
+/**
+ * @pattern ^\d{4}-\d{2}-\d{2}$
+ */
+date_from?: AgentDateFromParameter;
+/**
+ * @pattern ^\d{4}-\d{2}-\d{2}$
+ */
+date_to?: AgentDateToParameter;
+include_market?: AgentIncludeMarketParameter;
+include_projection?: AgentIncludeProjectionParameter;
+/**
+ * @minimum 0
+ * @maximum 22
+ */
+period?: AgentPeriodParameter;
+basis?: AgentBasisParameter;
+};
+
+export type GetGameV2Params = {
+game_id: string;
+season: AgentSeasonParameter;
+/**
+ * Defaults to the season's canonical NFL Calcutta.
+ */
+calcuttaId?: AgentCalcuttaIdParameter;
+/**
+ * @minimum 0
+ * @maximum 22
+ */
+period?: AgentPeriodParameter;
+basis?: AgentBasisParameter;
+};
+
+export type GetPointsRubricV2Params = {
+season: AgentSeasonParameter;
+/**
+ * Defaults to the season's canonical NFL Calcutta.
+ */
+calcuttaId?: AgentCalcuttaIdParameter;
+};
+
+export type GetConsortiumLeaderboardV2Params = {
+season: AgentSeasonParameter;
+/**
+ * Defaults to the season's canonical NFL Calcutta.
+ */
+calcuttaId?: AgentCalcuttaIdParameter;
+/**
+ * @minimum 0
+ * @maximum 22
+ */
+period?: AgentPeriodParameter;
+basis?: AgentBasisParameter;
+membershipView?: GetConsortiumLeaderboardV2MembershipView;
+};
+
+export type GetConsortiumLeaderboardV2MembershipView = typeof GetConsortiumLeaderboardV2MembershipView[keyof typeof GetConsortiumLeaderboardV2MembershipView];
+
+
+export const GetConsortiumLeaderboardV2MembershipView = {
+  historical: 'historical',
+  current: 'current',
+} as const;
 

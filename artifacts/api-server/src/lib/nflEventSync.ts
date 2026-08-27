@@ -22,7 +22,7 @@ import {
 const ESPN_SCOREBOARD_URL =
   "https://site.api.espn.com/apis/site/v2/sports/football/nfl/scoreboard";
 const EXPECTED_REGULAR_SEASON_GAMES = 272;
-const TEAM_ABBREVIATION_ALIASES: Record<string, string> = {
+export const TEAM_ABBREVIATION_ALIASES: Record<string, string> = {
   ARI: "Arizona Cardinals", ATL: "Atlanta Falcons", BAL: "Baltimore Ravens",
   BUF: "Buffalo Bills", CAR: "Carolina Panthers", CHI: "Chicago Bears",
   CIN: "Cincinnati Bengals", CLE: "Cleveland Browns", DAL: "Dallas Cowboys",

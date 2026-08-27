@@ -1221,3 +1221,431 @@ export const ImportDraftOrderResponse = zod.object({
 })
 
 
+/**
+ * @summary Return every current signed position for one owner
+ */
+export const getOwnerPortfolioV2QueryPeriodMin = 0;
+export const getOwnerPortfolioV2QueryPeriodMax = 22;
+
+export const getOwnerPortfolioV2QueryBasisDefault = `realized`;
+
+export const GetOwnerPortfolioV2QueryParams = zod.object({
+  "owner": zod.coerce.string().describe('Exact or unambiguous partial registered owner name.'),
+  "season": zod.coerce.number(),
+  "calcuttaId": zod.coerce.number().optional().describe('Defaults to the season\'s canonical NFL Calcutta.'),
+  "period": zod.coerce.number().min(getOwnerPortfolioV2QueryPeriodMin).max(getOwnerPortfolioV2QueryPeriodMax).optional(),
+  "basis": zod.enum(['realized', 'mtm']).default(getOwnerPortfolioV2QueryBasisDefault)
+})
+
+export const GetOwnerPortfolioV2Response = zod.object({
+  "owner": zod.string(),
+  "season": zod.number(),
+  "calcutta_id": zod.number(),
+  "basis": zod.enum(['realized', 'mtm']),
+  "through_period": zod.number().nullable(),
+  "total_cost": zod.number(),
+  "current_mtm": zod.number().nullable(),
+  "realized_return": zod.number().nullable(),
+  "total_return": zod.number().nullable(),
+  "roi": zod.number().nullable(),
+  "calculation_status": zod.enum(['calculated', 'legacy', 'mixed', 'unavailable']),
+  "teams": zod.array(zod.object({
+  "team_id": zod.number(),
+  "team": zod.string(),
+  "abbreviation": zod.string().nullable(),
+  "ownership_percentage": zod.number(),
+  "original_ownership_percentage": zod.number(),
+  "cost_basis": zod.number(),
+  "trade_paid": zod.number(),
+  "trade_received": zod.number(),
+  "current_mtm": zod.number().nullable(),
+  "realized_return": zod.number().nullable(),
+  "net_mtm": zod.number().nullable(),
+  "net_return": zod.number().nullable(),
+  "value_source": zod.enum(['calculated', 'legacy', 'unavailable']),
+  "wins": zod.number().nullable(),
+  "losses": zod.number().nullable(),
+  "ties": zod.number().nullable(),
+  "point_differential": zod.number().nullable(),
+  "playoff_status": zod.string().nullable(),
+  "playoff_seed": zod.number().nullable()
+}))
+})
+
+
+/**
+ * @summary Return owner portfolio totals
+ */
+export const getOwnerSummaryV2QueryPeriodMin = 0;
+export const getOwnerSummaryV2QueryPeriodMax = 22;
+
+export const getOwnerSummaryV2QueryBasisDefault = `realized`;
+
+export const GetOwnerSummaryV2QueryParams = zod.object({
+  "owner": zod.coerce.string().describe('Exact or unambiguous partial registered owner name.'),
+  "season": zod.coerce.number(),
+  "calcuttaId": zod.coerce.number().optional().describe('Defaults to the season\'s canonical NFL Calcutta.'),
+  "period": zod.coerce.number().min(getOwnerSummaryV2QueryPeriodMin).max(getOwnerSummaryV2QueryPeriodMax).optional(),
+  "basis": zod.enum(['realized', 'mtm']).default(getOwnerSummaryV2QueryBasisDefault)
+})
+
+export const GetOwnerSummaryV2Response = zod.object({
+  "owner": zod.string(),
+  "season": zod.number(),
+  "calcutta_id": zod.number(),
+  "team_count": zod.number(),
+  "total_cost": zod.number(),
+  "current_mtm": zod.number().nullable(),
+  "realized_return": zod.number().nullable(),
+  "total_return": zod.number().nullable(),
+  "roi": zod.number().nullable(),
+  "basis": zod.enum(['realized', 'mtm']),
+  "through_period": zod.number().nullable(),
+  "calculation_status": zod.enum(['calculated', 'legacy', 'mixed', 'unavailable'])
+})
+
+
+/**
+ * @summary Return team-by-team owner performance
+ */
+export const getOwnerPortfolioPerformanceV2QueryPeriodMin = 0;
+export const getOwnerPortfolioPerformanceV2QueryPeriodMax = 22;
+
+export const getOwnerPortfolioPerformanceV2QueryBasisDefault = `realized`;
+
+export const GetOwnerPortfolioPerformanceV2QueryParams = zod.object({
+  "owner": zod.coerce.string().describe('Exact or unambiguous partial registered owner name.'),
+  "season": zod.coerce.number(),
+  "calcuttaId": zod.coerce.number().optional().describe('Defaults to the season\'s canonical NFL Calcutta.'),
+  "period": zod.coerce.number().min(getOwnerPortfolioPerformanceV2QueryPeriodMin).max(getOwnerPortfolioPerformanceV2QueryPeriodMax).optional(),
+  "basis": zod.enum(['realized', 'mtm']).default(getOwnerPortfolioPerformanceV2QueryBasisDefault)
+})
+
+export const GetOwnerPortfolioPerformanceV2Response = zod.object({
+  "owner": zod.string(),
+  "season": zod.number(),
+  "calcutta_id": zod.number(),
+  "basis": zod.enum(['realized', 'mtm']),
+  "through_period": zod.number().nullable(),
+  "calculation_status": zod.enum(['calculated', 'legacy', 'mixed', 'unavailable']),
+  "teams": zod.array(zod.object({
+  "team_id": zod.number(),
+  "team": zod.string(),
+  "abbreviation": zod.string().nullable(),
+  "ownership_percentage": zod.number(),
+  "original_ownership_percentage": zod.number(),
+  "cost_basis": zod.number(),
+  "trade_paid": zod.number(),
+  "trade_received": zod.number(),
+  "current_mtm": zod.number().nullable(),
+  "realized_return": zod.number().nullable(),
+  "net_mtm": zod.number().nullable(),
+  "net_return": zod.number().nullable(),
+  "value_source": zod.enum(['calculated', 'legacy', 'unavailable']),
+  "wins": zod.number().nullable(),
+  "losses": zod.number().nullable(),
+  "ties": zod.number().nullable(),
+  "point_differential": zod.number().nullable(),
+  "playoff_status": zod.string().nullable(),
+  "playoff_seed": zod.number().nullable()
+}))
+})
+
+
+/**
+ * @summary Return canonical NFL games matching optional filters
+ */
+export const getScheduleV2QueryWeekMin = 0;
+export const getScheduleV2QueryWeekMax = 22;
+
+export const getScheduleV2QueryDateFromRegExp = new RegExp('^\\d{4}-\\d{2}-\\d{2}$');
+export const getScheduleV2QueryDateToRegExp = new RegExp('^\\d{4}-\\d{2}-\\d{2}$');
+export const getScheduleV2QueryIncludeMarketDefault = false;
+export const getScheduleV2QueryIncludeProjectionDefault = false;
+
+export const GetScheduleV2QueryParams = zod.object({
+  "season": zod.coerce.number(),
+  "calcuttaId": zod.coerce.number().optional().describe('Defaults to the season\'s canonical NFL Calcutta.'),
+  "team": zod.coerce.string().optional().describe('NFL abbreviation, exact name, or unambiguous partial name.'),
+  "week": zod.coerce.number().min(getScheduleV2QueryWeekMin).max(getScheduleV2QueryWeekMax).optional(),
+  "date_from": zod.coerce.string().regex(getScheduleV2QueryDateFromRegExp).optional(),
+  "date_to": zod.coerce.string().regex(getScheduleV2QueryDateToRegExp).optional(),
+  "include_market": zod.coerce.boolean().default(getScheduleV2QueryIncludeMarketDefault),
+  "include_projection": zod.coerce.boolean().default(getScheduleV2QueryIncludeProjectionDefault)
+})
+
+export const GetScheduleV2Response = zod.object({
+  "season": zod.number(),
+  "calcutta_id": zod.number(),
+  "games": zod.array(zod.object({
+  "game_id": zod.string(),
+  "source_game_id": zod.string(),
+  "database_id": zod.number(),
+  "week": zod.number(),
+  "date": zod.coerce.date(),
+  "kickoff_at": zod.string().nullable(),
+  "timezone": zod.string(),
+  "away_team": zod.string(),
+  "away_abbreviation": zod.string().nullable(),
+  "home_team": zod.string(),
+  "home_abbreviation": zod.string().nullable(),
+  "venue": zod.string().nullable(),
+  "network": zod.string().nullable(),
+  "status": zod.string(),
+  "away_score": zod.number().nullable(),
+  "home_score": zod.number().nullable(),
+  "is_marquee": zod.boolean().nullable(),
+  "point_diff_multiplier": zod.number().nullable(),
+  "source": zod.string(),
+  "updated_at": zod.coerce.date(),
+  "market": zod.object({
+  "snapshot_at": zod.coerce.date(),
+  "source": zod.string(),
+  "spread": zod.number().nullable(),
+  "home_moneyline": zod.number().nullable(),
+  "away_moneyline": zod.number().nullable(),
+  "home_implied_probability": zod.number().nullable(),
+  "away_implied_probability": zod.number().nullable(),
+  "total": zod.number().nullable()
+}).nullable(),
+  "projection": zod.object({
+  "snapshot_at": zod.coerce.date(),
+  "source": zod.string(),
+  "model_name": zod.string(),
+  "home_win_probability": zod.number().nullable(),
+  "away_win_probability": zod.number().nullable(),
+  "projected_home_score": zod.number().nullable(),
+  "projected_away_score": zod.number().nullable(),
+  "projected_point_differential": zod.number().nullable()
+}).nullable()
+}))
+})
+
+
+/**
+ * @summary Return one NFL team's schedule and current Calcutta context
+ */
+export const getTeamScheduleV2QueryWeekMin = 0;
+export const getTeamScheduleV2QueryWeekMax = 22;
+
+export const getTeamScheduleV2QueryDateFromRegExp = new RegExp('^\\d{4}-\\d{2}-\\d{2}$');
+export const getTeamScheduleV2QueryDateToRegExp = new RegExp('^\\d{4}-\\d{2}-\\d{2}$');
+export const getTeamScheduleV2QueryIncludeMarketDefault = false;
+export const getTeamScheduleV2QueryIncludeProjectionDefault = false;
+export const getTeamScheduleV2QueryPeriodMin = 0;
+export const getTeamScheduleV2QueryPeriodMax = 22;
+
+export const getTeamScheduleV2QueryBasisDefault = `realized`;
+
+export const GetTeamScheduleV2QueryParams = zod.object({
+  "season": zod.coerce.number(),
+  "calcuttaId": zod.coerce.number().optional().describe('Defaults to the season\'s canonical NFL Calcutta.'),
+  "team": zod.coerce.string().describe('NFL abbreviation, exact name, or unambiguous partial name.'),
+  "week": zod.coerce.number().min(getTeamScheduleV2QueryWeekMin).max(getTeamScheduleV2QueryWeekMax).optional(),
+  "date_from": zod.coerce.string().regex(getTeamScheduleV2QueryDateFromRegExp).optional(),
+  "date_to": zod.coerce.string().regex(getTeamScheduleV2QueryDateToRegExp).optional(),
+  "include_market": zod.coerce.boolean().default(getTeamScheduleV2QueryIncludeMarketDefault),
+  "include_projection": zod.coerce.boolean().default(getTeamScheduleV2QueryIncludeProjectionDefault),
+  "period": zod.coerce.number().min(getTeamScheduleV2QueryPeriodMin).max(getTeamScheduleV2QueryPeriodMax).optional(),
+  "basis": zod.enum(['realized', 'mtm']).default(getTeamScheduleV2QueryBasisDefault)
+})
+
+export const GetTeamScheduleV2Response = zod.object({
+  "season": zod.number(),
+  "calcutta_id": zod.number(),
+  "team": zod.string(),
+  "games": zod.array(zod.object({
+  "game_id": zod.string(),
+  "source_game_id": zod.string(),
+  "database_id": zod.number(),
+  "week": zod.number(),
+  "date": zod.coerce.date(),
+  "kickoff_at": zod.string().nullable(),
+  "timezone": zod.string(),
+  "away_team": zod.string(),
+  "away_abbreviation": zod.string().nullable(),
+  "home_team": zod.string(),
+  "home_abbreviation": zod.string().nullable(),
+  "venue": zod.string().nullable(),
+  "network": zod.string().nullable(),
+  "status": zod.string(),
+  "away_score": zod.number().nullable(),
+  "home_score": zod.number().nullable(),
+  "is_marquee": zod.boolean().nullable(),
+  "point_diff_multiplier": zod.number().nullable(),
+  "source": zod.string(),
+  "updated_at": zod.coerce.date(),
+  "market": zod.object({
+  "snapshot_at": zod.coerce.date(),
+  "source": zod.string(),
+  "spread": zod.number().nullable(),
+  "home_moneyline": zod.number().nullable(),
+  "away_moneyline": zod.number().nullable(),
+  "home_implied_probability": zod.number().nullable(),
+  "away_implied_probability": zod.number().nullable(),
+  "total": zod.number().nullable()
+}).nullable(),
+  "projection": zod.object({
+  "snapshot_at": zod.coerce.date(),
+  "source": zod.string(),
+  "model_name": zod.string(),
+  "home_win_probability": zod.number().nullable(),
+  "away_win_probability": zod.number().nullable(),
+  "projected_home_score": zod.number().nullable(),
+  "projected_away_score": zod.number().nullable(),
+  "projected_point_differential": zod.number().nullable()
+}).nullable()
+}).and(zod.object({
+  "opponent": zod.string(),
+  "home_away": zod.enum(['home', 'away']),
+  "current_calcutta_value": zod.number().nullable(),
+  "projected_ev_impact": zod.number().nullable()
+}))),
+  "ownership": zod.array(zod.record(zod.string(), zod.unknown())),
+  "record": zod.record(zod.string(), zod.unknown()).nullable()
+})
+
+
+/**
+ * @summary Return complete known information for one canonical NFL game
+ */
+export const getGameV2QueryPeriodMin = 0;
+export const getGameV2QueryPeriodMax = 22;
+
+export const getGameV2QueryBasisDefault = `realized`;
+
+export const GetGameV2QueryParams = zod.object({
+  "game_id": zod.coerce.string(),
+  "season": zod.coerce.number(),
+  "calcuttaId": zod.coerce.number().optional().describe('Defaults to the season\'s canonical NFL Calcutta.'),
+  "period": zod.coerce.number().min(getGameV2QueryPeriodMin).max(getGameV2QueryPeriodMax).optional(),
+  "basis": zod.enum(['realized', 'mtm']).default(getGameV2QueryBasisDefault)
+})
+
+export const GetGameV2Response = zod.object({
+  "game": zod.object({
+  "game_id": zod.string(),
+  "source_game_id": zod.string(),
+  "database_id": zod.number(),
+  "week": zod.number(),
+  "date": zod.coerce.date(),
+  "kickoff_at": zod.string().nullable(),
+  "timezone": zod.string(),
+  "away_team": zod.string(),
+  "away_abbreviation": zod.string().nullable(),
+  "home_team": zod.string(),
+  "home_abbreviation": zod.string().nullable(),
+  "venue": zod.string().nullable(),
+  "network": zod.string().nullable(),
+  "status": zod.string(),
+  "away_score": zod.number().nullable(),
+  "home_score": zod.number().nullable(),
+  "is_marquee": zod.boolean().nullable(),
+  "point_diff_multiplier": zod.number().nullable(),
+  "source": zod.string(),
+  "updated_at": zod.coerce.date(),
+  "market": zod.object({
+  "snapshot_at": zod.coerce.date(),
+  "source": zod.string(),
+  "spread": zod.number().nullable(),
+  "home_moneyline": zod.number().nullable(),
+  "away_moneyline": zod.number().nullable(),
+  "home_implied_probability": zod.number().nullable(),
+  "away_implied_probability": zod.number().nullable(),
+  "total": zod.number().nullable()
+}).nullable(),
+  "projection": zod.object({
+  "snapshot_at": zod.coerce.date(),
+  "source": zod.string(),
+  "model_name": zod.string(),
+  "home_win_probability": zod.number().nullable(),
+  "away_win_probability": zod.number().nullable(),
+  "projected_home_score": zod.number().nullable(),
+  "projected_away_score": zod.number().nullable(),
+  "projected_point_differential": zod.number().nullable()
+}).nullable()
+}),
+  "market": zod.object({
+  "snapshot_at": zod.coerce.date(),
+  "source": zod.string(),
+  "spread": zod.number().nullable(),
+  "home_moneyline": zod.number().nullable(),
+  "away_moneyline": zod.number().nullable(),
+  "home_implied_probability": zod.number().nullable(),
+  "away_implied_probability": zod.number().nullable(),
+  "total": zod.number().nullable()
+}).nullable(),
+  "projection": zod.object({
+  "snapshot_at": zod.coerce.date(),
+  "source": zod.string(),
+  "model_name": zod.string(),
+  "home_win_probability": zod.number().nullable(),
+  "away_win_probability": zod.number().nullable(),
+  "projected_home_score": zod.number().nullable(),
+  "projected_away_score": zod.number().nullable(),
+  "projected_point_differential": zod.number().nullable()
+}).nullable(),
+  "calcutta": zod.record(zod.string(), zod.unknown())
+})
+
+
+/**
+ * @summary Return the authoritative selected-Calcutta scoring rubric
+ */
+export const GetPointsRubricV2QueryParams = zod.object({
+  "season": zod.coerce.number(),
+  "calcuttaId": zod.coerce.number().optional().describe('Defaults to the season\'s canonical NFL Calcutta.')
+})
+
+export const GetPointsRubricV2Response = zod.object({
+  "season": zod.number(),
+  "calcutta_id": zod.number(),
+  "starting_points": zod.number(),
+  "rules": zod.array(zod.object({
+  "rule_name": zod.string(),
+  "metric": zod.string(),
+  "value": zod.number().nullable(),
+  "unit": zod.string(),
+  "multiplier": zod.number().nullable(),
+  "description": zod.string()
+}))
+})
+
+
+/**
+ * @summary Return a selected-Calcutta consortium leaderboard
+ */
+export const getConsortiumLeaderboardV2QueryPeriodMin = 0;
+export const getConsortiumLeaderboardV2QueryPeriodMax = 22;
+
+export const getConsortiumLeaderboardV2QueryBasisDefault = `realized`;
+export const getConsortiumLeaderboardV2QueryMembershipViewDefault = `historical`;
+
+export const GetConsortiumLeaderboardV2QueryParams = zod.object({
+  "season": zod.coerce.number(),
+  "calcuttaId": zod.coerce.number().optional().describe('Defaults to the season\'s canonical NFL Calcutta.'),
+  "period": zod.coerce.number().min(getConsortiumLeaderboardV2QueryPeriodMin).max(getConsortiumLeaderboardV2QueryPeriodMax).optional(),
+  "basis": zod.enum(['realized', 'mtm']).default(getConsortiumLeaderboardV2QueryBasisDefault),
+  "membershipView": zod.enum(['historical', 'current']).default(getConsortiumLeaderboardV2QueryMembershipViewDefault)
+})
+
+export const GetConsortiumLeaderboardV2Response = zod.object({
+  "season": zod.number(),
+  "calcutta_id": zod.number(),
+  "basis": zod.enum(['realized', 'mtm']),
+  "through_period": zod.number().nullable(),
+  "membership_view": zod.enum(['historical', 'current']),
+  "rows": zod.array(zod.object({
+  "rank": zod.number(),
+  "consortium": zod.string(),
+  "owner_count": zod.number(),
+  "total_cost": zod.number(),
+  "realized_return": zod.number().nullable(),
+  "current_mtm": zod.number().nullable(),
+  "net_return": zod.number().nullable(),
+  "net_mtm": zod.number().nullable(),
+  "roi": zod.number().nullable()
+}))
+})
+
+

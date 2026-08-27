@@ -20,6 +20,15 @@ import type {
 } from '@tanstack/react-query';
 
 import type {
+  AgentConsortiumLeaderboard,
+  AgentErrorResponse,
+  AgentGameDetail,
+  AgentOwnerPerformance,
+  AgentOwnerPortfolio,
+  AgentOwnerSummary,
+  AgentPointsRubric,
+  AgentSchedule,
+  AgentTeamSchedule,
   AuctionImportInput,
   AuctionImportResult,
   AuctionSummary,
@@ -32,13 +41,21 @@ import type {
   ErrorResponse,
   GetAuctionSummaryParams,
   GetBiddersParams,
+  GetConsortiumLeaderboardV2Params,
+  GetGameV2Params,
   GetMtmSnapshotsParams,
+  GetOwnerPortfolioPerformanceV2Params,
+  GetOwnerPortfolioV2Params,
+  GetOwnerSummaryV2Params,
   GetPayoutRulesParams,
+  GetPointsRubricV2Params,
   GetResultsAvailabilityParams,
   GetResultsByOwnerParams,
   GetResultsCompareParams,
   GetResultsParams,
+  GetScheduleV2Params,
   GetSportPeriodsParams,
+  GetTeamScheduleV2Params,
   GetTeamsParams,
   GetTradesParams,
   HealthStatus,
@@ -171,13 +188,6 @@ export function useHealthCheck<TData = Awaited<ReturnType<typeof healthCheck>>, 
 
   return withQueryKey(query, queryOptions.queryKey);
 }
-
-
-
-
-
-
-
 export const getGetSeasonsUrl = () => {
 
 
@@ -248,13 +258,6 @@ export function useGetSeasons<TData = Awaited<ReturnType<typeof getSeasons>>, TE
 
   return withQueryKey(query, queryOptions.queryKey);
 }
-
-
-
-
-
-
-
 export const getCreateSeasonUrl = () => {
 
 
@@ -403,13 +406,6 @@ export function useGetTeams<TData = Awaited<ReturnType<typeof getTeams>>, TError
 
   return withQueryKey(query, queryOptions.queryKey);
 }
-
-
-
-
-
-
-
 export const getCreateTeamUrl = () => {
 
 
@@ -2981,3 +2977,668 @@ export const useImportDraftOrder = <TError = ErrorType<ErrorResponse>,
       return useMutation(getImportDraftOrderMutationOptions(options));
     }
 
+export const getGetOwnerPortfolioV2Url = (params: GetOwnerPortfolioV2Params,) => {
+  const normalizedParams = new URLSearchParams();
+
+  Object.entries(params || {}).forEach(([key, value]) => {
+
+    if (value !== undefined) {
+      normalizedParams.append(key, value === null ? 'null' : String(value))
+    }
+  });
+
+  const stringifiedParams = normalizedParams.toString();
+
+  return stringifiedParams.length > 0 ? `/api/v2/owner/portfolio?${stringifiedParams}` : `/api/v2/owner/portfolio`
+}
+
+/**
+ * @summary Return every current signed position for one owner
+ */
+export const getOwnerPortfolioV2 = async (params: GetOwnerPortfolioV2Params, options?: Parameters<typeof customFetch>[1]): Promise<AgentOwnerPortfolio> => {
+
+  return customFetch<AgentOwnerPortfolio>(getGetOwnerPortfolioV2Url(params),
+  {
+    ...options,
+    method: 'GET'
+
+
+  }
+);}
+
+
+
+
+
+export const getGetOwnerPortfolioV2QueryKey = (params?: GetOwnerPortfolioV2Params,) => {
+    return [
+    `/api/v2/owner/portfolio`, ...(params ? [params] : [])
+    ] as const;
+    }
+
+
+export const getGetOwnerPortfolioV2QueryOptions = <TData = Awaited<ReturnType<typeof getOwnerPortfolioV2>>, TError = ErrorType<AgentErrorResponse>>(params: GetOwnerPortfolioV2Params, options?: { query?:UseQueryOptions<Awaited<ReturnType<typeof getOwnerPortfolioV2>>, TError, TData>, request?: SecondParameter<typeof customFetch>}
+) => {
+
+const {query: queryOptions, request: requestOptions} = options ?? {};
+
+  const queryKey =  queryOptions?.queryKey ?? getGetOwnerPortfolioV2QueryKey(params);
+
+
+
+    const queryFn: QueryFunction<Awaited<ReturnType<typeof getOwnerPortfolioV2>>> = ({ signal }) => getOwnerPortfolioV2(params, { signal, ...requestOptions });
+
+
+
+
+
+   return  { queryKey, queryFn, ...queryOptions} as UseQueryOptions<Awaited<ReturnType<typeof getOwnerPortfolioV2>>, TError, TData> & { queryKey: QueryKey }
+}
+
+export type GetOwnerPortfolioV2QueryResult = NonNullable<Awaited<ReturnType<typeof getOwnerPortfolioV2>>>
+export type GetOwnerPortfolioV2QueryError = ErrorType<AgentErrorResponse>
+
+
+/**
+ * @summary Return every current signed position for one owner
+ */
+
+export function useGetOwnerPortfolioV2<TData = Awaited<ReturnType<typeof getOwnerPortfolioV2>>, TError = ErrorType<AgentErrorResponse>>(
+ params: GetOwnerPortfolioV2Params, options?: { query?:UseQueryOptions<Awaited<ReturnType<typeof getOwnerPortfolioV2>>, TError, TData>, request?: SecondParameter<typeof customFetch>}
+
+ ):  UseQueryResult<TData, TError> & { queryKey: QueryKey } {
+
+  const queryOptions = getGetOwnerPortfolioV2QueryOptions(params,options)
+
+  const query = useQuery(queryOptions) as  UseQueryResult<TData, TError> & { queryKey: QueryKey };
+
+  return withQueryKey(query, queryOptions.queryKey);
+}
+
+
+
+
+
+
+
+export const getGetOwnerSummaryV2Url = (params: GetOwnerSummaryV2Params,) => {
+  const normalizedParams = new URLSearchParams();
+
+  Object.entries(params || {}).forEach(([key, value]) => {
+
+    if (value !== undefined) {
+      normalizedParams.append(key, value === null ? 'null' : String(value))
+    }
+  });
+
+  const stringifiedParams = normalizedParams.toString();
+
+  return stringifiedParams.length > 0 ? `/api/v2/owner/summary?${stringifiedParams}` : `/api/v2/owner/summary`
+}
+
+/**
+ * @summary Return owner portfolio totals
+ */
+export const getOwnerSummaryV2 = async (params: GetOwnerSummaryV2Params, options?: Parameters<typeof customFetch>[1]): Promise<AgentOwnerSummary> => {
+
+  return customFetch<AgentOwnerSummary>(getGetOwnerSummaryV2Url(params),
+  {
+    ...options,
+    method: 'GET'
+
+
+  }
+);}
+
+
+
+
+
+export const getGetOwnerSummaryV2QueryKey = (params?: GetOwnerSummaryV2Params,) => {
+    return [
+    `/api/v2/owner/summary`, ...(params ? [params] : [])
+    ] as const;
+    }
+
+
+export const getGetOwnerSummaryV2QueryOptions = <TData = Awaited<ReturnType<typeof getOwnerSummaryV2>>, TError = ErrorType<AgentErrorResponse>>(params: GetOwnerSummaryV2Params, options?: { query?:UseQueryOptions<Awaited<ReturnType<typeof getOwnerSummaryV2>>, TError, TData>, request?: SecondParameter<typeof customFetch>}
+) => {
+
+const {query: queryOptions, request: requestOptions} = options ?? {};
+
+  const queryKey =  queryOptions?.queryKey ?? getGetOwnerSummaryV2QueryKey(params);
+
+
+
+    const queryFn: QueryFunction<Awaited<ReturnType<typeof getOwnerSummaryV2>>> = ({ signal }) => getOwnerSummaryV2(params, { signal, ...requestOptions });
+
+
+
+
+
+   return  { queryKey, queryFn, ...queryOptions} as UseQueryOptions<Awaited<ReturnType<typeof getOwnerSummaryV2>>, TError, TData> & { queryKey: QueryKey }
+}
+
+export type GetOwnerSummaryV2QueryResult = NonNullable<Awaited<ReturnType<typeof getOwnerSummaryV2>>>
+export type GetOwnerSummaryV2QueryError = ErrorType<AgentErrorResponse>
+
+
+/**
+ * @summary Return owner portfolio totals
+ */
+
+export function useGetOwnerSummaryV2<TData = Awaited<ReturnType<typeof getOwnerSummaryV2>>, TError = ErrorType<AgentErrorResponse>>(
+ params: GetOwnerSummaryV2Params, options?: { query?:UseQueryOptions<Awaited<ReturnType<typeof getOwnerSummaryV2>>, TError, TData>, request?: SecondParameter<typeof customFetch>}
+
+ ):  UseQueryResult<TData, TError> & { queryKey: QueryKey } {
+
+  const queryOptions = getGetOwnerSummaryV2QueryOptions(params,options)
+
+  const query = useQuery(queryOptions) as  UseQueryResult<TData, TError> & { queryKey: QueryKey };
+
+  return withQueryKey(query, queryOptions.queryKey);
+}
+
+
+
+
+
+
+
+export const getGetOwnerPortfolioPerformanceV2Url = (params: GetOwnerPortfolioPerformanceV2Params,) => {
+  const normalizedParams = new URLSearchParams();
+
+  Object.entries(params || {}).forEach(([key, value]) => {
+
+    if (value !== undefined) {
+      normalizedParams.append(key, value === null ? 'null' : String(value))
+    }
+  });
+
+  const stringifiedParams = normalizedParams.toString();
+
+  return stringifiedParams.length > 0 ? `/api/v2/owner/portfolio/performance?${stringifiedParams}` : `/api/v2/owner/portfolio/performance`
+}
+
+/**
+ * @summary Return team-by-team owner performance
+ */
+export const getOwnerPortfolioPerformanceV2 = async (params: GetOwnerPortfolioPerformanceV2Params, options?: Parameters<typeof customFetch>[1]): Promise<AgentOwnerPerformance> => {
+
+  return customFetch<AgentOwnerPerformance>(getGetOwnerPortfolioPerformanceV2Url(params),
+  {
+    ...options,
+    method: 'GET'
+
+
+  }
+);}
+
+
+
+
+
+export const getGetOwnerPortfolioPerformanceV2QueryKey = (params?: GetOwnerPortfolioPerformanceV2Params,) => {
+    return [
+    `/api/v2/owner/portfolio/performance`, ...(params ? [params] : [])
+    ] as const;
+    }
+
+
+export const getGetOwnerPortfolioPerformanceV2QueryOptions = <TData = Awaited<ReturnType<typeof getOwnerPortfolioPerformanceV2>>, TError = ErrorType<AgentErrorResponse>>(params: GetOwnerPortfolioPerformanceV2Params, options?: { query?:UseQueryOptions<Awaited<ReturnType<typeof getOwnerPortfolioPerformanceV2>>, TError, TData>, request?: SecondParameter<typeof customFetch>}
+) => {
+
+const {query: queryOptions, request: requestOptions} = options ?? {};
+
+  const queryKey =  queryOptions?.queryKey ?? getGetOwnerPortfolioPerformanceV2QueryKey(params);
+
+
+
+    const queryFn: QueryFunction<Awaited<ReturnType<typeof getOwnerPortfolioPerformanceV2>>> = ({ signal }) => getOwnerPortfolioPerformanceV2(params, { signal, ...requestOptions });
+
+
+
+
+
+   return  { queryKey, queryFn, ...queryOptions} as UseQueryOptions<Awaited<ReturnType<typeof getOwnerPortfolioPerformanceV2>>, TError, TData> & { queryKey: QueryKey }
+}
+
+export type GetOwnerPortfolioPerformanceV2QueryResult = NonNullable<Awaited<ReturnType<typeof getOwnerPortfolioPerformanceV2>>>
+export type GetOwnerPortfolioPerformanceV2QueryError = ErrorType<AgentErrorResponse>
+
+
+/**
+ * @summary Return team-by-team owner performance
+ */
+
+export function useGetOwnerPortfolioPerformanceV2<TData = Awaited<ReturnType<typeof getOwnerPortfolioPerformanceV2>>, TError = ErrorType<AgentErrorResponse>>(
+ params: GetOwnerPortfolioPerformanceV2Params, options?: { query?:UseQueryOptions<Awaited<ReturnType<typeof getOwnerPortfolioPerformanceV2>>, TError, TData>, request?: SecondParameter<typeof customFetch>}
+
+ ):  UseQueryResult<TData, TError> & { queryKey: QueryKey } {
+
+  const queryOptions = getGetOwnerPortfolioPerformanceV2QueryOptions(params,options)
+
+  const query = useQuery(queryOptions) as  UseQueryResult<TData, TError> & { queryKey: QueryKey };
+
+  return withQueryKey(query, queryOptions.queryKey);
+}
+
+
+
+
+
+
+
+export const getGetScheduleV2Url = (params: GetScheduleV2Params,) => {
+  const normalizedParams = new URLSearchParams();
+
+  Object.entries(params || {}).forEach(([key, value]) => {
+
+    if (value !== undefined) {
+      normalizedParams.append(key, value === null ? 'null' : String(value))
+    }
+  });
+
+  const stringifiedParams = normalizedParams.toString();
+
+  return stringifiedParams.length > 0 ? `/api/v2/schedule?${stringifiedParams}` : `/api/v2/schedule`
+}
+
+/**
+ * @summary Return canonical NFL games matching optional filters
+ */
+export const getScheduleV2 = async (params: GetScheduleV2Params, options?: Parameters<typeof customFetch>[1]): Promise<AgentSchedule> => {
+
+  return customFetch<AgentSchedule>(getGetScheduleV2Url(params),
+  {
+    ...options,
+    method: 'GET'
+
+
+  }
+);}
+
+
+
+
+
+export const getGetScheduleV2QueryKey = (params?: GetScheduleV2Params,) => {
+    return [
+    `/api/v2/schedule`, ...(params ? [params] : [])
+    ] as const;
+    }
+
+
+export const getGetScheduleV2QueryOptions = <TData = Awaited<ReturnType<typeof getScheduleV2>>, TError = ErrorType<AgentErrorResponse>>(params: GetScheduleV2Params, options?: { query?:UseQueryOptions<Awaited<ReturnType<typeof getScheduleV2>>, TError, TData>, request?: SecondParameter<typeof customFetch>}
+) => {
+
+const {query: queryOptions, request: requestOptions} = options ?? {};
+
+  const queryKey =  queryOptions?.queryKey ?? getGetScheduleV2QueryKey(params);
+
+
+
+    const queryFn: QueryFunction<Awaited<ReturnType<typeof getScheduleV2>>> = ({ signal }) => getScheduleV2(params, { signal, ...requestOptions });
+
+
+
+
+
+   return  { queryKey, queryFn, ...queryOptions} as UseQueryOptions<Awaited<ReturnType<typeof getScheduleV2>>, TError, TData> & { queryKey: QueryKey }
+}
+
+export type GetScheduleV2QueryResult = NonNullable<Awaited<ReturnType<typeof getScheduleV2>>>
+export type GetScheduleV2QueryError = ErrorType<AgentErrorResponse>
+
+
+/**
+ * @summary Return canonical NFL games matching optional filters
+ */
+
+export function useGetScheduleV2<TData = Awaited<ReturnType<typeof getScheduleV2>>, TError = ErrorType<AgentErrorResponse>>(
+ params: GetScheduleV2Params, options?: { query?:UseQueryOptions<Awaited<ReturnType<typeof getScheduleV2>>, TError, TData>, request?: SecondParameter<typeof customFetch>}
+
+ ):  UseQueryResult<TData, TError> & { queryKey: QueryKey } {
+
+  const queryOptions = getGetScheduleV2QueryOptions(params,options)
+
+  const query = useQuery(queryOptions) as  UseQueryResult<TData, TError> & { queryKey: QueryKey };
+
+  return withQueryKey(query, queryOptions.queryKey);
+}
+
+
+
+
+
+
+
+export const getGetTeamScheduleV2Url = (params: GetTeamScheduleV2Params,) => {
+  const normalizedParams = new URLSearchParams();
+
+  Object.entries(params || {}).forEach(([key, value]) => {
+
+    if (value !== undefined) {
+      normalizedParams.append(key, value === null ? 'null' : String(value))
+    }
+  });
+
+  const stringifiedParams = normalizedParams.toString();
+
+  return stringifiedParams.length > 0 ? `/api/v2/team/schedule?${stringifiedParams}` : `/api/v2/team/schedule`
+}
+
+/**
+ * @summary Return one NFL team's schedule and current Calcutta context
+ */
+export const getTeamScheduleV2 = async (params: GetTeamScheduleV2Params, options?: Parameters<typeof customFetch>[1]): Promise<AgentTeamSchedule> => {
+
+  return customFetch<AgentTeamSchedule>(getGetTeamScheduleV2Url(params),
+  {
+    ...options,
+    method: 'GET'
+
+
+  }
+);}
+
+
+
+
+
+export const getGetTeamScheduleV2QueryKey = (params?: GetTeamScheduleV2Params,) => {
+    return [
+    `/api/v2/team/schedule`, ...(params ? [params] : [])
+    ] as const;
+    }
+
+
+export const getGetTeamScheduleV2QueryOptions = <TData = Awaited<ReturnType<typeof getTeamScheduleV2>>, TError = ErrorType<AgentErrorResponse>>(params: GetTeamScheduleV2Params, options?: { query?:UseQueryOptions<Awaited<ReturnType<typeof getTeamScheduleV2>>, TError, TData>, request?: SecondParameter<typeof customFetch>}
+) => {
+
+const {query: queryOptions, request: requestOptions} = options ?? {};
+
+  const queryKey =  queryOptions?.queryKey ?? getGetTeamScheduleV2QueryKey(params);
+
+
+
+    const queryFn: QueryFunction<Awaited<ReturnType<typeof getTeamScheduleV2>>> = ({ signal }) => getTeamScheduleV2(params, { signal, ...requestOptions });
+
+
+
+
+
+   return  { queryKey, queryFn, ...queryOptions} as UseQueryOptions<Awaited<ReturnType<typeof getTeamScheduleV2>>, TError, TData> & { queryKey: QueryKey }
+}
+
+export type GetTeamScheduleV2QueryResult = NonNullable<Awaited<ReturnType<typeof getTeamScheduleV2>>>
+export type GetTeamScheduleV2QueryError = ErrorType<AgentErrorResponse>
+
+
+/**
+ * @summary Return one NFL team's schedule and current Calcutta context
+ */
+
+export function useGetTeamScheduleV2<TData = Awaited<ReturnType<typeof getTeamScheduleV2>>, TError = ErrorType<AgentErrorResponse>>(
+ params: GetTeamScheduleV2Params, options?: { query?:UseQueryOptions<Awaited<ReturnType<typeof getTeamScheduleV2>>, TError, TData>, request?: SecondParameter<typeof customFetch>}
+
+ ):  UseQueryResult<TData, TError> & { queryKey: QueryKey } {
+
+  const queryOptions = getGetTeamScheduleV2QueryOptions(params,options)
+
+  const query = useQuery(queryOptions) as  UseQueryResult<TData, TError> & { queryKey: QueryKey };
+
+  return withQueryKey(query, queryOptions.queryKey);
+}
+
+
+
+
+
+
+
+export const getGetGameV2Url = (params: GetGameV2Params,) => {
+  const normalizedParams = new URLSearchParams();
+
+  Object.entries(params || {}).forEach(([key, value]) => {
+
+    if (value !== undefined) {
+      normalizedParams.append(key, value === null ? 'null' : String(value))
+    }
+  });
+
+  const stringifiedParams = normalizedParams.toString();
+
+  return stringifiedParams.length > 0 ? `/api/v2/game?${stringifiedParams}` : `/api/v2/game`
+}
+
+/**
+ * @summary Return complete known information for one canonical NFL game
+ */
+export const getGameV2 = async (params: GetGameV2Params, options?: Parameters<typeof customFetch>[1]): Promise<AgentGameDetail> => {
+
+  return customFetch<AgentGameDetail>(getGetGameV2Url(params),
+  {
+    ...options,
+    method: 'GET'
+
+
+  }
+);}
+
+
+
+
+
+export const getGetGameV2QueryKey = (params?: GetGameV2Params,) => {
+    return [
+    `/api/v2/game`, ...(params ? [params] : [])
+    ] as const;
+    }
+
+
+export const getGetGameV2QueryOptions = <TData = Awaited<ReturnType<typeof getGameV2>>, TError = ErrorType<AgentErrorResponse>>(params: GetGameV2Params, options?: { query?:UseQueryOptions<Awaited<ReturnType<typeof getGameV2>>, TError, TData>, request?: SecondParameter<typeof customFetch>}
+) => {
+
+const {query: queryOptions, request: requestOptions} = options ?? {};
+
+  const queryKey =  queryOptions?.queryKey ?? getGetGameV2QueryKey(params);
+
+
+
+    const queryFn: QueryFunction<Awaited<ReturnType<typeof getGameV2>>> = ({ signal }) => getGameV2(params, { signal, ...requestOptions });
+
+
+
+
+
+   return  { queryKey, queryFn, ...queryOptions} as UseQueryOptions<Awaited<ReturnType<typeof getGameV2>>, TError, TData> & { queryKey: QueryKey }
+}
+
+export type GetGameV2QueryResult = NonNullable<Awaited<ReturnType<typeof getGameV2>>>
+export type GetGameV2QueryError = ErrorType<AgentErrorResponse>
+
+
+/**
+ * @summary Return complete known information for one canonical NFL game
+ */
+
+export function useGetGameV2<TData = Awaited<ReturnType<typeof getGameV2>>, TError = ErrorType<AgentErrorResponse>>(
+ params: GetGameV2Params, options?: { query?:UseQueryOptions<Awaited<ReturnType<typeof getGameV2>>, TError, TData>, request?: SecondParameter<typeof customFetch>}
+
+ ):  UseQueryResult<TData, TError> & { queryKey: QueryKey } {
+
+  const queryOptions = getGetGameV2QueryOptions(params,options)
+
+  const query = useQuery(queryOptions) as  UseQueryResult<TData, TError> & { queryKey: QueryKey };
+
+  return withQueryKey(query, queryOptions.queryKey);
+}
+
+
+
+
+
+
+
+export const getGetPointsRubricV2Url = (params: GetPointsRubricV2Params,) => {
+  const normalizedParams = new URLSearchParams();
+
+  Object.entries(params || {}).forEach(([key, value]) => {
+
+    if (value !== undefined) {
+      normalizedParams.append(key, value === null ? 'null' : String(value))
+    }
+  });
+
+  const stringifiedParams = normalizedParams.toString();
+
+  return stringifiedParams.length > 0 ? `/api/v2/points-rubric?${stringifiedParams}` : `/api/v2/points-rubric`
+}
+
+/**
+ * @summary Return the authoritative selected-Calcutta scoring rubric
+ */
+export const getPointsRubricV2 = async (params: GetPointsRubricV2Params, options?: Parameters<typeof customFetch>[1]): Promise<AgentPointsRubric> => {
+
+  return customFetch<AgentPointsRubric>(getGetPointsRubricV2Url(params),
+  {
+    ...options,
+    method: 'GET'
+
+
+  }
+);}
+
+
+
+
+
+export const getGetPointsRubricV2QueryKey = (params?: GetPointsRubricV2Params,) => {
+    return [
+    `/api/v2/points-rubric`, ...(params ? [params] : [])
+    ] as const;
+    }
+
+
+export const getGetPointsRubricV2QueryOptions = <TData = Awaited<ReturnType<typeof getPointsRubricV2>>, TError = ErrorType<AgentErrorResponse>>(params: GetPointsRubricV2Params, options?: { query?:UseQueryOptions<Awaited<ReturnType<typeof getPointsRubricV2>>, TError, TData>, request?: SecondParameter<typeof customFetch>}
+) => {
+
+const {query: queryOptions, request: requestOptions} = options ?? {};
+
+  const queryKey =  queryOptions?.queryKey ?? getGetPointsRubricV2QueryKey(params);
+
+
+
+    const queryFn: QueryFunction<Awaited<ReturnType<typeof getPointsRubricV2>>> = ({ signal }) => getPointsRubricV2(params, { signal, ...requestOptions });
+
+
+
+
+
+   return  { queryKey, queryFn, ...queryOptions} as UseQueryOptions<Awaited<ReturnType<typeof getPointsRubricV2>>, TError, TData> & { queryKey: QueryKey }
+}
+
+export type GetPointsRubricV2QueryResult = NonNullable<Awaited<ReturnType<typeof getPointsRubricV2>>>
+export type GetPointsRubricV2QueryError = ErrorType<AgentErrorResponse>
+
+
+/**
+ * @summary Return the authoritative selected-Calcutta scoring rubric
+ */
+
+export function useGetPointsRubricV2<TData = Awaited<ReturnType<typeof getPointsRubricV2>>, TError = ErrorType<AgentErrorResponse>>(
+ params: GetPointsRubricV2Params, options?: { query?:UseQueryOptions<Awaited<ReturnType<typeof getPointsRubricV2>>, TError, TData>, request?: SecondParameter<typeof customFetch>}
+
+ ):  UseQueryResult<TData, TError> & { queryKey: QueryKey } {
+
+  const queryOptions = getGetPointsRubricV2QueryOptions(params,options)
+
+  const query = useQuery(queryOptions) as  UseQueryResult<TData, TError> & { queryKey: QueryKey };
+
+  return withQueryKey(query, queryOptions.queryKey);
+}
+
+
+
+
+
+
+
+export const getGetConsortiumLeaderboardV2Url = (params: GetConsortiumLeaderboardV2Params,) => {
+  const normalizedParams = new URLSearchParams();
+
+  Object.entries(params || {}).forEach(([key, value]) => {
+
+    if (value !== undefined) {
+      normalizedParams.append(key, value === null ? 'null' : String(value))
+    }
+  });
+
+  const stringifiedParams = normalizedParams.toString();
+
+  return stringifiedParams.length > 0 ? `/api/v2/leaderboard/consortia?${stringifiedParams}` : `/api/v2/leaderboard/consortia`
+}
+
+/**
+ * @summary Return a selected-Calcutta consortium leaderboard
+ */
+export const getConsortiumLeaderboardV2 = async (params: GetConsortiumLeaderboardV2Params, options?: Parameters<typeof customFetch>[1]): Promise<AgentConsortiumLeaderboard> => {
+
+  return customFetch<AgentConsortiumLeaderboard>(getGetConsortiumLeaderboardV2Url(params),
+  {
+    ...options,
+    method: 'GET'
+
+
+  }
+);}
+
+
+
+
+
+export const getGetConsortiumLeaderboardV2QueryKey = (params?: GetConsortiumLeaderboardV2Params,) => {
+    return [
+    `/api/v2/leaderboard/consortia`, ...(params ? [params] : [])
+    ] as const;
+    }
+
+
+export const getGetConsortiumLeaderboardV2QueryOptions = <TData = Awaited<ReturnType<typeof getConsortiumLeaderboardV2>>, TError = ErrorType<AgentErrorResponse>>(params: GetConsortiumLeaderboardV2Params, options?: { query?:UseQueryOptions<Awaited<ReturnType<typeof getConsortiumLeaderboardV2>>, TError, TData>, request?: SecondParameter<typeof customFetch>}
+) => {
+
+const {query: queryOptions, request: requestOptions} = options ?? {};
+
+  const queryKey =  queryOptions?.queryKey ?? getGetConsortiumLeaderboardV2QueryKey(params);
+
+
+
+    const queryFn: QueryFunction<Awaited<ReturnType<typeof getConsortiumLeaderboardV2>>> = ({ signal }) => getConsortiumLeaderboardV2(params, { signal, ...requestOptions });
+
+
+
+
+
+   return  { queryKey, queryFn, ...queryOptions} as UseQueryOptions<Awaited<ReturnType<typeof getConsortiumLeaderboardV2>>, TError, TData> & { queryKey: QueryKey }
+}
+
+export type GetConsortiumLeaderboardV2QueryResult = NonNullable<Awaited<ReturnType<typeof getConsortiumLeaderboardV2>>>
+export type GetConsortiumLeaderboardV2QueryError = ErrorType<AgentErrorResponse>
+
+
+/**
+ * @summary Return a selected-Calcutta consortium leaderboard
+ */
+
+export function useGetConsortiumLeaderboardV2<TData = Awaited<ReturnType<typeof getConsortiumLeaderboardV2>>, TError = ErrorType<AgentErrorResponse>>(
+ params: GetConsortiumLeaderboardV2Params, options?: { query?:UseQueryOptions<Awaited<ReturnType<typeof getConsortiumLeaderboardV2>>, TError, TData>, request?: SecondParameter<typeof customFetch>}
+
+ ):  UseQueryResult<TData, TError> & { queryKey: QueryKey } {
+
+  const queryOptions = getGetConsortiumLeaderboardV2QueryOptions(params,options)
+
+  const query = useQuery(queryOptions) as  UseQueryResult<TData, TError> & { queryKey: QueryKey };
+
+  return withQueryKey(query, queryOptions.queryKey);
+}

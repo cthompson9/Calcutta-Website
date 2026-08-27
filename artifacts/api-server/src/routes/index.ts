@@ -13,6 +13,7 @@ import auctionImportRouter from "./auctionImport";
 import periodsRouter from "./periods";
 import nflStandingsImportRouter from "./nflStandingsImport";
 import jobsRouter from "./jobs";
+import v2AgentRouter from "./v2Agent";
 
 const router = Router();
 
@@ -30,5 +31,6 @@ router.use(auctionImportRouter);
 router.use(periodsRouter);
 router.use(nflStandingsImportRouter);
 router.use(jobsRouter);
+router.use(v2AgentRouter);
 
 export default router;
