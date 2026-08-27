@@ -39,7 +39,7 @@ export function Shell({ children }: ShellProps) {
   return (
     <div className="flex min-h-[100dvh] w-full flex-col md:flex-row bg-background md:bg-muted/20">
       {/* Desktop Sidebar */}
-      <aside className="hidden md:flex flex-col w-64 border-r border-border bg-sidebar h-[100dvh] sticky top-0">
+      <aside className="hidden md:flex flex-col w-72 shrink-0 border-r border-border bg-sidebar h-[100dvh] sticky top-0">
         <div className="p-5 border-b border-sidebar-border flex items-center gap-3">
           <img
             src="/calcutta-lion.png"
@@ -52,15 +52,7 @@ export function Shell({ children }: ShellProps) {
             className="min-w-0 flex-1 object-contain object-left"
           />
         </div>
-        <div className="px-3 py-4 border-b border-sidebar-border space-y-2">
-          <div className="flex items-center justify-between px-1">
-            <span className="text-[10px] text-muted-foreground font-mono font-bold uppercase tracking-widest">
-              Calcutta
-            </span>
-            <span className="min-w-0 truncate text-[10px] text-muted-foreground font-mono" title={selectedCalcutta ? formatCalcuttaLabel(selectedCalcutta) : undefined}>
-              {selectedCalcutta?.name ?? "—"}
-            </span>
-          </div>
+        <div className="px-3 py-4 border-b border-sidebar-border">
           <SeasonToggle testId="select-calcutta-desktop" />
         </div>
         <nav className="flex-1 py-6 px-3 flex flex-col gap-1">

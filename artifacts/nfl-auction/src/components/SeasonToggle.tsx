@@ -14,10 +14,10 @@ export function SeasonToggle({ testId }: { testId?: string }) {
         onChange={(event) => setCalcutta(Number(event.target.value))}
         disabled={isLoading && calcuttas.length === 0}
         className={cn(
-          "h-8 w-full min-w-0 max-w-full appearance-none bg-muted/50 border border-border/60 rounded-md pl-3 pr-8 text-[10px] md:text-xs font-mono font-bold uppercase tracking-widest text-foreground outline-none transition-colors",
+          "h-10 w-full min-w-0 max-w-full appearance-none bg-muted/50 border border-border/60 rounded-md pl-3 pr-10 text-[10px] md:text-xs font-mono font-bold uppercase tracking-[0.08em] text-foreground outline-none transition-colors",
           "focus:border-primary focus:ring-1 focus:ring-primary",
           "disabled:cursor-wait disabled:text-muted-foreground",
-          "md:h-9 md:bg-card md:border-border"
+          "md:h-10 md:bg-card md:border-border"
         )}
       >
         {calcuttas.length === 0 ? (

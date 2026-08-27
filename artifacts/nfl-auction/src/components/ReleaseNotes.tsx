@@ -13,6 +13,46 @@ export type ReleaseNote = {
 
 export const releaseNotes: ReleaseNote[] = [
   {
+    date: "August 26, 2026",
+    updates: [
+      {
+        title: "A more reliable pool record",
+        description:
+          "Auctions, ownership shares, consortiums, trades, approvals, short positions, and audit history now stay connected to the correct Calcutta and season.",
+      },
+      {
+        title: "Schedules and standings stay current",
+        description:
+          "Validated NFL schedule and standings updates now flow into the app automatically, with game times shown in Eastern Time and completed games translated into consistent results.",
+      },
+      {
+        title: "More trustworthy market values",
+        description:
+          "Mark-to-market snapshots now retain their source and capture time, show coverage clearly, and avoid publishing misleading values when market data is incomplete.",
+      },
+      {
+        title: "Consistent values and returns",
+        description:
+          "Team values, realized returns, mark-to-market values, fair shares, and ROI are now calculated consistently from each Calcutta's scoring rules and pool economics.",
+      },
+      {
+        title: "Ask questions about your pool",
+        description:
+          "Connected assistants can now look up owner portfolios, summaries, performance, schedules, game details, scoring rules, and consortium leaderboards through the shared Calcutta data.",
+      },
+      {
+        title: "Ready to support more sports",
+        description:
+          "The backend is being prepared to support additional sports, including college football, without mixing their teams, schedules, scoring, or results with the NFL pool.",
+      },
+      {
+        title: "Clearer reports and safer updates",
+        description:
+          "Reports preserve historical rosters and signed positions, explain when data is unavailable, keep long headers visible while scrolling, and protect existing NFL results during updates.",
+      },
+    ],
+  },
+  {
     date: "August 25, 2026",
     updates: [
       {
