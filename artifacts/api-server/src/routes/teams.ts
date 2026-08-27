@@ -1,10 +1,10 @@
 import { Router, type IRouter, type Request } from "express";
-import { eq, and, ilike, inArray, sql } from "drizzle-orm";
+import { eq, and, ilike, inArray, ne, sql } from "drizzle-orm";
+import { z } from "zod/v4";
 import {
   db,
   teamsTable,
   biddersTable,
-  seasonsTable,
   tradesTable,
   ownershipAdjustmentsTable,
   positionsTable,
@@ -23,32 +23,39 @@ import {
   OWNERSHIP_SEASON_LOCK_NAMESPACE,
   validatePrimaryOwnership,
 } from "../lib/ownershipShares";
-import { getOrCreateCalcuttaEntry, resolveCalcuttaId } from "../lib/calcuttaContext";
+import {
+  getOrCreateCalcuttaEntry,
+  resolveCalcuttaId,
+  resolveDefaultSeasonYearForSport,
+  resolveSeasonIdForSport,
+} from "../lib/calcuttaContext";
 
 const router: IRouter = Router();
+const TeamContextQuery = z.object({
+  season: z.coerce.number().int().min(2000).max(2200).optional(),
+  calcuttaId: z.coerce.number().int().positive().optional(),
+  sport: z.enum(["NFL", "CFB"]).default("NFL"),
+});
 
 function isAdminRequest(req: Request): boolean {
   const adminKey = process.env["ADMIN_API_KEY"];
   return Boolean(adminKey && req.headers.authorization === `Bearer ${adminKey}`);
 }
 
-async function getActiveSeasonId(): Promise<number> {
-  const rows = await db
-    .select({ id: seasonsTable.id })
-    .from(seasonsTable)
-    .where(eq(seasonsTable.isActive, true))
-    .limit(1);
-  if (!rows[0]) throw new Error("No active season found");
-  return rows[0].id;
+async function getActiveSeasonId(sport: string): Promise<number> {
+  const year = await resolveDefaultSeasonYearForSport(db, {
+    sport,
+    state: "active",
+    newestFirst: true,
+  });
+  if (year == null) throw new Error(`No active ${sport} season found`);
+  const seasonId = await resolveSeasonIdForSport(db, { year, sport });
+  if (seasonId == null) throw new Error(`No active ${sport} season found`);
+  return seasonId;
 }
 
-async function resolveSeasonId(year: number): Promise<number | null> {
-  const rows = await db
-    .select({ id: seasonsTable.id })
-    .from(seasonsTable)
-    .where(eq(seasonsTable.year, year))
-    .limit(1);
-  return rows[0]?.id ?? null;
+async function resolveSeasonId(year: number, sport: string): Promise<number | null> {
+  return resolveSeasonIdForSport(db, { year, sport });
 }
 
 function primaryCostByTeam(ownership: Awaited<ReturnType<typeof loadSeasonOwnership>>) {
@@ -62,7 +69,12 @@ function primaryCostByTeam(ownership: Awaited<ReturnType<typeof loadSeasonOwners
 }
 
 /** Fetch a single team with effective owners for the given season. */
-async function fetchTeamWithOwners(teamId: number, seasonId: number, calcuttaId?: number) {
+async function fetchTeamWithOwners(
+  teamId: number,
+  seasonId: number,
+  sport: string,
+  calcuttaId?: number,
+) {
   const team = await db
     .select()
     .from(teamsTable)
@@ -70,7 +82,7 @@ async function fetchTeamWithOwners(teamId: number, seasonId: number, calcuttaId?
     .limit(1);
   if (!team[0]) return null;
 
-  const selectedCalcuttaId = calcuttaId ?? await resolveCalcuttaId(db, { seasonId });
+  const selectedCalcuttaId = await resolveCalcuttaId(db, { seasonId, sport, calcuttaId });
   if (!selectedCalcuttaId) return null;
   const entry = await db
     .select({ id: calcuttaEntriesTable.id })
@@ -106,13 +118,20 @@ router.get("/teams", async (req, res): Promise<void> => {
     res.status(400).json({ error: parsed.error.message });
     return;
   }
-  const { conference, division, search, bidderId, season: seasonYear } =
-    parsed.data as typeof parsed.data & { calcuttaId?: number };
+  const {
+    conference,
+    division,
+    search,
+    bidderId,
+    season: seasonYear,
+    sport = "NFL",
+    calcuttaId: requestedCalcuttaId,
+  } = parsed.data;
 
   // Resolve season
   let seasonId: number | null = null;
   if (seasonYear != null) {
-    const resolved = await resolveSeasonId(seasonYear);
+    const resolved = await resolveSeasonId(seasonYear, sport);
     if (!resolved) {
       // Unknown season → empty list, no active-season fallback
       res.json([]);
@@ -122,10 +141,11 @@ router.get("/teams", async (req, res): Promise<void> => {
   }
 
   // A team belongs to the selected Calcutta only when it has a ledger entry.
-  const ownershipSeasonId = seasonId ?? (await getActiveSeasonId());
+  const ownershipSeasonId = seasonId ?? (await getActiveSeasonId(sport));
   const calcuttaId = await resolveCalcuttaId(db, {
     seasonId: ownershipSeasonId,
-    calcuttaId: (parsed.data as typeof parsed.data & { calcuttaId?: number }).calcuttaId,
+    sport,
+    calcuttaId: requestedCalcuttaId,
   });
   if (!calcuttaId) {
     res.json([]);
@@ -212,8 +232,16 @@ router.post("/teams", async (req, res): Promise<void> => {
     return;
   }
 
-  const { name, conference, division, bidAmount, owners, season: seasonYear } =
-    parsed.data as typeof parsed.data & { calcuttaId?: number };
+  const {
+    name,
+    conference,
+    division,
+    bidAmount,
+    owners,
+    season: seasonYear,
+    sport = "NFL",
+    calcuttaId: requestedCalcuttaId,
+  } = parsed.data;
 
   const split = validatePrimaryOwnership(
     owners.map((owner) => ({
@@ -228,14 +256,14 @@ router.post("/teams", async (req, res): Promise<void> => {
 
   let seasonId: number;
   if (seasonYear != null) {
-    const resolved = await resolveSeasonId(seasonYear);
+    const resolved = await resolveSeasonId(seasonYear, sport);
     if (!resolved) {
       res.status(400).json({ error: `Season ${seasonYear} not found` });
       return;
     }
     seasonId = resolved;
   } else {
-    seasonId = await getActiveSeasonId();
+    seasonId = await getActiveSeasonId(sport);
   }
 
   const outcome = await db.transaction(async (tx) => {
@@ -244,7 +272,8 @@ router.post("/teams", async (req, res): Promise<void> => {
     );
     const calcuttaId = await resolveCalcuttaId(tx, {
       seasonId,
-      calcuttaId: (parsed.data as typeof parsed.data & { calcuttaId?: number }).calcuttaId,
+      sport,
+      calcuttaId: requestedCalcuttaId,
     });
     if (!calcuttaId) return { kind: "calcutta_not_found" as const };
     const matchedBidders = await tx
@@ -294,7 +323,7 @@ router.post("/teams", async (req, res): Promise<void> => {
     return;
   }
 
-  const full = await fetchTeamWithOwners(outcome.teamId, seasonId, outcome.calcuttaId);
+  const full = await fetchTeamWithOwners(outcome.teamId, seasonId, sport, outcome.calcuttaId);
   res.status(201).json(full);
 });
 
@@ -305,8 +334,25 @@ router.get("/teams/:id", async (req, res): Promise<void> => {
     return;
   }
 
-  const seasonId = await getActiveSeasonId();
-  const full = await fetchTeamWithOwners(params.data.id, seasonId);
+  const query = TeamContextQuery.safeParse(req.query);
+  if (!query.success) {
+    res.status(400).json({ error: query.error.message });
+    return;
+  }
+  const sport = query.data.sport ?? "NFL";
+  const seasonId = query.data.season == null
+    ? await getActiveSeasonId(sport)
+    : await resolveSeasonId(query.data.season, sport);
+  if (seasonId == null) {
+    res.status(404).json({ error: "Team not found" });
+    return;
+  }
+  const full = await fetchTeamWithOwners(
+    params.data.id,
+    seasonId,
+    sport,
+    query.data.calcuttaId,
+  );
   if (!full) {
     res.status(404).json({ error: "Team not found" });
     return;
@@ -331,8 +377,15 @@ router.patch("/teams/:id", async (req, res): Promise<void> => {
     return;
   }
 
-  const updateData = parsed.data as typeof parsed.data & { calcuttaId?: number };
-  const { owners, bidAmount, season: seasonYear, calcuttaId: requestedCalcuttaId, ...rest } = updateData;
+  const updateData = parsed.data;
+  const {
+    owners,
+    bidAmount,
+    season: seasonYear,
+    sport = "NFL",
+    calcuttaId: requestedCalcuttaId,
+    ...rest
+  } = updateData;
   const split =
     owners === undefined
       ? null
@@ -349,29 +402,53 @@ router.patch("/teams/:id", async (req, res): Promise<void> => {
 
   let seasonId: number;
   if (seasonYear != null) {
-    const resolved = await resolveSeasonId(seasonYear);
+    const resolved = await resolveSeasonId(seasonYear, sport);
     if (!resolved) {
       res.status(400).json({ error: `Season ${seasonYear} not found` });
       return;
     }
     seasonId = resolved;
   } else {
-    seasonId = await getActiveSeasonId();
+    seasonId = await getActiveSeasonId(sport);
   }
 
   const updateResult = await db.transaction(async (tx) => {
     await tx.execute(
       sql`select pg_advisory_xact_lock(${OWNERSHIP_SEASON_LOCK_NAMESPACE}, ${seasonId})`,
     );
-    const calcuttaId = await resolveCalcuttaId(tx, { seasonId, calcuttaId: requestedCalcuttaId });
+    const calcuttaId = await resolveCalcuttaId(tx, {
+      seasonId,
+      sport,
+      calcuttaId: requestedCalcuttaId,
+    });
     if (!calcuttaId) return { kind: "calcutta_not_found" as const };
-    const entryId = await getOrCreateCalcuttaEntry(tx, calcuttaId, params.data.id);
     const existingTeam = await tx
       .select({ id: teamsTable.id })
       .from(teamsTable)
       .where(eq(teamsTable.id, params.data.id))
       .limit(1);
     if (!existingTeam[0]) return { kind: "not_found" as const };
+    const existingEntry = await tx
+      .select({ id: calcuttaEntriesTable.id })
+      .from(calcuttaEntriesTable)
+      .where(and(
+        eq(calcuttaEntriesTable.calcuttaId, calcuttaId),
+        eq(calcuttaEntriesTable.teamId, params.data.id),
+      ))
+      .limit(1);
+    if (!existingEntry[0]) return { kind: "not_found" as const };
+    const entryId = existingEntry[0].id;
+    if (Object.keys(rest).length > 0) {
+      const otherEntries = await tx
+        .select({ id: calcuttaEntriesTable.id })
+        .from(calcuttaEntriesTable)
+        .where(and(
+          eq(calcuttaEntriesTable.teamId, params.data.id),
+          ne(calcuttaEntriesTable.calcuttaId, calcuttaId),
+        ))
+        .limit(1);
+      if (otherEntries[0]) return { kind: "shared_team_metadata" as const };
+    }
 
     if (split) {
       const [matchedBidders, approvedTrade] = await Promise.all([
@@ -483,8 +560,19 @@ router.patch("/teams/:id", async (req, res): Promise<void> => {
     });
     return;
   }
+  if (updateResult.kind === "shared_team_metadata") {
+    res.status(409).json({
+      error: "This team is shared by multiple Calcuttas. Update pool ownership only; shared team metadata cannot be changed from one pool.",
+    });
+    return;
+  }
 
-  const full = await fetchTeamWithOwners(params.data.id, seasonId, updateResult.calcuttaId);
+  const full = await fetchTeamWithOwners(
+    params.data.id,
+    seasonId,
+    sport,
+    updateResult.calcuttaId,
+  );
   if (!full) {
     res.status(404).json({ error: "Team not found" });
     return;
@@ -500,6 +588,59 @@ router.delete("/teams/:id", async (req, res): Promise<void> => {
   const params = DeleteTeamParams.safeParse(req.params);
   if (!params.success) {
     res.status(400).json({ error: params.error.message });
+    return;
+  }
+
+  const query = TeamContextQuery.safeParse(req.query);
+  if (!query.success) {
+    res.status(400).json({ error: query.error.message });
+    return;
+  }
+  const sport = query.data.sport;
+  const seasonId = query.data.season == null
+    ? await getActiveSeasonId(sport)
+    : await resolveSeasonId(query.data.season, sport);
+  if (seasonId == null) {
+    res.status(404).json({ error: "Team not found" });
+    return;
+  }
+
+  const calcuttaId = await resolveCalcuttaId(db, {
+    seasonId,
+    sport,
+    calcuttaId: query.data.calcuttaId,
+  });
+  if (calcuttaId == null) {
+    res.status(404).json({ error: "Team not found" });
+    return;
+  }
+
+  const [selectedEntry, otherEntry] = await Promise.all([
+    db
+      .select({ id: calcuttaEntriesTable.id })
+      .from(calcuttaEntriesTable)
+      .where(and(
+        eq(calcuttaEntriesTable.calcuttaId, calcuttaId),
+        eq(calcuttaEntriesTable.teamId, params.data.id),
+      ))
+      .limit(1),
+    db
+      .select({ id: calcuttaEntriesTable.id })
+      .from(calcuttaEntriesTable)
+      .where(and(
+        eq(calcuttaEntriesTable.teamId, params.data.id),
+        ne(calcuttaEntriesTable.calcuttaId, calcuttaId),
+      ))
+      .limit(1),
+  ]);
+  if (!selectedEntry[0]) {
+    res.status(404).json({ error: "Team not found" });
+    return;
+  }
+  if (otherEntry[0]) {
+    res.status(409).json({
+      error: "This team is shared by multiple Calcuttas and cannot be deleted from only one pool.",
+    });
     return;
   }
 

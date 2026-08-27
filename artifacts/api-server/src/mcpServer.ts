@@ -51,7 +51,11 @@ import {
   type NormalizedSnapshotWrite,
   upsertNormalizedSnapshotMetrics,
 } from "./lib/calcuttaReturns";
-import { resolveCalcuttaId as resolveSelectedCalcuttaId } from "./lib/calcuttaContext";
+import {
+  resolveCalcuttaId as resolveSelectedCalcuttaId,
+  resolveDefaultSeasonYearForSport,
+  resolveSeasonIdForSport,
+} from "./lib/calcuttaContext";
 import { loadCurrentBidderConsortiums } from "./lib/consortiumMemberships";
 import { applyNflStandingsImport, NflStandingsImportError } from "./lib/nflStandingsImport";
 import {
@@ -74,31 +78,21 @@ import {
 const CONSORTIUM_MEMBERSHIP_LOCK_NAMESPACE = 841204;
 
 async function resolveSeasonId(year: number): Promise<number | null> {
-  const rows = await db
-    .select({ id: seasonsTable.id })
-    .from(seasonsTable)
-    .where(eq(seasonsTable.year, year))
-    .limit(1);
-  return rows[0]?.id ?? null;
+  return resolveSeasonIdForSport(db, { year, sport: NFL_SPORT });
 }
 
 async function defaultSeasonYear(): Promise<number> {
-  const rows = await db
-    .select({ year: seasonsTable.year })
-    .from(seasonsTable)
-    .where(eq(seasonsTable.isComplete, true))
-    .orderBy(seasonsTable.year)
-    .limit(1);
-  return rows[0]?.year ?? 2025;
+  return await resolveDefaultSeasonYearForSport(db, {
+    sport: NFL_SPORT,
+    state: "complete",
+  }) ?? 2025;
 }
 
 async function activeSeasonYear(): Promise<number | null> {
-  const rows = await db
-    .select({ year: seasonsTable.year })
-    .from(seasonsTable)
-    .where(eq(seasonsTable.isActive, true))
-    .limit(1);
-  return rows[0]?.year ?? null;
+  return resolveDefaultSeasonYearForSport(db, {
+    sport: NFL_SPORT,
+    state: "active",
+  });
 }
 
 async function findTeam(name: string) {
@@ -179,12 +173,7 @@ export async function resolveOrCreateBidder(
 }
 
 async function resolveWritableSeasonYear(): Promise<number> {
-  const rows = await db
-    .select({ year: seasonsTable.year })
-    .from(seasonsTable)
-    .where(eq(seasonsTable.isActive, true))
-    .limit(1);
-  return rows[0]?.year ?? await defaultSeasonYear();
+  return await activeSeasonYear() ?? await defaultSeasonYear();
 }
 
 async function validateMcpTradeApproval(trade: {
@@ -1018,13 +1007,7 @@ function buildMcpServer() {
       const from = fromResult.bidder;
       const to = toResult.bidder;
 
-      const activeSeasonRows = await db
-        .select({ id: seasonsTable.id, year: seasonsTable.year })
-        .from(seasonsTable)
-        .where(eq(seasonsTable.isActive, true))
-        .limit(1);
-      const defaultYear = activeSeasonRows[0]?.year ?? 2026;
-      const year = season ?? defaultYear;
+      const year = season ?? await resolveWritableSeasonYear();
       const sid = await resolveSeasonId(year);
       if (!sid) return text(`Season ${year} not found`);
 
@@ -1179,7 +1162,12 @@ function buildMcpServer() {
         const initial = await tx
           .select({ seasonId: tradesTable.seasonId })
           .from(tradesTable)
-          .where(eq(tradesTable.id, tradeId))
+          .innerJoin(calcuttaEntriesTable, eq(calcuttaEntriesTable.id, tradesTable.entryId))
+          .innerJoin(calcuttasTable, eq(calcuttasTable.id, calcuttaEntriesTable.calcuttaId))
+          .where(and(
+            eq(tradesTable.id, tradeId),
+            eq(calcuttasTable.sport, NFL_SPORT),
+          ))
           .limit(1);
         if (!initial[0]) return { kind: "not_found" as const };
 
@@ -1643,12 +1631,7 @@ function buildMcpServer() {
 
       let year = season;
       if (!year) {
-        const activeRows = await db
-          .select({ year: seasonsTable.year })
-          .from(seasonsTable)
-          .where(eq(seasonsTable.isActive, true))
-          .limit(1);
-        year = activeRows[0]?.year ?? currentYearInNewYork();
+        year = await activeSeasonYear() ?? currentYearInNewYork();
       }
 
       const sid = await resolveSeasonId(year);

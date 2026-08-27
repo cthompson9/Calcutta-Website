@@ -883,12 +883,18 @@ export async function getOrCreateCanonicalCalcutta(
       isCanonical: true,
       asOfDate: calcuttaAsOfDate(args.year),
     })
-    .onConflictDoNothing({ target: calcuttasTable.name });
+    .onConflictDoNothing();
 
   const created = await writer
     .select({ id: calcuttasTable.id })
     .from(calcuttasTable)
-    .where(eq(calcuttasTable.name, name))
+    .where(
+      and(
+        eq(calcuttasTable.seasonId, args.seasonId),
+        eq(calcuttasTable.sport, NFL_SPORT),
+        eq(calcuttasTable.isCanonical, true),
+      ),
+    )
     .limit(1);
   if (!created[0]) throw new Error("Unable to create the canonical NFL Calcutta.");
   return created[0];

@@ -10,3 +10,4 @@ export { ownershipInversionMigration } from "./0013OwnershipInversion";
 export { mtmEntryScopeMigration } from "./0014MtmEntryScope";
 export { entryResultEconomicsMigration } from "./0015EntryResultEconomics";
 export { sportScopedEventIngestionMigration } from "./0016SportScopedEventIngestion";
+export { canonicalCalcuttaScopeMigration } from "./0017CanonicalCalcuttaScope";

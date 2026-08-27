@@ -26,33 +26,28 @@ import {
   teamResultsTable,
   calcuttaEntriesTable,
   positionsTable,
-  seasonsTable,
 } from "@workspace/db";
 import { loadSeasonOwnership } from "../lib/seasonOwnership";
-import { resolveCalcuttaId } from "../lib/calcuttaContext";
+import {
+  resolveCalcuttaId,
+  resolveDefaultSeasonYearForSport,
+  resolveSeasonIdForSport,
+} from "../lib/calcuttaContext";
 import { loadCalculatedTeamReturnsForCalcutta } from "../lib/calcuttaReturns";
 
 const router: IRouter = Router();
 
 async function resolveSeasonId(year: number): Promise<number | null> {
-  const rows = await db
-    .select({ id: seasonsTable.id })
-    .from(seasonsTable)
-    .where(eq(seasonsTable.year, year))
-    .limit(1);
-  return rows[0]?.id ?? null;
+  return resolveSeasonIdForSport(db, { year, sport: "NFL" });
 }
 
 // Resolve season from query (default to most recent complete season)
 async function getSeason(seasonParam?: string): Promise<number> {
   if (seasonParam) return parseInt(seasonParam, 10);
-  const rows = await db
-    .select({ year: seasonsTable.year })
-    .from(seasonsTable)
-    .where(eq(seasonsTable.isComplete, true))
-    .orderBy(seasonsTable.year)
-    .limit(1);
-  return rows[0]?.year ?? 2025;
+  return await resolveDefaultSeasonYearForSport(db, {
+    sport: "NFL",
+    state: "complete",
+  }) ?? 2025;
 }
 
 // Fuzzy team match by name

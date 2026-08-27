@@ -3,12 +3,7 @@ import { randomUUID } from "node:crypto";
 import { Router, type IRouter, type Request } from "express";
 import { and, eq } from "drizzle-orm";
 import { z } from "zod/v4";
-import {
-  db,
-  pool,
-  refreshJobStatesTable,
-  seasonsTable,
-} from "@workspace/db";
+import { db, pool, refreshJobStatesTable } from "@workspace/db";
 import { runCanonicalMtmRefresh } from "../lib/jobMtmRefresh";
 import {
   resolveNflStandingsRefreshSeasonYear,
@@ -36,6 +31,7 @@ import {
   shouldRunStandingsRefresh,
   type NflScheduledGame,
 } from "../lib/nflSchedule";
+import { resolveSeasonIdForSport } from "../lib/calcuttaContext";
 
 const router: IRouter = Router();
 const JOB_LOCK_NAMESPACE = 7_142;
@@ -253,14 +249,11 @@ router.post("/jobs/refresh", async (req, res): Promise<void> => {
       (sport === CFB_SPORT
         ? await resolveCfbRefreshSeasonYear()
         : await resolveNflStandingsRefreshSeasonYear());
-    const seasonRows = await db
-      .select({ id: seasonsTable.id })
-      .from(seasonsTable)
-      .where(eq(seasonsTable.year, seasonYear))
-      .limit(1);
-    const season = seasonRows[0];
-    if (!season) throw new Error(`Season ${seasonYear} not found.`);
-    const scope: RefreshScope = { seasonId: season.id, sport, competition };
+    const seasonId = await resolveSeasonIdForSport(db, { year: seasonYear, sport });
+    if (seasonId == null) {
+      throw new Error(`Season ${seasonYear} has no canonical ${sport} Calcutta.`);
+    }
+    const scope: RefreshScope = { seasonId, sport, competition };
 
     const locked = await withRefreshJobLock(async () => {
       if (job === "mtm") {
@@ -274,7 +267,7 @@ router.post("/jobs/refresh", async (req, res): Promise<void> => {
 
       if (sport === CFB_SPORT) {
         const result = await runCfbEventRefresh({
-          seasonId: season.id,
+          seasonId,
           seasonYear,
         });
         await recordSuccessfulStandingsRefresh(scope);
@@ -341,6 +334,7 @@ router.post("/jobs/refresh", async (req, res): Promise<void> => {
       const result = await runNflStandingsRefresh({
         requestedBy: "external_job_runner",
         requestId: req.headers["x-request-id"] as string | undefined ?? randomUUID(),
+        seasonYear,
       });
       if (statusSignature !== null) {
         await recordObservedGameStatus(scope, statusSignature, true);

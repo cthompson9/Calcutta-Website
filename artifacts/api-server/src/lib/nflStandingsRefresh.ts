@@ -1,7 +1,10 @@
 import { randomUUID } from "node:crypto";
-import { desc, eq } from "drizzle-orm";
-import { db, seasonsTable } from "@workspace/db";
+import { db } from "@workspace/db";
 import { currentYearInNewYork } from "./newYorkTime";
+import {
+  resolveDefaultSeasonYearForSport,
+  resolveSeasonIdForSport,
+} from "./calcuttaContext";
 import { applyNflStandingsImport } from "./nflStandingsImport";
 import {
   fetchEspnNflEvents,
@@ -9,21 +12,19 @@ import {
 } from "./nflEventSync";
 
 export async function resolveNflStandingsRefreshSeasonYear(): Promise<number> {
-  const active = await db
-    .select({ year: seasonsTable.year })
-    .from(seasonsTable)
-    .where(eq(seasonsTable.isActive, true))
-    .orderBy(desc(seasonsTable.year))
-    .limit(1);
-  if (active[0]) return active[0].year;
+  const activeYear = await resolveDefaultSeasonYearForSport(db, {
+    sport: "NFL",
+    state: "active",
+    newestFirst: true,
+  });
+  if (activeYear != null) return activeYear;
 
   const currentYear = currentYearInNewYork();
-  const current = await db
-    .select({ year: seasonsTable.year })
-    .from(seasonsTable)
-    .where(eq(seasonsTable.year, currentYear))
-    .limit(1);
-  if (current[0]) return current[0].year;
+  const currentSeasonId = await resolveSeasonIdForSport(db, {
+    year: currentYear,
+    sport: "NFL",
+  });
+  if (currentSeasonId != null) return currentYear;
 
   throw new Error(
     `No active season or ${currentYear} season is configured for the NFL standings refresh.`,
@@ -33,8 +34,13 @@ export async function resolveNflStandingsRefreshSeasonYear(): Promise<number> {
 export async function runNflStandingsRefresh(input: {
   requestedBy: string;
   requestId?: string;
+  seasonYear?: number;
 }): Promise<Awaited<ReturnType<typeof applyNflStandingsImport>>> {
-  const seasonYear = await resolveNflStandingsRefreshSeasonYear();
+  const seasonYear = input.seasonYear ?? await resolveNflStandingsRefreshSeasonYear();
+  const seasonId = await resolveSeasonIdForSport(db, { year: seasonYear, sport: "NFL" });
+  if (seasonId == null) {
+    throw new Error(`Season ${seasonYear} has no canonical NFL Calcutta.`);
+  }
   // Fetch and validate the complete event ledger before committing standings.
   // Provider outages or partial payloads therefore leave the refresh untouched.
   const eventPayload = await fetchEspnNflEvents(seasonYear);

@@ -1,11 +1,11 @@
-import { and, desc, eq } from "drizzle-orm";
+import { and, eq } from "drizzle-orm";
 import {
   db,
   eventsTable,
   providerTeamIdentitiesTable,
-  seasonsTable,
   teamsTable,
 } from "@workspace/db";
+import { resolveDefaultSeasonYearForSport } from "./calcuttaContext";
 import {
   CFB_REGULAR_SEASON,
   CFB_SPORT,
@@ -360,13 +360,12 @@ export async function syncCfbEvents(
 }
 
 export async function resolveCfbRefreshSeasonYear(): Promise<number> {
-  const active = await db
-    .select({ year: seasonsTable.year })
-    .from(seasonsTable)
-    .where(eq(seasonsTable.isActive, true))
-    .orderBy(desc(seasonsTable.year))
-    .limit(1);
-  if (active[0]) return active[0].year;
+  const activeYear = await resolveDefaultSeasonYearForSport(db, {
+    sport: CFB_SPORT,
+    state: "active",
+    newestFirst: true,
+  });
+  if (activeYear != null) return activeYear;
   throw new Error("No active season is configured for the CFB event refresh.");
 }
 

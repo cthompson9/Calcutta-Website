@@ -13,6 +13,7 @@ import {
   mtmEntryScopeMigration,
   entryResultEconomicsMigration,
   sportScopedEventIngestionMigration,
+  canonicalCalcuttaScopeMigration,
 } from "./migrations";
 
 const migrations = [
@@ -28,6 +29,7 @@ const migrations = [
   mtmEntryScopeMigration,
   entryResultEconomicsMigration,
   sportScopedEventIngestionMigration,
+  canonicalCalcuttaScopeMigration,
 ] as const;
 
 /**

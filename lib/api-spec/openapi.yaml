@@ -104,6 +104,12 @@ paths:
           in: query
           schema:
             type: ["number", "null"]
+        - name: sport
+          in: query
+          schema:
+            type: string
+            enum: [NFL, CFB]
+            default: NFL
       responses:
         "200":
           description: List of teams
@@ -1902,6 +1908,10 @@ components:
           type: number
         calcuttaId:
           type: number
+        sport:
+          type: string
+          enum: [NFL, CFB]
+          default: NFL
         owners:
           type: array
           items:
@@ -1928,6 +1938,10 @@ components:
           type: number
         calcuttaId:
           type: number
+        sport:
+          type: string
+          enum: [NFL, CFB]
+          default: NFL
         owners:
           type: array
           items:

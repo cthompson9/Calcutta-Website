@@ -1,3 +1,4 @@
+import { sql } from "drizzle-orm";
 import { boolean, date, index, integer, pgTable, serial, text, timestamp, uniqueIndex } from "drizzle-orm/pg-core";
 import { createInsertSchema } from "drizzle-zod";
 import { z } from "zod/v4";
@@ -22,6 +23,9 @@ export const calcuttasTable = pgTable(
   },
   (t) => [
     uniqueIndex("calcuttas_name_idx").on(t.name),
+    uniqueIndex("calcuttas_canonical_season_sport_idx")
+      .on(t.seasonId, t.sport)
+      .where(sql`${t.isCanonical} = true`),
     index("calcuttas_season_idx").on(t.seasonId),
   ],
 );

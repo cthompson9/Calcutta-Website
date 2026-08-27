@@ -4,6 +4,7 @@ import { z } from "zod/v4";
 
 export const seasonsTable = pgTable("seasons", {
   id: serial("id").primaryKey(),
+  /** Shared calendar year. Sport-specific identity belongs to Calcuttas. */
   year: integer("year").notNull().unique(),
   isActive: boolean("is_active").notNull().default(false),
   isComplete: boolean("is_complete").notNull().default(false),

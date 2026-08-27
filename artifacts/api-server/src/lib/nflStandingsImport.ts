@@ -3,7 +3,6 @@ import { and, eq, sql } from "drizzle-orm";
 import {
   db,
   importRunsTable,
-  seasonsTable,
   teamResultsTable,
   teamSeasonAuctionsTable,
   teamsTable,
@@ -12,6 +11,7 @@ import {
   syncNflEventsAndRealizedMetricsTx,
   type EspnScoreboardPayload,
 } from "./nflEventSync";
+import { resolveSeasonIdForSport } from "./calcuttaContext";
 import { OWNERSHIP_SEASON_LOCK_NAMESPACE } from "./ownershipShares";
 
 export const NFL_STANDINGS_PHASE = "REG" as const;
@@ -317,13 +317,17 @@ export async function fetchNflStandingsPayload(
 }
 
 async function resolveSeasonId(seasonYear: number): Promise<number> {
-  const seasons = await db
-    .select({ id: seasonsTable.id })
-    .from(seasonsTable)
-    .where(eq(seasonsTable.year, seasonYear))
-    .limit(1);
-  if (!seasons[0]) throw new NflStandingsImportError(`Season ${seasonYear} not found.`, 404);
-  return seasons[0].id;
+  const seasonId = await resolveSeasonIdForSport(db, {
+    year: seasonYear,
+    sport: "NFL",
+  });
+  if (seasonId == null) {
+    throw new NflStandingsImportError(
+      `Season ${seasonYear} has no canonical NFL Calcutta.`,
+      404,
+    );
+  }
+  return seasonId;
 }
 
 async function hasReplay(seasonId: number, sourceHash: string): Promise<boolean> {

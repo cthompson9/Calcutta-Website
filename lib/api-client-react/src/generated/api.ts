@@ -18,7 +18,6 @@ import type {
   UseQueryOptions,
   UseQueryResult
 } from '@tanstack/react-query';
-
 import type {
   AgentConsortiumLeaderboard,
   AgentErrorResponse,
@@ -119,13 +118,8 @@ const withQueryKey = <T extends object, K>(query: T, queryKey: K): T & { queryKe
 };
 
 export const getHealthCheckUrl = () => {
-
-
-
-
   return `/api/healthz`
 }
-
 /**
  * @summary Health check
  */
@@ -168,7 +162,6 @@ const {query: queryOptions, request: requestOptions} = options ?? {};
 
    return  { queryKey, queryFn, ...queryOptions} as UseQueryOptions<Awaited<ReturnType<typeof healthCheck>>, TError, TData> & { queryKey: QueryKey }
 }
-
 export type HealthCheckQueryResult = NonNullable<Awaited<ReturnType<typeof healthCheck>>>
 export type HealthCheckQueryError = ErrorType<unknown>
 

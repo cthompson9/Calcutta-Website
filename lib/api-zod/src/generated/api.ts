@@ -51,13 +51,16 @@ export const CreateSeasonResponse = zod.object({
 /**
  * @summary List all teams
  */
+export const getTeamsQuerySportDefault = `NFL`;
+
 export const GetTeamsQueryParams = zod.object({
   "conference": zod.enum(['AFC', 'NFC']).optional(),
   "division": zod.enum(['East', 'North', 'South', 'West']).optional(),
   "search": zod.coerce.string().optional(),
   "bidderId": zod.coerce.number().nullish(),
   "season": zod.coerce.number().nullish(),
-  "calcuttaId": zod.coerce.number().nullish()
+  "calcuttaId": zod.coerce.number().nullish(),
+  "sport": zod.enum(['NFL', 'CFB']).default(getTeamsQuerySportDefault)
 })
 
 export const GetTeamsResponseItem = zod.object({
@@ -81,7 +84,7 @@ export const GetTeamsResponse = zod.array(GetTeamsResponseItem)
 
 export const createTeamBodyBidAmountMin = 0;
 
-
+export const createTeamBodySportDefault = `NFL`;
 
 
 export const CreateTeamBody = zod.object({
@@ -91,6 +94,7 @@ export const CreateTeamBody = zod.object({
   "bidAmount": zod.number().min(createTeamBodyBidAmountMin),
   "season": zod.number().optional(),
   "calcuttaId": zod.number().optional(),
+  "sport": zod.enum(['NFL', 'CFB']).default(createTeamBodySportDefault),
   "owners": zod.array(zod.object({
   "bidderId": zod.number(),
   "ownershipShare": zod.number()
@@ -142,7 +146,7 @@ export const UpdateTeamParams = zod.object({
 
 export const updateTeamBodyBidAmountMin = 0;
 
-
+export const updateTeamBodySportDefault = `NFL`;
 
 
 export const UpdateTeamBody = zod.object({
@@ -152,6 +156,7 @@ export const UpdateTeamBody = zod.object({
   "bidAmount": zod.number().min(updateTeamBodyBidAmountMin).optional(),
   "season": zod.number().optional(),
   "calcuttaId": zod.number().optional(),
+  "sport": zod.enum(['NFL', 'CFB']).default(updateTeamBodySportDefault),
   "owners": zod.array(zod.object({
   "bidderId": zod.number(),
   "ownershipShare": zod.number()

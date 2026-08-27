@@ -531,6 +531,14 @@ export const TeamInputDivision = {
   West: 'West',
 } as const;
 
+export type TeamInputSport = typeof TeamInputSport[keyof typeof TeamInputSport];
+
+
+export const TeamInputSport = {
+  NFL: 'NFL',
+  CFB: 'CFB',
+} as const;
+
 export interface OwnerInput {
   bidderId: number;
   ownershipShare: number;
@@ -545,6 +553,7 @@ export interface TeamInput {
   bidAmount: number;
   season?: number;
   calcuttaId?: number;
+  sport?: TeamInputSport;
   /** @minItems 1 */
   owners: OwnerInput[];
 }
@@ -567,6 +576,14 @@ export const TeamUpdateDivision = {
   West: 'West',
 } as const;
 
+export type TeamUpdateSport = typeof TeamUpdateSport[keyof typeof TeamUpdateSport];
+
+
+export const TeamUpdateSport = {
+  NFL: 'NFL',
+  CFB: 'CFB',
+} as const;
+
 export interface TeamUpdate {
   /** @minLength 1 */
   name?: string;
@@ -576,6 +593,7 @@ export interface TeamUpdate {
   bidAmount?: number;
   season?: number;
   calcuttaId?: number;
+  sport?: TeamUpdateSport;
   /** @minItems 1 */
   owners?: OwnerInput[];
 }
@@ -1449,6 +1467,7 @@ season?: number | null;
  * @nullable
  */
 calcuttaId?: number | null;
+sport?: GetTeamsSport;
 };
 
 export type GetTeamsConference = typeof GetTeamsConference[keyof typeof GetTeamsConference];
@@ -1467,6 +1486,14 @@ export const GetTeamsDivision = {
   North: 'North',
   South: 'South',
   West: 'West',
+} as const;
+
+export type GetTeamsSport = typeof GetTeamsSport[keyof typeof GetTeamsSport];
+
+
+export const GetTeamsSport = {
+  NFL: 'NFL',
+  CFB: 'CFB',
 } as const;
 
 export type GetBiddersParams = {

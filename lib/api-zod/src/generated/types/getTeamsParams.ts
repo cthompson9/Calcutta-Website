@@ -7,6 +7,7 @@
  */
 import type { GetTeamsConference } from './getTeamsConference';
 import type { GetTeamsDivision } from './getTeamsDivision';
+import type { GetTeamsSport } from './getTeamsSport';
 
 export type GetTeamsParams = {
 conference?: GetTeamsConference;
@@ -24,4 +25,5 @@ season?: number | null;
  * @nullable
  */
 calcuttaId?: number | null;
+sport?: GetTeamsSport;
 };

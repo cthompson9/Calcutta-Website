@@ -8,6 +8,7 @@
 import type { OwnerInput } from './ownerInput';
 import type { TeamInputConference } from './teamInputConference';
 import type { TeamInputDivision } from './teamInputDivision';
+import type { TeamInputSport } from './teamInputSport';
 
 export interface TeamInput {
   /** @minLength 1 */
@@ -18,6 +19,7 @@ export interface TeamInput {
   bidAmount: number;
   season?: number;
   calcuttaId?: number;
+  sport?: TeamInputSport;
   /** @minItems 1 */
   owners: OwnerInput[];
 }
