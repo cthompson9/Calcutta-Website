@@ -24,6 +24,8 @@ export const eventsTable = pgTable(
     seasonId: integer("season_id")
       .notNull()
       .references(() => seasonsTable.id, { onDelete: "cascade" }),
+    sport: text("sport").notNull().default("NFL"),
+    competition: text("competition").notNull().default("NFL_REGULAR_SEASON"),
     source: text("source").notNull().default("manual"),
     sourceEventId: text("source_event_id").notNull(),
     week: integer("week").notNull(),
@@ -46,9 +48,22 @@ export const eventsTable = pgTable(
     updatedAt: timestamp("updated_at", { withTimezone: true }).notNull().defaultNow().$onUpdate(() => new Date()),
   },
   (t) => [
-    uniqueIndex("events_season_source_event_idx").on(t.seasonId, t.source, t.sourceEventId),
-    uniqueIndex("events_season_week_matchup_idx").on(t.seasonId, t.week, t.awayTeamId, t.homeTeamId),
-    index("events_season_week_idx").on(t.seasonId, t.week),
+    uniqueIndex("events_season_scope_source_event_idx").on(
+      t.seasonId,
+      t.sport,
+      t.competition,
+      t.source,
+      t.sourceEventId,
+    ),
+    uniqueIndex("events_season_scope_week_matchup_idx").on(
+      t.seasonId,
+      t.sport,
+      t.competition,
+      t.week,
+      t.awayTeamId,
+      t.homeTeamId,
+    ),
+    index("events_season_scope_week_idx").on(t.seasonId, t.sport, t.competition, t.week),
     index("events_home_team_idx").on(t.homeTeamId),
     index("events_away_team_idx").on(t.awayTeamId),
     check("events_distinct_teams", sql`${t.homeTeamId} <> ${t.awayTeamId}`),

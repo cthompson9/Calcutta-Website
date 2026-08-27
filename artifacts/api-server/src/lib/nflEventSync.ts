@@ -18,6 +18,7 @@ import {
   NFL_SPORT,
   normalizeNflGame,
 } from "./calcuttaReturns";
+import { NFL_REGULAR_SEASON } from "./eventIngestion";
 
 const ESPN_SCOREBOARD_URL =
   "https://site.api.espn.com/apis/site/v2/sports/football/nfl/scoreboard";
@@ -200,6 +201,8 @@ async function rebuildRealizedMetrics(
   await ensureNflSportPeriods(tx);
   const finals = await tx.select().from(eventsTable).where(and(
     eq(eventsTable.seasonId, seasonId),
+    eq(eventsTable.sport, NFL_SPORT),
+    eq(eventsTable.competition, NFL_REGULAR_SEASON),
     eq(eventsTable.source, "espn"),
     eq(eventsTable.status, "final"),
     lte(eventsTable.week, 18),
@@ -353,20 +356,29 @@ export async function syncNflEventsAndRealizedMetricsTx(
   ));
   await tx.delete(eventsTable).where(and(
     eq(eventsTable.seasonId, seasonId),
+    eq(eventsTable.sport, NFL_SPORT),
+    eq(eventsTable.competition, NFL_REGULAR_SEASON),
     eq(eventsTable.source, "espn"),
   ));
   for (const event of parsed) {
       const awayTeamId = resolveTeamId(event.awayAbbreviation);
       const homeTeamId = resolveTeamId(event.homeAbbreviation);
       const row = {
-        seasonId, source: "espn", sourceEventId: event.sourceEventId,
+        seasonId, sport: NFL_SPORT, competition: NFL_REGULAR_SEASON,
+        source: "espn", sourceEventId: event.sourceEventId,
         week: event.week, eventDate: event.eventDate, kickoffAt: event.kickoffAt,
         timezone: "America/New_York", awayTeamId, homeTeamId, venue: event.venue,
         network: event.network, status: event.status, awayScore: event.awayScore,
         homeScore: event.homeScore, sourceData: event.sourceData,
       };
       await tx.insert(eventsTable).values(row).onConflictDoUpdate({
-        target: [eventsTable.seasonId, eventsTable.source, eventsTable.sourceEventId],
+        target: [
+          eventsTable.seasonId,
+          eventsTable.sport,
+          eventsTable.competition,
+          eventsTable.source,
+          eventsTable.sourceEventId,
+        ],
         set: row,
       });
       if (

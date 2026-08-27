@@ -42,6 +42,7 @@ import {
 import { loadSeasonOwnership, type OwnerEntry } from "../lib/seasonOwnership";
 import { TEAM_ABBREVIATION_ALIASES } from "../lib/nflEventSync";
 import { timestampInNewYork } from "../lib/newYorkTime";
+import { NFL_REGULAR_SEASON, NFL_SPORT } from "../lib/eventIngestion";
 
 const router: IRouter = Router();
 const basisSchema = z.enum(["realized", "mtm"]).default("realized");
@@ -487,8 +488,19 @@ type EventView = typeof eventsTable.$inferSelect & {
   homeTeam: TeamRow;
 };
 
-async function resolveTeamForSeason(teamName: string): Promise<TeamRow | { error: string }> {
-  const teams = await db.select().from(teamsTable);
+async function resolveTeamForCalcutta(
+  teamName: string,
+  calcuttaId: number,
+): Promise<TeamRow | { error: string }> {
+  const teams = await db.select({
+    id: teamsTable.id,
+    name: teamsTable.name,
+    conference: teamsTable.conference,
+    division: teamsTable.division,
+  }).from(teamsTable).innerJoin(
+    calcuttaEntriesTable,
+    eq(calcuttaEntriesTable.teamId, teamsTable.id),
+  ).where(eq(calcuttaEntriesTable.calcuttaId, calcuttaId));
   const canonicalName = TEAM_ABBREVIATION_ALIASES[teamName.trim().toUpperCase()];
   if (canonicalName) {
     const team = teams.find((candidate) => candidate.name === canonicalName);
@@ -500,11 +512,15 @@ async function resolveTeamForSeason(teamName: string): Promise<TeamRow | { error
 async function loadEventViews(context: Context, args: z.infer<typeof scheduleQuery>): Promise<EventView[] | { error: string }> {
   let teamId: number | undefined;
   if (args.team) {
-    const team = await resolveTeamForSeason(args.team);
+    const team = await resolveTeamForCalcutta(args.team, context.calcuttaId);
     if ("error" in team) return team;
     teamId = team.id;
   }
-  const conditions = [eq(eventsTable.seasonId, context.seasonId)];
+  const conditions = [
+    eq(eventsTable.seasonId, context.seasonId),
+    eq(eventsTable.sport, NFL_SPORT),
+    eq(eventsTable.competition, NFL_REGULAR_SEASON),
+  ];
   if (args.week != null) conditions.push(eq(eventsTable.week, args.week));
   if (args.date_from) conditions.push(gte(eventsTable.eventDate, args.date_from));
   if (args.date_to) conditions.push(lte(eventsTable.eventDate, args.date_to));
@@ -638,7 +654,7 @@ export async function getTeamSchedule(args: z.input<typeof teamScheduleQuery>) {
   if (schedule.status !== 200) return schedule;
   const context = await resolveContext(parsed.season, parsed.calcuttaId);
   if (!isContext(context)) return { status: context.status, body: { error: context.error } };
-  const team = await resolveTeamForSeason(parsed.team);
+  const team = await resolveTeamForCalcutta(parsed.team, context.calcuttaId);
   if ("error" in team) return { status: 404, body: { error: team.error } };
   const ownership = await loadSeasonOwnership(context.seasonId, context.calcuttaId);
   const [calculated, rulesConfigured] = await Promise.all([
@@ -684,10 +700,15 @@ export async function getTeamSchedule(args: z.input<typeof teamScheduleQuery>) {
 }
 
 async function findEvent(gameId: string, seasonId: number) {
+  const scope = [
+    eq(eventsTable.seasonId, seasonId),
+    eq(eventsTable.sport, NFL_SPORT),
+    eq(eventsTable.competition, NFL_REGULAR_SEASON),
+  ];
   const numericId = /^\d+$/.test(gameId) ? Number(gameId) : -1;
   if (numericId >= 0) {
     const rows = await db.select().from(eventsTable).where(and(
-      eq(eventsTable.seasonId, seasonId),
+      ...scope,
       eq(eventsTable.id, numericId),
     )).limit(1);
     return rows[0] ?? null;
@@ -695,14 +716,14 @@ async function findEvent(gameId: string, seasonId: number) {
   if (gameId.includes(":")) {
     const [source, ...sourceIdParts] = gameId.split(":");
     const rows = await db.select().from(eventsTable).where(and(
-      eq(eventsTable.seasonId, seasonId),
+      ...scope,
       eq(eventsTable.source, source),
       eq(eventsTable.sourceEventId, sourceIdParts.join(":")),
     )).limit(1);
     return rows[0] ?? null;
   }
   const rows = await db.select().from(eventsTable).where(and(
-    eq(eventsTable.seasonId, seasonId),
+    ...scope,
     eq(eventsTable.sourceEventId, gameId),
   )).limit(2);
   if (rows.length > 1) return { error: `Game ID "${gameId}" is ambiguous. Use the source-prefixed game ID.` };

@@ -1,9 +1,18 @@
 import assert from "node:assert/strict";
 import http from "node:http";
 import test from "node:test";
+import { and, eq } from "drizzle-orm";
+import {
+  db,
+  eventsTable,
+  runDatabaseMigrations,
+  seasonsTable,
+  teamsTable,
+} from "@workspace/db";
 import app from "../app.ts";
 import {
   isJobRunnerRequest,
+  refreshJobLockKey,
   withRefreshJobLock,
 } from "./jobs.ts";
 import {
@@ -116,5 +125,107 @@ test(
     assert.deepEqual(second, { acquired: false });
     releaseFirst();
     assert.deepEqual(await first, { acquired: true, value: "first" });
+  },
+);
+
+test("refresh lock keys isolate NFL and CFB for the same season", () => {
+  assert.notDeepEqual(
+    refreshJobLockKey({
+      seasonId: 7,
+      sport: "NFL",
+      competition: "NFL_REGULAR_SEASON",
+    }),
+    refreshJobLockKey({
+      seasonId: 7,
+      sport: "CFB",
+      competition: "CFB_REGULAR_SEASON",
+    }),
+  );
+});
+
+test(
+  "NFL and CFB refresh locks can be held concurrently",
+  { skip: !process.env.DATABASE_URL },
+  async () => {
+    let releaseFirst;
+    let signalEntered;
+    const entered = new Promise((resolve) => {
+      signalEntered = resolve;
+    });
+    const hold = new Promise((resolve) => {
+      releaseFirst = resolve;
+    });
+    const first = withRefreshJobLock(async () => {
+      signalEntered();
+      await hold;
+      return "nfl";
+    }, {
+      seasonId: 7,
+      sport: "NFL",
+      competition: "NFL_REGULAR_SEASON",
+    });
+    await entered;
+    const cfb = await withRefreshJobLock(async () => "cfb", {
+      seasonId: 7,
+      sport: "CFB",
+      competition: "CFB_REGULAR_SEASON",
+    });
+    assert.deepEqual(cfb, { acquired: true, value: "cfb" });
+    releaseFirst();
+    assert.deepEqual(await first, { acquired: true, value: "nfl" });
+  },
+);
+
+test(
+  "concurrent NFL and CFB refresh writes keep overlapping provider IDs isolated",
+  { skip: !process.env.DATABASE_URL },
+  async () => {
+    await runDatabaseMigrations();
+    const [season] = await db.insert(seasonsTable).values({
+      year: 2197,
+      label: "2197 concurrent refresh test",
+    }).returning({ id: seasonsTable.id });
+    try {
+      const teams = await db.select({ id: teamsTable.id }).from(teamsTable).limit(2);
+      assert.equal(teams.length, 2);
+      const write = (sport, competition) => withRefreshJobLock(
+        () => db.transaction(async (tx) => {
+          await tx.insert(eventsTable).values({
+            seasonId: season.id,
+            sport,
+            competition,
+            source: "espn",
+            sourceEventId: "concurrent-shared-id",
+            week: 1,
+            eventDate: "2197-09-01",
+            awayTeamId: teams[0].id,
+            homeTeamId: teams[1].id,
+          }).onConflictDoUpdate({
+            target: [
+              eventsTable.seasonId,
+              eventsTable.sport,
+              eventsTable.competition,
+              eventsTable.source,
+              eventsTable.sourceEventId,
+            ],
+            set: { status: "scheduled" },
+          });
+        }),
+        { seasonId: season.id, sport, competition },
+      );
+      const [nfl, cfb] = await Promise.all([
+        write("NFL", "NFL_REGULAR_SEASON"),
+        write("CFB", "CFB_REGULAR_SEASON"),
+      ]);
+      assert.equal(nfl.acquired, true);
+      assert.equal(cfb.acquired, true);
+      const rows = await db.select().from(eventsTable).where(and(
+        eq(eventsTable.seasonId, season.id),
+        eq(eventsTable.sourceEventId, "concurrent-shared-id"),
+      ));
+      assert.deepEqual(new Set(rows.map((row) => row.sport)), new Set(["NFL", "CFB"]));
+    } finally {
+      await db.delete(seasonsTable).where(eq(seasonsTable.id, season.id));
+    }
   },
 );

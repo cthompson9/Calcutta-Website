@@ -12,6 +12,7 @@ import {
   ownershipInversionMigration,
   mtmEntryScopeMigration,
   entryResultEconomicsMigration,
+  sportScopedEventIngestionMigration,
 } from "./migrations";
 
 const migrations = [
@@ -26,6 +27,7 @@ const migrations = [
   ownershipInversionMigration,
   mtmEntryScopeMigration,
   entryResultEconomicsMigration,
+  sportScopedEventIngestionMigration,
 ] as const;
 
 /**

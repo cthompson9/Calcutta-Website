@@ -12,6 +12,8 @@ export const refreshJobStatesTable = pgTable(
     seasonId: integer("season_id")
       .notNull()
       .references(() => seasonsTable.id, { onDelete: "cascade" }),
+    sport: text("sport").notNull().default("NFL"),
+    competition: text("competition").notNull().default("NFL_REGULAR_SEASON"),
     job: text("job").notNull(),
     scheduleCache: jsonb("schedule_cache").$type<unknown>(),
     scheduleFetchedAt: timestamp("schedule_fetched_at", { withTimezone: true }),
@@ -20,7 +22,12 @@ export const refreshJobStatesTable = pgTable(
     updatedAt: timestamp("updated_at", { withTimezone: true }).notNull().defaultNow(),
   },
   (t) => [
-    uniqueIndex("refresh_job_states_season_job_idx").on(t.seasonId, t.job),
+    uniqueIndex("refresh_job_states_season_scope_job_idx").on(
+      t.seasonId,
+      t.sport,
+      t.competition,
+      t.job,
+    ),
   ],
 );
 

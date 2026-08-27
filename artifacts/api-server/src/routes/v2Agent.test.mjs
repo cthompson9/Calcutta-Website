@@ -167,6 +167,8 @@ describe("V2.1 agent read API", { skip: !DATABASE_URL }, () => {
     });
     [event] = await db.insert(eventsTable).values({
       seasonId: season.id,
+      sport: "NFL",
+      competition: "NFL_REGULAR_SEASON",
       source: "espn",
       sourceEventId: `v2-${fixture}`,
       week: 1,
@@ -178,6 +180,21 @@ describe("V2.1 agent read API", { skip: !DATABASE_URL }, () => {
       network: "TEST",
       status: "scheduled",
     }).returning();
+    await db.insert(eventsTable).values({
+      seasonId: season.id,
+      sport: "CFB",
+      competition: "CFB_REGULAR_SEASON",
+      source: "espn",
+      sourceEventId: event.sourceEventId,
+      week: 1,
+      eventDate: `${year}-09-07`,
+      kickoffAt: new Date(`${year}-09-07T17:00:00.000Z`),
+      awayTeamId: teamB.id,
+      homeTeamId: teamA.id,
+      venue: "College Fixture Field",
+      network: "TEST",
+      status: "scheduled",
+    });
     ({ server, baseUrl } = await startServer(app));
   });
 

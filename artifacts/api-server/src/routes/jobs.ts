@@ -15,6 +15,18 @@ import {
   runNflStandingsRefresh,
 } from "../lib/nflStandingsRefresh";
 import {
+  resolveCfbRefreshSeasonYear,
+  runCfbEventRefresh,
+} from "../lib/cfbEventSync";
+import {
+  CFB_REGULAR_SEASON,
+  CFB_SPORT,
+  NFL_REGULAR_SEASON,
+  NFL_SPORT,
+  type EventCompetition,
+  type EventSport,
+} from "../lib/eventIngestion";
+import {
   fetchNflSchedule,
   isNflGameInLiveStatusWindow,
   needsFreshNflGameStatus,
@@ -33,8 +45,17 @@ const RefreshJobBody = z
   .object({
     job: z.enum(["standings", "mtm"]).default("standings"),
     force: z.boolean().optional().default(false),
+    sport: z.enum([NFL_SPORT, CFB_SPORT]).optional().default(NFL_SPORT),
+    competition: z.string().trim().min(1).max(80).optional(),
+    seasonYear: z.number().int().min(2000).max(2200).optional(),
   })
   .strict();
+
+type RefreshScope = {
+  seasonId: number;
+  sport: EventSport;
+  competition: EventCompetition;
+};
 
 export function isJobRunnerRequest(req: Pick<Request, "headers">): boolean {
   const expected = process.env["JOB_RUNNER_SECRET"];
@@ -51,7 +72,7 @@ export function isJobRunnerRequest(req: Pick<Request, "headers">): boolean {
   );
 }
 
-async function loadRefreshJobState(seasonId: number) {
+async function loadRefreshJobState(scope: RefreshScope) {
   const rows = await db
     .select({
       scheduleCache: refreshJobStatesTable.scheduleCache,
@@ -62,7 +83,9 @@ async function loadRefreshJobState(seasonId: number) {
     .from(refreshJobStatesTable)
     .where(
       and(
-        eq(refreshJobStatesTable.seasonId, seasonId),
+        eq(refreshJobStatesTable.seasonId, scope.seasonId),
+        eq(refreshJobStatesTable.sport, scope.sport),
+        eq(refreshJobStatesTable.competition, scope.competition),
         eq(refreshJobStatesTable.job, "standings"),
       ),
     )
@@ -71,21 +94,28 @@ async function loadRefreshJobState(seasonId: number) {
 }
 
 async function saveScheduleCache(
-  seasonId: number,
+  scope: RefreshScope,
   games: NflScheduledGame[],
 ): Promise<void> {
   const now = new Date();
   await db
     .insert(refreshJobStatesTable)
     .values({
-      seasonId,
+      seasonId: scope.seasonId,
+      sport: scope.sport,
+      competition: scope.competition,
       job: "standings",
       scheduleCache: games,
       scheduleFetchedAt: now,
       updatedAt: now,
     })
     .onConflictDoUpdate({
-      target: [refreshJobStatesTable.seasonId, refreshJobStatesTable.job],
+      target: [
+        refreshJobStatesTable.seasonId,
+        refreshJobStatesTable.sport,
+        refreshJobStatesTable.competition,
+        refreshJobStatesTable.job,
+      ],
       set: {
         scheduleCache: games,
         scheduleFetchedAt: now,
@@ -94,18 +124,25 @@ async function saveScheduleCache(
     });
 }
 
-async function recordSuccessfulStandingsRefresh(seasonId: number): Promise<void> {
+async function recordSuccessfulStandingsRefresh(scope: RefreshScope): Promise<void> {
   const now = new Date();
   await db
     .insert(refreshJobStatesTable)
     .values({
-      seasonId,
+      seasonId: scope.seasonId,
+      sport: scope.sport,
+      competition: scope.competition,
       job: "standings",
       lastSucceededAt: now,
       updatedAt: now,
     })
     .onConflictDoUpdate({
-      target: [refreshJobStatesTable.seasonId, refreshJobStatesTable.job],
+      target: [
+        refreshJobStatesTable.seasonId,
+        refreshJobStatesTable.sport,
+        refreshJobStatesTable.competition,
+        refreshJobStatesTable.job,
+      ],
       set: {
         lastSucceededAt: now,
         updatedAt: now,
@@ -114,7 +151,7 @@ async function recordSuccessfulStandingsRefresh(seasonId: number): Promise<void>
 }
 
 async function recordObservedGameStatus(
-  seasonId: number,
+  scope: RefreshScope,
   statusSignature: string,
   succeededAt: boolean,
 ): Promise<void> {
@@ -122,14 +159,21 @@ async function recordObservedGameStatus(
   await db
     .insert(refreshJobStatesTable)
     .values({
-      seasonId,
+      seasonId: scope.seasonId,
+      sport: scope.sport,
+      competition: scope.competition,
       job: "standings",
       lastGameStatusSignature: statusSignature,
       lastSucceededAt: succeededAt ? now : undefined,
       updatedAt: now,
     })
     .onConflictDoUpdate({
-      target: [refreshJobStatesTable.seasonId, refreshJobStatesTable.job],
+      target: [
+        refreshJobStatesTable.seasonId,
+        refreshJobStatesTable.sport,
+        refreshJobStatesTable.competition,
+        refreshJobStatesTable.job,
+      ],
       set: {
         lastGameStatusSignature: statusSignature,
         ...(succeededAt ? { lastSucceededAt: now } : {}),
@@ -138,22 +182,36 @@ async function recordObservedGameStatus(
     });
 }
 
+export function refreshJobLockKey(
+  scope?: RefreshScope,
+): readonly [number, number] {
+  if (!scope) return [JOB_LOCK_NAMESPACE, JOB_LOCK_KEY];
+  let hash = 2_166_136_261;
+  for (const character of `${scope.sport}\0${scope.competition}`) {
+    hash ^= character.charCodeAt(0);
+    hash = Math.imul(hash, 16_777_619);
+  }
+  return [hash & 0x7fff_ffff, scope.seasonId];
+}
+
 export async function withRefreshJobLock<T>(
   run: () => Promise<T>,
+  scope?: RefreshScope,
 ): Promise<{ acquired: true; value: T } | { acquired: false }> {
+  const [lockNamespace, lockKey] = refreshJobLockKey(scope);
   const client = await pool.connect();
   try {
     const lock = await client.query<{ acquired: boolean }>(
       "select pg_try_advisory_lock($1, $2) as acquired",
-      [JOB_LOCK_NAMESPACE, JOB_LOCK_KEY],
+      [lockNamespace, lockKey],
     );
     if (!lock.rows[0]?.acquired) return { acquired: false };
     try {
       return { acquired: true, value: await run() };
     } finally {
       await client.query("select pg_advisory_unlock($1, $2)", [
-        JOB_LOCK_NAMESPACE,
-        JOB_LOCK_KEY,
+        lockNamespace,
+        lockKey,
       ]);
     }
   } finally {
@@ -176,8 +234,35 @@ router.post("/jobs/refresh", async (req, res): Promise<void> => {
   const startedAtMs = Date.now();
   const job = parsed.data.job;
   try {
+    const sport = parsed.data.sport;
+    const competition = parsed.data.competition ??
+      (sport === CFB_SPORT ? CFB_REGULAR_SEASON : NFL_REGULAR_SEASON);
+    const expectedCompetition =
+      sport === CFB_SPORT ? CFB_REGULAR_SEASON : NFL_REGULAR_SEASON;
+    if (competition !== expectedCompetition) {
+      res.status(400).json({
+        error: `${sport} refreshes require competition ${expectedCompetition}.`,
+      });
+      return;
+    }
+    if (sport === CFB_SPORT && job === "mtm") {
+      res.status(400).json({ error: "CFB MTM refresh is not supported by this job." });
+      return;
+    }
+    const seasonYear = parsed.data.seasonYear ??
+      (sport === CFB_SPORT
+        ? await resolveCfbRefreshSeasonYear()
+        : await resolveNflStandingsRefreshSeasonYear());
+    const seasonRows = await db
+      .select({ id: seasonsTable.id })
+      .from(seasonsTable)
+      .where(eq(seasonsTable.year, seasonYear))
+      .limit(1);
+    const season = seasonRows[0];
+    if (!season) throw new Error(`Season ${seasonYear} not found.`);
+    const scope: RefreshScope = { seasonId: season.id, sport, competition };
+
     const locked = await withRefreshJobLock(async () => {
-      const seasonYear = await resolveNflStandingsRefreshSeasonYear();
       if (job === "mtm") {
         const result = await runCanonicalMtmRefresh({ seasonYear });
         return {
@@ -187,15 +272,23 @@ router.post("/jobs/refresh", async (req, res): Promise<void> => {
         };
       }
 
-      const seasonRows = await db
-        .select({ id: seasonsTable.id })
-        .from(seasonsTable)
-        .where(eq(seasonsTable.year, seasonYear))
-        .limit(1);
-      const season = seasonRows[0];
-      if (!season) throw new Error(`Season ${seasonYear} not found.`);
+      if (sport === CFB_SPORT) {
+        const result = await runCfbEventRefresh({
+          seasonId: season.id,
+          seasonYear,
+        });
+        await recordSuccessfulStandingsRefresh(scope);
+        return {
+          job: "standings" as const,
+          sport,
+          competition,
+          ran: true,
+          eventsUpdated: result.eventsUpserted,
+          durationMs: Date.now() - startedAtMs,
+        };
+      }
 
-      const refreshState = await loadRefreshJobState(season.id);
+      const refreshState = await loadRefreshJobState(scope);
       let cachedGames = parsed.data.force
         ? []
         : parseCachedNflSchedule(refreshState?.scheduleCache);
@@ -209,7 +302,7 @@ router.post("/jobs/refresh", async (req, res): Promise<void> => {
           ))
       ) {
         cachedGames = await fetchNflSchedule(seasonYear);
-        await saveScheduleCache(season.id, cachedGames);
+        await saveScheduleCache(scope, cachedGames);
         refreshedSchedule = true;
       }
       const freshStatusGames =
@@ -235,7 +328,7 @@ router.post("/jobs/refresh", async (req, res): Promise<void> => {
         })
       ) {
         if (statusSignature !== null) {
-          await recordObservedGameStatus(season.id, statusSignature, false);
+          await recordObservedGameStatus(scope, statusSignature, false);
         }
         return {
           job: "standings" as const,
@@ -250,9 +343,9 @@ router.post("/jobs/refresh", async (req, res): Promise<void> => {
         requestId: req.headers["x-request-id"] as string | undefined ?? randomUUID(),
       });
       if (statusSignature !== null) {
-        await recordObservedGameStatus(season.id, statusSignature, true);
+        await recordObservedGameStatus(scope, statusSignature, true);
       } else {
-        await recordSuccessfulStandingsRefresh(season.id);
+        await recordSuccessfulStandingsRefresh(scope);
       }
       return {
         job: "standings" as const,
@@ -261,7 +354,7 @@ router.post("/jobs/refresh", async (req, res): Promise<void> => {
         teamsUpdated: result.importedTeams,
         durationMs: Date.now() - startedAtMs,
       };
-    });
+    }, scope);
 
     if (!locked.acquired) {
       res.json({

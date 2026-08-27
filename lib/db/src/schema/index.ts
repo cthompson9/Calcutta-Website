@@ -24,4 +24,5 @@ export * from "./nflGames";
 export * from "./consortiumMemberships";
 export * from "./positions";
 export * from "./refreshJobStates";
+export * from "./providerTeamIdentities";
 export * from "./mcpOauth";
