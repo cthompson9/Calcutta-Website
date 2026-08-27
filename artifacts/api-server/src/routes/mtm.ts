@@ -533,6 +533,7 @@ router.post("/mtm/week-zero/capture", async (req, res): Promise<void> => {
         .where(
           and(
             eq(sportPeriodsTable.sport, NFL_SPORT),
+            eq(sportPeriodsTable.competition, "NFL_REGULAR_SEASON"),
             eq(sportPeriodsTable.sequence, 0),
           ),
         )

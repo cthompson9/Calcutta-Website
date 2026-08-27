@@ -46,6 +46,7 @@ export const snapshotMetricsTable = pgTable(
     index("snapshot_metrics_entry_basis_idx").on(t.entryId, t.basis),
     index("snapshot_metrics_period_basis_idx").on(t.periodId, t.basis),
     check("snapshot_metrics_basis_supported", sql`${t.basis} IN ('realized', 'mtm')`),
+    check("snapshot_metrics_metric_supported", sql`${t.metric} ~ '^[a-z][a-z0-9_]*$'`),
   ],
 );
 

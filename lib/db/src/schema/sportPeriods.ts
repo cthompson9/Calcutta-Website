@@ -8,12 +8,19 @@ export const sportPeriodsTable = pgTable(
   {
     id: serial("id").primaryKey(),
     sport: text("sport").notNull(),
+    competition: text("competition").notNull(),
     sequence: integer("sequence").notNull(),
     label: text("label").notNull(),
     isPlayoff: boolean("is_playoff").notNull().default(false),
   },
   (t) => [
-    uniqueIndex("sport_periods_sport_sequence_idx").on(t.sport, t.sequence),
+    uniqueIndex("sport_periods_competition_sequence_idx").on(
+      t.sport,
+      t.competition,
+      t.sequence,
+    ),
+    check("sport_periods_sport_nonempty", sql`length(trim(${t.sport})) > 0`),
+    check("sport_periods_competition_nonempty", sql`length(trim(${t.competition})) > 0`),
     check("sport_periods_sequence_non_negative", sql`${t.sequence} >= 0`),
   ],
 );

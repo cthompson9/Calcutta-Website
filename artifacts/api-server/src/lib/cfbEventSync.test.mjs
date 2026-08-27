@@ -2,10 +2,14 @@ import assert from "node:assert/strict";
 import test from "node:test";
 import { and, eq } from "drizzle-orm";
 import {
+  calcuttasTable,
+  calcuttaEntriesTable,
   db,
   eventsTable,
   runDatabaseMigrations,
   seasonsTable,
+  snapshotMetricsTable,
+  sportPeriodsTable,
   teamsTable,
 } from "@workspace/db";
 import {
@@ -140,11 +144,57 @@ test(
         };
         assert.deepEqual(
           await syncCfbEventsTx(tx, season.id, 2198, payload),
-          { eventsUpserted: 1 },
+          { eventsUpserted: 1, metricsUpserted: 0 },
         );
+        const [cfbEventRow] = await tx.select().from(eventsTable).where(and(
+          eq(eventsTable.seasonId, season.id),
+          eq(eventsTable.sport, CFB_SPORT),
+          eq(eventsTable.sourceEventId, "shared-provider-id"),
+        ));
+        const [calcutta] = await tx.insert(calcuttasTable).values({
+          seasonId: season.id,
+          name: "2198 CFB scoring pipeline test",
+          year: 2198,
+          sport: CFB_SPORT,
+          competitionFormat: CFB_REGULAR_SEASON,
+          isCanonical: true,
+        }).returning({ id: calcuttasTable.id });
+        await tx.insert(calcuttaEntriesTable).values([
+          { calcuttaId: calcutta.id, teamId: cfbEventRow.homeTeamId },
+          { calcuttaId: calcutta.id, teamId: cfbEventRow.awayTeamId },
+        ]);
         assert.deepEqual(
           await syncCfbEventsTx(tx, season.id, 2198, payload),
-          { eventsUpserted: 1 },
+          { eventsUpserted: 1, metricsUpserted: 8 },
+        );
+        const metricRows = await tx
+          .select({
+            metric: snapshotMetricsTable.metric,
+            value: snapshotMetricsTable.value,
+            sourceData: snapshotMetricsTable.sourceData,
+          })
+          .from(snapshotMetricsTable)
+          .innerJoin(
+            sportPeriodsTable,
+            eq(sportPeriodsTable.id, snapshotMetricsTable.periodId),
+          )
+          .innerJoin(
+            calcuttaEntriesTable,
+            eq(calcuttaEntriesTable.id, snapshotMetricsTable.entryId),
+          )
+          .where(and(
+            eq(calcuttaEntriesTable.calcuttaId, calcutta.id),
+            eq(sportPeriodsTable.sport, CFB_SPORT),
+            eq(sportPeriodsTable.competition, CFB_REGULAR_SEASON),
+            eq(sportPeriodsTable.sequence, 1),
+          ));
+        assert.equal(metricRows.length, 8);
+        assert.ok(metricRows.every((row) =>
+          row.sourceData.sourceEvents[0].sourceEventId === "shared-provider-id"
+        ));
+        assert.deepEqual(
+          metricRows.filter((row) => row.metric === "win").map((row) => Number(row.value)).sort(),
+          [0, 1],
         );
 
         const corrected = structuredClone(payload);

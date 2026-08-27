@@ -11,3 +11,4 @@ export { mtmEntryScopeMigration } from "./0014MtmEntryScope";
 export { entryResultEconomicsMigration } from "./0015EntryResultEconomics";
 export { sportScopedEventIngestionMigration } from "./0016SportScopedEventIngestion";
 export { canonicalCalcuttaScopeMigration } from "./0017CanonicalCalcuttaScope";
+export { competitionScoringMigration } from "./0018CompetitionScoring";

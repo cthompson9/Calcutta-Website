@@ -1383,7 +1383,11 @@ function buildMcpServer() {
             isPlayoff: sportPeriodsTable.isPlayoff,
           })
           .from(sportPeriodsTable)
-          .where(and(eq(sportPeriodsTable.sport, NFL_SPORT), eq(sportPeriodsTable.sequence, period)));
+          .where(and(
+            eq(sportPeriodsTable.sport, NFL_SPORT),
+            eq(sportPeriodsTable.competition, "NFL_REGULAR_SEASON"),
+            eq(sportPeriodsTable.sequence, period),
+          ));
         if (!periodRow) throw new Error("NFL period was not seeded.");
         if (periodRow.isPlayoff) {
           const hasBaseline = await hasCompleteNormalizedSnapshot(tx, {

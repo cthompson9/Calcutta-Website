@@ -12,20 +12,16 @@ export const payoutRulesTable = pgTable(
       .notNull()
       .references(() => calcuttasTable.id, { onDelete: "cascade" }),
     metric: text("metric").notNull(),
-    dollarsPerUnit: numeric("dollars_per_unit", { precision: 12, scale: 4 })
-      .notNull()
-      .default("0"),
-    playoffMultiplier: numeric("playoff_multiplier", { precision: 8, scale: 4 })
-      .notNull()
-      .default("2"),
+    dollarsPerUnit: numeric("dollars_per_unit", { precision: 12, scale: 4 }),
+    playoffMultiplier: numeric("playoff_multiplier", { precision: 8, scale: 4 }),
   },
   (t) => [
     uniqueIndex("payout_rules_calcutta_metric_idx").on(t.calcuttaId, t.metric),
+    check("payout_rules_metric_supported", sql`${t.metric} ~ '^[a-z][a-z0-9_]*$'`),
     check(
-      "payout_rules_metric_supported",
-      sql`${t.metric} IN ('win', 'tie', 'pt_diff', 'playoff_berth', 'div_round', 'conf_round', 'sb_berth', 'win_super_bowl')`,
+      "payout_rules_multiplier_non_negative",
+      sql`${t.playoffMultiplier} IS NULL OR ${t.playoffMultiplier} >= 0`,
     ),
-    check("payout_rules_multiplier_non_negative", sql`${t.playoffMultiplier} >= 0`),
   ],
 );
 

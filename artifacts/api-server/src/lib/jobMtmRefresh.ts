@@ -123,6 +123,7 @@ export async function runCanonicalMtmRefresh(input: {
         eq(snapshotMetricsTable.basis, "realized"),
         eq(snapshotMetricsTable.metric, "wins"),
         eq(sportPeriodsTable.sport, NFL_SPORT),
+        eq(sportPeriodsTable.competition, "NFL_REGULAR_SEASON"),
       ),
     );
   const requestedSequence = latestFullyCoveredNflPeriod(
@@ -139,6 +140,7 @@ export async function runCanonicalMtmRefresh(input: {
     .where(
       and(
         eq(sportPeriodsTable.sport, NFL_SPORT),
+        eq(sportPeriodsTable.competition, "NFL_REGULAR_SEASON"),
         eq(sportPeriodsTable.sequence, requestedSequence),
       ),
     )

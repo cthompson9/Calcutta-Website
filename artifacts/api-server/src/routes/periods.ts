@@ -11,6 +11,7 @@ import {
 } from "@workspace/api-zod";
 import {
   calcuttaEntriesTable,
+  calcuttaRulesTable,
   calcuttasTable,
   db,
   nflGamesTable,
@@ -29,6 +30,7 @@ import {
   NFL_SPORT,
   aggregateNflRegularSeasonGames,
   compareHistoricalPayoutParity,
+  ensureCompetitionSportPeriods,
   ensureNflSportPeriods,
   hasCompleteNormalizedSnapshot,
   initializeNflWeekZeroSnapshots,
@@ -36,9 +38,13 @@ import {
   normalizeNflGame,
   type NormalizedSnapshotWrite,
   upsertNormalizedSnapshotMetrics,
-  validateNflPayoutRules,
 } from "../lib/calcuttaReturns";
 import { resolveCalcuttaId } from "../lib/calcuttaContext";
+import {
+  configureCompetitionScoringAdapter,
+  getCompetitionScoringAdapter,
+  validateCompetitionScoringRules,
+} from "../lib/competitionScoring";
 
 const router: IRouter = Router();
 
@@ -82,6 +88,7 @@ async function rebuildNflRealizedSnapshots(
         eq(calcuttaEntriesTable.calcuttaId, calcuttaId),
         eq(teamPeriodSnapshotsTable.basis, "realized"),
         eq(sportPeriodsTable.sport, NFL_SPORT),
+        eq(sportPeriodsTable.competition, "NFL_REGULAR_SEASON"),
         gte(sportPeriodsTable.sequence, periodSequence),
         lte(sportPeriodsTable.sequence, 18),
       ));
@@ -104,7 +111,11 @@ async function rebuildNflRealizedSnapshots(
         actualKickoffAt: row.actualKickoffAt, status: row.status, sourceData: row.sourceData,
       })));
       const period = await tx.select({ id: sportPeriodsTable.id }).from(sportPeriodsTable)
-        .where(and(eq(sportPeriodsTable.sport, NFL_SPORT), eq(sportPeriodsTable.sequence, sequence))).limit(1);
+        .where(and(
+          eq(sportPeriodsTable.sport, NFL_SPORT),
+          eq(sportPeriodsTable.competition, "NFL_REGULAR_SEASON"),
+          eq(sportPeriodsTable.sequence, sequence),
+        )).limit(1);
       if (!period[0]) throw new Error("NFL period was not seeded.");
       for (const entry of poolEntries) {
         const stats = aggregate.get(entry.teamId) ?? {
@@ -173,6 +184,29 @@ async function resolveSeason(year: number) {
   return rows[0] ?? null;
 }
 
+async function resolveScoringCalcutta(
+  seasonId: number,
+  requestedCalcuttaId?: number | null,
+) {
+  const calcuttaId = requestedCalcuttaId == null
+    ? await resolveCalcuttaId(db, { seasonId })
+    : requestedCalcuttaId;
+  if (!calcuttaId) return null;
+  const rows = await db
+    .select({
+      id: calcuttasTable.id,
+      sport: calcuttasTable.sport,
+      competitionFormat: calcuttasTable.competitionFormat,
+    })
+    .from(calcuttasTable)
+    .where(and(
+      eq(calcuttasTable.id, calcuttaId),
+      eq(calcuttasTable.seasonId, seasonId),
+    ))
+    .limit(1);
+  return rows[0] ?? null;
+}
+
 router.get("/periods", async (req, res): Promise<void> => {
   const parsed = GetSportPeriodsQueryParams.safeParse(req.query);
   if (!parsed.success) {
@@ -180,6 +214,9 @@ router.get("/periods", async (req, res): Promise<void> => {
     return;
   }
   const sport = parsed.data.sport;
+  const competition = sport === "CFB"
+    ? "CFB_REGULAR_SEASON"
+    : "NFL_REGULAR_SEASON";
   const periods = await db
     .select({
       sequence: sportPeriodsTable.sequence,
@@ -187,7 +224,10 @@ router.get("/periods", async (req, res): Promise<void> => {
       isPlayoff: sportPeriodsTable.isPlayoff,
     })
     .from(sportPeriodsTable)
-    .where(eq(sportPeriodsTable.sport, sport))
+    .where(and(
+      eq(sportPeriodsTable.sport, sport),
+      eq(sportPeriodsTable.competition, competition),
+    ))
     .orderBy(sportPeriodsTable.sequence);
 
   // The NFL template is deterministic and lets a newly created pool render its
@@ -212,13 +252,13 @@ router.get("/payout-rules", async (req, res): Promise<void> => {
     res.json([]);
     return;
   }
-  const calcuttaId = await resolveCalcuttaId(db, {
-    seasonId: season.id,
-    calcuttaId: parsed.data.calcuttaId,
-  });
-  if (!calcuttaId) {
+  const calcutta = await resolveScoringCalcutta(
+    season.id,
+    parsed.data.calcuttaId,
+  );
+  if (!calcutta) {
     if (parsed.data.calcuttaId != null) {
-      res.status(400).json({ error: "Calcutta must be an NFL pool in the requested season." });
+      res.status(400).json({ error: "Calcutta must belong to the requested season." });
     } else res.json([]);
     return;
   }
@@ -229,12 +269,12 @@ router.get("/payout-rules", async (req, res): Promise<void> => {
       playoffMultiplier: payoutRulesTable.playoffMultiplier,
     })
     .from(payoutRulesTable)
-    .where(eq(payoutRulesTable.calcuttaId, calcuttaId));
+    .where(eq(payoutRulesTable.calcuttaId, calcutta.id));
   res.json(
     rules.map((rule) => ({
       metric: rule.metric,
-      dollarsPerUnit: Number(rule.dollarsPerUnit),
-      playoffMultiplier: Number(rule.playoffMultiplier),
+      dollarsPerUnit: rule.dollarsPerUnit == null ? null : Number(rule.dollarsPerUnit),
+      playoffMultiplier: rule.playoffMultiplier == null ? null : Number(rule.playoffMultiplier),
     })),
   );
 });
@@ -257,22 +297,44 @@ router.put("/payout-rules", async (req, res): Promise<void> => {
     }
     duplicateMetric.add(rule.metric);
   }
-  const rubric = validateNflPayoutRules(parsed.data.rules);
-  if (!rubric.ok) {
-    res.status(400).json({ error: rubric.error });
-    return;
-  }
   const season = await resolveSeason(parsed.data.seasonYear);
   if (!season) {
     res.status(404).json({ error: `Season ${parsed.data.seasonYear} not found` });
     return;
   }
-  const resolvedCalcuttaId = await resolveCalcuttaId(db, {
-    seasonId: season.id,
-    calcuttaId: parsed.data.calcuttaId,
-  });
-  if (!resolvedCalcuttaId) {
-    res.status(400).json({ error: "Calcutta must be an NFL pool in the requested season." });
+  const calcutta = await resolveScoringCalcutta(
+    season.id,
+    parsed.data.calcuttaId,
+  );
+  if (!calcutta) {
+    res.status(400).json({ error: "Calcutta must belong to the requested season." });
+    return;
+  }
+  const baseAdapter = getCompetitionScoringAdapter(
+    calcutta.sport,
+    calcutta.competitionFormat,
+  );
+  if (!baseAdapter) {
+    res.status(400).json({ error: "This competition does not have a scoring adapter." });
+    return;
+  }
+  const configuredAdapter = configureCompetitionScoringAdapter(baseAdapter, [
+    {
+      ruleName: "starting_points",
+      value: parsed.data.startingPoints ?? baseAdapter.startingPoints,
+    },
+    {
+      ruleName: "normalization_denominator",
+      value: parsed.data.normalizationDenominator ??
+        baseAdapter.normalizationDenominator,
+    },
+  ]);
+  const rubric = validateCompetitionScoringRules(
+    configuredAdapter,
+    parsed.data.rules,
+  );
+  if (!rubric.ok) {
+    res.status(400).json({ error: rubric.error });
     return;
   }
 
@@ -280,18 +342,48 @@ router.put("/payout-rules", async (req, res): Promise<void> => {
     await tx.execute(
       sql`select pg_advisory_xact_lock(${OWNERSHIP_SEASON_LOCK_NAMESPACE}, ${season.id})`,
     );
-    await ensureNflSportPeriods(tx);
+    await ensureCompetitionSportPeriods(configuredAdapter, tx);
     await tx
       .delete(payoutRulesTable)
-      .where(eq(payoutRulesTable.calcuttaId, resolvedCalcuttaId));
+      .where(eq(payoutRulesTable.calcuttaId, calcutta.id));
     await tx.insert(payoutRulesTable).values(
       parsed.data.rules.map((rule) => ({
-        calcuttaId: resolvedCalcuttaId,
+        calcuttaId: calcutta.id,
         metric: rule.metric,
         dollarsPerUnit: rule.dollarsPerUnit.toString(),
         playoffMultiplier: rule.playoffMultiplier.toString(),
       })),
     );
+    if (
+      parsed.data.startingPoints != null &&
+      parsed.data.normalizationDenominator != null
+    ) {
+      for (const setting of [
+        {
+          ruleName: "starting_points",
+          value: parsed.data.startingPoints,
+          description: "Competition starting points.",
+        },
+        {
+          ruleName: "normalization_denominator",
+          value: parsed.data.normalizationDenominator,
+          description: "Competition points normalization denominator.",
+        },
+      ]) {
+        const row = {
+          calcuttaId: calcutta.id,
+          ruleName: setting.ruleName,
+          value: setting.value.toString(),
+          unit: "points",
+          description: setting.description,
+          active: true,
+        };
+        await tx.insert(calcuttaRulesTable).values(row).onConflictDoUpdate({
+          target: [calcuttaRulesTable.calcuttaId, calcuttaRulesTable.ruleName],
+          set: row,
+        });
+      }
+    }
     return parsed.data.rules.map((rule) => ({
       metric: rule.metric,
       dollarsPerUnit: rule.dollarsPerUnit,
@@ -408,6 +500,7 @@ router.post("/period-snapshots", async (req, res): Promise<void> => {
       .where(
         and(
           eq(sportPeriodsTable.sport, NFL_SPORT),
+          eq(sportPeriodsTable.competition, "NFL_REGULAR_SEASON"),
           eq(sportPeriodsTable.sequence, data.periodSequence),
         ),
       )

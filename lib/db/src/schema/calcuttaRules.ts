@@ -33,9 +33,14 @@ export const calcuttaRulesTable = pgTable(
   },
   (t) => [
     uniqueIndex("calcutta_rules_calcutta_rule_idx").on(t.calcuttaId, t.ruleName),
+    check("calcutta_rules_rule_name_nonempty", sql`length(trim(${t.ruleName})) > 0`),
     check(
       "calcutta_rules_rule_type_supported",
       sql`${t.ruleType} IS NULL OR ${t.ruleType} IN ('points', 'fixed_pct', 'shared_pool')`,
+    ),
+    check(
+      "calcutta_rules_multiplier_non_negative",
+      sql`${t.multiplier} IS NULL OR ${t.multiplier} >= 0`,
     ),
   ],
 );

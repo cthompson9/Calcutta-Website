@@ -1,8 +1,12 @@
-import { and, eq } from "drizzle-orm";
+import { and, eq, inArray } from "drizzle-orm";
 import {
+  calcuttasTable,
+  calcuttaEntriesTable,
   db,
   eventsTable,
   providerTeamIdentitiesTable,
+  snapshotMetricsTable,
+  sportPeriodsTable,
   teamsTable,
 } from "@workspace/db";
 import { resolveDefaultSeasonYearForSport } from "./calcuttaContext";
@@ -13,6 +17,11 @@ import {
   type IngestedEvent,
   type ProviderTeamIdentity,
 } from "./eventIngestion";
+import {
+  CFB_SCORING_ADAPTER,
+  type CompetitionOutcomeEvent,
+} from "./competitionScoring";
+import { ensureCompetitionSportPeriods } from "./calcuttaReturns";
 
 const ESPN_CFB_SCOREBOARD_URL =
   "https://site.api.espn.com/apis/site/v2/sports/football/college-football/scoreboard";
@@ -255,7 +264,7 @@ export async function syncCfbEventsTx(
   seasonId: number,
   seasonYear: number,
   payload: EspnCfbScoreboardPayload,
-): Promise<{ eventsUpserted: number }> {
+): Promise<{ eventsUpserted: number; metricsUpserted: number }> {
   const parsed = validateEspnCfbEvents(payload, seasonYear);
   const teamRows = await tx.select().from(teamsTable);
   const teamIdByName = new Map(teamRows.map((team) => [team.name, team.id]));
@@ -348,14 +357,122 @@ export async function syncCfbEventsTx(
         });
     }
   }
-  return { eventsUpserted: parsed.length };
+  const metricsUpserted = await rebuildCfbRealizedMetrics(tx, seasonId);
+  return { eventsUpserted: parsed.length, metricsUpserted };
+}
+
+async function rebuildCfbRealizedMetrics(
+  tx: Parameters<Parameters<typeof db.transaction>[0]>[0],
+  seasonId: number,
+): Promise<number> {
+  await ensureCompetitionSportPeriods(CFB_SCORING_ADAPTER, tx);
+  const storedEvents = await tx.select().from(eventsTable).where(and(
+    eq(eventsTable.seasonId, seasonId),
+    eq(eventsTable.sport, CFB_SPORT),
+    eq(eventsTable.competition, CFB_REGULAR_SEASON),
+    eq(eventsTable.status, "final"),
+  ));
+  const finals = storedEvents.filter((event) =>
+    event.homeScore != null &&
+    event.awayScore != null &&
+    CFB_SCORING_ADAPTER.periods.some((period) => period.sequence === event.week)
+  );
+  const finalPeriods = [...new Set(finals.map((event) => event.week))]
+    .sort((left, right) => left - right);
+  if (finalPeriods.length === 0) return 0;
+  const periods = await tx.select().from(sportPeriodsTable).where(and(
+    eq(sportPeriodsTable.sport, CFB_SPORT),
+    eq(sportPeriodsTable.competition, CFB_REGULAR_SEASON),
+    inArray(sportPeriodsTable.sequence, finalPeriods),
+  ));
+  const periodIdBySequence = new Map(periods.map((period) => [
+    period.sequence,
+    period.id,
+  ]));
+  const entries = await tx
+    .select({
+      entryId: calcuttaEntriesTable.id,
+      teamId: calcuttaEntriesTable.teamId,
+    })
+    .from(calcuttaEntriesTable)
+    .innerJoin(
+      calcuttasTable,
+      eq(calcuttasTable.id, calcuttaEntriesTable.calcuttaId),
+    )
+    .where(and(
+      eq(calcuttasTable.seasonId, seasonId),
+      eq(calcuttasTable.sport, CFB_SPORT),
+      eq(calcuttasTable.competitionFormat, CFB_REGULAR_SEASON),
+    ));
+  if (entries.length === 0) return 0;
+
+  let metricsUpserted = 0;
+  for (const throughPeriod of finalPeriods) {
+    const periodId = periodIdBySequence.get(throughPeriod);
+    if (!periodId) {
+      throw new Error(`CFB period ${throughPeriod} was not configured.`);
+    }
+    const outcomes = CFB_SCORING_ADAPTER.aggregateOutcomes(
+      finals
+        .filter((event) => event.week <= throughPeriod)
+        .map((event): CompetitionOutcomeEvent => ({
+          seasonId: event.seasonId,
+          source: event.source,
+          sourceEventId: event.sourceEventId,
+          periodSequence: event.week,
+          homeTeamId: event.homeTeamId,
+          awayTeamId: event.awayTeamId,
+          homeScore: event.homeScore!,
+          awayScore: event.awayScore!,
+          actualKickoffAt: event.kickoffAt,
+          status: event.status,
+          sourceData: event.sourceData,
+        })),
+    );
+    for (const entry of entries) {
+      const outcome = outcomes.get(entry.teamId);
+      const sourceEvents = outcome?.sourceEvents ?? [];
+      for (const metric of CFB_SCORING_ADAPTER.realizedMetrics) {
+        const row = {
+          entryId: entry.entryId,
+          periodId,
+          basis: "realized" as const,
+          metric,
+          value: String(outcome?.metrics[metric] ?? 0),
+          source: "events",
+          sourceData: {
+            sport: CFB_SPORT,
+            competition: CFB_REGULAR_SEASON,
+            provider: "espn",
+            throughPeriod,
+            sourceEvents: sourceEvents.map((event) => ({
+              source: event.source ?? "manual",
+              sourceEventId: event.sourceEventId,
+            })),
+          },
+          snapshotAt: new Date(),
+        };
+        await tx.insert(snapshotMetricsTable).values(row).onConflictDoUpdate({
+          target: [
+            snapshotMetricsTable.entryId,
+            snapshotMetricsTable.periodId,
+            snapshotMetricsTable.basis,
+            snapshotMetricsTable.metric,
+          ],
+          set: row,
+        });
+        metricsUpserted += 1;
+      }
+    }
+  }
+  return metricsUpserted;
 }
 
 export async function syncCfbEvents(
   seasonId: number,
   seasonYear: number,
   payload: EspnCfbScoreboardPayload,
-): Promise<{ eventsUpserted: number }> {
+): Promise<{ eventsUpserted: number; metricsUpserted: number }> {
   return db.transaction((tx) => syncCfbEventsTx(tx, seasonId, seasonYear, payload));
 }
 
@@ -372,7 +489,7 @@ export async function resolveCfbRefreshSeasonYear(): Promise<number> {
 export async function runCfbEventRefresh(input: {
   seasonId: number;
   seasonYear: number;
-}): Promise<{ eventsUpserted: number }> {
+}): Promise<{ eventsUpserted: number; metricsUpserted: number }> {
   const payload = await fetchEspnCfbEvents(input.seasonYear);
   validateEspnCfbEvents(payload, input.seasonYear);
   return syncCfbEvents(input.seasonId, input.seasonYear, payload);

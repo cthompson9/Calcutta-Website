@@ -18,6 +18,7 @@ import type {
   UseQueryOptions,
   UseQueryResult
 } from '@tanstack/react-query';
+
 import type {
   AgentConsortiumLeaderboard,
   AgentErrorResponse,
@@ -118,6 +119,10 @@ const withQueryKey = <T extends object, K>(query: T, queryKey: K): T & { queryKe
 };
 
 export const getHealthCheckUrl = () => {
+
+
+
+
   return `/api/healthz`
 }
 /**
@@ -181,6 +186,11 @@ export function useHealthCheck<TData = Awaited<ReturnType<typeof healthCheck>>, 
 
   return withQueryKey(query, queryOptions.queryKey);
 }
+
+
+
+
+
 export const getGetSeasonsUrl = () => {
 
 
@@ -251,6 +261,13 @@ export function useGetSeasons<TData = Awaited<ReturnType<typeof getSeasons>>, TE
 
   return withQueryKey(query, queryOptions.queryKey);
 }
+
+
+
+
+
+
+
 export const getCreateSeasonUrl = () => {
 
 
@@ -399,6 +416,13 @@ export function useGetTeams<TData = Awaited<ReturnType<typeof getTeams>>, TError
 
   return withQueryKey(query, queryOptions.queryKey);
 }
+
+
+
+
+
+
+
 export const getCreateTeamUrl = () => {
 
 

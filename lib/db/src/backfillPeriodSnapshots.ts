@@ -27,9 +27,17 @@ async function seedNflPeriods() {
   for (const period of NFL_PERIODS) {
     await db
       .insert(sportPeriodsTable)
-      .values({ sport: "NFL", ...period })
+      .values({
+        sport: "NFL",
+        competition: "NFL_REGULAR_SEASON",
+        ...period,
+      })
       .onConflictDoUpdate({
-        target: [sportPeriodsTable.sport, sportPeriodsTable.sequence],
+        target: [
+          sportPeriodsTable.sport,
+          sportPeriodsTable.competition,
+          sportPeriodsTable.sequence,
+        ],
         set: { label: period.label, isPlayoff: period.isPlayoff },
       });
   }
@@ -47,7 +55,11 @@ async function removeSparsePlayoffSnapshots() {
       sportPeriodsTable,
       eq(sportPeriodsTable.id, teamPeriodSnapshotsTable.periodId),
     )
-    .where(and(eq(sportPeriodsTable.sport, "NFL"), eq(sportPeriodsTable.isPlayoff, true)));
+    .where(and(
+      eq(sportPeriodsTable.sport, "NFL"),
+      eq(sportPeriodsTable.competition, "NFL_REGULAR_SEASON"),
+      eq(sportPeriodsTable.isPlayoff, true),
+    ));
 
   for (const snapshot of playoffSnapshots) {
     const baseline = await db
@@ -62,6 +74,7 @@ async function removeSparsePlayoffSnapshots() {
           eq(teamPeriodSnapshotsTable.entryId, snapshot.entryId),
           eq(teamPeriodSnapshotsTable.basis, snapshot.basis),
           eq(sportPeriodsTable.sport, "NFL"),
+          eq(sportPeriodsTable.competition, "NFL_REGULAR_SEASON"),
           eq(sportPeriodsTable.sequence, 18),
         ),
       )
@@ -90,12 +103,20 @@ async function removeSparsePlayoffMetrics() {
       sportPeriodsTable,
       eq(sportPeriodsTable.id, snapshotMetricsTable.periodId),
     )
-    .where(and(eq(sportPeriodsTable.sport, "NFL"), eq(sportPeriodsTable.isPlayoff, true)));
+    .where(and(
+      eq(sportPeriodsTable.sport, "NFL"),
+      eq(sportPeriodsTable.competition, "NFL_REGULAR_SEASON"),
+      eq(sportPeriodsTable.isPlayoff, true),
+    ));
 
   const playoffPeriods = await db
     .select({ id: sportPeriodsTable.id })
     .from(sportPeriodsTable)
-    .where(and(eq(sportPeriodsTable.sport, "NFL"), eq(sportPeriodsTable.isPlayoff, true)));
+    .where(and(
+      eq(sportPeriodsTable.sport, "NFL"),
+      eq(sportPeriodsTable.competition, "NFL_REGULAR_SEASON"),
+      eq(sportPeriodsTable.isPlayoff, true),
+    ));
   const playoffPeriodIds = playoffPeriods.map((period) => period.id);
 
   for (const metric of playoffMetrics) {
@@ -111,6 +132,7 @@ async function removeSparsePlayoffMetrics() {
           eq(snapshotMetricsTable.entryId, metric.entryId),
           eq(snapshotMetricsTable.basis, metric.basis),
           eq(sportPeriodsTable.sport, "NFL"),
+          eq(sportPeriodsTable.competition, "NFL_REGULAR_SEASON"),
           eq(sportPeriodsTable.sequence, 18),
         ),
       )

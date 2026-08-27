@@ -2,6 +2,7 @@ import { and, asc, eq, lte } from "drizzle-orm";
 import {
   calcuttasTable,
   calcuttaEntriesTable,
+  calcuttaRulesTable,
   db,
   payoutRulesTable,
   positionsTable,
@@ -11,74 +12,45 @@ import {
   teamPeriodSnapshotsTable,
   teamResultsTable,
 } from "@workspace/db";
-import { LEAGUE_POINT_TOTAL } from "./weekZeroValuation";
+import {
+  calculateCompetitionTeamValues,
+  configureCompetitionScoringAdapter,
+  type CompetitionScoringAdapter,
+  NFL_MARQUEE_MULTIPLIER,
+  NFL_PAYOUT_RULES,
+  NFL_PERIOD_TEMPLATE,
+  NFL_RETURN_METRICS,
+  NFL_SCORING_ADAPTER,
+  NFL_SPORT,
+  NFL_STARTING_POINTS,
+  getCompetitionScoringAdapter,
+  isNflMarqueeKickoff,
+  validateCompetitionScoringRules,
+} from "./competitionScoring";
 
-export const NFL_SPORT = "NFL";
+export {
+  NFL_MARQUEE_MULTIPLIER,
+  NFL_PAYOUT_RULES,
+  NFL_PERIOD_TEMPLATE,
+  NFL_SPORT,
+  NFL_STARTING_POINTS,
+  isNflMarqueeKickoff,
+} from "./competitionScoring";
+
 function calcuttaAsOfDate(year: number): string | undefined {
   return year >= 1 && year <= 9999 ? `${year}-08-01` : undefined;
 }
-export const RETURN_METRICS = [
-  "win",
-  "tie",
-  "pt_diff",
-  "playoff_berth",
-  "div_round",
-  "conf_round",
-  "sb_berth",
-  "win_super_bowl",
-] as const;
+export const RETURN_METRICS = NFL_RETURN_METRICS;
 export type ReturnMetric = (typeof RETURN_METRICS)[number];
 export type SnapshotBasis = "realized" | "mtm";
 export type PlayoffStatus = "unknown" | "alive" | "clinched" | "eliminated";
 
-export const NFL_STARTING_POINTS = 150;
-export const NFL_MARQUEE_MULTIPLIER = 2;
-export const NFL_PAYOUT_RULES = [
-  { metric: "win", dollarsPerUnit: 10, playoffMultiplier: 1 },
-  { metric: "tie", dollarsPerUnit: 5, playoffMultiplier: 1 },
-  { metric: "pt_diff", dollarsPerUnit: 1, playoffMultiplier: 1 },
-  { metric: "playoff_berth", dollarsPerUnit: 50, playoffMultiplier: 1 },
-  { metric: "div_round", dollarsPerUnit: 100, playoffMultiplier: 1 },
-  { metric: "conf_round", dollarsPerUnit: 200, playoffMultiplier: 1 },
-  { metric: "sb_berth", dollarsPerUnit: 400, playoffMultiplier: 1 },
-  { metric: "win_super_bowl", dollarsPerUnit: 800, playoffMultiplier: 1 },
-] as const;
-
 export function validateNflPayoutRules(
-  rules: Array<{ metric: string; dollarsPerUnit: number; playoffMultiplier?: number }>,
+  rules: Array<{ metric: string; dollarsPerUnit: number | null; playoffMultiplier?: number | null }>,
 ): { ok: true } | { ok: false; error: string } {
-  if (rules.length !== NFL_PAYOUT_RULES.length) {
-    return { ok: false, error: "NFL payout rules must include exactly one rule for every confirmed metric." };
-  }
-  const expected = new Map(NFL_PAYOUT_RULES.map((rule) => [rule.metric, rule]));
-  const seen = new Set<string>();
-  for (const rule of rules) {
-    const target = expected.get(rule.metric as (typeof NFL_PAYOUT_RULES)[number]["metric"]);
-    if (!target) return { ok: false, error: `Unsupported NFL payout metric "${rule.metric}".` };
-    if (seen.has(rule.metric)) return { ok: false, error: `NFL payout metric "${rule.metric}" was supplied more than once.` };
-    seen.add(rule.metric);
-    if (!Number.isFinite(rule.dollarsPerUnit) || rule.dollarsPerUnit !== target.dollarsPerUnit) {
-      return { ok: false, error: `NFL ${rule.metric} must be worth ${target.dollarsPerUnit} points per unit.` };
-    }
-    if (rule.playoffMultiplier != null && rule.playoffMultiplier !== 1) {
-      return { ok: false, error: "NFL playoff multipliers must be 1; marquee game weighting is applied separately." };
-    }
-  }
-  return { ok: true };
+  const validation = validateCompetitionScoringRules(NFL_SCORING_ADAPTER, rules);
+  return validation.ok ? { ok: true } : validation;
 }
-
-export const NFL_PERIOD_TEMPLATE = [
-  { sequence: 0, label: "Week 0", isPlayoff: false },
-  ...Array.from({ length: 18 }, (_, index) => ({
-    sequence: index + 1,
-    label: `Week ${index + 1}`,
-    isPlayoff: false,
-  })),
-  { sequence: 19, label: "Wild Card", isPlayoff: true },
-  { sequence: 20, label: "Divisional", isPlayoff: true },
-  { sequence: 21, label: "Conference Championship", isPlayoff: true },
-  { sequence: 22, label: "Super Bowl", isPlayoff: true },
-] as const;
 
 export type SnapshotMetrics = {
   wins: number;
@@ -103,6 +75,15 @@ export type SnapshotState = SnapshotMetrics & {
   label: string;
   isPlayoff: boolean;
   playoffStatus: PlayoffStatus;
+  metrics?: Record<string, number>;
+};
+
+export type CompetitionSnapshotState = {
+  sequence: number;
+  label: string;
+  isPlayoff: boolean;
+  playoffStatus: PlayoffStatus;
+  metrics: Record<string, number>;
 };
 
 export const REALIZED_GAME_METRICS = [
@@ -236,8 +217,10 @@ export async function hasCompleteNormalizedSnapshot(
     entryId: number;
     basis: SnapshotBasis;
     periodSequence: number;
+    adapter?: CompetitionScoringAdapter;
   },
 ): Promise<boolean> {
+  const adapter = args.adapter ?? NFL_SCORING_ADAPTER;
   const rows = await reader
     .select({ metric: snapshotMetricsTable.metric })
     .from(snapshotMetricsTable)
@@ -248,15 +231,16 @@ export async function hasCompleteNormalizedSnapshot(
     .where(and(
       eq(snapshotMetricsTable.entryId, args.entryId),
       eq(snapshotMetricsTable.basis, args.basis),
-      eq(sportPeriodsTable.sport, NFL_SPORT),
+      eq(sportPeriodsTable.sport, adapter.sport),
+      eq(sportPeriodsTable.competition, adapter.competitionFormat),
       eq(sportPeriodsTable.sequence, args.periodSequence),
     ));
   const present = new Set(rows.map((row) => row.metric));
-  const required = args.basis === "mtm"
-    ? RETURN_METRICS
-    : args.periodSequence > 18
-      ? [...REALIZED_GAME_METRICS, ...REALIZED_PLAYOFF_METRICS]
-      : REALIZED_GAME_METRICS;
+  const period = adapter.periods.find((candidate) =>
+    candidate.sequence === args.periodSequence
+  );
+  if (!period) return false;
+  const required = adapter.requiredSnapshotMetrics(args.basis, period);
   return required.every((metric) => present.has(metric));
 }
 
@@ -281,6 +265,24 @@ function readPlayoffStatus(
 export function buildSnapshotStatesFromMetricRows(
   rows: NormalizedMetricSnapshotRow[],
 ): Map<number, Map<SnapshotBasis, SnapshotState[]>> {
+  const generic = buildCompetitionSnapshotStatesFromMetricRows(rows, NFL_SCORING_ADAPTER);
+  const grouped = new Map<number, Map<SnapshotBasis, SnapshotState[]>>();
+  for (const [teamId, byBasis] of generic) {
+    const converted = new Map<SnapshotBasis, SnapshotState[]>();
+    for (const [basis, snapshots] of byBasis) {
+      converted.set(basis, snapshots.map((snapshot) =>
+        competitionSnapshotToCompatibilityState(snapshot, basis)
+      ));
+    }
+    grouped.set(teamId, converted);
+  }
+  return grouped;
+}
+
+export function buildCompetitionSnapshotStatesFromMetricRows(
+  rows: NormalizedMetricSnapshotRow[],
+  adapter: CompetitionScoringAdapter,
+): Map<number, Map<SnapshotBasis, CompetitionSnapshotState[]>> {
   const groups = new Map<string, NormalizedMetricSnapshotRow[]>();
   for (const row of rows) {
     if (row.basis !== "realized" && row.basis !== "mtm") continue;
@@ -290,7 +292,7 @@ export function buildSnapshotStatesFromMetricRows(
     groups.set(key, group);
   }
 
-  const grouped = new Map<number, Map<SnapshotBasis, SnapshotState[]>>();
+  const grouped = new Map<number, Map<SnapshotBasis, CompetitionSnapshotState[]>>();
   for (const metricRows of groups.values()) {
     const first = metricRows[0];
     const basis = first.basis as SnapshotBasis;
@@ -304,40 +306,18 @@ export function buildSnapshotStatesFromMetricRows(
       }
       values.set(row.metric, value);
     }
-    const required = basis === "mtm"
-      ? RETURN_METRICS
-      : first.isPlayoff
-        ? [...REALIZED_GAME_METRICS, ...REALIZED_PLAYOFF_METRICS]
-        : REALIZED_GAME_METRICS;
+    const required = adapter.requiredSnapshotMetrics(basis, first);
     if (!valid || required.some((metric) => !values.has(metric))) continue;
 
-    const snapshot: SnapshotState = {
+    const snapshot: CompetitionSnapshotState = {
       sequence: first.sequence,
       label: first.label,
       isPlayoff: first.isPlayoff,
       playoffStatus: readPlayoffStatus(metricRows),
-      wins: values.get(basis === "mtm" ? "win" : "wins")!,
-      losses: basis === "realized" ? values.get("losses")! : 0,
-      ties: values.get(basis === "mtm" ? "tie" : "ties")!,
-      ptDiff: values.get("pt_diff")!,
-      playoffBerth: values.get("playoff_berth") ?? 0,
-      divRound: values.get("div_round") ?? 0,
-      confRound: values.get("conf_round") ?? 0,
-      sbBerth: values.get("sb_berth") ?? 0,
-      winSuperBowl: values.get("win_super_bowl") ?? 0,
-      ...(basis === "realized"
-        ? {
-            ordinaryWins: values.get("ordinary_wins")!,
-            marqueeWins: values.get("marquee_wins")!,
-            ordinaryTies: values.get("ordinary_ties")!,
-            marqueeTies: values.get("marquee_ties")!,
-            ordinaryPtDiff: values.get("ordinary_pt_diff")!,
-            marqueePtDiff: values.get("marquee_pt_diff")!,
-          }
-        : {}),
+      metrics: Object.fromEntries(values),
     };
     const byBasis = grouped.get(first.teamId) ??
-      new Map<SnapshotBasis, SnapshotState[]>();
+      new Map<SnapshotBasis, CompetitionSnapshotState[]>();
     const snapshots = byBasis.get(basis) ?? [];
     snapshots.push(snapshot);
     byBasis.set(basis, snapshots);
@@ -349,6 +329,46 @@ export function buildSnapshotStatesFromMetricRows(
     }
   }
   return grouped;
+}
+
+function competitionSnapshotToCompatibilityState(
+  snapshot: CompetitionSnapshotState,
+  basis: SnapshotBasis,
+): SnapshotState {
+  const values = snapshot.metrics;
+  return {
+    ...snapshot,
+    wins: values[basis === "mtm" ? "win" : "wins"] ?? values.win ?? 0,
+    losses: values.losses ?? values.loss ?? 0,
+    ties: values[basis === "mtm" ? "tie" : "ties"] ?? values.tie ?? 0,
+    ptDiff: values.pt_diff ?? 0,
+    playoffBerth: values.playoff_berth ?? 0,
+    divRound: values.div_round ?? 0,
+    confRound: values.conf_round ?? 0,
+    sbBerth: values.sb_berth ?? 0,
+    winSuperBowl: values.win_super_bowl ?? 0,
+    ...(basis === "realized" && adapterHasNflBreakdown(values)
+      ? {
+          ordinaryWins: values.ordinary_wins,
+          marqueeWins: values.marquee_wins,
+          ordinaryTies: values.ordinary_ties,
+          marqueeTies: values.marquee_ties,
+          ordinaryPtDiff: values.ordinary_pt_diff,
+          marqueePtDiff: values.marquee_pt_diff,
+        }
+      : {}),
+  };
+}
+
+function adapterHasNflBreakdown(values: Record<string, number>): boolean {
+  return [
+    "ordinary_wins",
+    "marquee_wins",
+    "ordinary_ties",
+    "marquee_ties",
+    "ordinary_pt_diff",
+    "marquee_pt_diff",
+  ].every((metric) => values[metric] != null);
 }
 
 type RuleValue = {
@@ -389,26 +409,6 @@ export type NormalizedNflGame = NflGameInput & {
   isMarquee: boolean;
   marqueeMultiplier: number;
 };
-
-function easternKickoffParts(value: Date): { weekday: string; minutes: number } {
-  const parts = new Intl.DateTimeFormat("en-US", {
-    timeZone: "America/New_York",
-    weekday: "short",
-    hour: "numeric",
-    minute: "numeric",
-    hour12: false,
-  }).formatToParts(value);
-  const read = (type: string) => parts.find((part) => part.type === type)?.value ?? "";
-  return { weekday: read("weekday"), minutes: Number(read("hour")) * 60 + Number(read("minute")) };
-}
-
-/** Sunday 1:00 PM inclusive through 7:00 PM exclusive ET is ordinary. */
-export function isNflMarqueeKickoff(kickoff: Date | string): boolean {
-  const date = kickoff instanceof Date ? kickoff : new Date(kickoff);
-  if (!Number.isFinite(date.getTime())) throw new Error("NFL game kickoff must be a valid timestamp.");
-  const eastern = easternKickoffParts(date);
-  return eastern.weekday !== "Sun" || eastern.minutes < 13 * 60 || eastern.minutes >= 19 * 60;
-}
 
 export function normalizeNflGame(input: NflGameInput): NormalizedNflGame {
   const actualKickoffAt = input.actualKickoffAt instanceof Date
@@ -661,7 +661,7 @@ export function calculateNflTeamValues(
     // Returns accrue against the league's complete season scorecard rather
     // than being renormalized to the points earned so far. Until the season is
     // complete, the total displayed gross can therefore be below the full pot.
-    const normalizedShare = entry.points / LEAGUE_POINT_TOTAL;
+    const normalizedShare = entry.points / NFL_SCORING_ADAPTER.normalizationDenominator!;
     const fairValue = normalizedShare * potSize;
     const cost = entry.cost ?? 0;
     return {
@@ -686,16 +686,35 @@ function weekZeroMetricValues(basis: SnapshotBasis) {
   return metrics.map((metric) => ({ metric, value: "0" }));
 }
 
-export async function ensureNflSportPeriods(writer: CalcuttaWriter = db): Promise<void> {
-  for (const period of NFL_PERIOD_TEMPLATE) {
+export async function ensureCompetitionSportPeriods(
+  adapter: {
+    sport: string;
+    competitionFormat: string;
+    periods: ReadonlyArray<{ sequence: number; label: string; isPlayoff: boolean }>;
+  },
+  writer: CalcuttaWriter = db,
+): Promise<void> {
+  for (const period of adapter.periods) {
     await writer
       .insert(sportPeriodsTable)
-      .values({ sport: NFL_SPORT, ...period })
+      .values({
+        sport: adapter.sport,
+        competition: adapter.competitionFormat,
+        ...period,
+      })
       .onConflictDoUpdate({
-        target: [sportPeriodsTable.sport, sportPeriodsTable.sequence],
+        target: [
+          sportPeriodsTable.sport,
+          sportPeriodsTable.competition,
+          sportPeriodsTable.sequence,
+        ],
         set: { label: period.label, isPlayoff: period.isPlayoff },
       });
   }
+}
+
+export async function ensureNflSportPeriods(writer: CalcuttaWriter = db): Promise<void> {
+  await ensureCompetitionSportPeriods(NFL_SCORING_ADAPTER, writer);
 }
 
 export type WeekZeroPointsInitialization =
@@ -774,6 +793,7 @@ export async function initializeNflWeekZeroSnapshots(
     .where(
       and(
         eq(sportPeriodsTable.sport, NFL_SPORT),
+        eq(sportPeriodsTable.competition, NFL_SCORING_ADAPTER.competitionFormat),
         eq(sportPeriodsTable.sequence, 0),
       ),
     )
@@ -965,22 +985,60 @@ export async function hasConfiguredPayoutRules(seasonId: number): Promise<boolea
   }))).ok;
 }
 
+async function configureAdapterForCalcutta(
+  adapter: CompetitionScoringAdapter,
+  calcuttaId: number,
+): Promise<CompetitionScoringAdapter> {
+  const configurationRows = await db
+    .select({
+      ruleName: calcuttaRulesTable.ruleName,
+      value: calcuttaRulesTable.value,
+      active: calcuttaRulesTable.active,
+    })
+    .from(calcuttaRulesTable)
+    .where(eq(calcuttaRulesTable.calcuttaId, calcuttaId));
+  return configureCompetitionScoringAdapter(
+    adapter,
+    configurationRows.map((row) => ({
+      ruleName: row.ruleName,
+      value: row.value == null ? null : Number(row.value),
+      active: row.active,
+    })),
+  );
+}
+
 /** Returns whether this exact Calcutta has any payout rules configured. */
 export async function hasConfiguredPayoutRulesForCalcutta(
   calcuttaId: number,
 ): Promise<boolean> {
-  const rows = await db
+  const [calcutta, rows] = await Promise.all([
+    db
+      .select({
+        sport: calcuttasTable.sport,
+        competitionFormat: calcuttasTable.competitionFormat,
+      })
+      .from(calcuttasTable)
+      .where(eq(calcuttasTable.id, calcuttaId))
+      .limit(1),
+    db
     .select({
       metric: payoutRulesTable.metric,
       dollarsPerUnit: payoutRulesTable.dollarsPerUnit,
       playoffMultiplier: payoutRulesTable.playoffMultiplier,
     })
     .from(payoutRulesTable)
-    .where(eq(payoutRulesTable.calcuttaId, calcuttaId))
-  return validateNflPayoutRules(rows.map((row) => ({
+    .where(eq(payoutRulesTable.calcuttaId, calcuttaId)),
+  ]);
+  const adapter = calcutta[0] && getCompetitionScoringAdapter(
+    calcutta[0].sport,
+    calcutta[0].competitionFormat,
+  );
+  if (!adapter) return false;
+  const configuredAdapter = await configureAdapterForCalcutta(adapter, calcuttaId);
+  return validateCompetitionScoringRules(configuredAdapter, rows.map((row) => ({
     metric: row.metric,
-    dollarsPerUnit: Number(row.dollarsPerUnit),
-    playoffMultiplier: Number(row.playoffMultiplier),
+    dollarsPerUnit: row.dollarsPerUnit == null ? null : Number(row.dollarsPerUnit),
+    playoffMultiplier: row.playoffMultiplier == null ? null : Number(row.playoffMultiplier),
   }))).ok;
 }
 
@@ -1057,6 +1115,8 @@ export async function loadReturnSnapshotPeriods(
       and(
         eq(calcuttaEntriesTable.calcuttaId, calcutta[0].id),
         eq(snapshotMetricsTable.basis, basis),
+        eq(sportPeriodsTable.sport, NFL_SCORING_ADAPTER.sport),
+        eq(sportPeriodsTable.competition, NFL_SCORING_ADAPTER.competitionFormat),
       ),
     )
     .orderBy(asc(sportPeriodsTable.sequence));
@@ -1088,6 +1148,26 @@ export async function loadCalculatedTeamReturnsForCalcutta(
   periodSequence?: number,
   enforceHistoricalParity = true,
 ): Promise<Map<number, CalculatedTeamReturns>> {
+  const calcutta = await db
+    .select({
+      seasonId: calcuttasTable.seasonId,
+      sport: calcuttasTable.sport,
+      competitionFormat: calcuttasTable.competitionFormat,
+      isCanonical: calcuttasTable.isCanonical,
+      isComplete: seasonsTable.isComplete,
+    })
+    .from(calcuttasTable)
+    .innerJoin(seasonsTable, eq(seasonsTable.id, calcuttasTable.seasonId))
+    .where(eq(calcuttasTable.id, calcuttaId))
+    .limit(1);
+  if (!calcutta[0]) return new Map();
+  const baseAdapter = getCompetitionScoringAdapter(
+    calcutta[0].sport,
+    calcutta[0].competitionFormat,
+  );
+  if (!baseAdapter) return new Map();
+  const adapter = await configureAdapterForCalcutta(baseAdapter, calcuttaId);
+
   const rawRules = await db
     .select({
       metric: payoutRulesTable.metric,
@@ -1097,31 +1177,27 @@ export async function loadCalculatedTeamReturnsForCalcutta(
     .from(payoutRulesTable)
     .where(eq(payoutRulesTable.calcuttaId, calcuttaId));
   const configuredRules = rawRules.map((rule) => ({
-    metric: rule.metric as ReturnMetric,
-    dollarsPerUnit: Number(rule.dollarsPerUnit),
-    playoffMultiplier: Number(rule.playoffMultiplier),
+    metric: rule.metric,
+    dollarsPerUnit: rule.dollarsPerUnit == null ? null : Number(rule.dollarsPerUnit),
+    playoffMultiplier: rule.playoffMultiplier == null ? null : Number(rule.playoffMultiplier),
   }));
-  const rulesValid = validateNflPayoutRules(configuredRules).ok;
+  const validation = validateCompetitionScoringRules(adapter, configuredRules);
+  const rulesValid = validation.ok;
   // Week 0 contains only the fixed 150-point opening allocation. It is safe to
   // calculate with the established default rubric when a new pool has not yet
   // saved custom rates; later periods keep the existing configuration guard.
-  const useDefaultWeekZeroRules = periodSequence === 0 && rawRules.length === 0;
+  const useDefaultWeekZeroRules =
+    periodSequence === 0 &&
+    rawRules.length === 0 &&
+    adapter.defaultRules != null;
   if (!rulesValid && !useDefaultWeekZeroRules) return new Map();
   const rules = rulesValid
-    ? configuredRules
-    : NFL_PAYOUT_RULES as unknown as RuleValue[];
-
-  const calcutta = await db
-    .select({
-      seasonId: calcuttasTable.seasonId,
-      isCanonical: calcuttasTable.isCanonical,
-      isComplete: seasonsTable.isComplete,
-    })
-    .from(calcuttasTable)
-    .innerJoin(seasonsTable, eq(seasonsTable.id, calcuttasTable.seasonId))
-    .where(eq(calcuttasTable.id, calcuttaId))
-    .limit(1);
-  if (!calcutta[0]) return new Map();
+    ? validation.rules
+    : adapter.defaultRules!.map((rule) => ({
+        metric: rule.metric,
+        dollarsPerUnit: rule.dollarsPerUnit!,
+        playoffMultiplier: rule.playoffMultiplier ?? 1,
+      }));
   const entryRows = await db
     .select({
       entryId: calcuttaEntriesTable.id,
@@ -1159,6 +1235,8 @@ export async function loadCalculatedTeamReturnsForCalcutta(
 
   const where = [
     eq(calcuttaEntriesTable.calcuttaId, calcuttaId),
+    eq(sportPeriodsTable.sport, calcutta[0].sport),
+    eq(sportPeriodsTable.competition, calcutta[0].competitionFormat),
     ...(periodSequence == null
       ? []
       : [lte(sportPeriodsTable.sequence, periodSequence)]),
@@ -1187,7 +1265,7 @@ export async function loadCalculatedTeamReturnsForCalcutta(
     .where(and(...where))
     .orderBy(asc(sportPeriodsTable.sequence));
 
-  const grouped = buildSnapshotStatesFromMetricRows(metricRows);
+  const grouped = buildCompetitionSnapshotStatesFromMetricRows(metricRows, adapter);
 
   const result = new Map<number, CalculatedTeamReturns>();
   for (const team of entryRows) result.set(team.teamId, { rulesConfigured: true });
@@ -1207,29 +1285,46 @@ export async function loadCalculatedTeamReturnsForCalcutta(
     // A share is meaningful only when every selected Calcutta entry is marked
     // at the same period. Missing coverage remains a visible incomplete state.
     if (latestByTeam.some((entry) => !entry.snapshot) || potSize <= 0) continue;
-    if (latestByTeam.some((entry) =>
-      entry.snapshot!.isPlayoff &&
-      !(grouped.get(entry.teamId)?.get(basis) ?? []).some((snapshot) => snapshot.sequence === 18),
-    )) continue;
-    const values = calculateNflTeamValues(
-      latestByTeam.map((entry) => ({
-        teamId: entry.teamId,
-        snapshot: entry.snapshot!,
-        cost: costs.get(entry.teamId) ?? 0,
-      })),
-      potSize,
-      rules,
-    );
+    if (
+      adapter.sport === NFL_SPORT &&
+      latestByTeam.some((entry) =>
+        entry.snapshot!.isPlayoff &&
+        !(grouped.get(entry.teamId)?.get(basis) ?? []).some((snapshot) => snapshot.sequence === 18)
+      )
+    ) continue;
+    const values = adapter.sport === NFL_SPORT
+      ? calculateNflTeamValues(
+          latestByTeam.map((entry) => ({
+            teamId: entry.teamId,
+            snapshot: competitionSnapshotToCompatibilityState(entry.snapshot!, basis),
+            cost: costs.get(entry.teamId) ?? 0,
+          })),
+          potSize,
+          rules as RuleValue[],
+        )
+      : calculateCompetitionTeamValues(
+          adapter,
+          latestByTeam.map((entry) => ({
+            teamId: entry.teamId,
+            metrics: entry.snapshot!.metrics,
+            cost: costs.get(entry.teamId) ?? 0,
+          })),
+          potSize,
+          rules,
+        );
     for (const value of values) {
       const calculated = result.get(value.teamId) ?? { rulesConfigured: true };
-      const latest = latestByTeam.find((entry) => entry.teamId === value.teamId)?.snapshot!;
+      const genericLatest = latestByTeam.find((entry) =>
+        entry.teamId === value.teamId
+      )?.snapshot!;
+      const latest = competitionSnapshotToCompatibilityState(genericLatest, basis);
       calculated[basis] = {
         latest,
         grossReturn: Math.round(value.grossReturn * 100) / 100,
         points: value.points,
         normalizedShare: value.normalizedShare,
         fairValue: value.fairValue,
-        pointsBreakdown: value.pointsBreakdown,
+        pointsBreakdown: value.pointsBreakdown as TeamPointsBreakdown,
       };
       result.set(value.teamId, calculated);
     }

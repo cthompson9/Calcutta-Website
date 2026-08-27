@@ -5,17 +5,9 @@ import {
   type SnapshotMetric,
 } from "@workspace/db";
 import type { WeekZeroCalculation } from "./weekZeroValuation";
+import { NFL_RETURN_METRICS } from "./competitionScoring";
 
-export const MTM_METRICS = [
-  "win",
-  "tie",
-  "pt_diff",
-  "playoff_berth",
-  "div_round",
-  "conf_round",
-  "sb_berth",
-  "win_super_bowl",
-] as const;
+export const MTM_METRICS = NFL_RETURN_METRICS;
 
 export type MtmMetric = (typeof MTM_METRICS)[number];
 

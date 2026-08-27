@@ -212,6 +212,7 @@ async function rebuildRealizedMetrics(
   const periods = finalWeeks.length > 0
     ? await tx.select().from(sportPeriodsTable).where(and(
         eq(sportPeriodsTable.sport, NFL_SPORT),
+          eq(sportPeriodsTable.competition, NFL_REGULAR_SEASON),
         inArray(sportPeriodsTable.sequence, finalWeeks),
       ))
     : [];
@@ -234,6 +235,7 @@ async function rebuildRealizedMetrics(
     .from(sportPeriodsTable)
     .where(and(
       eq(sportPeriodsTable.sport, NFL_SPORT),
+      eq(sportPeriodsTable.competition, NFL_REGULAR_SEASON),
       gte(sportPeriodsTable.sequence, 1),
       lte(sportPeriodsTable.sequence, 18),
     ));

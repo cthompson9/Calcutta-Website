@@ -9,7 +9,11 @@ import type { PayoutMetric } from './payoutMetric';
 
 export interface PayoutRuleRow {
   metric: PayoutMetric;
-  dollarsPerUnit: number;
-  /** @minimum 0 */
-  playoffMultiplier: number;
+  /** @nullable */
+  dollarsPerUnit: number | null;
+  /**
+     * @minimum 0
+     * @nullable
+     */
+  playoffMultiplier: number | null;
 }

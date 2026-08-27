@@ -6,16 +6,7 @@
  * OpenAPI spec version: 0.1.0
  */
 
-export type PayoutMetric = typeof PayoutMetric[keyof typeof PayoutMetric];
-
-
-export const PayoutMetric = {
-  win: 'win',
-  tie: 'tie',
-  pt_diff: 'pt_diff',
-  playoff_berth: 'playoff_berth',
-  div_round: 'div_round',
-  conf_round: 'conf_round',
-  sb_berth: 'sb_berth',
-  win_super_bowl: 'win_super_bowl',
-} as const;
+/**
+ * @pattern ^[a-z][a-z0-9_]*$
+ */
+export type PayoutMetric = string;

@@ -10,6 +10,10 @@ import type { PayoutRuleInput } from './payoutRuleInput';
 export interface PayoutRulesUpdate {
   seasonYear: number;
   calcuttaId?: number;
+  /** @nullable */
+  startingPoints?: number | null;
+  /** @nullable */
+  normalizationDenominator?: number | null;
   /** @minItems 1 */
   rules: PayoutRuleInput[];
 }

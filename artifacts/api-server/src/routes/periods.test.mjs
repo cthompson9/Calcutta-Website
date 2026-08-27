@@ -168,6 +168,52 @@ describe("period snapshot reporting", { skip: !DATABASE_URL || !ADMIN_KEY }, () 
     assert.equal(initializeResponse.status, 401);
   });
 
+  test("saves a configurable CFB rubric through the commissioner endpoint", async () => {
+    const [cfbCalcutta] = await db.insert(calcuttasTable).values({
+      seasonId,
+      year: seasonYear,
+      name: `${seasonYear} CFB Calcutta`,
+      sport: "CFB",
+      competitionFormat: "CFB_REGULAR_SEASON",
+      isCanonical: true,
+    }).returning({ id: calcuttasTable.id });
+    const response = await fetch(`${baseUrl}/api/payout-rules`, {
+      method: "PUT",
+      headers: {
+        "Content-Type": "application/json",
+        Authorization: `Bearer ${ADMIN_KEY}`,
+      },
+      body: JSON.stringify({
+        seasonYear,
+        calcuttaId: cfbCalcutta.id,
+        startingPoints: 20,
+        normalizationDenominator: 100,
+        rules: [
+          { metric: "win", dollarsPerUnit: 10, playoffMultiplier: 1 },
+          { metric: "loss", dollarsPerUnit: -2, playoffMultiplier: 1 },
+          { metric: "tie", dollarsPerUnit: 4, playoffMultiplier: 1 },
+          { metric: "pt_diff", dollarsPerUnit: 0.5, playoffMultiplier: 1 },
+        ],
+      }),
+    });
+    assert.equal(response.status, 200, await response.text());
+    const { hasConfiguredPayoutRulesForCalcutta } = await import(
+      "../lib/calcuttaReturns.ts"
+    );
+    assert.equal(
+      await hasConfiguredPayoutRulesForCalcutta(cfbCalcutta.id),
+      true,
+    );
+    const rows = await fetch(
+      `${baseUrl}/api/payout-rules?season=${seasonYear}&calcuttaId=${cfbCalcutta.id}`,
+    ).then((result) => result.json());
+    assert.deepEqual(
+      rows.map((row) => row.metric).sort(),
+      ["loss", "pt_diff", "tie", "win"],
+    );
+    await db.delete(calcuttasTable).where(eq(calcuttasTable.id, cfbCalcutta.id));
+  });
+
   test("automatically initializes complete immutable Week 0 baselines and opening returns", async () => {
     for (const basis of ["realized", "mtm"]) {
       const availability = await fetch(
@@ -430,7 +476,11 @@ describe("period snapshot reporting", { skip: !DATABASE_URL || !ADMIN_KEY }, () 
     const [period] = await db
       .select({ id: sportPeriodsTable.id })
       .from(sportPeriodsTable)
-      .where(eq(sportPeriodsTable.sequence, 3))
+      .where(and(
+        eq(sportPeriodsTable.sport, "NFL"),
+        eq(sportPeriodsTable.competition, "NFL_REGULAR_SEASON"),
+        eq(sportPeriodsTable.sequence, 3),
+      ))
       .limit(1);
     await db.delete(snapshotMetricsTable).where(and(
       eq(snapshotMetricsTable.entryId, entry.id),

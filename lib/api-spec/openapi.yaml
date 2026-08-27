@@ -2153,15 +2153,7 @@ components:
 
     PayoutMetric:
       type: string
-      enum:
-        - win
-        - tie
-        - pt_diff
-        - playoff_berth
-        - div_round
-        - conf_round
-        - sb_berth
-        - win_super_bowl
+      pattern: "^[a-z][a-z0-9_]*$"
 
     PayoutRuleInput:
       type: object
@@ -2182,9 +2174,9 @@ components:
         metric:
           $ref: "#/components/schemas/PayoutMetric"
         dollarsPerUnit:
-          type: number
+          type: ["number", "null"]
         playoffMultiplier:
-          type: number
+          type: ["number", "null"]
           minimum: 0
       required: [metric, dollarsPerUnit, playoffMultiplier]
 
@@ -2195,6 +2187,10 @@ components:
           type: number
         calcuttaId:
           type: number
+        startingPoints:
+          type: ["number", "null"]
+        normalizationDenominator:
+          type: ["number", "null"]
         rules:
           type: array
           minItems: 1

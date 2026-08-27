@@ -809,14 +809,15 @@ export const GetPayoutRulesQueryParams = zod.object({
   "calcuttaId": zod.coerce.number().nullish()
 })
 
+export const getPayoutRulesResponseMetricRegExp = new RegExp('^[a-z][a-z0-9_]*$');
 export const getPayoutRulesResponsePlayoffMultiplierMin = 0;
 
 
 
 export const GetPayoutRulesResponseItem = zod.object({
-  "metric": zod.enum(['win', 'tie', 'pt_diff', 'playoff_berth', 'div_round', 'conf_round', 'sb_berth', 'win_super_bowl']),
-  "dollarsPerUnit": zod.number(),
-  "playoffMultiplier": zod.number().min(getPayoutRulesResponsePlayoffMultiplierMin)
+  "metric": zod.string().regex(getPayoutRulesResponseMetricRegExp),
+  "dollarsPerUnit": zod.number().nullable(),
+  "playoffMultiplier": zod.number().min(getPayoutRulesResponsePlayoffMultiplierMin).nullable()
 })
 export const GetPayoutRulesResponse = zod.array(GetPayoutRulesResponseItem)
 
@@ -824,6 +825,7 @@ export const GetPayoutRulesResponse = zod.array(GetPayoutRulesResponseItem)
 /**
  * @summary Replace all payout rules for a season's canonical Calcutta
  */
+export const replacePayoutRulesBodyRulesItemMetricRegExp = new RegExp('^[a-z][a-z0-9_]*$');
 export const replacePayoutRulesBodyRulesItemPlayoffMultiplierDefault = 2;
 export const replacePayoutRulesBodyRulesItemPlayoffMultiplierMin = 0;
 
@@ -833,21 +835,24 @@ export const replacePayoutRulesBodyRulesItemPlayoffMultiplierMin = 0;
 export const ReplacePayoutRulesBody = zod.object({
   "seasonYear": zod.number(),
   "calcuttaId": zod.number().optional(),
+  "startingPoints": zod.number().nullish(),
+  "normalizationDenominator": zod.number().nullish(),
   "rules": zod.array(zod.object({
-  "metric": zod.enum(['win', 'tie', 'pt_diff', 'playoff_berth', 'div_round', 'conf_round', 'sb_berth', 'win_super_bowl']),
+  "metric": zod.string().regex(replacePayoutRulesBodyRulesItemMetricRegExp),
   "dollarsPerUnit": zod.number(),
   "playoffMultiplier": zod.number().min(replacePayoutRulesBodyRulesItemPlayoffMultiplierMin).default(replacePayoutRulesBodyRulesItemPlayoffMultiplierDefault)
 })).min(1)
 })
 
+export const replacePayoutRulesResponseMetricRegExp = new RegExp('^[a-z][a-z0-9_]*$');
 export const replacePayoutRulesResponsePlayoffMultiplierMin = 0;
 
 
 
 export const ReplacePayoutRulesResponseItem = zod.object({
-  "metric": zod.enum(['win', 'tie', 'pt_diff', 'playoff_berth', 'div_round', 'conf_round', 'sb_berth', 'win_super_bowl']),
-  "dollarsPerUnit": zod.number(),
-  "playoffMultiplier": zod.number().min(replacePayoutRulesResponsePlayoffMultiplierMin)
+  "metric": zod.string().regex(replacePayoutRulesResponseMetricRegExp),
+  "dollarsPerUnit": zod.number().nullable(),
+  "playoffMultiplier": zod.number().min(replacePayoutRulesResponsePlayoffMultiplierMin).nullable()
 })
 export const ReplacePayoutRulesResponse = zod.array(ReplacePayoutRulesResponseItem)
 
