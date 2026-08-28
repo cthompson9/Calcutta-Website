@@ -352,10 +352,10 @@ function nflPointMetricValues(metrics: Readonly<Record<string, number>>): Record
   ].some((metric) => (metrics[metric] ?? 0) !== 0);
   return {
     win: hasBreakdown
-      ? (metrics.ordinary_wins ?? 0) + NFL_MARQUEE_MULTIPLIER * (metrics.marquee_wins ?? 0)
+      ? (metrics.ordinary_wins ?? 0) + (metrics.marquee_wins ?? 0)
       : (metrics.win ?? metrics.wins ?? 0),
     tie: hasBreakdown
-      ? (metrics.ordinary_ties ?? 0) + NFL_MARQUEE_MULTIPLIER * (metrics.marquee_ties ?? 0)
+      ? (metrics.ordinary_ties ?? 0) + (metrics.marquee_ties ?? 0)
       : (metrics.tie ?? metrics.ties ?? 0),
     pt_diff: hasBreakdown
       ? (metrics.ordinary_pt_diff ?? 0) + NFL_MARQUEE_MULTIPLIER * (metrics.marquee_pt_diff ?? 0)

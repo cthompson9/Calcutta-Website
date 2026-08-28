@@ -78,7 +78,7 @@ describe("short trades and new trade participants", { skip: !canRun }, () => {
     const suffix = Math.random().toString(36).slice(2);
     const createResponse = await fetch(`${baseUrl}/api/bidders`, {
       method: "POST",
-      headers: { "Content-Type": "application/json" },
+      headers: { "Content-Type": "application/json", Authorization: `Bearer ${ADMIN_KEY}` },
       body: JSON.stringify({ name: `Editable bidder ${suffix}` }),
     });
     assert.equal(createResponse.status, 201);
@@ -87,7 +87,7 @@ describe("short trades and new trade participants", { skip: !canRun }, () => {
 
     const updateResponse = await fetch(`${baseUrl}/api/bidders/${created.id}`, {
       method: "PATCH",
-      headers: { "Content-Type": "application/json" },
+      headers: { "Content-Type": "application/json", Authorization: `Bearer ${ADMIN_KEY}` },
       body: JSON.stringify({
         name: `Renamed bidder ${suffix}`,
         calcuttaId,
@@ -313,10 +313,10 @@ describe("short trades and new trade participants", { skip: !canRun }, () => {
     );
   });
 
-  test("allows an unauthenticated synthetic trade submission but keeps it pending", async () => {
+  test("allows an authenticated synthetic trade submission but keeps it pending", async () => {
     const response = await fetch(`${baseUrl}/api/trades`, {
       method: "POST",
-      headers: { "Content-Type": "application/json" },
+      headers: { "Content-Type": "application/json", Authorization: `Bearer ${ADMIN_KEY}` },
       body: JSON.stringify({
         seasonYear,
         teamId,
@@ -489,7 +489,7 @@ describe("short trades and new trade participants", { skip: !canRun }, () => {
     for (const percentage of [-1, 0, 101]) {
       const response = await fetch(`${baseUrl}/api/trades`, {
         method: "POST",
-        headers: { "Content-Type": "application/json" },
+        headers: { "Content-Type": "application/json", Authorization: `Bearer ${ADMIN_KEY}` },
         body: JSON.stringify({
           seasonYear,
           teamId,
@@ -778,7 +778,7 @@ describe("short trades and new trade participants", { skip: !canRun }, () => {
 
     const createResponse = await fetch(`${baseUrl}/api/trades`, {
       method: "POST",
-      headers: { "Content-Type": "application/json" },
+      headers: { "Content-Type": "application/json", Authorization: `Bearer ${ADMIN_KEY}` },
       body: JSON.stringify({
         seasonYear,
         teamId,
@@ -842,7 +842,7 @@ describe("short trades and new trade participants", { skip: !canRun }, () => {
 
     const voidTradeResponse = await fetch(`${baseUrl}/api/trades`, {
       method: "POST",
-      headers: { "Content-Type": "application/json" },
+      headers: { "Content-Type": "application/json", Authorization: `Bearer ${ADMIN_KEY}` },
       body: JSON.stringify({
         seasonYear,
         teamId,

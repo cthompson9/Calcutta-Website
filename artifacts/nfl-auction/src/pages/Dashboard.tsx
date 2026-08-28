@@ -109,9 +109,7 @@ export default function Dashboard() {
   );
   useBacklinkBackShortcut(sourceTarget.teamId != null);
 
-  const [adminKey, setAdminKey] = useState<string | null>(
-    () => sessionStorage.getItem("nfl_admin_key"),
-  );
+  const [adminKey, setAdminKey] = useState<string | null>(null);
   const [confirmOpen, setConfirmOpen] = useState(false);
   const [importing, setImporting] = useState(false);
   const [importResult, setImportResult] = useState<{ ok: true; msg: string } | { ok: false; msg: string } | null>(null);
@@ -150,11 +148,9 @@ export default function Dashboard() {
   ]);
 
   function saveAdminKey(key: string) {
-    sessionStorage.setItem("nfl_admin_key", key);
     setAdminKey(key);
   }
   function clearAdminKey() {
-    sessionStorage.removeItem("nfl_admin_key");
     setAdminKey(null);
   }
 

@@ -2,6 +2,7 @@ import assert from "node:assert/strict";
 import test from "node:test";
 import {
   buildWeekZeroSnapshotRows,
+  assertCompleteWeekZeroCapture,
   calculateWeekZeroValuations,
   getKalshiSeasonContracts,
   marketQuoteFromTopOfBook,
@@ -83,6 +84,23 @@ test("top-of-book quote quality enforces spread and depth", () => {
   });
   assert.equal(unavailable.quality, "unavailable");
   assert.equal(unavailable.probability, null);
+});
+
+test("incomplete captures cannot be persisted as Week 0 marks", () => {
+  const calculation = calculateWeekZeroValuations(
+    Array.from({ length: 32 }, (_, index) => teamSnapshot(index)).map((snapshot, index) =>
+      index === 0
+        ? { ...snapshot, winThresholds: snapshot.winThresholds.slice(0, 16) }
+        : snapshot,
+    ),
+    3_200,
+    new Date("2026-08-01T00:00:00.000Z"),
+  );
+  assert.equal(calculation.valuations[0].marketStatus, "incomplete");
+  assert.throws(
+    () => assertCompleteWeekZeroCapture(calculation),
+    /existing marks were left unchanged/,
+  );
 });
 
 test("Week 0 calculation reconciles points, shares, pot, and round totals", () => {

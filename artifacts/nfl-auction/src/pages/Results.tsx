@@ -1247,39 +1247,14 @@ function calculateTeamExposure(team: TeamResultRow): number {
   return Math.round(exposure * 100) / 100;
 }
 
-type SignedTeamPosition = {
-  bidderId: number;
-  bidderName: string;
-  ownershipShare: number;
-};
-
 /**
- * The team endpoint's `owners` field intentionally contains only current,
- * positive owners. Results also carries the complete signed transaction
- * history, which lets the report expose leveraged longs and shorts alongside
- * those owners without redefining who is a current owner.
+ * Results returns the complete set of signed owner positions, including
+ * shorts, directly on each team row.
  */
 function effectivePositionsForTeam(
-  team: Pick<TeamResultRow, "owners" | "ownershipSegments">,
-): SignedTeamPosition[] {
-  if (!team.ownershipSegments.length) {
-    return team.owners;
-  }
-
-  const byBidder = new Map<number, SignedTeamPosition>();
-  for (const segment of team.ownershipSegments) {
-    const position = byBidder.get(segment.bidderId) ?? {
-      bidderId: segment.bidderId,
-      bidderName: segment.bidderName,
-      ownershipShare: 0,
-    };
-    position.ownershipShare += segment.ownershipShare;
-    byBidder.set(segment.bidderId, position);
-  }
-
-  return [...byBidder.values()]
-    .filter((position) => Math.abs(position.ownershipShare) >= 0.00005)
-    .sort((a, b) => b.ownershipShare - a.ownershipShare);
+  team: Pick<TeamResultRow, "owners">,
+) {
+  return team.owners;
 }
 
 const OWNER_SUMMARY_GRID =
@@ -1679,7 +1654,7 @@ type ExpandedTeamRow = {
   playoffBerth: boolean;
   sbBerth: boolean;
   winSuperBowl: boolean;
-  // financials (scaled by ownership share)
+  // financials (calculated per signed owner position by the API)
   cost: number;
   gross: number;
   net: number;
@@ -1752,7 +1727,7 @@ function expandTeams(
 ): ExpandedTeamRow[] {
   const result: ExpandedTeamRow[] = [];
   for (const team of rows) {
-    for (const owner of effectivePositionsForTeam(team)) {
+    for (const owner of team.owners) {
       const s = owner.ownershipShare;
       result.push({
         teamId: team.teamId,
@@ -1779,14 +1754,11 @@ function expandTeams(
         playoffBerth: team.playoffBerth,
         sbBerth: team.sbBerth,
         winSuperBowl: team.winSuperBowl,
-        cost: Math.round(team.cost * s * 100) / 100,
-        gross: Math.round(team.realizedReturn * s * 100) / 100,
-        net: Math.round(team.netReturn * s * 100) / 100,
-        mtm: Math.round(team.netMtm * s * 100) / 100,
-        ptsToBreakeven:
-          team.ptsToBreakeven == null
-            ? null
-            : Math.round(team.ptsToBreakeven * s),
+        cost: owner.cost,
+        gross: owner.realizedGross,
+        net: owner.net,
+        mtm: owner.mtmNet,
+        ptsToBreakeven: owner.ptsToBreakeven,
       });
     }
   }

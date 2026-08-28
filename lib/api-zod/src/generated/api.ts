@@ -216,11 +216,12 @@ export const GetBiddersResponse = zod.array(GetBiddersResponseItem)
 /**
  * @summary Create a bidder
  */
+export const createBidderBodyNameMax = 120;
 
 
 
 export const CreateBidderBody = zod.object({
-  "name": zod.string().min(1),
+  "name": zod.string().min(1).max(createBidderBodyNameMax),
   "calcuttaId": zod.number().optional()
 })
 
@@ -254,11 +255,12 @@ export const UpdateBidderParams = zod.object({
   "id": zod.coerce.number()
 })
 
+export const updateBidderBodyNameMax = 120;
 
 
 
 export const UpdateBidderBody = zod.object({
-  "name": zod.string().min(1).optional(),
+  "name": zod.string().min(1).max(updateBidderBodyNameMax).optional(),
   "calcuttaId": zod.number().optional()
 })
 
@@ -304,7 +306,13 @@ export const GetResultsResponseItem = zod.object({
   "owners": zod.array(zod.object({
   "bidderId": zod.number(),
   "bidderName": zod.string(),
-  "ownershipShare": zod.number()
+  "ownershipShare": zod.number().describe('Signed effective fractional share; negative values represent shorts.'),
+  "cost": zod.number().describe('Owner-specific signed cost basis after approved trades.'),
+  "realizedGross": zod.number().describe('Owner-specific realized gross return.'),
+  "net": zod.number().describe('Owner-specific realized gross return less signed cost basis.'),
+  "mtmGross": zod.number().describe('Owner-specific mark-to-market gross return.'),
+  "mtmNet": zod.number().describe('Owner-specific mark-to-market gross return less signed cost basis.'),
+  "ptsToBreakeven": zod.number().nullable().describe('Signed points to breakeven for this owner position, when point value is available.')
 })),
   "ownershipSegments": zod.array(zod.object({
   "bidderId": zod.number(),
@@ -332,7 +340,7 @@ export const GetResultsResponseItem = zod.object({
   "realizedReturn": zod.number().describe('Realized gross dollars from normalized actual points.'),
   "realizedMultiple": zod.number(),
   "netReturn": zod.number().describe('Realized gross return minus cost.'),
-  "netPctReturn": zod.number(),
+  "netPctReturn": zod.number().describe('Net return as a decimal fraction of cost (for example, 0.25 means 25%).'),
   "markToMarket": zod.number().describe('MTM gross dollars from normalized market points.'),
   "netMtm": zod.number().describe('MTM gross return minus cost.'),
   "ptsToBreakeven": zod.number().nullable().describe('Remaining realized points needed to reach 1.0x cost, rounded to whole points.'),
@@ -366,7 +374,7 @@ export const GetResultsByOwnerResponseItem = zod.object({
   "totalCost": zod.number(),
   "totalRealizedReturn": zod.number(),
   "totalNetReturn": zod.number(),
-  "netPctReturn": zod.number(),
+  "netPctReturn": zod.number().describe('Net return as a decimal fraction of cost (for example, 0.25 means 25%).'),
   "totalMtm": zod.number().describe('Total MTM gross dollars.'),
   "totalNetMtm": zod.number().describe('Total MTM gross return minus signed cost basis.'),
   "teams": zod.array(zod.object({
@@ -405,7 +413,7 @@ export const GetResultsByOwnerResponseItem = zod.object({
   "realizedReturn": zod.number().describe('Realized gross dollars from normalized actual points.'),
   "realizedMultiple": zod.number(),
   "netReturn": zod.number().describe('Realized gross return minus cost.'),
-  "netPctReturn": zod.number(),
+  "netPctReturn": zod.number().describe('Net return as a decimal fraction of cost (for example, 0.25 means 25%).'),
   "markToMarket": zod.number().describe('MTM gross dollars from normalized market points.'),
   "netMtm": zod.number().describe('MTM gross return minus cost.'),
   "ptsToBreakeven": zod.number().nullable().describe('Remaining realized points needed to reach 1.0x cost, rounded to whole points.'),
@@ -564,7 +572,7 @@ export const GetResultsCompareResponse = zod.object({
   "totalNetReturn": zod.number(),
   "totalMtm": zod.number().describe('Total MTM gross dollars.'),
   "totalNetMtm": zod.number().describe('Total MTM gross return minus signed cost basis.'),
-  "netPctReturn": zod.number(),
+  "netPctReturn": zod.number().describe('Net return as a decimal fraction of cost (for example, 0.25 means 25%).'),
   "snapshotAvailable": zod.boolean().describe('False when this Calcutta has payout rules but no valid snapshot for the selected basis and period.'),
   "throughPeriod": zod.number().nullable(),
   "periodLabel": zod.string().nullable()
@@ -581,7 +589,7 @@ export const GetResultsCompareResponse = zod.object({
   "totalNetReturn": zod.number(),
   "totalMtm": zod.number().describe('Total MTM gross dollars.'),
   "totalNetMtm": zod.number().describe('Total MTM gross return minus signed cost basis.'),
-  "netPctReturn": zod.number()
+  "netPctReturn": zod.number().describe('Net return as a decimal fraction of cost (for example, 0.25 means 25%).')
 })
 }))
 })
@@ -617,7 +625,7 @@ export const UpsertTeamResultBody = zod.object({
   "realizedReturn": zod.number().optional(),
   "realizedMultiple": zod.number().optional(),
   "netReturn": zod.number().optional(),
-  "netPctReturn": zod.number().optional(),
+  "netPctReturn": zod.number().optional().describe('Net return as a decimal fraction of cost (for example, 0.25 means 25%).'),
   "markToMarket": zod.number().optional()
 })
 
@@ -657,7 +665,7 @@ export const UpsertTeamResultResponse = zod.object({
   "realizedReturn": zod.number().describe('Realized gross dollars from normalized actual points.'),
   "realizedMultiple": zod.number(),
   "netReturn": zod.number().describe('Realized gross return minus cost.'),
-  "netPctReturn": zod.number(),
+  "netPctReturn": zod.number().describe('Net return as a decimal fraction of cost (for example, 0.25 means 25%).'),
   "markToMarket": zod.number().describe('MTM gross dollars from normalized market points.'),
   "netMtm": zod.number().describe('MTM gross return minus cost.'),
   "ptsToBreakeven": zod.number().nullable().describe('Remaining realized points needed to reach 1.0x cost, rounded to whole points.'),
@@ -891,6 +899,10 @@ export const GetTradesResponse = zod.array(GetTradesResponseItem)
 /**
  * @summary Submit a trade for commissioner review (open submission; always pending)
  */
+export const createTradeBodyNotesMax = 2000;
+
+
+
 export const CreateTradeBody = zod.object({
   "seasonYear": zod.number(),
   "calcuttaId": zod.number().optional(),
@@ -900,7 +912,7 @@ export const CreateTradeBody = zod.object({
   "price": zod.number().optional().describe('Trade price. If omitted, defaults to the team\'s original draft cost × percentage \/ 100.'),
   "percentage": zod.number().optional().describe('Percentage of team traded (0–100). Defaults to 100.'),
   "tradeDate": zod.string(),
-  "notes": zod.string().optional()
+  "notes": zod.string().max(createTradeBodyNotesMax).optional()
 })
 
 export const CreateTradeResponse = zod.object({
@@ -932,12 +944,16 @@ export const UpdateTradeParams = zod.object({
   "id": zod.coerce.number()
 })
 
+export const updateTradeBodyNotesMax = 2000;
+
+
+
 export const UpdateTradeBody = zod.object({
   "calcuttaId": zod.number().optional(),
   "price": zod.number().optional(),
   "percentage": zod.number().optional(),
   "tradeDate": zod.string().optional(),
-  "notes": zod.string().optional()
+  "notes": zod.string().max(updateTradeBodyNotesMax).optional()
 })
 
 export const UpdateTradeResponse = zod.object({

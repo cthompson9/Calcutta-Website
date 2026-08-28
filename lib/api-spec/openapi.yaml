@@ -1819,6 +1819,7 @@ components:
         name:
           type: string
           minLength: 1
+          maxLength: 120
         calcuttaId:
           type: number
       required: [name]
@@ -1829,6 +1830,7 @@ components:
         name:
           type: string
           minLength: 1
+          maxLength: 120
         calcuttaId:
           type: number
 
@@ -1863,6 +1865,38 @@ components:
         ownershipShare:
           type: number
       required: [bidderId, bidderName, ownershipShare]
+
+    ResultTeamOwner:
+      type: object
+      description: Signed, trade-aware owner economics for a result team row.
+      properties:
+        bidderId:
+          type: number
+        bidderName:
+          type: string
+        ownershipShare:
+          type: number
+          description: Signed effective fractional share; negative values represent shorts.
+        cost:
+          type: number
+          description: Owner-specific signed cost basis after approved trades.
+        realizedGross:
+          type: number
+          description: Owner-specific realized gross return.
+        net:
+          type: number
+          description: Owner-specific realized gross return less signed cost basis.
+        mtmGross:
+          type: number
+          description: Owner-specific mark-to-market gross return.
+        mtmNet:
+          type: number
+          description: Owner-specific mark-to-market gross return less signed cost basis.
+        ptsToBreakeven:
+          type: number
+          nullable: true
+          description: Signed points to breakeven for this owner position, when point value is available.
+      required: [bidderId, bidderName, ownershipShare, cost, realizedGross, net, mtmGross, mtmNet, ptsToBreakeven]
 
     OwnershipSegment:
       type: object
@@ -1972,7 +2006,8 @@ components:
         owners:
           type: array
           items:
-            $ref: "#/components/schemas/TeamOwner"
+            $ref: "#/components/schemas/ResultTeamOwner"
+
         ownershipSegments:
           type: array
           items:
@@ -2014,6 +2049,7 @@ components:
           description: Realized gross return minus cost.
         netPctReturn:
           type: number
+          description: Net return as a decimal fraction of cost (for example, 0.25 means 25%).
         markToMarket:
           type: number
           description: MTM gross dollars from normalized market points.
@@ -2405,6 +2441,7 @@ components:
           type: number
         netPctReturn:
           type: number
+          description: Net return as a decimal fraction of cost (for example, 0.25 means 25%).
         totalMtm:
           type: number
           description: Total MTM gross dollars.
@@ -2479,6 +2516,7 @@ components:
           description: Total MTM gross return minus signed cost basis.
         netPctReturn:
           type: number
+          description: Net return as a decimal fraction of cost (for example, 0.25 means 25%).
         snapshotAvailable:
           type: boolean
           description: False when this Calcutta has payout rules but no valid snapshot for the selected basis and period.
@@ -2536,6 +2574,7 @@ components:
           description: Total MTM gross return minus signed cost basis.
         netPctReturn:
           type: number
+          description: Net return as a decimal fraction of cost (for example, 0.25 means 25%).
       required:
         - teamCount
         - snapshotTeamCount
@@ -2653,6 +2692,7 @@ components:
           type: number
         netPctReturn:
           type: number
+          description: Net return as a decimal fraction of cost (for example, 0.25 means 25%).
         markToMarket:
           type: number
       required: [teamId, seasonYear]
@@ -2749,6 +2789,7 @@ components:
           type: string
         notes:
           type: string
+          maxLength: 2000
       required: [seasonYear, teamId, fromBidderId, toBidderId, tradeDate]
 
     TradeUpdate:
@@ -2764,6 +2805,7 @@ components:
           type: string
         notes:
           type: string
+          maxLength: 2000
 
     TradeStatusUpdate:
       oneOf:

@@ -29,6 +29,7 @@ export interface CalcuttaComparisonCell {
   totalMtm: number;
   /** Total MTM gross return minus signed cost basis. */
   totalNetMtm: number;
+  /** Net return as a decimal fraction of cost (for example, 0.25 means 25%). */
   netPctReturn: number;
   /** False when this Calcutta has payout rules but no valid snapshot for the selected basis and period. */
   snapshotAvailable: boolean;

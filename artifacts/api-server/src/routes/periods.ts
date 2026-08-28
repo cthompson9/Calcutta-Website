@@ -8,6 +8,9 @@ import {
   ReplacePayoutRulesBody,
   UpsertTeamPeriodSnapshotBody,
   UpsertTeamPeriodSnapshotResponse,
+  GetSportPeriodsResponse,
+  GetPayoutRulesResponse,
+  ReplacePayoutRulesResponse,
 } from "@workspace/api-zod";
 import {
   calcuttaEntriesTable,
@@ -46,6 +49,7 @@ import {
   getCompetitionScoringAdapter,
   validateCompetitionScoringRules,
 } from "../lib/competitionScoring";
+import { requireAdmin } from "../middlewares/requireAdmin";
 
 const router: IRouter = Router();
 
@@ -172,11 +176,6 @@ async function rebuildNflRealizedSnapshots(
   return snapshotsWritten;
 }
 
-function isAdminRequest(req: Request): boolean {
-  const adminKey = process.env["ADMIN_API_KEY"];
-  return Boolean(adminKey && req.headers.authorization === `Bearer ${adminKey}`);
-}
-
 async function resolveSeason(year: number) {
   const rows = await db
     .select({ id: seasonsTable.id, year: seasonsTable.year })
@@ -234,13 +233,13 @@ router.get("/periods", async (req, res): Promise<void> => {
 
   // The NFL template is deterministic and lets a newly created pool render its
   // period picker before the first commissioner write seeds the shared rows.
-  res.json(
+  res.json(GetSportPeriodsResponse.parse(
     periods.length > 0
       ? periods
       : sport === NFL_SPORT
         ? NFL_PERIOD_TEMPLATE
         : [],
-  );
+  ));
 });
 
 router.get("/payout-rules", async (req, res): Promise<void> => {
@@ -251,7 +250,7 @@ router.get("/payout-rules", async (req, res): Promise<void> => {
   }
   const season = await resolveSeason(parsed.data.season);
   if (!season) {
-    res.json([]);
+    res.json(GetPayoutRulesResponse.parse([]));
     return;
   }
   const calcutta = await resolveScoringCalcutta(
@@ -261,7 +260,7 @@ router.get("/payout-rules", async (req, res): Promise<void> => {
   if (!calcutta) {
     if (parsed.data.calcuttaId != null) {
       res.status(400).json({ error: "Calcutta must belong to the requested season." });
-    } else res.json([]);
+    } else res.json(GetPayoutRulesResponse.parse([]));
     return;
   }
   const rules = await db
@@ -272,20 +271,16 @@ router.get("/payout-rules", async (req, res): Promise<void> => {
     })
     .from(payoutRulesTable)
     .where(eq(payoutRulesTable.calcuttaId, calcutta.id));
-  res.json(
+  res.json(GetPayoutRulesResponse.parse(
     rules.map((rule) => ({
       metric: rule.metric,
       dollarsPerUnit: rule.dollarsPerUnit == null ? null : Number(rule.dollarsPerUnit),
       playoffMultiplier: rule.playoffMultiplier == null ? null : Number(rule.playoffMultiplier),
     })),
-  );
+  ));
 });
 
-router.put("/payout-rules", async (req, res): Promise<void> => {
-  if (!isAdminRequest(req)) {
-    res.status(401).json({ error: "Unauthorized" });
-    return;
-  }
+router.put("/payout-rules", requireAdmin, async (req, res): Promise<void> => {
   const parsed = ReplacePayoutRulesBody.safeParse(req.body);
   if (!parsed.success) {
     res.status(400).json({ error: parsed.error.message });
@@ -392,14 +387,10 @@ router.put("/payout-rules", async (req, res): Promise<void> => {
       playoffMultiplier: rule.playoffMultiplier,
     }));
   });
-  res.json(saved);
+  res.json(ReplacePayoutRulesResponse.parse(saved));
 });
 
-router.post("/period-snapshots/week-zero", async (req, res): Promise<void> => {
-  if (!isAdminRequest(req)) {
-    res.status(401).json({ error: "Unauthorized" });
-    return;
-  }
+router.post("/period-snapshots/week-zero", requireAdmin, async (req, res): Promise<void> => {
   const parsed = InitializeWeekZeroPointsBody.safeParse(req.body);
   if (!parsed.success) {
     res.status(400).json({ error: parsed.error.message });
@@ -447,11 +438,7 @@ router.post("/period-snapshots/week-zero", async (req, res): Promise<void> => {
   res.json(response);
 });
 
-router.post("/period-snapshots", async (req, res): Promise<void> => {
-  if (!isAdminRequest(req)) {
-    res.status(401).json({ error: "Unauthorized" });
-    return;
-  }
+router.post("/period-snapshots", requireAdmin, async (req, res): Promise<void> => {
   const parsed = UpsertTeamPeriodSnapshotBody.safeParse(req.body);
   if (!parsed.success) {
     res.status(400).json({ error: parsed.error.message });
@@ -683,11 +670,7 @@ router.get("/nfl-games", async (req, res): Promise<void> => {
  * realized snapshots from the full game ledger. It intentionally does not
  * touch team_results or final postseason flags.
  */
-router.post("/nfl-games", async (req, res): Promise<void> => {
-  if (!isAdminRequest(req)) {
-    res.status(401).json({ error: "Unauthorized" });
-    return;
-  }
+router.post("/nfl-games", requireAdmin, async (req, res): Promise<void> => {
   const input = req.body as Record<string, unknown>;
   const seasonYear = Number(input.seasonYear);
   const periodSequence = Number(input.periodSequence);
@@ -775,11 +758,7 @@ router.get("/payout-diagnostics", async (req, res): Promise<void> => {
 
 // Comparison-only migration diagnostic for deprecated entry economics. This is
 // intentionally admin-protected because it exposes reconciliation details.
-router.get("/entry-return-diagnostics", async (req, res): Promise<void> => {
-  if (!isAdminRequest(req)) {
-    res.status(401).json({ error: "Unauthorized" });
-    return;
-  }
+router.get("/entry-return-diagnostics", requireAdmin, async (req, res): Promise<void> => {
   const seasonYear = Number(req.query.season);
   const requestedCalcuttaId = req.query.calcuttaId == null
     ? undefined

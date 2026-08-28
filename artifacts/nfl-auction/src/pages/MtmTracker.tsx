@@ -73,18 +73,14 @@ export default function MtmTracker() {
   );
   const { data: bidders } = useGetBidders({});
   const consortiumByName = bidderConsortiumsByName(bidders);
-  const [adminKey, setAdminKey] = useState<string | null>(
-    () => sessionStorage.getItem("nfl_admin_key"),
-  );
+  const [adminKey, setAdminKey] = useState<string | null>(null);
   const [showEntry, setShowEntry] = useState(false);
 
   function saveAdminKey(key: string) {
-    sessionStorage.setItem("nfl_admin_key", key);
     setAdminKey(key);
   }
 
   function clearAdminKey() {
-    sessionStorage.removeItem("nfl_admin_key");
     setAdminKey(null);
   }
 

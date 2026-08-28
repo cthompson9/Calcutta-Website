@@ -259,47 +259,46 @@ describe("cross-Calcutta return comparison", { skip: !DATABASE_URL }, () => {
     assert.ok(!currentRows.some((row) => row.name === historicConsortium.name));
   });
 
-  test("legacy MCP HTTP endpoints never expose stored entry return sentinels", async () => {
+  test("legacy MCP HTTP endpoints have been removed", async () => {
     const query = (path, params) => fetch(
       `${baseUrl}/api${path}?${new URLSearchParams(params)}`,
     ).then(async (response) => {
-      assert.equal(response.status, 200);
-      return (await response.json()).value;
+      assert.equal(response.status, 404);
     });
 
-    assert.equal(await query("/mcp/get_team_return", {
+    await query("/mcp/get_team_return", {
       team: teamName,
       season: String(years[0]),
-    }), null);
-    assert.equal(await query("/mcp/get_team_return", {
-      team: teamName,
-      season: String(years[0]),
-      calcuttaId: String(secondaryCalcuttaId),
-    }), null);
-    assert.equal(await query("/mcp/get_team_mtm", {
-      team: teamName,
-      season: String(years[0]),
-    }), null);
-    assert.equal(await query("/mcp/get_team_mtm", {
+    });
+    await query("/mcp/get_team_return", {
       team: teamName,
       season: String(years[0]),
       calcuttaId: String(secondaryCalcuttaId),
-    }), null);
-    assert.equal(await query("/mcp/get_owner_return", {
+    });
+    await query("/mcp/get_team_mtm", {
+      team: teamName,
+      season: String(years[0]),
+    });
+    await query("/mcp/get_team_mtm", {
+      team: teamName,
+      season: String(years[0]),
+      calcuttaId: String(secondaryCalcuttaId),
+    });
+    await query("/mcp/get_owner_return", {
       owner: bidder.name,
       season: String(years[0]),
       calcuttaId: String(secondaryCalcuttaId),
-    }), null);
-    assert.equal(await query("/mcp/get_owner_mtm", {
+    });
+    await query("/mcp/get_owner_mtm", {
       owner: bidder.name,
       season: String(years[0]),
       calcuttaId: String(secondaryCalcuttaId),
-    }), null);
+    });
     const response = await fetch(`${baseUrl}/api/mcp/get_team_return?${new URLSearchParams({
       team: teamName,
       season: String(years[0]),
     })}`);
-    assert.equal(await response.text(), JSON.stringify({ value: null }));
+    assert.equal(response.status, 404);
   });
 
   test("flags a stale selected-basis snapshot instead of mixing periods", async () => {

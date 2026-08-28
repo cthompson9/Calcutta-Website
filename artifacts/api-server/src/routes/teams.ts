@@ -17,6 +17,10 @@ import {
   UpdateTeamBody,
   UpdateTeamParams,
   DeleteTeamParams,
+  GetTeamsResponse,
+  GetTeamResponse,
+  CreateTeamResponse,
+  UpdateTeamResponse,
 } from "@workspace/api-zod";
 import { loadSeasonOwnership } from "../lib/seasonOwnership";
 import {
@@ -29,6 +33,7 @@ import {
   resolveDefaultSeasonYearForSport,
   resolveSeasonIdForSport,
 } from "../lib/calcuttaContext";
+import { requireAdmin } from "../middlewares/requireAdmin";
 
 const router: IRouter = Router();
 const TeamContextQuery = z.object({
@@ -36,11 +41,6 @@ const TeamContextQuery = z.object({
   calcuttaId: z.coerce.number().int().positive().optional(),
   sport: z.enum(["NFL", "CFB"]).default("NFL"),
 });
-
-function isAdminRequest(req: Request): boolean {
-  const adminKey = process.env["ADMIN_API_KEY"];
-  return Boolean(adminKey && req.headers.authorization === `Bearer ${adminKey}`);
-}
 
 async function getActiveSeasonId(sport: string): Promise<number> {
   const year = await resolveDefaultSeasonYearForSport(db, {
@@ -218,14 +218,10 @@ router.get("/teams", async (req, res): Promise<void> => {
     })),
   }));
 
-  res.json(result);
+  res.json(GetTeamsResponse.parse(result));
 });
 
-router.post("/teams", async (req, res): Promise<void> => {
-  if (!isAdminRequest(req)) {
-    res.status(401).json({ error: "ADMIN_API_KEY bearer token is required." });
-    return;
-  }
+router.post("/teams", requireAdmin, async (req, res): Promise<void> => {
   const parsed = CreateTeamBody.safeParse(req.body);
   if (!parsed.success) {
     res.status(400).json({ error: parsed.error.message });
@@ -324,7 +320,7 @@ router.post("/teams", async (req, res): Promise<void> => {
   }
 
   const full = await fetchTeamWithOwners(outcome.teamId, seasonId, sport, outcome.calcuttaId);
-  res.status(201).json(full);
+  res.status(201).json(CreateTeamResponse.parse(full));
 });
 
 router.get("/teams/:id", async (req, res): Promise<void> => {
@@ -357,14 +353,10 @@ router.get("/teams/:id", async (req, res): Promise<void> => {
     res.status(404).json({ error: "Team not found" });
     return;
   }
-  res.json(full);
+  res.json(GetTeamResponse.parse(full));
 });
 
-router.patch("/teams/:id", async (req, res): Promise<void> => {
-  if (!isAdminRequest(req)) {
-    res.status(401).json({ error: "ADMIN_API_KEY bearer token is required." });
-    return;
-  }
+router.patch("/teams/:id", requireAdmin, async (req, res): Promise<void> => {
   const params = UpdateTeamParams.safeParse(req.params);
   if (!params.success) {
     res.status(400).json({ error: params.error.message });
@@ -577,14 +569,10 @@ router.patch("/teams/:id", async (req, res): Promise<void> => {
     res.status(404).json({ error: "Team not found" });
     return;
   }
-  res.json(full);
+  res.json(UpdateTeamResponse.parse(full));
 });
 
-router.delete("/teams/:id", async (req, res): Promise<void> => {
-  if (!isAdminRequest(req)) {
-    res.status(401).json({ error: "ADMIN_API_KEY bearer token is required." });
-    return;
-  }
+router.delete("/teams/:id", requireAdmin, async (req, res): Promise<void> => {
   const params = DeleteTeamParams.safeParse(req.params);
   if (!params.success) {
     res.status(400).json({ error: params.error.message });

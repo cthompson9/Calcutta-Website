@@ -17,6 +17,7 @@ import { todayInNewYork } from "./newYorkTime";
 import {
   buildWeekZeroSnapshotRows,
   calculateWeekZeroValuations,
+  assertCompleteWeekZeroCapture,
   WEEK_ZERO_SNAPSHOT_KEY,
 } from "./weekZeroValuation";
 import {
@@ -278,6 +279,10 @@ export async function runCanonicalMtmRefresh(input: {
     potSize,
     now,
   );
+  // Do this before opening the write transaction. The valuation calculator
+  // intentionally fills gaps for analysis, but a partial capture must never
+  // replace a complete stored mark with synthetic values.
+  assertCompleteWeekZeroCapture(calculation);
   const entryIdByTeam = new Map(
     entries.map((entry) => [entry.teamId, entry.entryId]),
   );

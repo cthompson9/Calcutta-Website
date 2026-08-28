@@ -438,13 +438,19 @@ export interface BidderSummary {
 }
 
 export interface BidderInput {
-  /** @minLength 1 */
+  /**
+     * @minLength 1
+     * @maxLength 120
+     */
   name: string;
   calcuttaId?: number;
 }
 
 export interface BidderUpdate {
-  /** @minLength 1 */
+  /**
+     * @minLength 1
+     * @maxLength 120
+     */
   name?: string;
   calcuttaId?: number;
 }
@@ -471,6 +477,18 @@ export interface TeamOwner {
   bidderId: number;
   bidderName: string;
   ownershipShare: number;
+}
+
+export interface ResultTeamOwner {
+  bidderId: number;
+  bidderName: string;
+  ownershipShare: number;
+  cost: number;
+  realizedGross: number;
+  net: number;
+  mtmGross: number;
+  mtmNet: number;
+  ptsToBreakeven: number | null;
 }
 
 export interface Team {
@@ -613,7 +631,7 @@ export interface TeamResultRow {
   teamName: string;
   conference: string;
   division: string;
-  owners: TeamOwner[];
+  owners: ResultTeamOwner[];
   ownershipSegments: OwnershipSegment[];
   cost: number;
   wins: number;
@@ -634,6 +652,7 @@ export interface TeamResultRow {
   realizedMultiple: number;
   /** Realized gross return minus cost. */
   netReturn: number;
+  /** Net return as a decimal fraction of cost (for example, 0.25 means 25%). */
   netPctReturn: number;
   /** MTM gross dollars from normalized market points. */
   markToMarket: number;
@@ -904,6 +923,7 @@ export interface OwnerResultRow {
   totalCost: number;
   totalRealizedReturn: number;
   totalNetReturn: number;
+  /** Net return as a decimal fraction of cost (for example, 0.25 means 25%). */
   netPctReturn: number;
   /** Total MTM gross dollars. */
   totalMtm: number;
@@ -948,6 +968,7 @@ export interface CalcuttaComparisonCell {
   totalMtm: number;
   /** Total MTM gross return minus signed cost basis. */
   totalNetMtm: number;
+  /** Net return as a decimal fraction of cost (for example, 0.25 means 25%). */
   netPctReturn: number;
   /** False when this Calcutta has payout rules but no valid snapshot for the selected basis and period. */
   snapshotAvailable: boolean;
@@ -971,6 +992,7 @@ export interface CalcuttaComparisonAggregate {
   totalMtm: number;
   /** Total MTM gross return minus signed cost basis. */
   totalNetMtm: number;
+  /** Net return as a decimal fraction of cost (for example, 0.25 means 25%). */
   netPctReturn: number;
 }
 
@@ -1043,6 +1065,7 @@ export interface TeamResultInput {
   realizedReturn?: number;
   realizedMultiple?: number;
   netReturn?: number;
+  /** Net return as a decimal fraction of cost (for example, 0.25 means 25%). */
   netPctReturn?: number;
   markToMarket?: number;
 }
@@ -1115,6 +1138,7 @@ export interface TradeInput {
   /** Percentage of team traded (0–100). Defaults to 100. */
   percentage?: number;
   tradeDate: string;
+  /** @maxLength 2000 */
   notes?: string;
 }
 
@@ -1123,6 +1147,7 @@ export interface TradeUpdate {
   price?: number;
   percentage?: number;
   tradeDate?: string;
+  /** @maxLength 2000 */
   notes?: string;
 }
 

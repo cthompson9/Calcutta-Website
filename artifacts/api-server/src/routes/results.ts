@@ -19,6 +19,11 @@ import {
   GetResultsAvailabilityQueryParams,
   GetResultsCompareQueryParams,
   UpsertTeamResultBody,
+  GetResultsResponse,
+  GetResultsResponseItem,
+  GetResultsByOwnerResponse,
+  GetResultsAvailabilityResponse,
+  GetResultsCompareResponse,
 } from "@workspace/api-zod";
 import {
   loadCrossCalcuttaRollup,
@@ -36,13 +41,10 @@ import {
 import { LEAGUE_POINT_TOTAL } from "../lib/weekZeroValuation";
 import { loadCalcuttaConsortiums, loadSeasonConsortiums } from "../lib/consortiumMemberships";
 import { resolveCalcuttaId } from "../lib/calcuttaContext";
+import { calculateOwnerResultEconomics } from "../lib/ownerResultEconomics";
+import { requireAdmin } from "../middlewares/requireAdmin";
 
 const router: IRouter = Router();
-
-function isAdminRequest(req: import("express").Request): boolean {
-  const adminKey = process.env["ADMIN_API_KEY"];
-  return Boolean(adminKey && req.headers.authorization === `Bearer ${adminKey}`);
-}
 
 async function resolveSeasonId(year: number): Promise<number | null> {
   const rows = await db
@@ -105,6 +107,15 @@ type ResultDisplay = {
   ptsToBreakeven?: number | null;
 };
 
+type TeamOwnerEconomicPosition = {
+  bidderId: number;
+  bidderName: string;
+  ownershipShare: number;
+  originalCostBasis: number;
+  tradePaid: number;
+  tradeReceived: number;
+};
+
 function calculatePtsToBreakeven(
   netReturn: number,
   totalPot: number,
@@ -121,6 +132,10 @@ function calculatePtsToBreakeven(
   return Number.isFinite(dollarsPerPoint) && dollarsPerPoint > 0
     ? Math.round(netReturn / dollarsPerPoint)
     : null;
+}
+
+function roundMoney(value: number): number {
+  return Math.round(value * 100) / 100;
 }
 
 function resultFromCalculatedSnapshots(
@@ -227,7 +242,7 @@ function resultFromCalculatedSnapshots(
 function buildTeamResult(
   team: typeof teamsTable.$inferSelect,
   result: ResultDisplay | null,
-  owners: { bidderId: number; bidderName: string; ownershipShare: number }[],
+  owners: TeamOwnerEconomicPosition[],
   ownershipSegments: OwnershipSegment[],
   cost: number,
 ) {
@@ -236,11 +251,23 @@ function buildTeamResult(
     teamName: team.name,
     conference: team.conference,
     division: team.division,
-    owners: owners.map((o) => ({
-      bidderId: o.bidderId,
-      bidderName: o.bidderName,
-      ownershipShare: o.ownershipShare,
-    })),
+    owners: owners.map((owner) => {
+      const economics = calculateOwnerResultEconomics({
+        effectiveShare: owner.ownershipShare,
+        originalCostBasis: owner.originalCostBasis,
+        tradePaid: owner.tradePaid,
+        tradeReceived: owner.tradeReceived,
+        realizedTeamGross: result ? Number(result.realizedReturn) : 0,
+        mtmTeamGross: result ? Number(result.markToMarket) : 0,
+        dollarsPerPoint: result?.dollarsPerPoint ?? null,
+      });
+      return {
+        bidderId: owner.bidderId,
+        bidderName: owner.bidderName,
+        ownershipShare: owner.ownershipShare,
+        ...economics,
+      };
+    }),
     ownershipSegments,
     cost,
   };
@@ -289,12 +316,12 @@ function buildTeamResult(
     confRound: result.confRound,
     sbBerth: result.sbBerth,
     winSuperBowl: result.winSuperBowl,
-    realizedReturn: Number(result.realizedReturn),
+    realizedReturn: roundMoney(Number(result.realizedReturn)),
     realizedMultiple: Number(result.realizedMultiple),
-    netReturn: Number(result.netReturn),
+    netReturn: roundMoney(Number(result.netReturn)),
     netPctReturn: Number(result.netPctReturn),
-    markToMarket: Number(result.markToMarket),
-    netMtm: Number(result.netMtm ?? Number(result.markToMarket) - cost),
+    markToMarket: roundMoney(Number(result.markToMarket)),
+    netMtm: roundMoney(Number(result.netMtm ?? Number(result.markToMarket) - cost)),
     ptsToBreakeven: result.ptsToBreakeven ?? null,
   };
 }
@@ -397,7 +424,7 @@ function buildOwnerTeamResult(
     realizedReturn: Math.round(realizedReturn * 100) / 100,
     realizedMultiple: Math.round(realizedMultiple * 10000) / 10000,
     netReturn: Math.round(netReturn * 100) / 100,
-    netPctReturn: Math.round(netPctReturn * 10000) / 100,
+    netPctReturn: Math.round(netPctReturn * 10000) / 10000,
     markToMarket: Math.round(markToMarket * 100) / 100,
     netMtm: Math.round(netMtm * 100) / 100,
     ptsToBreakeven,
@@ -405,11 +432,7 @@ function buildOwnerTeamResult(
 }
 
 // PATCH /results/seed — set a team's playoff seed for a season (admin only)
-router.patch("/results/seed", async (req, res): Promise<void> => {
-  if (!isAdminRequest(req)) {
-    res.status(401).json({ error: "Unauthorized" });
-    return;
-  }
+router.patch("/results/seed", requireAdmin, async (req, res): Promise<void> => {
   const { teamId, seasonYear, seed, calcuttaId } = req.body as {
     teamId: number;
     seasonYear: number;
@@ -556,7 +579,25 @@ router.get("/results", async (req, res): Promise<void> => {
     )
     .map((t) => {
       const cost = auctionPriceMap.get(t.id) ?? 0;
-      const currentOwners = ownership.currentOwnersByTeam.get(t.id) ?? [];
+      // Team reporting must expose the full signed ownership ledger, not only
+      // positive current owners. This keeps short sellers visible and gives
+      // clients owner-level economics that require no re-scaling.
+      const currentOwners: TeamOwnerEconomicPosition[] = [...ownership.byBidder]
+        .flatMap(([bidderId, teamPositions]) => {
+          const position = teamPositions.get(t.id);
+          if (!position) return [];
+          const cost = position.originalCostBasis + position.tradePaid - position.tradeReceived;
+          if (Math.abs(position.effectiveShare) < 0.00005 && Math.abs(cost) < 0.005) return [];
+          return [{
+            bidderId,
+            bidderName: ownership.bidderNames.get(bidderId) ?? "Unknown",
+            ownershipShare: position.effectiveShare,
+            originalCostBasis: position.originalCostBasis,
+            tradePaid: position.tradePaid,
+            tradeReceived: position.tradeReceived,
+          }];
+        })
+        .sort((left, right) => right.ownershipShare - left.ownershipShare);
       const ownershipSegments = ownership.ownershipSegmentsByTeam.get(t.id) ?? [];
       return buildTeamResult(
         t,
@@ -575,7 +616,7 @@ router.get("/results", async (req, res): Promise<void> => {
       );
     });
 
-  res.json(rows);
+  res.json(GetResultsResponse.parse(rows));
 });
 
 // GET /results/by-owner?season=YYYY
@@ -780,7 +821,7 @@ router.get("/results/by-owner", async (req, res): Promise<void> => {
       totalNetReturn: Math.round(o.totalNetReturn * 100) / 100,
       netPctReturn:
         o.totalCost > 0
-          ? Math.round((o.totalNetReturn / o.totalCost) * 10000) / 100
+          ? Math.round((o.totalNetReturn / o.totalCost) * 10000) / 10000
           : 0,
       totalMtm: Math.round(o.totalMtm * 100) / 100,
       totalNetMtm: Math.round(o.totalNetMtm * 100) / 100,
@@ -792,7 +833,7 @@ router.get("/results/by-owner", async (req, res): Promise<void> => {
         : b.totalNetReturn - a.totalNetReturn,
     );
 
-  res.json(ownerRows);
+  res.json(GetResultsByOwnerResponse.parse(ownerRows));
 });
 
 // GET /results/availability?season=YYYY&basis=mtm
@@ -807,7 +848,7 @@ router.get("/results/availability", async (req, res): Promise<void> => {
 
   const seasonId = await resolveSeasonId(parsed.data.season);
   if (!seasonId) {
-    res.json({ latestPeriod: null, previousPeriod: null });
+    res.json(GetResultsAvailabilityResponse.parse({ latestPeriod: null, previousPeriod: null }));
     return;
   }
   const resolvedCalcuttaId = await resolveNflCalcutta(seasonId, parsed.data.calcuttaId);
@@ -822,10 +863,10 @@ router.get("/results/availability", async (req, res): Promise<void> => {
     parsed.data.basis ?? "realized",
     resolvedCalcuttaId,
   );
-  res.json({
+  res.json(GetResultsAvailabilityResponse.parse({
     latestPeriod: periods.at(-1) ?? null,
     previousPeriod: periods.at(-2) ?? null,
-  });
+  }));
 });
 
 // GET /results/compare?seasons=2025,2026
@@ -879,15 +920,11 @@ router.get("/results/compare", async (req, res): Promise<void> => {
     });
     return;
   }
-  res.json(rollup);
+  res.json(GetResultsCompareResponse.parse(rollup));
 });
 
 // POST /results/upsert
-router.post("/results/upsert", async (req, res): Promise<void> => {
-  if (!isAdminRequest(req)) {
-    res.status(401).json({ error: "Unauthorized" });
-    return;
-  }
+router.post("/results/upsert", requireAdmin, async (req, res): Promise<void> => {
   const parsed = UpsertTeamResultBody.safeParse(req.body);
   if (!parsed.success) {
     res.status(400).json({ error: parsed.error.message });
@@ -1005,12 +1042,29 @@ router.post("/results/upsert", async (req, res): Promise<void> => {
   }
 
   const ownership = await loadSeasonOwnership(seasonId, resolvedCalcuttaId);
-  const currentOwners = ownership.currentOwnersByTeam.get(data.teamId) ?? [];
+  const currentOwners: TeamOwnerEconomicPosition[] = [...ownership.byBidder]
+    .flatMap(([bidderId, teamPositions]) => {
+      const position = teamPositions.get(data.teamId);
+      if (!position) return [];
+      const positionCost = position.originalCostBasis + position.tradePaid - position.tradeReceived;
+      if (Math.abs(position.effectiveShare) < 0.00005 && Math.abs(positionCost) < 0.005) return [];
+      return [{
+        bidderId,
+        bidderName: ownership.bidderNames.get(bidderId) ?? "Unknown",
+        ownershipShare: position.effectiveShare,
+        originalCostBasis: position.originalCostBasis,
+        tradePaid: position.tradePaid,
+        tradeReceived: position.tradeReceived,
+      }];
+    })
+    .sort((left, right) => right.ownershipShare - left.ownershipShare);
   const ownershipSegments =
     ownership.ownershipSegmentsByTeam.get(data.teamId) ?? [];
 
   res.json(
-    buildTeamResult(team, row, currentOwners, ownershipSegments, cost),
+    GetResultsResponseItem.parse(
+      buildTeamResult(team, row, currentOwners, ownershipSegments, cost),
+    ),
   );
 });
 

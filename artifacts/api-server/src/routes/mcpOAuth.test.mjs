@@ -129,7 +129,7 @@ describe("MCP OAuth authorization", { skip: !canRun }, () => {
     const redirectUri = "http://127.0.0.1:45871/callback";
     const registration = await fetch(`${baseUrl}/api/mcp/oauth/register`, {
       method: "POST",
-      headers: { "Content-Type": "application/json" },
+      headers: { "Content-Type": "application/json", "X-Forwarded-For": "198.51.100.1" },
       body: JSON.stringify({
         client_name: "Calcutta OAuth test client",
         redirect_uris: [redirectUri],
@@ -152,7 +152,10 @@ describe("MCP OAuth authorization", { skip: !canRun }, () => {
     authorizationUrl.searchParams.set("resource", `${baseUrl}/api/mcp`);
     authorizationUrl.searchParams.set("state", "test-state");
 
-    const authorizationPage = await fetch(authorizationUrl, { redirect: "manual" });
+    const authorizationPage = await fetch(authorizationUrl, {
+      redirect: "manual",
+      headers: { "X-Forwarded-For": "198.51.100.1" },
+    });
     assert.equal(authorizationPage.status, 200);
     assert.match(await authorizationPage.text(), /MCP API key/);
     const cookie = firstCookie(authorizationPage);
@@ -162,6 +165,7 @@ describe("MCP OAuth authorization", { skip: !canRun }, () => {
       headers: {
         "Content-Type": "application/x-www-form-urlencoded",
         Cookie: cookie,
+        "X-Forwarded-For": "198.51.100.1",
       },
       body: new URLSearchParams({
         decision: "approve",
@@ -177,6 +181,7 @@ describe("MCP OAuth authorization", { skip: !canRun }, () => {
       headers: {
         "Content-Type": "application/x-www-form-urlencoded",
         Cookie: cookie,
+        "X-Forwarded-For": "198.51.100.1",
       },
       body: new URLSearchParams({
         decision: "approve",
@@ -192,7 +197,7 @@ describe("MCP OAuth authorization", { skip: !canRun }, () => {
 
     const exchange = await fetch(`${baseUrl}/api/mcp/oauth/token`, {
       method: "POST",
-      headers: { "Content-Type": "application/x-www-form-urlencoded" },
+      headers: { "Content-Type": "application/x-www-form-urlencoded", "X-Forwarded-For": "198.51.100.1" },
       body: new URLSearchParams({
         grant_type: "authorization_code",
         client_id: clientId,
@@ -213,7 +218,7 @@ describe("MCP OAuth authorization", { skip: !canRun }, () => {
 
     const replay = await fetch(`${baseUrl}/api/mcp/oauth/token`, {
       method: "POST",
-      headers: { "Content-Type": "application/x-www-form-urlencoded" },
+      headers: { "Content-Type": "application/x-www-form-urlencoded", "X-Forwarded-For": "198.51.100.2" },
       body: new URLSearchParams({
         grant_type: "authorization_code",
         client_id: clientId,
@@ -227,7 +232,7 @@ describe("MCP OAuth authorization", { skip: !canRun }, () => {
 
     const refresh = await fetch(`${baseUrl}/api/mcp/oauth/token`, {
       method: "POST",
-      headers: { "Content-Type": "application/x-www-form-urlencoded" },
+      headers: { "Content-Type": "application/x-www-form-urlencoded", "X-Forwarded-For": "198.51.100.2" },
       body: new URLSearchParams({
         grant_type: "refresh_token",
         client_id: clientId,
@@ -241,7 +246,7 @@ describe("MCP OAuth authorization", { skip: !canRun }, () => {
 
     const revoke = await fetch(`${baseUrl}/api/mcp/oauth/revoke`, {
       method: "POST",
-      headers: { "Content-Type": "application/x-www-form-urlencoded" },
+      headers: { "Content-Type": "application/x-www-form-urlencoded", "X-Forwarded-For": "198.51.100.2" },
       body: new URLSearchParams({
         client_id: clientId,
         token: refreshedTokens.access_token,

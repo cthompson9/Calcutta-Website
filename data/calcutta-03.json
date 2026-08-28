@@ -1,0 +1,1840 @@
+{
+ "edition": 3,
+ "name": "Calcutta III",
+ "sport": "NFL",
+ "format_key": "NFL_REGULAR_SEASON_18W",
+ "season_year": 2023,
+ "pot_size": 21145,
+ "as_of_date": "2023-09-07",
+ "normalization": {
+  "mode": "direct"
+ },
+ "periods": [
+  {
+   "key": "SEASON",
+   "seq": 1,
+   "label": "Regular Season",
+   "kind": "regular",
+   "weight": 1,
+   "is_scored": true
+  },
+  {
+   "key": "PLAYOFFS",
+   "seq": 2,
+   "label": "Playoffs",
+   "kind": "knockout",
+   "weight": 1,
+   "is_scored": true
+  }
+ ],
+ "rules": [
+  {
+   "kind": "direct_share",
+   "metric": "reg_season_win",
+   "period_key": "SEASON",
+   "rate": 0.001
+  },
+  {
+   "kind": "split_pool",
+   "metric": "win_20plus",
+   "rate": 0.05
+  },
+  {
+   "kind": "direct_share",
+   "metric": "weekly_big_winner",
+   "period_key": "SEASON",
+   "rate": 0.005
+  },
+  {
+   "kind": "direct_share",
+   "metric": "reg_season_big_win",
+   "period_key": "SEASON",
+   "rate": 0.003
+  },
+  {
+   "kind": "direct_share",
+   "metric": "playoff_berth",
+   "period_key": "PLAYOFFS",
+   "rate": 0.0075
+  },
+  {
+   "kind": "direct_share",
+   "metric": "div_round",
+   "period_key": "PLAYOFFS",
+   "rate": 0.015
+  },
+  {
+   "kind": "direct_share",
+   "metric": "conf_round",
+   "period_key": "PLAYOFFS",
+   "rate": 0.03
+  },
+  {
+   "kind": "direct_share",
+   "metric": "sb_berth",
+   "period_key": "PLAYOFFS",
+   "rate": 0.06
+  },
+  {
+   "kind": "direct_share",
+   "metric": "win_super_bowl",
+   "period_key": "PLAYOFFS",
+   "rate": 0.12
+  }
+ ],
+ "owners": [
+  {
+   "label": "Anthony C.",
+   "name": "Anthony C.",
+   "email": "anthonymcalcagni@gmail.com"
+  },
+  {
+   "label": "Ben F.",
+   "name": "Ben F.",
+   "email": "benabellifichter@gmail.com"
+  },
+  {
+   "label": "Billy S.",
+   "name": "Billy S.",
+   "email": "billy.sappern@gmail.com"
+  },
+  {
+   "label": "Cameron H.",
+   "name": "Cameron H.",
+   "email": "camkhill@gmail.com"
+  },
+  {
+   "label": "Chris H.",
+   "name": "Chris H.",
+   "email": "cholter09@gmail.com"
+  },
+  {
+   "label": "Craig T.",
+   "name": "Craig T.",
+   "email": "cthompson9@gmail.com"
+  },
+  {
+   "label": "Damon H.",
+   "name": "Damon H.",
+   "email": "dhatheway37@gmail.com"
+  },
+  {
+   "label": "Ed Z.",
+   "name": "Ed Z.",
+   "email": "ed.zhang888@gmail.com"
+  },
+  {
+   "label": "Henry A.",
+   "name": "Henry A.",
+   "email": "henrycharlesanderson@gmail.com"
+  },
+  {
+   "label": "Justin C.",
+   "name": "Justin C.",
+   "email": "jcollins602@gmail.com"
+  },
+  {
+   "label": "Sam F.",
+   "name": "Sam F.",
+   "email": "samuel.ford412@gmail.com"
+  },
+  {
+   "label": "Matt M.",
+   "name": "Matt M.",
+   "email": "mbmahoney44@gmail.com"
+  },
+  {
+   "label": "Sam R.",
+   "name": "Sam R.",
+   "email": "samuel.a.rosen@gmail.com"
+  },
+  {
+   "label": "Zach L.",
+   "name": "Zach L.",
+   "email": "zmlong10@gmail.com"
+  },
+  {
+   "label": "Zack M.",
+   "name": "Zack M.",
+   "email": "zackmiller28@gmail.com"
+  }
+ ],
+ "consortia": [],
+ "entries": [
+  {
+   "label": "Buffalo",
+   "lot_order": 1,
+   "price": 1295,
+   "kind": "single",
+   "attributes": {
+    "division": "AFC East",
+    "conference": "AFC"
+   },
+   "teams": [
+    {
+     "name": "Buffalo",
+     "seed": null,
+     "resolved": true
+    }
+   ],
+   "owners": [
+    {
+     "label": "Ed Z.",
+     "share": 1.0
+    }
+   ],
+   "events": [
+    {
+     "period_key": "SEASON",
+     "metric": "reg_season_win",
+     "units": 11
+    },
+    {
+     "period_key": "SEASON",
+     "metric": "win_20plus",
+     "units": 5
+    },
+    {
+     "period_key": "SEASON",
+     "metric": "weekly_big_winner",
+     "units": 2
+    },
+    {
+     "period_key": "PLAYOFFS",
+     "metric": "playoff_berth",
+     "units": 1
+    },
+    {
+     "period_key": "PLAYOFFS",
+     "metric": "div_round",
+     "units": 1
+    }
+   ],
+   "expected": {
+    "points": null,
+    "realized_return": 1021.466154
+   }
+  },
+  {
+   "label": "Miami",
+   "lot_order": 2,
+   "price": 725,
+   "kind": "single",
+   "attributes": {
+    "division": "AFC East",
+    "conference": "AFC"
+   },
+   "teams": [
+    {
+     "name": "Miami",
+     "seed": null,
+     "resolved": true
+    }
+   ],
+   "owners": [
+    {
+     "label": "Zach L.",
+     "share": 1.0
+    }
+   ],
+   "events": [
+    {
+     "period_key": "SEASON",
+     "metric": "reg_season_win",
+     "units": 11
+    },
+    {
+     "period_key": "SEASON",
+     "metric": "win_20plus",
+     "units": 5
+    },
+    {
+     "period_key": "SEASON",
+     "metric": "weekly_big_winner",
+     "units": 3
+    },
+    {
+     "period_key": "SEASON",
+     "metric": "reg_season_big_win",
+     "units": 1
+    },
+    {
+     "period_key": "PLAYOFFS",
+     "metric": "playoff_berth",
+     "units": 1
+    }
+   ],
+   "expected": {
+    "points": null,
+    "realized_return": 873.4511538
+   }
+  },
+  {
+   "label": "New England",
+   "lot_order": 3,
+   "price": 445,
+   "kind": "single",
+   "attributes": {
+    "division": "AFC East",
+    "conference": "AFC"
+   },
+   "teams": [
+    {
+     "name": "New England",
+     "seed": null,
+     "resolved": true
+    }
+   ],
+   "owners": [
+    {
+     "label": "Zach L.",
+     "share": 1.0
+    }
+   ],
+   "events": [
+    {
+     "period_key": "SEASON",
+     "metric": "reg_season_win",
+     "units": 4
+    }
+   ],
+   "expected": {
+    "points": null,
+    "realized_return": 84.58
+   }
+  },
+  {
+   "label": "NY Jets",
+   "lot_order": 4,
+   "price": 570,
+   "kind": "single",
+   "attributes": {
+    "division": "AFC East",
+    "conference": "AFC"
+   },
+   "teams": [
+    {
+     "name": "NY Jets",
+     "seed": null,
+     "resolved": true
+    }
+   ],
+   "owners": [
+    {
+     "label": "Craig T.",
+     "share": 1.0
+    }
+   ],
+   "events": [
+    {
+     "period_key": "SEASON",
+     "metric": "reg_season_win",
+     "units": 7
+    },
+    {
+     "period_key": "SEASON",
+     "metric": "win_20plus",
+     "units": 1
+    },
+    {
+     "period_key": "SEASON",
+     "metric": "weekly_big_winner",
+     "units": 1
+    }
+   ],
+   "expected": {
+    "points": null,
+    "realized_return": 274.0717308
+   }
+  },
+  {
+   "label": "Baltimore",
+   "lot_order": 5,
+   "price": 870,
+   "kind": "single",
+   "attributes": {
+    "division": "AFC North",
+    "conference": "AFC"
+   },
+   "teams": [
+    {
+     "name": "Baltimore",
+     "seed": null,
+     "resolved": true
+    }
+   ],
+   "owners": [
+    {
+     "label": "Anthony C.",
+     "share": 1.0
+    }
+   ],
+   "events": [
+    {
+     "period_key": "SEASON",
+     "metric": "reg_season_win",
+     "units": 13
+    },
+    {
+     "period_key": "SEASON",
+     "metric": "win_20plus",
+     "units": 4
+    },
+    {
+     "period_key": "SEASON",
+     "metric": "weekly_big_winner",
+     "units": 3
+    },
+    {
+     "period_key": "PLAYOFFS",
+     "metric": "playoff_berth",
+     "units": 1
+    },
+    {
+     "period_key": "PLAYOFFS",
+     "metric": "div_round",
+     "units": 1
+    },
+    {
+     "period_key": "PLAYOFFS",
+     "metric": "conf_round",
+     "units": 1
+    }
+   ],
+   "expected": {
+    "points": null,
+    "realized_return": 1783.499423
+   }
+  },
+  {
+   "label": "Cincinnati",
+   "lot_order": 6,
+   "price": 1195,
+   "kind": "single",
+   "attributes": {
+    "division": "AFC North",
+    "conference": "AFC"
+   },
+   "teams": [
+    {
+     "name": "Cincinnati",
+     "seed": null,
+     "resolved": true
+    }
+   ],
+   "owners": [
+    {
+     "label": "Sam R.",
+     "share": 1.0
+    }
+   ],
+   "events": [
+    {
+     "period_key": "SEASON",
+     "metric": "reg_season_win",
+     "units": 9
+    },
+    {
+     "period_key": "SEASON",
+     "metric": "win_20plus",
+     "units": 1
+    }
+   ],
+   "expected": {
+    "points": null,
+    "realized_return": 210.6367308
+   }
+  },
+  {
+   "label": "Cleveland",
+   "lot_order": 7,
+   "price": 570,
+   "kind": "single",
+   "attributes": {
+    "division": "AFC North",
+    "conference": "AFC"
+   },
+   "teams": [
+    {
+     "name": "Cleveland",
+     "seed": null,
+     "resolved": true
+    }
+   ],
+   "owners": [
+    {
+     "label": "Zack M.",
+     "share": 1.0
+    }
+   ],
+   "events": [
+    {
+     "period_key": "SEASON",
+     "metric": "reg_season_win",
+     "units": 11
+    },
+    {
+     "period_key": "SEASON",
+     "metric": "win_20plus",
+     "units": 3
+    },
+    {
+     "period_key": "PLAYOFFS",
+     "metric": "playoff_berth",
+     "units": 1
+    }
+   ],
+   "expected": {
+    "points": null,
+    "realized_return": 452.1776923
+   }
+  },
+  {
+   "label": "Pittsburgh",
+   "lot_order": 8,
+   "price": 515,
+   "kind": "single",
+   "attributes": {
+    "division": "AFC North",
+    "conference": "AFC"
+   },
+   "teams": [
+    {
+     "name": "Pittsburgh",
+     "seed": null,
+     "resolved": true
+    }
+   ],
+   "owners": [
+    {
+     "label": "Anthony C.",
+     "share": 1.0
+    }
+   ],
+   "events": [
+    {
+     "period_key": "SEASON",
+     "metric": "reg_season_win",
+     "units": 10
+    },
+    {
+     "period_key": "SEASON",
+     "metric": "win_20plus",
+     "units": 1
+    },
+    {
+     "period_key": "SEASON",
+     "metric": "weekly_big_winner",
+     "units": 1
+    },
+    {
+     "period_key": "PLAYOFFS",
+     "metric": "playoff_berth",
+     "units": 1
+    }
+   ],
+   "expected": {
+    "points": null,
+    "realized_return": 496.0942308
+   }
+  },
+  {
+   "label": "Houston",
+   "lot_order": 9,
+   "price": 270,
+   "kind": "single",
+   "attributes": {
+    "division": "AFC South",
+    "conference": "AFC"
+   },
+   "teams": [
+    {
+     "name": "Houston",
+     "seed": null,
+     "resolved": true
+    }
+   ],
+   "owners": [
+    {
+     "label": "Zach L.",
+     "share": 1.0
+    }
+   ],
+   "events": [
+    {
+     "period_key": "SEASON",
+     "metric": "reg_season_win",
+     "units": 10
+    },
+    {
+     "period_key": "SEASON",
+     "metric": "win_20plus",
+     "units": 3
+    },
+    {
+     "period_key": "PLAYOFFS",
+     "metric": "playoff_berth",
+     "units": 1
+    },
+    {
+     "period_key": "PLAYOFFS",
+     "metric": "div_round",
+     "units": 1
+    }
+   ],
+   "expected": {
+    "points": null,
+    "realized_return": 748.2076923
+   }
+  },
+  {
+   "label": "Indianapolis",
+   "lot_order": 10,
+   "price": 275,
+   "kind": "single",
+   "attributes": {
+    "division": "AFC South",
+    "conference": "AFC"
+   },
+   "teams": [
+    {
+     "name": "Indianapolis",
+     "seed": null,
+     "resolved": true
+    }
+   ],
+   "owners": [
+    {
+     "label": "Zach L.",
+     "share": 1.0
+    }
+   ],
+   "events": [
+    {
+     "period_key": "SEASON",
+     "metric": "reg_season_win",
+     "units": 9
+    }
+   ],
+   "expected": {
+    "points": null,
+    "realized_return": 190.305
+   }
+  },
+  {
+   "label": "Jacksonville",
+   "lot_order": 11,
+   "price": 735,
+   "kind": "single",
+   "attributes": {
+    "division": "AFC South",
+    "conference": "AFC"
+   },
+   "teams": [
+    {
+     "name": "Jacksonville",
+     "seed": null,
+     "resolved": true
+    }
+   ],
+   "owners": [
+    {
+     "label": "Zack M.",
+     "share": 1.0
+    }
+   ],
+   "events": [
+    {
+     "period_key": "SEASON",
+     "metric": "reg_season_win",
+     "units": 9
+    },
+    {
+     "period_key": "SEASON",
+     "metric": "win_20plus",
+     "units": 2
+    }
+   ],
+   "expected": {
+    "points": null,
+    "realized_return": 230.9684615
+   }
+  },
+  {
+   "label": "Tennessee",
+   "lot_order": 12,
+   "price": 400,
+   "kind": "single",
+   "attributes": {
+    "division": "AFC South",
+    "conference": "AFC"
+   },
+   "teams": [
+    {
+     "name": "Tennessee",
+     "seed": null,
+     "resolved": true
+    }
+   ],
+   "owners": [
+    {
+     "label": "Zach L.",
+     "share": 1.0
+    }
+   ],
+   "events": [
+    {
+     "period_key": "SEASON",
+     "metric": "reg_season_win",
+     "units": 6
+    },
+    {
+     "period_key": "SEASON",
+     "metric": "win_20plus",
+     "units": 1
+    }
+   ],
+   "expected": {
+    "points": null,
+    "realized_return": 147.2017308
+   }
+  },
+  {
+   "label": "Denver",
+   "lot_order": 13,
+   "price": 500,
+   "kind": "single",
+   "attributes": {
+    "division": "AFC West",
+    "conference": "AFC"
+   },
+   "teams": [
+    {
+     "name": "Denver",
+     "seed": null,
+     "resolved": true
+    }
+   ],
+   "owners": [
+    {
+     "label": "Craig T.",
+     "share": 1.0
+    }
+   ],
+   "events": [
+    {
+     "period_key": "SEASON",
+     "metric": "reg_season_win",
+     "units": 8
+    }
+   ],
+   "expected": {
+    "points": null,
+    "realized_return": 169.16
+   }
+  },
+  {
+   "label": "Kansas City",
+   "lot_order": 14,
+   "price": 1570,
+   "kind": "single",
+   "attributes": {
+    "division": "AFC West",
+    "conference": "AFC"
+   },
+   "teams": [
+    {
+     "name": "Kansas City",
+     "seed": null,
+     "resolved": true
+    }
+   ],
+   "owners": [
+    {
+     "label": "Zack M.",
+     "share": 1.0
+    }
+   ],
+   "events": [
+    {
+     "period_key": "SEASON",
+     "metric": "reg_season_win",
+     "units": 11
+    },
+    {
+     "period_key": "SEASON",
+     "metric": "win_20plus",
+     "units": 1
+    },
+    {
+     "period_key": "PLAYOFFS",
+     "metric": "playoff_berth",
+     "units": 1
+    },
+    {
+     "period_key": "PLAYOFFS",
+     "metric": "div_round",
+     "units": 1
+    },
+    {
+     "period_key": "PLAYOFFS",
+     "metric": "conf_round",
+     "units": 1
+    },
+    {
+     "period_key": "PLAYOFFS",
+     "metric": "sb_berth",
+     "units": 1
+    },
+    {
+     "period_key": "PLAYOFFS",
+     "metric": "win_super_bowl",
+     "units": 1
+    }
+   ],
+   "expected": {
+    "points": null,
+    "realized_return": 5169.139231
+   }
+  },
+  {
+   "label": "Las Vegas",
+   "lot_order": 15,
+   "price": 345,
+   "kind": "single",
+   "attributes": {
+    "division": "AFC West",
+    "conference": "AFC"
+   },
+   "teams": [
+    {
+     "name": "Las Vegas",
+     "seed": null,
+     "resolved": true
+    }
+   ],
+   "owners": [
+    {
+     "label": "Anthony C.",
+     "share": 1.0
+    }
+   ],
+   "events": [
+    {
+     "period_key": "SEASON",
+     "metric": "reg_season_win",
+     "units": 8
+    },
+    {
+     "period_key": "SEASON",
+     "metric": "win_20plus",
+     "units": 2
+    },
+    {
+     "period_key": "SEASON",
+     "metric": "weekly_big_winner",
+     "units": 1
+    }
+   ],
+   "expected": {
+    "points": null,
+    "realized_return": 315.5484615
+   }
+  },
+  {
+   "label": "LA Chargers",
+   "lot_order": 16,
+   "price": 605,
+   "kind": "single",
+   "attributes": {
+    "division": "AFC West",
+    "conference": "AFC"
+   },
+   "teams": [
+    {
+     "name": "LA Chargers",
+     "seed": null,
+     "resolved": true
+    }
+   ],
+   "owners": [
+    {
+     "label": "Sam R.",
+     "share": 1.0
+    }
+   ],
+   "events": [
+    {
+     "period_key": "SEASON",
+     "metric": "reg_season_win",
+     "units": 5
+    },
+    {
+     "period_key": "SEASON",
+     "metric": "win_20plus",
+     "units": 1
+    }
+   ],
+   "expected": {
+    "points": null,
+    "realized_return": 126.0567308
+   }
+  },
+  {
+   "label": "Dallas",
+   "lot_order": 17,
+   "price": 1045,
+   "kind": "single",
+   "attributes": {
+    "division": "NFC East",
+    "conference": "NFC"
+   },
+   "teams": [
+    {
+     "name": "Dallas",
+     "seed": null,
+     "resolved": true
+    }
+   ],
+   "owners": [
+    {
+     "label": "Zach L.",
+     "share": 1.0
+    }
+   ],
+   "events": [
+    {
+     "period_key": "SEASON",
+     "metric": "reg_season_win",
+     "units": 12
+    },
+    {
+     "period_key": "SEASON",
+     "metric": "win_20plus",
+     "units": 9
+    },
+    {
+     "period_key": "SEASON",
+     "metric": "weekly_big_winner",
+     "units": 5
+    },
+    {
+     "period_key": "PLAYOFFS",
+     "metric": "playoff_berth",
+     "units": 1
+    }
+   ],
+   "expected": {
+    "points": null,
+    "realized_return": 1123.938077
+   }
+  },
+  {
+   "label": "NY Giants",
+   "lot_order": 18,
+   "price": 480,
+   "kind": "single",
+   "attributes": {
+    "division": "NFC East",
+    "conference": "NFC"
+   },
+   "teams": [
+    {
+     "name": "NY Giants",
+     "seed": null,
+     "resolved": true
+    }
+   ],
+   "owners": [
+    {
+     "label": "Ed Z.",
+     "share": 1.0
+    }
+   ],
+   "events": [
+    {
+     "period_key": "SEASON",
+     "metric": "reg_season_win",
+     "units": 6
+    }
+   ],
+   "expected": {
+    "points": null,
+    "realized_return": 126.87
+   }
+  },
+  {
+   "label": "Philadelphia",
+   "lot_order": 19,
+   "price": 1500,
+   "kind": "single",
+   "attributes": {
+    "division": "NFC East",
+    "conference": "NFC"
+   },
+   "teams": [
+    {
+     "name": "Philadelphia",
+     "seed": null,
+     "resolved": true
+    }
+   ],
+   "owners": [
+    {
+     "label": "Zack M.",
+     "share": 1.0
+    }
+   ],
+   "events": [
+    {
+     "period_key": "SEASON",
+     "metric": "reg_season_win",
+     "units": 11
+    },
+    {
+     "period_key": "PLAYOFFS",
+     "metric": "playoff_berth",
+     "units": 1
+    }
+   ],
+   "expected": {
+    "points": null,
+    "realized_return": 391.1825
+   }
+  },
+  {
+   "label": "Washington",
+   "lot_order": 20,
+   "price": 300,
+   "kind": "single",
+   "attributes": {
+    "division": "NFC East",
+    "conference": "NFC"
+   },
+   "teams": [
+    {
+     "name": "Washington",
+     "seed": null,
+     "resolved": true
+    }
+   ],
+   "owners": [
+    {
+     "label": "Zach L.",
+     "share": 1.0
+    }
+   ],
+   "events": [
+    {
+     "period_key": "SEASON",
+     "metric": "reg_season_win",
+     "units": 4
+    }
+   ],
+   "expected": {
+    "points": null,
+    "realized_return": 84.58
+   }
+  },
+  {
+   "label": "Chicago",
+   "lot_order": 21,
+   "price": 420,
+   "kind": "single",
+   "attributes": {
+    "division": "NFC North",
+    "conference": "NFC"
+   },
+   "teams": [
+    {
+     "name": "Chicago",
+     "seed": null,
+     "resolved": true
+    }
+   ],
+   "owners": [
+    {
+     "label": "Sam R.",
+     "share": 1.0
+    }
+   ],
+   "events": [
+    {
+     "period_key": "SEASON",
+     "metric": "reg_season_win",
+     "units": 7
+    },
+    {
+     "period_key": "SEASON",
+     "metric": "win_20plus",
+     "units": 2
+    }
+   ],
+   "expected": {
+    "points": null,
+    "realized_return": 188.6784615
+   }
+  },
+  {
+   "label": "Detroit",
+   "lot_order": 22,
+   "price": 800,
+   "kind": "single",
+   "attributes": {
+    "division": "NFC North",
+    "conference": "NFC"
+   },
+   "teams": [
+    {
+     "name": "Detroit",
+     "seed": null,
+     "resolved": true
+    }
+   ],
+   "owners": [
+    {
+     "label": "Sam R.",
+     "share": 1.0
+    }
+   ],
+   "events": [
+    {
+     "period_key": "SEASON",
+     "metric": "reg_season_win",
+     "units": 12
+    },
+    {
+     "period_key": "SEASON",
+     "metric": "win_20plus",
+     "units": 1
+    },
+    {
+     "period_key": "PLAYOFFS",
+     "metric": "playoff_berth",
+     "units": 1
+    },
+    {
+     "period_key": "PLAYOFFS",
+     "metric": "div_round",
+     "units": 1
+    },
+    {
+     "period_key": "PLAYOFFS",
+     "metric": "conf_round",
+     "units": 1
+    }
+   ],
+   "expected": {
+    "points": null,
+    "realized_return": 1384.184231
+   }
+  },
+  {
+   "label": "Green Bay",
+   "lot_order": 23,
+   "price": 450,
+   "kind": "single",
+   "attributes": {
+    "division": "NFC North",
+    "conference": "NFC"
+   },
+   "teams": [
+    {
+     "name": "Green Bay",
+     "seed": null,
+     "resolved": true
+    }
+   ],
+   "owners": [
+    {
+     "label": "Anthony C.",
+     "share": 1.0
+    }
+   ],
+   "events": [
+    {
+     "period_key": "SEASON",
+     "metric": "reg_season_win",
+     "units": 9
+    },
+    {
+     "period_key": "SEASON",
+     "metric": "win_20plus",
+     "units": 1
+    },
+    {
+     "period_key": "PLAYOFFS",
+     "metric": "playoff_berth",
+     "units": 1
+    },
+    {
+     "period_key": "PLAYOFFS",
+     "metric": "div_round",
+     "units": 1
+    }
+   ],
+   "expected": {
+    "points": null,
+    "realized_return": 686.3992308
+   }
+  },
+  {
+   "label": "Minnesota",
+   "lot_order": 24,
+   "price": 650,
+   "kind": "single",
+   "attributes": {
+    "division": "NFC North",
+    "conference": "NFC"
+   },
+   "teams": [
+    {
+     "name": "Minnesota",
+     "seed": null,
+     "resolved": true
+    }
+   ],
+   "owners": [
+    {
+     "label": "Ed Z.",
+     "share": 1.0
+    }
+   ],
+   "events": [
+    {
+     "period_key": "SEASON",
+     "metric": "reg_season_win",
+     "units": 7
+    }
+   ],
+   "expected": {
+    "points": null,
+    "realized_return": 148.015
+   }
+  },
+  {
+   "label": "Atlanta",
+   "lot_order": 25,
+   "price": 520,
+   "kind": "single",
+   "attributes": {
+    "division": "NFC South",
+    "conference": "NFC"
+   },
+   "teams": [
+    {
+     "name": "Atlanta",
+     "seed": null,
+     "resolved": true
+    }
+   ],
+   "owners": [
+    {
+     "label": "Sam R.",
+     "share": 1.0
+    }
+   ],
+   "events": [
+    {
+     "period_key": "SEASON",
+     "metric": "reg_season_win",
+     "units": 7
+    }
+   ],
+   "expected": {
+    "points": null,
+    "realized_return": 148.015
+   }
+  },
+  {
+   "label": "Carolina",
+   "lot_order": 26,
+   "price": 400,
+   "kind": "single",
+   "attributes": {
+    "division": "NFC South",
+    "conference": "NFC"
+   },
+   "teams": [
+    {
+     "name": "Carolina",
+     "seed": null,
+     "resolved": true
+    }
+   ],
+   "owners": [
+    {
+     "label": "Zach L.",
+     "share": 1.0
+    }
+   ],
+   "events": [
+    {
+     "period_key": "SEASON",
+     "metric": "reg_season_win",
+     "units": 2
+    }
+   ],
+   "expected": {
+    "points": null,
+    "realized_return": 42.29
+   }
+  },
+  {
+   "label": "New Orleans",
+   "lot_order": 27,
+   "price": 750,
+   "kind": "single",
+   "attributes": {
+    "division": "NFC South",
+    "conference": "NFC"
+   },
+   "teams": [
+    {
+     "name": "New Orleans",
+     "seed": null,
+     "resolved": true
+    }
+   ],
+   "owners": [
+    {
+     "label": "Zach L.",
+     "share": 1.0
+    }
+   ],
+   "events": [
+    {
+     "period_key": "SEASON",
+     "metric": "reg_season_win",
+     "units": 9
+    },
+    {
+     "period_key": "SEASON",
+     "metric": "win_20plus",
+     "units": 3
+    },
+    {
+     "period_key": "SEASON",
+     "metric": "weekly_big_winner",
+     "units": 2
+    }
+   ],
+   "expected": {
+    "points": null,
+    "realized_return": 462.7501923
+   }
+  },
+  {
+   "label": "Tampa Bay",
+   "lot_order": 28,
+   "price": 360,
+   "kind": "single",
+   "attributes": {
+    "division": "NFC South",
+    "conference": "NFC"
+   },
+   "teams": [
+    {
+     "name": "Tampa Bay",
+     "seed": null,
+     "resolved": true
+    }
+   ],
+   "owners": [
+    {
+     "label": "Zach L.",
+     "share": 1.0
+    }
+   ],
+   "events": [
+    {
+     "period_key": "SEASON",
+     "metric": "reg_season_win",
+     "units": 9
+    },
+    {
+     "period_key": "PLAYOFFS",
+     "metric": "playoff_berth",
+     "units": 1
+    },
+    {
+     "period_key": "PLAYOFFS",
+     "metric": "div_round",
+     "units": 1
+    }
+   ],
+   "expected": {
+    "points": null,
+    "realized_return": 666.0675
+   }
+  },
+  {
+   "label": "Arizona",
+   "lot_order": 29,
+   "price": 185,
+   "kind": "single",
+   "attributes": {
+    "division": "NFC West",
+    "conference": "NFC"
+   },
+   "teams": [
+    {
+     "name": "Arizona",
+     "seed": null,
+     "resolved": true
+    }
+   ],
+   "owners": [
+    {
+     "label": "Zach L.",
+     "share": 1.0
+    }
+   ],
+   "events": [
+    {
+     "period_key": "SEASON",
+     "metric": "reg_season_win",
+     "units": 4
+    }
+   ],
+   "expected": {
+    "points": null,
+    "realized_return": 84.58
+   }
+  },
+  {
+   "label": "LA Rams",
+   "lot_order": 30,
+   "price": 300,
+   "kind": "single",
+   "attributes": {
+    "division": "NFC West",
+    "conference": "NFC"
+   },
+   "teams": [
+    {
+     "name": "LA Rams",
+     "seed": null,
+     "resolved": true
+    }
+   ],
+   "owners": [
+    {
+     "label": "Zach L.",
+     "share": 1.0
+    }
+   ],
+   "events": [
+    {
+     "period_key": "SEASON",
+     "metric": "reg_season_win",
+     "units": 10
+    },
+    {
+     "period_key": "SEASON",
+     "metric": "win_20plus",
+     "units": 1
+    },
+    {
+     "period_key": "PLAYOFFS",
+     "metric": "playoff_berth",
+     "units": 1
+    }
+   ],
+   "expected": {
+    "points": null,
+    "realized_return": 390.3692308
+   }
+  },
+  {
+   "label": "San Francisco",
+   "lot_order": 31,
+   "price": 1400,
+   "kind": "single",
+   "attributes": {
+    "division": "NFC West",
+    "conference": "NFC"
+   },
+   "teams": [
+    {
+     "name": "San Francisco",
+     "seed": null,
+     "resolved": true
+    }
+   ],
+   "owners": [
+    {
+     "label": "Sam R.",
+     "share": 1.0
+    }
+   ],
+   "events": [
+    {
+     "period_key": "SEASON",
+     "metric": "reg_season_win",
+     "units": 12
+    },
+    {
+     "period_key": "SEASON",
+     "metric": "win_20plus",
+     "units": 4
+    },
+    {
+     "period_key": "PLAYOFFS",
+     "metric": "playoff_berth",
+     "units": 1
+    },
+    {
+     "period_key": "PLAYOFFS",
+     "metric": "div_round",
+     "units": 1
+    },
+    {
+     "period_key": "PLAYOFFS",
+     "metric": "conf_round",
+     "units": 1
+    },
+    {
+     "period_key": "PLAYOFFS",
+     "metric": "sb_berth",
+     "units": 1
+    }
+   ],
+   "expected": {
+    "points": null,
+    "realized_return": 2713.879423
+   }
+  },
+  {
+   "label": "Seattle",
+   "lot_order": 32,
+   "price": 700,
+   "kind": "single",
+   "attributes": {
+    "division": "NFC West",
+    "conference": "NFC"
+   },
+   "teams": [
+    {
+     "name": "Seattle",
+     "seed": null,
+     "resolved": true
+    }
+   ],
+   "owners": [
+    {
+     "label": "Sam R.",
+     "share": 1.0
+    }
+   ],
+   "events": [
+    {
+     "period_key": "SEASON",
+     "metric": "reg_season_win",
+     "units": 9
+    },
+    {
+     "period_key": "SEASON",
+     "metric": "win_20plus",
+     "units": 1
+    }
+   ],
+   "expected": {
+    "points": null,
+    "realized_return": 210.6367308
+   }
+  }
+ ],
+ "trades": [
+  {
+   "sheet_ref": "1",
+   "date": null,
+   "detail": "Sam trades 25% of Lions equity to Ed",
+   "scope": "entry",
+   "entry_label": "Detroit",
+   "from": "Sam R.",
+   "to": "Ed Z.",
+   "pct": 0.25,
+   "cash": 182.6114731,
+   "leg_owner": "Ed Z.",
+   "leg_side": "buy",
+   "asset_value": 346.0460577,
+   "synthetic": false
+  },
+  {
+   "sheet_ref": "1",
+   "date": null,
+   "detail": "Ed trades 16% of Bills equity to Sam",
+   "scope": "entry",
+   "entry_label": "Buffalo",
+   "from": "Ed Z.",
+   "to": "Sam R.",
+   "pct": 0.16,
+   "cash": -182.6114731,
+   "leg_owner": "Sam R.",
+   "leg_side": "buy",
+   "asset_value": 163.4345846,
+   "synthetic": false
+  },
+  {
+   "sheet_ref": "2",
+   "date": null,
+   "detail": "Sam bets 10% of his net return will exceed 10% of Zach's",
+   "scope": "book",
+   "entry_label": null,
+   "from": "Sam R.",
+   "to": "Zach L.",
+   "pct": 0.1,
+   "cash": -10.1233269,
+   "leg_owner": "Sam R.",
+   "leg_side": "wager",
+   "asset_value": -65.7912692,
+   "synthetic": true,
+   "note": "portfolio-level head-to-head wager on 10% of each net return; not an equity transfer"
+  },
+  {
+   "sheet_ref": "2",
+   "date": null,
+   "detail": "Zach bets 10% of his net return will exceed 10% of Sam's",
+   "scope": "book",
+   "entry_label": null,
+   "from": "Zach L.",
+   "to": "Sam R.",
+   "pct": 0.1,
+   "cash": 10.1233269,
+   "leg_owner": "Zach L.",
+   "leg_side": "wager",
+   "asset_value": -55.6679423,
+   "synthetic": true,
+   "note": "portfolio-level head-to-head wager on 10% of each net return; not an equity transfer"
+  },
+  {
+   "sheet_ref": "3",
+   "date": null,
+   "detail": "Sam sells Chicago to Zach for $142.30",
+   "scope": "entry",
+   "entry_label": "Chicago",
+   "from": "Sam R.",
+   "to": "Zach L.",
+   "pct": 1.0,
+   "cash": -46.3784615,
+   "leg_owner": "Sam R.",
+   "leg_side": "sell",
+   "asset_value": -46.3784615,
+   "synthetic": false
+  },
+  {
+   "sheet_ref": "3",
+   "date": null,
+   "detail": "Zach buys Chicago from Sam for $142.30",
+   "scope": "entry",
+   "entry_label": "Chicago",
+   "from": "Sam R.",
+   "to": "Zach L.",
+   "pct": 1.0,
+   "cash": 46.3784615,
+   "leg_owner": "Zach L.",
+   "leg_side": "buy",
+   "asset_value": 46.3784615,
+   "synthetic": false
+  },
+  {
+   "sheet_ref": "4",
+   "date": null,
+   "detail": "Zach trades 10% of Miami to Sam",
+   "scope": "entry",
+   "entry_label": "Miami",
+   "from": "Zach L.",
+   "to": "Sam R.",
+   "pct": 0.1,
+   "cash": 3.0904231,
+   "leg_owner": "Sam R.",
+   "leg_side": "buy",
+   "asset_value": 87.3451154,
+   "synthetic": false
+  },
+  {
+   "sheet_ref": "4",
+   "date": null,
+   "detail": "Sam trades 40% of Cincinnati to Zach",
+   "scope": "entry",
+   "entry_label": "Cincinnati",
+   "from": "Sam R.",
+   "to": "Zach L.",
+   "pct": 0.4,
+   "cash": -3.0904231,
+   "leg_owner": "Zach L.",
+   "leg_side": "buy",
+   "asset_value": 84.2546923,
+   "synthetic": false
+  },
+  {
+   "sheet_ref": "5",
+   "date": null,
+   "detail": "Sam buys 30% of LA Chargers at $575 value",
+   "scope": "entry",
+   "entry_label": "LA Chargers",
+   "from": "Zach L.",
+   "to": "Sam R.",
+   "pct": 0.3,
+   "cash": -134.6829808,
+   "leg_owner": "Sam R.",
+   "leg_side": "buy",
+   "asset_value": -134.6829808,
+   "synthetic": true,
+   "note": "Zach L. did not own LA Chargers at auction (Sam R. did); recorded as a synthetic sale at a $575 strike"
+  },
+  {
+   "sheet_ref": "5",
+   "date": null,
+   "detail": "Zach sells 30% of LA Chargers at $575 value",
+   "scope": "entry",
+   "entry_label": "LA Chargers",
+   "from": "Zach L.",
+   "to": "Sam R.",
+   "pct": 0.3,
+   "cash": 134.6829808,
+   "leg_owner": "Zach L.",
+   "leg_side": "sell",
+   "asset_value": 134.6829808,
+   "synthetic": true,
+   "note": "Zach L. did not own LA Chargers at auction (Sam R. did); recorded as a synthetic sale at a $575 strike"
+  },
+  {
+   "sheet_ref": "6",
+   "date": null,
+   "detail": "Zach shorts 50% of Bills for $2,250",
+   "scope": "entry",
+   "entry_label": "Buffalo",
+   "from": "Zach L.",
+   "to": "Sam R.",
+   "pct": 0.5,
+   "cash": -614.2669231,
+   "leg_owner": "Sam R.",
+   "leg_side": "buy",
+   "asset_value": 614.2669231,
+   "synthetic": true,
+   "note": "SIGN/LABEL MISMATCH in the workbook: this row's detail describes Zach's short but the row's Net Trade Value (-614.27) is booked to Sam R. The New Owner column is authoritative for the owner-level tie-out."
+  },
+  {
+   "sheet_ref": "6",
+   "date": null,
+   "detail": "Sam buys 50% of Bills for $2,250",
+   "scope": "entry",
+   "entry_label": "Buffalo",
+   "from": "Zach L.",
+   "to": "Sam R.",
+   "pct": 0.5,
+   "cash": 614.2669231,
+   "leg_owner": "Zach L.",
+   "leg_side": "sell",
+   "asset_value": -614.2669231,
+   "synthetic": true,
+   "note": "SIGN/LABEL MISMATCH in the workbook: this row's detail describes Sam's long but the row's Net Trade Value (+614.27) is booked to Zach L. The New Owner column is authoritative for the owner-level tie-out."
+  },
+  {
+   "sheet_ref": "7",
+   "date": null,
+   "detail": "Sam trades 20% of 49ers to Anthony",
+   "scope": "entry",
+   "entry_label": "San Francisco",
+   "from": "Sam R.",
+   "to": "Anthony C.",
+   "pct": 0.2,
+   "cash": 186.076,
+   "leg_owner": "Anthony C.",
+   "leg_side": "buy",
+   "asset_value": 542.7758846,
+   "synthetic": false
+  },
+  {
+   "sheet_ref": "7",
+   "date": null,
+   "detail": "Anthony trades 20% of Ravens to Sam",
+   "scope": "entry",
+   "entry_label": "Baltimore",
+   "from": "Anthony C.",
+   "to": "Sam R.",
+   "pct": 0.2,
+   "cash": -186.076,
+   "leg_owner": "Sam R.",
+   "leg_side": "buy",
+   "asset_value": 356.6998846,
+   "synthetic": false
+  }
+ ],
+ "expected_owners": [
+  {
+   "label": "Anthony C.",
+   "cost": 2180,
+   "realized": 3281.541346,
+   "trade_impact": 186.076,
+   "net": 1287.617346
+  },
+  {
+   "label": "Craig T.",
+   "cost": 1070,
+   "realized": 443.2317308,
+   "trade_impact": 0,
+   "net": -626.7682692
+  },
+  {
+   "label": "Ed Z.",
+   "cost": 2425,
+   "realized": 1296.351154,
+   "trade_impact": 182.6114731,
+   "net": -946.0373731
+  },
+  {
+   "label": "Sam R.",
+   "cost": 5640,
+   "realized": 4982.087308,
+   "trade_impact": -1171.048742,
+   "net": -1828.961435
+  },
+  {
+   "label": "Zach L.",
+   "cost": 5455,
+   "realized": 4898.320577,
+   "trade_impact": 802.3612692,
+   "net": 245.6818462
+  },
+  {
+   "label": "Zack M.",
+   "cost": 4375,
+   "realized": 6243.467885,
+   "trade_impact": 0,
+   "net": 1868.467885
+  }
+ ],
+ "validation": {
+  "check_1_sum_price_equals_pot": "PASS - sum of the 32 entry prices = $21,145.00 = workbook pot ($21,145.00 at 'Calcutta Live Draft'!L24, the cell the Realized Return formula multiplies by). Delta $0.00. Prices also agree cell-for-cell between 'Calcutta Live Draft' Value Paid and Returns!E on all 32 lots (Returns!E is a direct link, ='Calcutta Live Draft'!D7 style).",
+  "check_2_shares_sum_to_one": "PASS - all 32 entries sum to exactly 1.0. Calcutta III has NO split ownership: the Returns tab has a single Owner column with no slash strings and no 'Owner #2' column, and the '# Teams' column in the Players block is integer for every owner (4/2/3/7/12/4 = 32). Failures: none.",
+  "check_3_points_denominator": "N/A-BY-DESIGN, reported as required. Calcutta III has no points column of any kind, so there is no points total and no points denominator. Its arithmetic is a pure percent-of-pot model: Returns!O = SUMPRODUCT(pct_row F1:N1, splits_row F2:N2, metric_row) * PotSize. I derived the implied denominator anyway by the requested method (metric-share x pot / payout) and it comes out to 1.000000000 (i.e. 100% of the pot), NOT 11,420. Summing the nine rule shares over all 32 teams gives 0.999999999998 of the pot (float noise on the 1/52 split), i.e. the rubric exhausts exactly 100% of the pot by construction: wins 272 x 0.10% = 27.20%; 20+ Pt Wins pool 5.00%; Weekly Big Winner 18 x 0.50% = 9.00%; Reg. Season BigWin 1 x 0.30% = 0.30%; Playoff Berth 14 x 0.75% = 10.50%; Div. Round 8 x 1.50% = 12.00%; Conf. Round 4 x 3.00% = 12.00%; SB Berth 2 x 6.00% = 12.00%; Win Super Bowl 1 x 12.00% = 12.00%. Total = 100.00%.",
+  "check_4_payout_recompute": "PASS - recomputed all 32 payouts end to end from events + rules; largest absolute error $0.00000023 (float noise). Worked arithmetic, five teams: (a) Buffalo 11 wins x 0.10% + 5 20+pt-wins x (5.00%/52) + 2 weekly-big-winner x 0.50% + berth 0.75% + div 1.50% = 1.10% + 0.9615385% + 1.00% + 0.75% + 1.50% = 5.3115385% x $21,145 = $1,021.4662 vs workbook $1,021.466154. (b) Baltimore 13 x 0.10% + 4 x (5.00%/52) + 3 x 0.50% + 0.75% + 1.50% + 3.00% = 1.30% + 0.7692308% + 1.50% + 5.25% = 8.4342308% x $21,145 = $1,783.4994 vs $1,783.499423. (c) Kansas City 11 x 0.10% + 1 x (5.00%/52) + 0.75% + 1.50% + 3.00% + 6.00% + 12.00% = 1.10% + 0.0961538% + 23.25% = 24.4461538% x $21,145 = $5,169.1392 vs $5,169.139231. (d) Dallas 12 x 0.10% + 9 x (5.00%/52) + 5 x 0.50% + 0.75% = 1.20% + 0.8653846% + 2.50% + 0.75% = 5.3153846% x $21,145 = $1,123.9381 vs $1,123.938077. (e) San Francisco 12 x 0.10% + 4 x (5.00%/52) + 0.75% + 1.50% + 3.00% + 6.00% = 1.20% + 0.7692308% + 11.25% = 13.2192308% x $21,145 = $2,713.8794 vs $2,713.879423. All five match to the cent.",
+  "check_5_owner_costs_and_returns": "PASS - rebuilding owner cost and realized return from entry-level data (all shares 1.0) reproduces the Players block exactly for all 6 owners: Anthony C. $2,180 / $3,281.541346; Craig T. $1,070 / $443.2317308; Ed Z. $2,425 / $1,296.351154; Sam R. $5,640 / $4,982.087308; Zach L. $5,455 / $4,898.320577; Zack M. $4,375 / $6,243.467885. Summing the 14 transcribed trade legs' Net Trade Value by the workbook's 'New Owner' column reproduces 'Impact of Trades' for all 6 (Anthony +186.076, Craig 0, Ed +182.6114731, Sam -1,171.048742, Zach +802.3612692, Zack 0) and the legs net to exactly $0.00 across the pool. cost/realized/trade_impact then rebuild 'Net Return' for all 6. Mismatches: none.",
+  "check_6_pot_exhaustion": "PASS - sum of all 32 Realized Returns = $21,145.0000006 = pot to float noise, so the workbook divides by a fixed schedule of pot percentages that happens to add to exactly 100%; it does NOT renormalize to points earned. normalization = 'direct' is what the arithmetic shows.",
+  "check_7_labels_and_periods": "PASS - every entry owner label exists in owners[]; every event period_key exists in periods[] (SEASON, PLAYOFFS). Failures: none. owners[] also carries the 9 bidders on the roster who bought nothing ($0.00 Total Paid); they own no entries and appear in no trade.",
+  "check_8_nl_vs_xlsx": "PASS - the natural-language Drive read and the openpyxl parse of the .xlsx agree on all 32 result rows, both owner blocks and all 14 trade legs for this workbook. No trailing trade rows were dropped here."
+ },
+ "notes": [
+  "RUBRIC IS NOT THE POINTS RUBRIC. Calcutta III (2023) does not use points at all, and there is no 150-banked-points column, no point-differential column, and no 11,420 denominator anywhere in the workbook. Payout is a direct percent-of-pot schedule held in Returns!F1:N1 ('% of Pot') with a companion Returns!F2:N2 ('# of splits'), and Returns!O = SUMPRODUCT(F1:N1, F2:N2, row) * 'Calcutta Live Draft'!L24. normalization is therefore {'mode':'direct'}.",
+  "POINT-DIFFERENTIAL ADJUSTMENT: there is none. This workbook has no 'Adj. Point Differential' column, no differential column of any kind, no primetime/marquee tab, and no scoring-rubric tab. Nothing is doubled - not differential, not wins, not ties. The differential-style scoring first appears in Calcutta V (2024, as a rank ladder) and only becomes a per-point metric in Calcutta VIII (2025). I could verify this by exhaustion: the workbook has exactly three tabs ('Calcutta Live Draft', 'Returns', 'Mark-to-Market Leaderboard') and I read all of them in full.",
+  "The 2023 rubric has three metrics that appear in no other NFL edition: '20+ Pt Wins' (a win by 20 or more points), 'Weekly Big Winner' and 'Reg. Season BigWin'. '20+ Pt Wins' is the only split_pool rule: Returns!G2 is literally =1/SUM(G6:G37) = 1/52, so 5.00% of the pot is divided across the 52 league-wide 20+ point wins and paid per occurrence (a team with 5 of them takes 5/52 of the 5%). Weekly Big Winner totals 18 occurrences (one per regular-season week) at 0.50% each; Reg. Season BigWin occurs once all year (Miami) at 0.30%.",
+  "Playoff bonuses in 2023 are far richer than in 2024/2025 as a share of the pot: berth 0.75%, divisional 1.50%, conference 3.00%, SB berth 6.00%, Super Bowl win 12.00% - i.e. 12% of the whole pot to the champion's owner, against 5% in 2024. Kansas City alone took 24.45% of the pot.",
+  "NO TIES METRIC. 2023 had no ties, the workbook has no ties column, and the wins column is integer for all 32 teams (summing to 272). No tie rule is recorded because the workbook records no tie events.",
+  "OWNER IDENTITY: this workbook gives initials only ('Ed Z.', 'Zach L.', 'Zack M.', 'Sam R.', 'Craig T.', 'Anthony C.'), so per the contract owners[].name repeats the label. It does, however, give an email for every bidder on the 'Calcutta Live Draft' Pot Summary roster, which is the strongest cross-pool key available. Full crosswalk, with the full names those emails and the sibling workbooks imply: Anthony C. = anthonymcalcagni@gmail.com (Anthony Calcagni; note this is NOT the 'Joey Anthony' of Calcutta V/VIII/XI - two different people, one of whom has 'Anthony' as a surname); Craig T. = cthompson9@gmail.com = Craig Thompson (also the Drive owner of all three workbooks); Ed Z. = ed.zhang888@gmail.com = Ed Zhang; Sam R. = samuel.a.rosen@gmail.com = Samuel Rosen; Zach L. = zmlong10@gmail.com = Zachary Long; Zack M. = zackmiller28@gmail.com = Zack Miller (named outright on the Calcutta V side-bet tab). Beware the Zach L./Zack M. near-collision.",
+  "NON-PARTICIPATING BIDDER ROSTER (all $0.00 Total Paid, carried in owners[] with emails for identity reconciliation): Ben F. benabellifichter@gmail.com; Billy S. billy.sappern@gmail.com; Cameron H. camkhill@gmail.com; Chris H. cholter09@gmail.com; Damon H. dhatheway37@gmail.com (the 'Damon Hatheway' of the Calcutta XI consortia); Henry A. henrycharlesanderson@gmail.com; Justin C. jcollins602@gmail.com; Sam F. samuel.ford412@gmail.com; Matt M. mbmahoney44@gmail.com.",
+  "NO CONSORTIUM STRUCTURE. Unlike Calcutta XI there is no leader/member grouping anywhere in this workbook; consortia is empty. The 15-name bidder roster is an invite list, not a consortium.",
+  "TRADES: 7 trades, 14 legs, transcribed one record per leg exactly as the workbook writes them (Returns rows 49-62). The workbook's 'New Owner' column (Returns!J) is the field that ties out - summing Net Trade Value by that column reproduces 'Impact of Trades' - so leg_owner is taken from it. No dates are recorded for any 2023 trade, so trades[].date is null.",
+  "TRADE SIGN/LABEL DEFECT (trade 6, Returns rows 59-60) - a real inconsistency in the workbook, not a transcription choice. Row 59 reads 'Zach shorts 50% of Bills for $2,250' and computes H59 = (2250 - Buffalo_realized) * 50% = +$614.267, which is Zach's short payoff, but then books I59 = -H59 = -$614.267 to 'Sam R.'. Row 60 reads 'Sam buys 50% of Bills for $2,250', computes H60 = (Buffalo_realized - 2250) * 50% = -$614.267, and books I60 = -H60 = +$614.267 to 'Zach L.'. The owner-level result is correct (Zach +614.27 for the short, Sam -614.27 for the long) but each row's detail text is paired with the other party's Net Trade Value. I kept the workbook's text verbatim and set leg_owner from the New Owner column; a per-leg note flags each row.",
+  "SHORT SALES / SYNTHETICS: trade 6 is a genuine short - Zach shorted 50% of the Bills (a team Ed Z. owned) at a $2,250 valuation, receiving $1,125 and owing 50% of Buffalo's $1,021.47 realized return, netting +$614.27. Trade 5 is also synthetic: 'Zach sells 30% of LA Chargers at $575 value' when Sam R., not Zach, owned the Chargers at auction. Both are marked synthetic:true and keep their signs.",
+  "CROSS-BOOK / PORTFOLIO TRADE: trade 2 is the only portfolio-level item - 'Sam bets 10% of his net return will exceed 10% of Zach's' / 'Zach bets 10% of his net return will exceed 10% of Sam's', computed as 10% of each owner's own Net Return with the difference settled (Sam -$10.123, Zach +$10.123). scope 'book', entry_label null, leg_side 'wager'. There is no 'Crossbook'/'Nx book'/'synthetic X% of Y's book' language in the 2023 workbook - that vocabulary starts in Calcutta V.",
+  "SETTLEMENT / FUNDS FLOW: the Players block carries 'Paid Out' = 'No' for all 6 owners (as of the 2/12/24 last-update stamp, nobody had been paid) and a 'Still Owed' column that mixes dollar amounts with routing instructions: Anthony C. $341.5799731; Craig T. $0; Ed Z. 'Pays Anthony'; Sam R. 'Pays Zack'; Zach L. blank; Zack M. $39.50645. These are carried on expected_owners only as cost/realized/trade_impact/net; the mixed-type Still Owed text is recorded here rather than in a numeric field.",
+  "WEEK-BY-WEEK DETAIL: the 'Mark-to-Market Leaderboard' tab is a 'Fair Value Tracker' with owner-level dollar fair values by week (Week 0 through Week 18 plus Wild Card, Divisional, Conf. Champ, Super Bowl). Only Week 0, Week 1, Week 3 and Week 12 are populated; every other week is blank. It is a valuation snapshot series, not a scoring record - no metric on it feeds Returns!O - so per instruction the transcription aggregates to SEASON and PLAYOFFS and the tie-out is on final figures. The values are: Week 0 / 1 / 3 / 12 = Anthony C. 99/71/139/738; Craig T. 270/123/-450/-412; Ed Z. -13/-394/-386/-1046; Sam R. 142/53/-155/-1035; Zach L. -678/0/692/968; Zack M. 180/148/160/840.",
+  "'Weekly Big Winner' is itself week-level information (18 weekly awards) but the workbook stores only each team's season count, not which weeks, so it is aggregated into the single SEASON period as a count.",
+  "NO LEFTOVER TEMPLATE TABS. All three tabs in this workbook are NFL 2023 content; nothing from another sport or another season is present.",
+  "lot_order is the Returns-tab row order (AFC East -> NFC West by division), not a true auction sequence: this workbook has no nomination-order or lot-number column. Prices come from the 'Calcutta Live Draft' grid.",
+  "expected.points is null on every entry because the workbook computes no points figure. expected.realized_return is the workbook's Returns!O value carried at full stored precision."
+ ]
+}

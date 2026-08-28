@@ -11,5 +11,6 @@ export interface TradeUpdate {
   price?: number;
   percentage?: number;
   tradeDate?: string;
+  /** @maxLength 2000 */
   notes?: string;
 }

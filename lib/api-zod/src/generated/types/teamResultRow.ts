@@ -35,6 +35,7 @@ export interface TeamResultRow {
   realizedMultiple: number;
   /** Realized gross return minus cost. */
   netReturn: number;
+  /** Net return as a decimal fraction of cost (for example, 0.25 means 25%). */
   netPctReturn: number;
   /** MTM gross dollars from normalized market points. */
   markToMarket: number;

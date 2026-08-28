@@ -12,10 +12,14 @@ import {
   UpdateBidderBody,
   UpdateBidderParams,
   DeleteBidderParams,
+  GetBiddersResponse,
+  CreateBidderResponse,
+  UpdateBidderResponse,
 } from "@workspace/api-zod";
 import { loadSeasonOwnership } from "../lib/seasonOwnership";
 import { loadCurrentBidderConsortiums } from "../lib/consortiumMemberships";
 import { resolveCalcuttaId } from "../lib/calcuttaContext";
+import { requireAdmin } from "../middlewares/requireAdmin";
 
 const router: IRouter = Router();
 
@@ -155,7 +159,7 @@ router.get("/bidders", async (req, res): Promise<void> => {
       };
     });
 
-    res.json(results);
+    res.json(GetBiddersResponse.parse(results));
     return;
   }
 
@@ -187,10 +191,10 @@ router.get("/bidders", async (req, res): Promise<void> => {
     }>,
   }));
 
-  res.json(results);
+  res.json(GetBiddersResponse.parse(results));
 });
 
-router.post("/bidders", async (req, res): Promise<void> => {
+router.post("/bidders", requireAdmin, async (req, res): Promise<void> => {
   const parsed = CreateBidderBody.safeParse(req.body);
   if (!parsed.success) {
     res.status(400).json({ error: parsed.error.message });
@@ -202,10 +206,10 @@ router.post("/bidders", async (req, res): Promise<void> => {
     .values({ name: parsed.data.name })
     .returning();
 
-  res.status(201).json(await getBidderResponse(bidder.id));
+  res.status(201).json(CreateBidderResponse.parse(await getBidderResponse(bidder.id)));
 });
 
-router.patch("/bidders/:id", async (req, res): Promise<void> => {
+router.patch("/bidders/:id", requireAdmin, async (req, res): Promise<void> => {
   const params = UpdateBidderParams.safeParse(req.params);
   if (!params.success) {
     res.status(400).json({ error: params.error.message });
@@ -229,10 +233,10 @@ router.patch("/bidders/:id", async (req, res): Promise<void> => {
     return;
   }
 
-  res.json(await getBidderResponse(bidder.id));
+  res.json(UpdateBidderResponse.parse(await getBidderResponse(bidder.id)));
 });
 
-router.delete("/bidders/:id", async (req, res): Promise<void> => {
+router.delete("/bidders/:id", requireAdmin, async (req, res): Promise<void> => {
   const params = DeleteBidderParams.safeParse(req.params);
   if (!params.success) {
     res.status(400).json({ error: params.error.message });

@@ -1,0 +1,2421 @@
+{
+ "edition": 8,
+ "name": "Calcutta VIII",
+ "sport": "NFL",
+ "format_key": "NFL_REGULAR_SEASON_18W",
+ "season_year": 2025,
+ "pot_size": 48300,
+ "as_of_date": "2025-09-04",
+ "normalization": {
+  "mode": "fixed_inventory",
+  "denominator": 11420
+ },
+ "periods": [
+  {
+   "key": "WK0",
+   "seq": 1,
+   "label": "Banked Starting Points",
+   "kind": "baseline",
+   "weight": 1,
+   "is_scored": true
+  },
+  {
+   "key": "SEASON",
+   "seq": 2,
+   "label": "Regular Season",
+   "kind": "regular",
+   "weight": 1,
+   "is_scored": true
+  },
+  {
+   "key": "PLAYOFFS",
+   "seq": 3,
+   "label": "Playoffs",
+   "kind": "knockout",
+   "weight": 1,
+   "is_scored": true
+  }
+ ],
+ "rules": [
+  {
+   "kind": "per_unit",
+   "metric": "banked_points",
+   "period_key": "WK0",
+   "rate": 150
+  },
+  {
+   "kind": "per_unit",
+   "metric": "reg_season_win",
+   "period_key": "SEASON",
+   "rate": 10
+  },
+  {
+   "kind": "per_unit",
+   "metric": "tie",
+   "period_key": "SEASON",
+   "rate": 5
+  },
+  {
+   "kind": "per_unit",
+   "metric": "adj_point_differential",
+   "period_key": "SEASON",
+   "rate": 1
+  },
+  {
+   "kind": "per_unit",
+   "metric": "playoff_berth",
+   "period_key": "PLAYOFFS",
+   "rate": 50
+  },
+  {
+   "kind": "per_unit",
+   "metric": "div_round",
+   "period_key": "PLAYOFFS",
+   "rate": 100
+  },
+  {
+   "kind": "per_unit",
+   "metric": "conf_round",
+   "period_key": "PLAYOFFS",
+   "rate": 200
+  },
+  {
+   "kind": "per_unit",
+   "metric": "sb_berth",
+   "period_key": "PLAYOFFS",
+   "rate": 400
+  },
+  {
+   "kind": "per_unit",
+   "metric": "win_super_bowl",
+   "period_key": "PLAYOFFS",
+   "rate": 800
+  }
+ ],
+ "owners": [
+  {
+   "label": "Joey Anthony",
+   "name": "Joey Anthony",
+   "email": null
+  },
+  {
+   "label": "Joshua Melnick",
+   "name": "Joshua Melnick",
+   "email": null
+  },
+  {
+   "label": "Samuel Rosen",
+   "name": "Samuel Rosen",
+   "email": null
+  },
+  {
+   "label": "Ezra Pemstein",
+   "name": "Ezra Pemstein",
+   "email": null
+  },
+  {
+   "label": "Ed Zhang",
+   "name": "Ed Zhang",
+   "email": null
+  },
+  {
+   "label": "Zachary Long",
+   "name": "Zachary Long",
+   "email": null
+  },
+  {
+   "label": "Craig Thompson",
+   "name": "Craig Thompson",
+   "email": null
+  },
+  {
+   "label": "Ian Culnane",
+   "name": "Ian Culnane",
+   "email": null
+  },
+  {
+   "label": "Shaun McGuire",
+   "name": "Shaun McGuire",
+   "email": null
+  }
+ ],
+ "consortia": [],
+ "entries": [
+  {
+   "label": "Buffalo Bills",
+   "lot_order": 1.0,
+   "price": 3230,
+   "kind": "single",
+   "attributes": {
+    "division": "AFC East",
+    "conference": "AFC",
+    "reg_season_point_differential": 116,
+    "primetime_point_differential_adjustment": -6,
+    "adj_point_differential": 110,
+    "primetime_games": 5
+   },
+   "teams": [
+    {
+     "name": "Buffalo Bills",
+     "seed": null,
+     "resolved": true
+    }
+   ],
+   "owners": [
+    {
+     "label": "Joey Anthony",
+     "share": 1.0
+    }
+   ],
+   "events": [
+    {
+     "period_key": "WK0",
+     "metric": "banked_points",
+     "units": 1
+    },
+    {
+     "period_key": "SEASON",
+     "metric": "reg_season_win",
+     "units": 12
+    },
+    {
+     "period_key": "SEASON",
+     "metric": "adj_point_differential",
+     "units": 110
+    },
+    {
+     "period_key": "PLAYOFFS",
+     "metric": "playoff_berth",
+     "units": 1
+    },
+    {
+     "period_key": "PLAYOFFS",
+     "metric": "div_round",
+     "units": 1
+    }
+   ],
+   "expected": {
+    "points": 530.0,
+    "realized_return": 2241.593695
+   }
+  },
+  {
+   "label": "New England Patriots",
+   "lot_order": 2.0,
+   "price": 930,
+   "kind": "single",
+   "attributes": {
+    "division": "AFC East",
+    "conference": "AFC",
+    "reg_season_point_differential": 170,
+    "primetime_point_differential_adjustment": 38,
+    "adj_point_differential": 208,
+    "primetime_games": 4
+   },
+   "teams": [
+    {
+     "name": "New England Patriots",
+     "seed": null,
+     "resolved": true
+    }
+   ],
+   "owners": [
+    {
+     "label": "Ezra Pemstein",
+     "share": 1.0
+    }
+   ],
+   "events": [
+    {
+     "period_key": "WK0",
+     "metric": "banked_points",
+     "units": 1
+    },
+    {
+     "period_key": "SEASON",
+     "metric": "reg_season_win",
+     "units": 14
+    },
+    {
+     "period_key": "SEASON",
+     "metric": "adj_point_differential",
+     "units": 208
+    },
+    {
+     "period_key": "PLAYOFFS",
+     "metric": "playoff_berth",
+     "units": 1
+    },
+    {
+     "period_key": "PLAYOFFS",
+     "metric": "div_round",
+     "units": 1
+    },
+    {
+     "period_key": "PLAYOFFS",
+     "metric": "conf_round",
+     "units": 1
+    },
+    {
+     "period_key": "PLAYOFFS",
+     "metric": "sb_berth",
+     "units": 1
+    }
+   ],
+   "expected": {
+    "points": 1248.0,
+    "realized_return": 5278.318739
+   }
+  },
+  {
+   "label": "Miami Dolphins",
+   "lot_order": 3.0,
+   "price": 1110,
+   "kind": "single",
+   "attributes": {
+    "division": "AFC East",
+    "conference": "AFC",
+    "reg_season_point_differential": -77,
+    "primetime_point_differential_adjustment": -36,
+    "adj_point_differential": -113,
+    "primetime_games": 5
+   },
+   "teams": [
+    {
+     "name": "Miami Dolphins",
+     "seed": null,
+     "resolved": true
+    }
+   ],
+   "owners": [
+    {
+     "label": "Samuel Rosen",
+     "share": 1.0
+    }
+   ],
+   "events": [
+    {
+     "period_key": "WK0",
+     "metric": "banked_points",
+     "units": 1
+    },
+    {
+     "period_key": "SEASON",
+     "metric": "reg_season_win",
+     "units": 7
+    },
+    {
+     "period_key": "SEASON",
+     "metric": "adj_point_differential",
+     "units": -113
+    }
+   ],
+   "expected": {
+    "points": 107.0,
+    "realized_return": 452.5481611
+   }
+  },
+  {
+   "label": "New York Jets",
+   "lot_order": 4.0,
+   "price": 690,
+   "kind": "single",
+   "attributes": {
+    "division": "AFC East",
+    "conference": "AFC",
+    "reg_season_point_differential": -203,
+    "primetime_point_differential_adjustment": -21,
+    "adj_point_differential": -224,
+    "primetime_games": 3
+   },
+   "teams": [
+    {
+     "name": "New York Jets",
+     "seed": null,
+     "resolved": true
+    }
+   ],
+   "owners": [
+    {
+     "label": "Joshua Melnick",
+     "share": 1.0
+    }
+   ],
+   "events": [
+    {
+     "period_key": "WK0",
+     "metric": "banked_points",
+     "units": 1
+    },
+    {
+     "period_key": "SEASON",
+     "metric": "reg_season_win",
+     "units": 3
+    },
+    {
+     "period_key": "SEASON",
+     "metric": "adj_point_differential",
+     "units": -224
+    }
+   ],
+   "expected": {
+    "points": -44.0,
+    "realized_return": -186.0945709
+   }
+  },
+  {
+   "label": "Baltimore Ravens",
+   "lot_order": 5.0,
+   "price": 2980,
+   "kind": "single",
+   "attributes": {
+    "division": "AFC North",
+    "conference": "AFC",
+    "reg_season_point_differential": 26,
+    "primetime_point_differential_adjustment": 6,
+    "adj_point_differential": 32,
+    "primetime_games": 7
+   },
+   "teams": [
+    {
+     "name": "Baltimore Ravens",
+     "seed": null,
+     "resolved": true
+    }
+   ],
+   "owners": [
+    {
+     "label": "Ed Zhang",
+     "share": 1.0
+    }
+   ],
+   "events": [
+    {
+     "period_key": "WK0",
+     "metric": "banked_points",
+     "units": 1
+    },
+    {
+     "period_key": "SEASON",
+     "metric": "reg_season_win",
+     "units": 8
+    },
+    {
+     "period_key": "SEASON",
+     "metric": "adj_point_differential",
+     "units": 32
+    }
+   ],
+   "expected": {
+    "points": 262.0,
+    "realized_return": 1108.108581
+   }
+  },
+  {
+   "label": "Cincinnati Bengals",
+   "lot_order": 6.0,
+   "price": 2020,
+   "kind": "single",
+   "attributes": {
+    "division": "AFC North",
+    "conference": "AFC",
+    "reg_season_point_differential": -78,
+    "primetime_point_differential_adjustment": -5,
+    "adj_point_differential": -83,
+    "primetime_games": 3
+   },
+   "teams": [
+    {
+     "name": "Cincinnati Bengals",
+     "seed": null,
+     "resolved": true
+    }
+   ],
+   "owners": [
+    {
+     "label": "Joey Anthony",
+     "share": 1.0
+    }
+   ],
+   "events": [
+    {
+     "period_key": "WK0",
+     "metric": "banked_points",
+     "units": 1
+    },
+    {
+     "period_key": "SEASON",
+     "metric": "reg_season_win",
+     "units": 6
+    },
+    {
+     "period_key": "SEASON",
+     "metric": "adj_point_differential",
+     "units": -83
+    }
+   ],
+   "expected": {
+    "points": 127.0,
+    "realized_return": 537.1366025
+   }
+  },
+  {
+   "label": "Pittsburgh Steelers",
+   "lot_order": 7.0,
+   "price": 1170,
+   "kind": "single",
+   "attributes": {
+    "division": "AFC North",
+    "conference": "AFC",
+    "reg_season_point_differential": 10,
+    "primetime_point_differential_adjustment": -9,
+    "adj_point_differential": 1,
+    "primetime_games": 6
+   },
+   "teams": [
+    {
+     "name": "Pittsburgh Steelers",
+     "seed": null,
+     "resolved": true
+    }
+   ],
+   "owners": [
+    {
+     "label": "Samuel Rosen",
+     "share": 1.0
+    }
+   ],
+   "events": [
+    {
+     "period_key": "WK0",
+     "metric": "banked_points",
+     "units": 1
+    },
+    {
+     "period_key": "SEASON",
+     "metric": "reg_season_win",
+     "units": 10
+    },
+    {
+     "period_key": "SEASON",
+     "metric": "adj_point_differential",
+     "units": 1
+    },
+    {
+     "period_key": "PLAYOFFS",
+     "metric": "playoff_berth",
+     "units": 1
+    }
+   ],
+   "expected": {
+    "points": 301.0,
+    "realized_return": 1273.056042
+   }
+  },
+  {
+   "label": "Cleveland Browns",
+   "lot_order": 8.0,
+   "price": 440,
+   "kind": "single",
+   "attributes": {
+    "division": "AFC North",
+    "conference": "AFC",
+    "reg_season_point_differential": -100,
+    "primetime_point_differential_adjustment": -4,
+    "adj_point_differential": -104,
+    "primetime_games": 1
+   },
+   "teams": [
+    {
+     "name": "Cleveland Browns",
+     "seed": null,
+     "resolved": true
+    }
+   ],
+   "owners": [
+    {
+     "label": "Samuel Rosen",
+     "share": 1.0
+    }
+   ],
+   "events": [
+    {
+     "period_key": "WK0",
+     "metric": "banked_points",
+     "units": 1
+    },
+    {
+     "period_key": "SEASON",
+     "metric": "reg_season_win",
+     "units": 5
+    },
+    {
+     "period_key": "SEASON",
+     "metric": "adj_point_differential",
+     "units": -104
+    }
+   ],
+   "expected": {
+    "points": 96.0,
+    "realized_return": 406.0245184
+   }
+  },
+  {
+   "label": "Houston Texans",
+   "lot_order": 9.0,
+   "price": 1620,
+   "kind": "single",
+   "attributes": {
+    "division": "AFC South",
+    "conference": "AFC",
+    "reg_season_point_differential": 109,
+    "primetime_point_differential_adjustment": 9,
+    "adj_point_differential": 118,
+    "primetime_games": 5
+   },
+   "teams": [
+    {
+     "name": "Houston Texans",
+     "seed": null,
+     "resolved": true
+    }
+   ],
+   "owners": [
+    {
+     "label": "Samuel Rosen",
+     "share": 0.5
+    },
+    {
+     "label": "Joshua Melnick",
+     "share": 0.5
+    }
+   ],
+   "events": [
+    {
+     "period_key": "WK0",
+     "metric": "banked_points",
+     "units": 1
+    },
+    {
+     "period_key": "SEASON",
+     "metric": "reg_season_win",
+     "units": 12
+    },
+    {
+     "period_key": "SEASON",
+     "metric": "adj_point_differential",
+     "units": 118
+    },
+    {
+     "period_key": "PLAYOFFS",
+     "metric": "playoff_berth",
+     "units": 1
+    },
+    {
+     "period_key": "PLAYOFFS",
+     "metric": "div_round",
+     "units": 1
+    }
+   ],
+   "expected": {
+    "points": 538.0,
+    "realized_return": 2275.429072
+   }
+  },
+  {
+   "label": "Jacksonville Jaguars",
+   "lot_order": 10.0,
+   "price": 1160,
+   "kind": "single",
+   "attributes": {
+    "division": "AFC South",
+    "conference": "AFC",
+    "reg_season_point_differential": 138,
+    "primetime_point_differential_adjustment": -25,
+    "adj_point_differential": 113,
+    "primetime_games": 2
+   },
+   "teams": [
+    {
+     "name": "Jacksonville Jaguars",
+     "seed": null,
+     "resolved": true
+    }
+   ],
+   "owners": [
+    {
+     "label": "Ezra Pemstein",
+     "share": 1.0
+    }
+   ],
+   "events": [
+    {
+     "period_key": "WK0",
+     "metric": "banked_points",
+     "units": 1
+    },
+    {
+     "period_key": "SEASON",
+     "metric": "reg_season_win",
+     "units": 13
+    },
+    {
+     "period_key": "SEASON",
+     "metric": "adj_point_differential",
+     "units": 113
+    },
+    {
+     "period_key": "PLAYOFFS",
+     "metric": "playoff_berth",
+     "units": 1
+    }
+   ],
+   "expected": {
+    "points": 443.0,
+    "realized_return": 1873.633975
+   }
+  },
+  {
+   "label": "Indianapolis Colts",
+   "lot_order": 11.0,
+   "price": 1010,
+   "kind": "single",
+   "attributes": {
+    "division": "AFC South",
+    "conference": "AFC",
+    "reg_season_point_differential": 54,
+    "primetime_point_differential_adjustment": -15,
+    "adj_point_differential": 39,
+    "primetime_games": 2
+   },
+   "teams": [
+    {
+     "name": "Indianapolis Colts",
+     "seed": null,
+     "resolved": true
+    }
+   ],
+   "owners": [
+    {
+     "label": "Samuel Rosen",
+     "share": 1.0
+    }
+   ],
+   "events": [
+    {
+     "period_key": "WK0",
+     "metric": "banked_points",
+     "units": 1
+    },
+    {
+     "period_key": "SEASON",
+     "metric": "reg_season_win",
+     "units": 8
+    },
+    {
+     "period_key": "SEASON",
+     "metric": "adj_point_differential",
+     "units": 39
+    }
+   ],
+   "expected": {
+    "points": 269.0,
+    "realized_return": 1137.714536
+   }
+  },
+  {
+   "label": "Tennessee Titans",
+   "lot_order": 12.0,
+   "price": 660,
+   "kind": "single",
+   "attributes": {
+    "division": "AFC South",
+    "conference": "AFC",
+    "reg_season_point_differential": -194,
+    "primetime_point_differential_adjustment": 0,
+    "adj_point_differential": -194,
+    "primetime_games": 0
+   },
+   "teams": [
+    {
+     "name": "Tennessee Titans",
+     "seed": null,
+     "resolved": true
+    }
+   ],
+   "owners": [
+    {
+     "label": "Zachary Long",
+     "share": 1.0
+    }
+   ],
+   "events": [
+    {
+     "period_key": "WK0",
+     "metric": "banked_points",
+     "units": 1
+    },
+    {
+     "period_key": "SEASON",
+     "metric": "reg_season_win",
+     "units": 3
+    },
+    {
+     "period_key": "SEASON",
+     "metric": "adj_point_differential",
+     "units": -194
+    }
+   ],
+   "expected": {
+    "points": -14.0,
+    "realized_return": -59.2119089
+   }
+  },
+  {
+   "label": "Kansas City Chiefs",
+   "lot_order": 13.0,
+   "price": 2770,
+   "kind": "single",
+   "attributes": {
+    "division": "AFC West",
+    "conference": "AFC",
+    "reg_season_point_differential": 34,
+    "primetime_point_differential_adjustment": 18,
+    "adj_point_differential": 52,
+    "primetime_games": 8
+   },
+   "teams": [
+    {
+     "name": "Kansas City Chiefs",
+     "seed": null,
+     "resolved": true
+    }
+   ],
+   "owners": [
+    {
+     "label": "Joshua Melnick",
+     "share": 1.0
+    }
+   ],
+   "events": [
+    {
+     "period_key": "WK0",
+     "metric": "banked_points",
+     "units": 1
+    },
+    {
+     "period_key": "SEASON",
+     "metric": "reg_season_win",
+     "units": 6
+    },
+    {
+     "period_key": "SEASON",
+     "metric": "adj_point_differential",
+     "units": 52
+    }
+   ],
+   "expected": {
+    "points": 262.0,
+    "realized_return": 1108.108581
+   }
+  },
+  {
+   "label": "Los Angeles Chargers",
+   "lot_order": 14.0,
+   "price": 1730,
+   "kind": "single",
+   "attributes": {
+    "division": "AFC West",
+    "conference": "AFC",
+    "reg_season_point_differential": 28,
+    "primetime_point_differential_adjustment": 58,
+    "adj_point_differential": 86,
+    "primetime_games": 6
+   },
+   "teams": [
+    {
+     "name": "Los Angeles Chargers",
+     "seed": null,
+     "resolved": true
+    }
+   ],
+   "owners": [
+    {
+     "label": "Ed Zhang",
+     "share": 1.0
+    }
+   ],
+   "events": [
+    {
+     "period_key": "WK0",
+     "metric": "banked_points",
+     "units": 1
+    },
+    {
+     "period_key": "SEASON",
+     "metric": "reg_season_win",
+     "units": 11
+    },
+    {
+     "period_key": "SEASON",
+     "metric": "adj_point_differential",
+     "units": 86
+    },
+    {
+     "period_key": "PLAYOFFS",
+     "metric": "playoff_berth",
+     "units": 1
+    }
+   ],
+   "expected": {
+    "points": 396.0,
+    "realized_return": 1674.851138
+   }
+  },
+  {
+   "label": "Denver Broncos",
+   "lot_order": 15.0,
+   "price": 1690,
+   "kind": "single",
+   "attributes": {
+    "division": "AFC West",
+    "conference": "AFC",
+    "reg_season_point_differential": 90,
+    "primetime_point_differential_adjustment": 38,
+    "adj_point_differential": 128,
+    "primetime_games": 5
+   },
+   "teams": [
+    {
+     "name": "Denver Broncos",
+     "seed": null,
+     "resolved": true
+    }
+   ],
+   "owners": [
+    {
+     "label": "Zachary Long",
+     "share": 1.0
+    }
+   ],
+   "events": [
+    {
+     "period_key": "WK0",
+     "metric": "banked_points",
+     "units": 1
+    },
+    {
+     "period_key": "SEASON",
+     "metric": "reg_season_win",
+     "units": 14
+    },
+    {
+     "period_key": "SEASON",
+     "metric": "adj_point_differential",
+     "units": 128
+    },
+    {
+     "period_key": "PLAYOFFS",
+     "metric": "playoff_berth",
+     "units": 1
+    },
+    {
+     "period_key": "PLAYOFFS",
+     "metric": "div_round",
+     "units": 1
+    },
+    {
+     "period_key": "PLAYOFFS",
+     "metric": "conf_round",
+     "units": 1
+    }
+   ],
+   "expected": {
+    "points": 768.0,
+    "realized_return": 3248.196147
+   }
+  },
+  {
+   "label": "Las Vegas Raiders",
+   "lot_order": 16.0,
+   "price": 910,
+   "kind": "single",
+   "attributes": {
+    "division": "AFC West",
+    "conference": "AFC",
+    "reg_season_point_differential": -191,
+    "primetime_point_differential_adjustment": -31,
+    "adj_point_differential": -222,
+    "primetime_games": 3
+   },
+   "teams": [
+    {
+     "name": "Las Vegas Raiders",
+     "seed": null,
+     "resolved": true
+    }
+   ],
+   "owners": [
+    {
+     "label": "Joshua Melnick",
+     "share": 1.0
+    }
+   ],
+   "events": [
+    {
+     "period_key": "WK0",
+     "metric": "banked_points",
+     "units": 1
+    },
+    {
+     "period_key": "SEASON",
+     "metric": "reg_season_win",
+     "units": 3
+    },
+    {
+     "period_key": "SEASON",
+     "metric": "adj_point_differential",
+     "units": -222
+    }
+   ],
+   "expected": {
+    "points": -42.0,
+    "realized_return": -177.6357268
+   }
+  },
+  {
+   "label": "Philadelphia Eagles",
+   "lot_order": 17.0,
+   "price": 2990,
+   "kind": "single",
+   "attributes": {
+    "division": "NFC East",
+    "conference": "NFC",
+    "reg_season_point_differential": 54,
+    "primetime_point_differential_adjustment": -4,
+    "adj_point_differential": 50,
+    "primetime_games": 7
+   },
+   "teams": [
+    {
+     "name": "Philadelphia Eagles",
+     "seed": null,
+     "resolved": true
+    }
+   ],
+   "owners": [
+    {
+     "label": "Joey Anthony",
+     "share": 1.0
+    }
+   ],
+   "events": [
+    {
+     "period_key": "WK0",
+     "metric": "banked_points",
+     "units": 1
+    },
+    {
+     "period_key": "SEASON",
+     "metric": "reg_season_win",
+     "units": 11
+    },
+    {
+     "period_key": "SEASON",
+     "metric": "adj_point_differential",
+     "units": 50
+    },
+    {
+     "period_key": "PLAYOFFS",
+     "metric": "playoff_berth",
+     "units": 1
+    }
+   ],
+   "expected": {
+    "points": 360.0,
+    "realized_return": 1522.591944
+   }
+  },
+  {
+   "label": "Washington Commanders",
+   "lot_order": 18.0,
+   "price": 1860,
+   "kind": "single",
+   "attributes": {
+    "division": "NFC East",
+    "conference": "NFC",
+    "reg_season_point_differential": -95,
+    "primetime_point_differential_adjustment": -77,
+    "adj_point_differential": -172,
+    "primetime_games": 8
+   },
+   "teams": [
+    {
+     "name": "Washington Commanders",
+     "seed": null,
+     "resolved": true
+    }
+   ],
+   "owners": [
+    {
+     "label": "Ed Zhang",
+     "share": 1.0
+    }
+   ],
+   "events": [
+    {
+     "period_key": "WK0",
+     "metric": "banked_points",
+     "units": 1
+    },
+    {
+     "period_key": "SEASON",
+     "metric": "reg_season_win",
+     "units": 5
+    },
+    {
+     "period_key": "SEASON",
+     "metric": "adj_point_differential",
+     "units": -172
+    }
+   ],
+   "expected": {
+    "points": 28.0,
+    "realized_return": 118.4238179
+   }
+  },
+  {
+   "label": "Dallas Cowboys",
+   "lot_order": 19.0,
+   "price": 1010,
+   "kind": "single",
+   "attributes": {
+    "division": "NFC East",
+    "conference": "NFC",
+    "reg_season_point_differential": -40,
+    "primetime_point_differential_adjustment": -9,
+    "adj_point_differential": -49,
+    "primetime_games": 8
+   },
+   "teams": [
+    {
+     "name": "Dallas Cowboys",
+     "seed": null,
+     "resolved": true
+    }
+   ],
+   "owners": [
+    {
+     "label": "Ezra Pemstein",
+     "share": 1.0
+    }
+   ],
+   "events": [
+    {
+     "period_key": "WK0",
+     "metric": "banked_points",
+     "units": 1
+    },
+    {
+     "period_key": "SEASON",
+     "metric": "reg_season_win",
+     "units": 7
+    },
+    {
+     "period_key": "SEASON",
+     "metric": "tie",
+     "units": 1
+    },
+    {
+     "period_key": "SEASON",
+     "metric": "adj_point_differential",
+     "units": -49
+    }
+   ],
+   "expected": {
+    "points": 176.0,
+    "realized_return": 744.3782837
+   }
+  },
+  {
+   "label": "New York Giants",
+   "lot_order": 20.0,
+   "price": 720,
+   "kind": "single",
+   "attributes": {
+    "division": "NFC East",
+    "conference": "NFC",
+    "reg_season_point_differential": -58,
+    "primetime_point_differential_adjustment": -14,
+    "adj_point_differential": -72,
+    "primetime_games": 3
+   },
+   "teams": [
+    {
+     "name": "New York Giants",
+     "seed": null,
+     "resolved": true
+    }
+   ],
+   "owners": [
+    {
+     "label": "Joshua Melnick",
+     "share": 1.0
+    }
+   ],
+   "events": [
+    {
+     "period_key": "WK0",
+     "metric": "banked_points",
+     "units": 1
+    },
+    {
+     "period_key": "SEASON",
+     "metric": "reg_season_win",
+     "units": 4
+    },
+    {
+     "period_key": "SEASON",
+     "metric": "adj_point_differential",
+     "units": -72
+    }
+   ],
+   "expected": {
+    "points": 118.0,
+    "realized_return": 499.0718039
+   }
+  },
+  {
+   "label": "Detroit Lions",
+   "lot_order": 21.0,
+   "price": 2740,
+   "kind": "single",
+   "attributes": {
+    "division": "NFC North",
+    "conference": "NFC",
+    "reg_season_point_differential": 68,
+    "primetime_point_differential_adjustment": -3,
+    "adj_point_differential": 65,
+    "primetime_games": 7
+   },
+   "teams": [
+    {
+     "name": "Detroit Lions",
+     "seed": null,
+     "resolved": true
+    }
+   ],
+   "owners": [
+    {
+     "label": "Ed Zhang",
+     "share": 1.0
+    }
+   ],
+   "events": [
+    {
+     "period_key": "WK0",
+     "metric": "banked_points",
+     "units": 1
+    },
+    {
+     "period_key": "SEASON",
+     "metric": "reg_season_win",
+     "units": 9
+    },
+    {
+     "period_key": "SEASON",
+     "metric": "adj_point_differential",
+     "units": 65
+    }
+   ],
+   "expected": {
+    "points": 305.0,
+    "realized_return": 1289.97373
+   }
+  },
+  {
+   "label": "Green Bay Packers",
+   "lot_order": 22.0,
+   "price": 1840,
+   "kind": "single",
+   "attributes": {
+    "division": "NFC North",
+    "conference": "NFC",
+    "reg_season_point_differential": 31,
+    "primetime_point_differential_adjustment": 0,
+    "adj_point_differential": 31,
+    "primetime_games": 7
+   },
+   "teams": [
+    {
+     "name": "Green Bay Packers",
+     "seed": null,
+     "resolved": true
+    }
+   ],
+   "owners": [
+    {
+     "label": "Joshua Melnick",
+     "share": 1.0
+    }
+   ],
+   "events": [
+    {
+     "period_key": "WK0",
+     "metric": "banked_points",
+     "units": 1
+    },
+    {
+     "period_key": "SEASON",
+     "metric": "reg_season_win",
+     "units": 9
+    },
+    {
+     "period_key": "SEASON",
+     "metric": "tie",
+     "units": 1
+    },
+    {
+     "period_key": "SEASON",
+     "metric": "adj_point_differential",
+     "units": 31
+    },
+    {
+     "period_key": "PLAYOFFS",
+     "metric": "playoff_berth",
+     "units": 1
+    }
+   ],
+   "expected": {
+    "points": 326.0,
+    "realized_return": 1378.791594
+   }
+  },
+  {
+   "label": "Minnesota Vikings",
+   "lot_order": 23.0,
+   "price": 1610,
+   "kind": "single",
+   "attributes": {
+    "division": "NFC North",
+    "conference": "NFC",
+    "reg_season_point_differential": 11,
+    "primetime_point_differential_adjustment": -18,
+    "adj_point_differential": -7,
+    "primetime_games": 7
+   },
+   "teams": [
+    {
+     "name": "Minnesota Vikings",
+     "seed": null,
+     "resolved": true
+    }
+   ],
+   "owners": [
+    {
+     "label": "Craig Thompson",
+     "share": 1.0
+    }
+   ],
+   "events": [
+    {
+     "period_key": "WK0",
+     "metric": "banked_points",
+     "units": 1
+    },
+    {
+     "period_key": "SEASON",
+     "metric": "reg_season_win",
+     "units": 9
+    },
+    {
+     "period_key": "SEASON",
+     "metric": "adj_point_differential",
+     "units": -7
+    }
+   ],
+   "expected": {
+    "points": 233.0,
+    "realized_return": 985.4553415
+   }
+  },
+  {
+   "label": "Chicago Bears",
+   "lot_order": 24.0,
+   "price": 1180,
+   "kind": "single",
+   "attributes": {
+    "division": "NFC North",
+    "conference": "NFC",
+    "reg_season_point_differential": 26,
+    "primetime_point_differential_adjustment": 9,
+    "adj_point_differential": 35,
+    "primetime_games": 5
+   },
+   "teams": [
+    {
+     "name": "Chicago Bears",
+     "seed": null,
+     "resolved": true
+    }
+   ],
+   "owners": [
+    {
+     "label": "Samuel Rosen",
+     "share": 1.0
+    }
+   ],
+   "events": [
+    {
+     "period_key": "WK0",
+     "metric": "banked_points",
+     "units": 1
+    },
+    {
+     "period_key": "SEASON",
+     "metric": "reg_season_win",
+     "units": 11
+    },
+    {
+     "period_key": "SEASON",
+     "metric": "adj_point_differential",
+     "units": 35
+    },
+    {
+     "period_key": "PLAYOFFS",
+     "metric": "playoff_berth",
+     "units": 1
+    },
+    {
+     "period_key": "PLAYOFFS",
+     "metric": "div_round",
+     "units": 1
+    }
+   ],
+   "expected": {
+    "points": 445.0,
+    "realized_return": 1882.09282
+   }
+  },
+  {
+   "label": "Tampa Bay Buccaneers",
+   "lot_order": 25.0,
+   "price": 1840,
+   "kind": "single",
+   "attributes": {
+    "division": "NFC South",
+    "conference": "NFC",
+    "reg_season_point_differential": -31,
+    "primetime_point_differential_adjustment": -40,
+    "adj_point_differential": -71,
+    "primetime_games": 5
+   },
+   "teams": [
+    {
+     "name": "Tampa Bay Buccaneers",
+     "seed": null,
+     "resolved": true
+    }
+   ],
+   "owners": [
+    {
+     "label": "Joshua Melnick",
+     "share": 0.5
+    },
+    {
+     "label": "Ed Zhang",
+     "share": 0.5
+    }
+   ],
+   "events": [
+    {
+     "period_key": "WK0",
+     "metric": "banked_points",
+     "units": 1
+    },
+    {
+     "period_key": "SEASON",
+     "metric": "reg_season_win",
+     "units": 8
+    },
+    {
+     "period_key": "SEASON",
+     "metric": "adj_point_differential",
+     "units": -71
+    }
+   ],
+   "expected": {
+    "points": 159.0,
+    "realized_return": 672.4781086
+   }
+  },
+  {
+   "label": "Atlanta Falcons",
+   "lot_order": 26.0,
+   "price": 1010,
+   "kind": "single",
+   "attributes": {
+    "division": "NFC South",
+    "conference": "NFC",
+    "reg_season_point_differential": -48,
+    "primetime_point_differential_adjustment": 14,
+    "adj_point_differential": -34,
+    "primetime_games": 6
+   },
+   "teams": [
+    {
+     "name": "Atlanta Falcons",
+     "seed": null,
+     "resolved": true
+    }
+   ],
+   "owners": [
+    {
+     "label": "Ezra Pemstein",
+     "share": 1.0
+    }
+   ],
+   "events": [
+    {
+     "period_key": "WK0",
+     "metric": "banked_points",
+     "units": 1
+    },
+    {
+     "period_key": "SEASON",
+     "metric": "reg_season_win",
+     "units": 8
+    },
+    {
+     "period_key": "SEASON",
+     "metric": "adj_point_differential",
+     "units": -34
+    }
+   ],
+   "expected": {
+    "points": 196.0,
+    "realized_return": 828.966725
+   }
+  },
+  {
+   "label": "Carolina Panthers",
+   "lot_order": 27.0,
+   "price": 870,
+   "kind": "single",
+   "attributes": {
+    "division": "NFC South",
+    "conference": "NFC",
+    "reg_season_point_differential": -69,
+    "primetime_point_differential_adjustment": -13,
+    "adj_point_differential": -82,
+    "primetime_games": 2
+   },
+   "teams": [
+    {
+     "name": "Carolina Panthers",
+     "seed": null,
+     "resolved": true
+    }
+   ],
+   "owners": [
+    {
+     "label": "Joshua Melnick",
+     "share": 1.0
+    }
+   ],
+   "events": [
+    {
+     "period_key": "WK0",
+     "metric": "banked_points",
+     "units": 1
+    },
+    {
+     "period_key": "SEASON",
+     "metric": "reg_season_win",
+     "units": 8
+    },
+    {
+     "period_key": "SEASON",
+     "metric": "adj_point_differential",
+     "units": -82
+    },
+    {
+     "period_key": "PLAYOFFS",
+     "metric": "playoff_berth",
+     "units": 1
+    }
+   ],
+   "expected": {
+    "points": 198.0,
+    "realized_return": 837.4255692
+   }
+  },
+  {
+   "label": "New Orleans Saints",
+   "lot_order": 28.0,
+   "price": 470,
+   "kind": "single",
+   "attributes": {
+    "division": "NFC South",
+    "conference": "NFC",
+    "reg_season_point_differential": -77,
+    "primetime_point_differential_adjustment": 0,
+    "adj_point_differential": -77,
+    "primetime_games": 0
+   },
+   "teams": [
+    {
+     "name": "New Orleans Saints",
+     "seed": null,
+     "resolved": true
+    }
+   ],
+   "owners": [
+    {
+     "label": "Samuel Rosen",
+     "share": 0.5
+    },
+    {
+     "label": "Zachary Long",
+     "share": 0.5
+    }
+   ],
+   "events": [
+    {
+     "period_key": "WK0",
+     "metric": "banked_points",
+     "units": 1
+    },
+    {
+     "period_key": "SEASON",
+     "metric": "reg_season_win",
+     "units": 6
+    },
+    {
+     "period_key": "SEASON",
+     "metric": "adj_point_differential",
+     "units": -77
+    }
+   ],
+   "expected": {
+    "points": 133.0,
+    "realized_return": 562.5131349
+   }
+  },
+  {
+   "label": "San Francisco 49ers",
+   "lot_order": 29.0,
+   "price": 2000,
+   "kind": "single",
+   "attributes": {
+    "division": "NFC West",
+    "conference": "NFC",
+    "reg_season_point_differential": 66,
+    "primetime_point_differential_adjustment": 39,
+    "adj_point_differential": 105,
+    "primetime_games": 6
+   },
+   "teams": [
+    {
+     "name": "San Francisco 49ers",
+     "seed": null,
+     "resolved": true
+    }
+   ],
+   "owners": [
+    {
+     "label": "Ezra Pemstein",
+     "share": 1.0
+    }
+   ],
+   "events": [
+    {
+     "period_key": "WK0",
+     "metric": "banked_points",
+     "units": 1
+    },
+    {
+     "period_key": "SEASON",
+     "metric": "reg_season_win",
+     "units": 12
+    },
+    {
+     "period_key": "SEASON",
+     "metric": "adj_point_differential",
+     "units": 105
+    },
+    {
+     "period_key": "PLAYOFFS",
+     "metric": "playoff_berth",
+     "units": 1
+    },
+    {
+     "period_key": "PLAYOFFS",
+     "metric": "div_round",
+     "units": 1
+    }
+   ],
+   "expected": {
+    "points": 525.0,
+    "realized_return": 2220.446585
+   }
+  },
+  {
+   "label": "Los Angeles Rams",
+   "lot_order": 30.0,
+   "price": 1700,
+   "kind": "single",
+   "attributes": {
+    "division": "NFC West",
+    "conference": "NFC",
+    "reg_season_point_differential": 172,
+    "primetime_point_differential_adjustment": 48,
+    "adj_point_differential": 220,
+    "primetime_games": 5
+   },
+   "teams": [
+    {
+     "name": "Los Angeles Rams",
+     "seed": null,
+     "resolved": true
+    }
+   ],
+   "owners": [
+    {
+     "label": "Samuel Rosen",
+     "share": 0.5
+    },
+    {
+     "label": "Zachary Long",
+     "share": 0.5
+    }
+   ],
+   "events": [
+    {
+     "period_key": "WK0",
+     "metric": "banked_points",
+     "units": 1
+    },
+    {
+     "period_key": "SEASON",
+     "metric": "reg_season_win",
+     "units": 12
+    },
+    {
+     "period_key": "SEASON",
+     "metric": "adj_point_differential",
+     "units": 220
+    },
+    {
+     "period_key": "PLAYOFFS",
+     "metric": "playoff_berth",
+     "units": 1
+    },
+    {
+     "period_key": "PLAYOFFS",
+     "metric": "div_round",
+     "units": 1
+    },
+    {
+     "period_key": "PLAYOFFS",
+     "metric": "conf_round",
+     "units": 1
+    }
+   ],
+   "expected": {
+    "points": 840.0,
+    "realized_return": 3552.714536
+   }
+  },
+  {
+   "label": "Arizona Cardinals",
+   "lot_order": 31.0,
+   "price": 1300,
+   "kind": "single",
+   "attributes": {
+    "division": "NFC West",
+    "conference": "NFC",
+    "reg_season_point_differential": -133,
+    "primetime_point_differential_adjustment": 7,
+    "adj_point_differential": -126,
+    "primetime_games": 2
+   },
+   "teams": [
+    {
+     "name": "Arizona Cardinals",
+     "seed": null,
+     "resolved": true
+    }
+   ],
+   "owners": [
+    {
+     "label": "Craig Thompson",
+     "share": 1.0
+    }
+   ],
+   "events": [
+    {
+     "period_key": "WK0",
+     "metric": "banked_points",
+     "units": 1
+    },
+    {
+     "period_key": "SEASON",
+     "metric": "reg_season_win",
+     "units": 3
+    },
+    {
+     "period_key": "SEASON",
+     "metric": "adj_point_differential",
+     "units": -126
+    }
+   ],
+   "expected": {
+    "points": 54.0,
+    "realized_return": 228.3887916
+   }
+  },
+  {
+   "label": "Seattle Seahawks",
+   "lot_order": 32.0,
+   "price": 1040,
+   "kind": "single",
+   "attributes": {
+    "division": "NFC West",
+    "conference": "NFC",
+    "reg_season_point_differential": 191,
+    "primetime_point_differential_adjustment": 46,
+    "adj_point_differential": 237,
+    "primetime_games": 5
+   },
+   "teams": [
+    {
+     "name": "Seattle Seahawks",
+     "seed": null,
+     "resolved": true
+    }
+   ],
+   "owners": [
+    {
+     "label": "Zachary Long",
+     "share": 1.0
+    }
+   ],
+   "events": [
+    {
+     "period_key": "WK0",
+     "metric": "banked_points",
+     "units": 1
+    },
+    {
+     "period_key": "SEASON",
+     "metric": "reg_season_win",
+     "units": 14
+    },
+    {
+     "period_key": "SEASON",
+     "metric": "adj_point_differential",
+     "units": 237
+    },
+    {
+     "period_key": "PLAYOFFS",
+     "metric": "playoff_berth",
+     "units": 1
+    },
+    {
+     "period_key": "PLAYOFFS",
+     "metric": "div_round",
+     "units": 1
+    },
+    {
+     "period_key": "PLAYOFFS",
+     "metric": "conf_round",
+     "units": 1
+    },
+    {
+     "period_key": "PLAYOFFS",
+     "metric": "sb_berth",
+     "units": 1
+    },
+    {
+     "period_key": "PLAYOFFS",
+     "metric": "win_super_bowl",
+     "units": 1
+    }
+   ],
+   "expected": {
+    "points": 2077.0,
+    "realized_return": 8784.509632
+   }
+  }
+ ],
+ "trades": [
+  {
+   "sheet_ref": "1",
+   "date": "2025-08-13",
+   "detail": "Sam / Zach 1x Lion King Crossbook",
+   "scope": "book",
+   "entry_label": null,
+   "from": "Zachary Long",
+   "to": "Samuel Rosen",
+   "pct": 1.0,
+   "cash": -7686.628722,
+   "leg_owner": "Samuel Rosen",
+   "leg_side": "long_own_book",
+   "asset_value": -7686.628722,
+   "synthetic": true,
+   "note": "Portfolio-level cross-book wager. Value of Traded Asset = Sam's owner-level Net $ Return - Zach's owner-level Net $ Return + half of the Houston Texans' net return = -$7,686.63."
+  },
+  {
+   "sheet_ref": "1",
+   "date": "2025-08-13",
+   "detail": "Sam / Zach 1x Lion King Crossbook",
+   "scope": "book",
+   "entry_label": null,
+   "from": "Samuel Rosen",
+   "to": "Zachary Long",
+   "pct": 1.0,
+   "cash": 7686.628722,
+   "leg_owner": "Zachary Long",
+   "leg_side": "long_own_book",
+   "asset_value": 7686.628722,
+   "synthetic": true,
+   "note": "Portfolio-level cross-book wager, mirror of leg 1: +$7,686.63 to Zachary Long."
+  },
+  {
+   "sheet_ref": "2",
+   "date": "2025-08-13",
+   "detail": "Zach synthetic long Pats @ $1,230 (100%)",
+   "scope": "entry",
+   "entry_label": "New England Patriots",
+   "from": "Samuel Rosen",
+   "to": "Zachary Long",
+   "pct": 1.0,
+   "cash": 4048.318739,
+   "leg_owner": "Zachary Long",
+   "leg_side": "buy",
+   "asset_value": 4048.318739,
+   "synthetic": true,
+   "note": "Synthetic long at a $1,230 strike; Ezra Pemstein owns the Patriots at auction."
+  },
+  {
+   "sheet_ref": "2",
+   "date": "2025-08-13",
+   "detail": "Sam synthetic short Pats @ $1,230 (100%)",
+   "scope": "entry",
+   "entry_label": "New England Patriots",
+   "from": "Samuel Rosen",
+   "to": "Zachary Long",
+   "pct": 1.0,
+   "cash": -4048.318739,
+   "leg_owner": "Samuel Rosen",
+   "leg_side": "sell_short",
+   "asset_value": -4048.318739,
+   "synthetic": true,
+   "note": "Synthetic short at a $1,230 strike; Ezra Pemstein owns the Patriots at auction."
+  },
+  {
+   "sheet_ref": "3",
+   "date": "2025-08-13",
+   "detail": "Ian buys 20% of Ravens from Ed",
+   "scope": "entry",
+   "entry_label": "Baltimore Ravens",
+   "from": "Ed Zhang",
+   "to": "Ian Culnane",
+   "pct": 0.2,
+   "cash": -374.3782837,
+   "leg_owner": "Ian Culnane",
+   "leg_side": "buy",
+   "asset_value": -1871.891419,
+   "synthetic": false
+  },
+  {
+   "sheet_ref": "3",
+   "date": "2025-08-13",
+   "detail": "Ed sells 20% of Ravens to Ian",
+   "scope": "entry",
+   "entry_label": "Baltimore Ravens",
+   "from": "Ed Zhang",
+   "to": "Ian Culnane",
+   "pct": 0.2,
+   "cash": 374.3782837,
+   "leg_owner": "Ed Zhang",
+   "leg_side": "sell",
+   "asset_value": 1871.891419,
+   "synthetic": false
+  },
+  {
+   "sheet_ref": "4",
+   "date": "2025-08-13",
+   "detail": "Zach buys 20% of Ravens from Ed @ $3,050",
+   "scope": "entry",
+   "entry_label": "Baltimore Ravens",
+   "from": "Ed Zhang",
+   "to": "Zachary Long",
+   "pct": 0.2,
+   "cash": -388.3782837,
+   "leg_owner": "Zachary Long",
+   "leg_side": "buy",
+   "asset_value": -1941.891419,
+   "synthetic": false,
+   "note": "Strike $3,050 vs the $2,980 auction price."
+  },
+  {
+   "sheet_ref": "4",
+   "date": "2025-08-13",
+   "detail": "Ed sells 20% of Ravens to Zach @ $3,050",
+   "scope": "entry",
+   "entry_label": "Baltimore Ravens",
+   "from": "Ed Zhang",
+   "to": "Zachary Long",
+   "pct": 0.2,
+   "cash": 388.3782837,
+   "leg_owner": "Ed Zhang",
+   "leg_side": "sell",
+   "asset_value": 1941.891419,
+   "synthetic": false,
+   "note": "Strike $3,050 vs the $2,980 auction price."
+  },
+  {
+   "sheet_ref": "5",
+   "date": "2025-08-13",
+   "detail": "Ian buys 20% of Dolphins from Sam",
+   "scope": "entry",
+   "entry_label": "Miami Dolphins",
+   "from": "Samuel Rosen",
+   "to": "Ian Culnane",
+   "pct": 0.2,
+   "cash": -131.4903678,
+   "leg_owner": "Ian Culnane",
+   "leg_side": "buy",
+   "asset_value": -657.4518389,
+   "synthetic": false
+  },
+  {
+   "sheet_ref": "5",
+   "date": "2025-08-13",
+   "detail": "Sam sells 20% of Dolphins to Ian",
+   "scope": "entry",
+   "entry_label": "Miami Dolphins",
+   "from": "Samuel Rosen",
+   "to": "Ian Culnane",
+   "pct": 0.2,
+   "cash": 131.4903678,
+   "leg_owner": "Samuel Rosen",
+   "leg_side": "sell",
+   "asset_value": 657.4518389,
+   "synthetic": false
+  },
+  {
+   "sheet_ref": "6",
+   "date": "2025-08-13",
+   "detail": "Ian buys 10% of Eagles from Joey",
+   "scope": "entry",
+   "entry_label": "Philadelphia Eagles",
+   "from": "Joey Anthony",
+   "to": "Ian Culnane",
+   "pct": 0.1,
+   "cash": -146.7408056,
+   "leg_owner": "Ian Culnane",
+   "leg_side": "buy",
+   "asset_value": -1467.408056,
+   "synthetic": false
+  },
+  {
+   "sheet_ref": "6",
+   "date": "2025-08-13",
+   "detail": "Joey sells 10% of Eagles to Ian",
+   "scope": "entry",
+   "entry_label": "Philadelphia Eagles",
+   "from": "Joey Anthony",
+   "to": "Ian Culnane",
+   "pct": 0.1,
+   "cash": 146.7408056,
+   "leg_owner": "Joey Anthony",
+   "leg_side": "sell",
+   "asset_value": 1467.408056,
+   "synthetic": false
+  },
+  {
+   "sheet_ref": "7",
+   "date": "2025-08-13",
+   "detail": "Zach synthetic long Dolphins @ $1,080 (100%)",
+   "scope": "entry",
+   "entry_label": "Miami Dolphins",
+   "from": "Ezra Pemstein",
+   "to": "Zachary Long",
+   "pct": 1.0,
+   "cash": -627.4518389,
+   "leg_owner": "Zachary Long",
+   "leg_side": "buy",
+   "asset_value": -627.4518389,
+   "synthetic": true,
+   "note": "Synthetic long at a $1,080 strike; Samuel Rosen owns the Dolphins at auction."
+  },
+  {
+   "sheet_ref": "7",
+   "date": "2025-08-13",
+   "detail": "Ezra synthetic short Dolphins @ $1,080 (100%)",
+   "scope": "entry",
+   "entry_label": "Miami Dolphins",
+   "from": "Ezra Pemstein",
+   "to": "Zachary Long",
+   "pct": 1.0,
+   "cash": 627.4518389,
+   "leg_owner": "Ezra Pemstein",
+   "leg_side": "sell_short",
+   "asset_value": 627.4518389,
+   "synthetic": true,
+   "note": "Synthetic short at a $1,080 strike; Samuel Rosen owns the Dolphins at auction."
+  },
+  {
+   "sheet_ref": "8",
+   "date": "2025-08-14",
+   "detail": "Josh buys 20% of Commanders from Ed",
+   "scope": "entry",
+   "entry_label": "Washington Commanders",
+   "from": "Ed Zhang",
+   "to": "Joshua Melnick",
+   "pct": 0.2,
+   "cash": -348.3152364,
+   "leg_owner": "Joshua Melnick",
+   "leg_side": "buy",
+   "asset_value": -1741.576182,
+   "synthetic": false
+  },
+  {
+   "sheet_ref": "8",
+   "date": "2025-08-14",
+   "detail": "Ed sells 20% of Commanders to Josh",
+   "scope": "entry",
+   "entry_label": "Washington Commanders",
+   "from": "Ed Zhang",
+   "to": "Joshua Melnick",
+   "pct": 0.2,
+   "cash": 348.3152364,
+   "leg_owner": "Ed Zhang",
+   "leg_side": "sell",
+   "asset_value": 1741.576182,
+   "synthetic": false
+  },
+  {
+   "sheet_ref": "9",
+   "date": "2025-08-14",
+   "detail": "Ed buys 10% of Chiefs from Josh",
+   "scope": "entry",
+   "entry_label": "Kansas City Chiefs",
+   "from": "Joshua Melnick",
+   "to": "Ed Zhang",
+   "pct": 0.1,
+   "cash": -166.1891419,
+   "leg_owner": "Ed Zhang",
+   "leg_side": "buy",
+   "asset_value": -1661.891419,
+   "synthetic": false
+  },
+  {
+   "sheet_ref": "9",
+   "date": "2025-08-14",
+   "detail": "Josh sells 10% of Chiefs to Ed",
+   "scope": "entry",
+   "entry_label": "Kansas City Chiefs",
+   "from": "Joshua Melnick",
+   "to": "Ed Zhang",
+   "pct": 0.1,
+   "cash": 166.1891419,
+   "leg_owner": "Joshua Melnick",
+   "leg_side": "sell",
+   "asset_value": 1661.891419,
+   "synthetic": false
+  },
+  {
+   "sheet_ref": "10",
+   "date": "2025-08-14",
+   "detail": "Ed buys 12% of Texans from Josh",
+   "scope": "entry",
+   "entry_label": "Houston Texans",
+   "from": "Joshua Melnick",
+   "to": "Ed Zhang",
+   "pct": 0.12,
+   "cash": 78.6514886,
+   "leg_owner": "Ed Zhang",
+   "leg_side": "buy",
+   "asset_value": 655.4290718,
+   "synthetic": false
+  },
+  {
+   "sheet_ref": "10",
+   "date": "2025-08-14",
+   "detail": "Josh sells 12% of Texans to Ed",
+   "scope": "entry",
+   "entry_label": "Houston Texans",
+   "from": "Joshua Melnick",
+   "to": "Ed Zhang",
+   "pct": 0.12,
+   "cash": -78.6514886,
+   "leg_owner": "Joshua Melnick",
+   "leg_side": "sell",
+   "asset_value": -655.4290718,
+   "synthetic": false
+  },
+  {
+   "sheet_ref": "11",
+   "date": "2025-08-14",
+   "detail": "Ian buys 10% of Packers from Josh",
+   "scope": "entry",
+   "entry_label": "Green Bay Packers",
+   "from": "Joshua Melnick",
+   "to": "Ian Culnane",
+   "pct": 0.1,
+   "cash": -46.1208406,
+   "leg_owner": "Ian Culnane",
+   "leg_side": "buy",
+   "asset_value": -461.2084063,
+   "synthetic": false
+  },
+  {
+   "sheet_ref": "11",
+   "date": "2025-08-14",
+   "detail": "Josh sells 10% of Packers to Ian",
+   "scope": "entry",
+   "entry_label": "Green Bay Packers",
+   "from": "Joshua Melnick",
+   "to": "Ian Culnane",
+   "pct": 0.1,
+   "cash": 46.1208406,
+   "leg_owner": "Joshua Melnick",
+   "leg_side": "sell",
+   "asset_value": 461.2084063,
+   "synthetic": false
+  },
+  {
+   "sheet_ref": "12",
+   "date": "2025-08-14",
+   "detail": "Ian buys 20% of Chiefs from Josh",
+   "scope": "entry",
+   "entry_label": "Kansas City Chiefs",
+   "from": "Joshua Melnick",
+   "to": "Ian Culnane",
+   "pct": 0.2,
+   "cash": -332.3782837,
+   "leg_owner": "Ian Culnane",
+   "leg_side": "buy",
+   "asset_value": -1661.891419,
+   "synthetic": false
+  },
+  {
+   "sheet_ref": "12",
+   "date": "2025-08-14",
+   "detail": "Josh sells 20% of Chiefs to Ian",
+   "scope": "entry",
+   "entry_label": "Kansas City Chiefs",
+   "from": "Joshua Melnick",
+   "to": "Ian Culnane",
+   "pct": 0.2,
+   "cash": 332.3782837,
+   "leg_owner": "Joshua Melnick",
+   "leg_side": "sell",
+   "asset_value": 1661.891419,
+   "synthetic": false
+  },
+  {
+   "sheet_ref": "13",
+   "date": "2025-08-14",
+   "detail": "Shaun buys 10% of Jets from Josh",
+   "scope": "entry",
+   "entry_label": "New York Jets",
+   "from": "Joshua Melnick",
+   "to": "Shaun McGuire",
+   "pct": 0.1,
+   "cash": -87.6094571,
+   "leg_owner": "Shaun McGuire",
+   "leg_side": "buy",
+   "asset_value": -876.0945709,
+   "synthetic": false
+  },
+  {
+   "sheet_ref": "13",
+   "date": "2025-08-14",
+   "detail": "Josh sells 10% of Jets to Shaun",
+   "scope": "entry",
+   "entry_label": "New York Jets",
+   "from": "Joshua Melnick",
+   "to": "Shaun McGuire",
+   "pct": 0.1,
+   "cash": 87.6094571,
+   "leg_owner": "Joshua Melnick",
+   "leg_side": "sell",
+   "asset_value": 876.0945709,
+   "synthetic": false
+  },
+  {
+   "sheet_ref": "14",
+   "date": "2025-08-14",
+   "detail": "Josh synthetic long Raiders @ $845 (40%)",
+   "scope": "entry",
+   "entry_label": "Las Vegas Raiders",
+   "from": "Samuel Rosen",
+   "to": "Joshua Melnick",
+   "pct": 0.4,
+   "cash": -409.0542907,
+   "leg_owner": "Joshua Melnick",
+   "leg_side": "buy",
+   "asset_value": -1022.635727,
+   "synthetic": true,
+   "note": "Synthetic long 40% at an $845 strike; Joshua Melnick already owns the Raiders at auction, so this is an added synthetic leg, not a transfer."
+  },
+  {
+   "sheet_ref": "14",
+   "date": "2025-08-14",
+   "detail": "Sam synthetic short Raiders @ $845 (40%)",
+   "scope": "entry",
+   "entry_label": "Las Vegas Raiders",
+   "from": "Samuel Rosen",
+   "to": "Joshua Melnick",
+   "pct": 0.4,
+   "cash": 409.0542907,
+   "leg_owner": "Samuel Rosen",
+   "leg_side": "sell_short",
+   "asset_value": 1022.635727,
+   "synthetic": true,
+   "note": "Synthetic short 40% at an $845 strike."
+  },
+  {
+   "sheet_ref": "15",
+   "date": "2025-08-14",
+   "detail": "Sam synthetic long Texans @ $1,575 (50%)",
+   "scope": "entry",
+   "entry_label": "Houston Texans",
+   "from": "Zachary Long",
+   "to": "Samuel Rosen",
+   "pct": 0.5,
+   "cash": 350.2145359,
+   "leg_owner": "Samuel Rosen",
+   "leg_side": "buy",
+   "asset_value": 700.4290718,
+   "synthetic": true,
+   "note": "Synthetic long 50% at a $1,575 strike."
+  },
+  {
+   "sheet_ref": "15",
+   "date": "2025-08-14",
+   "detail": "Zach synthetic short Texans @ $1,575 (50%)",
+   "scope": "entry",
+   "entry_label": "Houston Texans",
+   "from": "Zachary Long",
+   "to": "Samuel Rosen",
+   "pct": 0.5,
+   "cash": -350.2145359,
+   "leg_owner": "Zachary Long",
+   "leg_side": "sell_short",
+   "asset_value": -700.4290718,
+   "synthetic": true,
+   "note": "Synthetic short 50% at a $1,575 strike."
+  }
+ ],
+ "expected_owners": [
+  {
+   "label": "Joey Anthony",
+   "cost": 8240,
+   "realized": 4301.322242,
+   "trade_impact": 146.7408056,
+   "net": -3791.936953,
+   "funds_flow": "$3,791.94 to Zach"
+  },
+  {
+   "label": "Joshua Melnick",
+   "cost": 9530,
+   "realized": 4933.620841,
+   "trade_impact": -203.7232925,
+   "net": -4800.102452,
+   "funds_flow": "$784.33 to Ezra; $4,015.78 to Zach"
+  },
+  {
+   "label": "Samuel Rosen",
+   "cost": 6805,
+   "realized": 8346.764448,
+   "trade_impact": -10844.18827,
+   "net": -9302.423818,
+   "funds_flow": "$5,918.89 to Zach; $3,383.53 to SB winner"
+  },
+  {
+   "label": "Ezra Pemstein",
+   "cost": 6110,
+   "realized": 10945.74431,
+   "trade_impact": 627.4518389,
+   "net": 5463.196147,
+   "funds_flow": null
+  },
+  {
+   "label": "Ed Zhang",
+   "cost": 10230,
+   "realized": 4527.596322,
+   "trade_impact": 1023.534151,
+   "net": -4678.869527,
+   "funds_flow": "$4,678.87 to Ezra"
+  },
+  {
+   "label": "Zachary Long",
+   "cost": 4475,
+   "realized": 14031.10771,
+   "trade_impact": 10368.9028,
+   "net": 19925.01051,
+   "funds_flow": null
+  },
+  {
+   "label": "Craig Thompson",
+   "cost": 2910,
+   "realized": 1213.844133,
+   "trade_impact": 0,
+   "net": -1696.155867,
+   "funds_flow": "$1,696.16 to Zach"
+  },
+  {
+   "label": "Ian Culnane",
+   "cost": 0,
+   "realized": 0,
+   "trade_impact": -1031.108581,
+   "net": -1031.108581,
+   "funds_flow": "$1,031.11 to Zach"
+  },
+  {
+   "label": "Shaun McGuire",
+   "cost": 0,
+   "realized": 0,
+   "trade_impact": -87.6094571,
+   "net": -87.6094571,
+   "funds_flow": "$87.61 to Zach"
+  }
+ ],
+ "validation": {
+  "check_1_sum_price_equals_pot": "PASS - sum of the 32 entry prices = $48,300.00 = workbook pot ($48,300.00 at 'Calcutta Draft Results'!K20, the cell the Realized Return formula multiplies by). Delta $0.00. Prices agree cell-for-cell across 'Calcutta Draft Results' Value Paid, 'AuctionPro Results' Selling Price and 'Calcutta Returns'!E on all 32 lots.",
+  "check_2_shares_sum_to_one": "PASS - all 32 entries sum to exactly 1.0. 28 lots are single-owner (1.0) and 4 are two-owner at 0.5/0.5: Houston Texans (Samuel Rosen / Joshua Melnick), New Orleans Saints (Samuel Rosen / Zachary Long), Tampa Bay Buccaneers (Joshua Melnick / Ed Zhang), Los Angeles Rams (Samuel Rosen / Zachary Long). The workbook itself flags exactly those 4 rows: column A is =IFERROR(FIND('/',D5)>0,FALSE) and is TRUE only on them, and the owner-block formulas add SUMIFS(...,A,FALSE) + SUMIFS(...,A,TRUE)/2, i.e. split rows are halved. '# Teams (Before Trades)' carries the .5s (Sam 6.5, Ed 4.5) and sums to 32.0. Rebuilt 50/50 costs reproduce the 'Entry' column to the dollar for all 9 owners. No three-way splits, no explicit percentages, no negative auction shares. Failures: none.",
+  "check_3_points_denominator": "PASS, and it IS 11,420. Sum of the 32 final point totals = 11,420.000000 exactly, equal to the workbook's own denominator cell ('Calcutta Returns'!N1 = 11420, hard-coded, and independently rebuilt on the 'Scoring Rubric' tab as R4 = SUM(R7:R38) = 11420). Deriving the denominator the requested way, points x pot / payout, gives 11,420.000000 for every one of the 32 rows (spread 11,419.999996 to 11,420.000004, pure float noise). The decomposition: 32 x 150 banked = 4,800; 272 win-equivalents x 10 = 2,720; playoff bonuses 14x50 + 8x100 + 4x200 + 2x400 + 1x800 = 3,900; and the 32 Adj. Point Differentials sum to exactly 0 (raw differentials sum to 0 and the primetime adjustments sum to 0 because every primetime game is listed as an equal-and-opposite pair). 4,800 + 2,720 + 3,900 + 0 = 11,420.",
+  "check_4_payout_recompute": "PASS - recomputed all 32 payouts end to end from events + rules; largest absolute error $0.00000048 (float noise), and my recomputed points equal the workbook's SUMPRODUCT for all 32 rows. Worked arithmetic, six teams: (a) Buffalo Bills 150 banked + 12 wins x 10 + 110 adj pt diff x 1 + berth 50 + divisional 100 = 150 + 120 + 110 + 150 = 530 pts; 530 / 11,420 x $48,300 = $2,241.5937 vs workbook $2,241.593695. (b) Seattle Seahawks 150 + 14x10 + 237 + 50 + 100 + 200 + 400 + 800 = 2,077 pts; 2,077 / 11,420 x $48,300 = $8,784.5096 vs $8,784.509632. (c) New England Patriots 150 + 14x10 + 208 + 50 + 100 + 200 + 400 = 1,248 pts; x $48,300/11,420 = $5,278.3187 vs $5,278.318739. (d) New York Jets 150 + 3x10 + (-224) = -44 pts (NEGATIVE); -44 / 11,420 x $48,300 = -$186.0946 vs -$186.0945709 - the workbook really does pay a negative return here. (e) Dallas Cowboys 150 + 7 wins x 10 + 1 tie x 5 + (-49) = 176 pts; x $48,300/11,420 = $744.3783 vs $744.3782837. (f) Green Bay Packers 150 + 9x10 + 1 tie x 5 + 31 + berth 50 = 326 pts; x $48,300/11,420 = $1,378.7916 vs $1,378.791594. All six match to the cent, including both tie teams and the negative-points team.",
+  "check_5_owner_costs_and_returns": "PASS - rebuilding owner cost and realized return from entry-level data with 0.5/0.5 splits reproduces the Players block exactly for all 9 owners: Joey Anthony $8,240 / $4,301.322242; Joshua Melnick $9,530 / $4,933.620841; Samuel Rosen $6,805 / $8,346.764448; Ezra Pemstein $6,110 / $10,945.74431; Ed Zhang $10,230 / $4,527.596322; Zachary Long $4,475 / $14,031.10771; Craig Thompson $2,910 / $1,213.844133; Ian Culnane $0 / $0; Shaun McGuire $0 / $0. Summing all 30 transcribed trade legs' Net Trade Value by the workbook's 'New Owner' column reproduces 'Impact of Trades' for all 9 (Joey +146.7408056, Josh -203.7232925, Sam -10,844.18827, Ezra +627.4518389, Ed +1,023.534151, Zach +10,368.9028, Craig 0, Ian -1,031.108581, Shaun -87.6094571) and the legs net to exactly $0.00 across the pool. cost/realized/trade_impact then rebuild 'Net Return' for all 9. This is the check that catches dropped trailing trade rows - see check_8. Mismatches: none.",
+  "check_6_pot_exhaustion": "PASS - sum of all 32 Realized Returns = $48,299.9999987 = pot to float noise. Note WHY: the divisor is a genuinely fixed 11,420 hard-coded in N1, and the pot is exhausted only because total points happen to land on exactly 11,420 (differentials cancelling). This is fixed_inventory, not renormalisation - if any team's adjusted differential had not cancelled, the payouts would not have summed to the pot. normalization = {'mode':'fixed_inventory','denominator':11420}.",
+  "check_7_labels_and_periods": "PASS - every entry owner label exists in owners[]; every event period_key exists in periods[] (WK0, SEASON, PLAYOFFS). Failures: none. Ian Culnane and Shaun McGuire own no entries (they bought nothing at auction) and appear only as trade counterparties.",
+  "check_8_nl_vs_xlsx": "FAIL FOR THE NATURAL-LANGUAGE READ, PASS FOR THE XLSX - and this is the workbook where the warned-about truncation actually bit. The Drive natural-language read of 'Calcutta Returns' stops mid-trade-14 and silently drops the last 3 of the 30 trade legs: trade 14 leg 2 ('Sam synthetic short Raiders @ $845 (40%)', +$409.0542907 to Samuel Rosen) and both legs of trade 15 ('Sam synthetic long Texans @ $1,575 (50%)', +$350.2145359 to Samuel Rosen; 'Zach synthetic short Texans @ $1,575 (50%)', -$350.2145359 to Zachary Long). Taking the NL read at face value would have left Sam's Impact of Trades short by $759.27 and Zach's over by $350.21, and the legs would not have netted to zero. The .xlsx parse has all 30 and ties out. All values in this file come from the .xlsx. Trade IDs 16-21 exist as empty paired placeholder rows (rows 81-92) with no data - not transcribed."
+ },
+ "notes": [
+  "THIS IS THE ONE THAT USES THE POINTS RUBRIC, AND IT MATCHES THE APP EXACTLY. 'Calcutta Returns'!N = SUMPRODUCT(F1:M1, F5:M5) / N1 * 'Calcutta Draft Results'!K20, with the multiplier row F1:M1 = 1 (Starting Points), 10 (# Reg. Season Wins), 1 (Adj. Point Differential), 50 (Playoff Berth), 100 (Div. Round), 200 (Conf. Round), 400 (SB Berth), 800 (Win Super Bowl) and N1 = 11420 hard-coded. Starting Points is a literal 150 on all 32 rows, which is why WK0 is used as a baseline period.",
+  "POINT-DIFFERENTIAL ADJUSTMENT - WHAT IT ACTUALLY IS, AND YES IT IS THE 2x MARQUEE WEIGHTING, VERIFIED CELL BY CELL. The 'ESPN Results' tab computes, per team, Differential (raw regular-season ESPN point differential) | Multiplier = SUMIF(Primetimes!C:C, team, Primetimes!D:D) | Points = Differential + Multiplier, and 'Calcutta Returns'!H (headed 'Adj. Point Differential') is an XLOOKUP of that Points column. The 'Primetimes' tab is a 148-row list (74 games, each game entered twice as an equal-and-opposite pair, D column = that team's signed margin in that game, the second leg literally =-D of the first). Adding a team's primetime margins on top of its full-season differential means primetime margins are counted TWICE and all other margins once - i.e. exactly a 2x point-differential multiplier on marquee games. I reproduced all 32 Multiplier cells from the Primetimes tab with zero mismatches, and the 32 primetime sums net to 0. Worked example: Buffalo raw differential +116, primetime sum -6, Adj. Point Differential 110, matching the Returns cell. The rate is 1 point of score per point of adjusted differential.",
+  "ARE WINS OR TIES ALSO DOUBLED? NO - ONLY THE DIFFERENTIAL IS DOUBLED. Two independent confirmations. (1) The 'Scoring Rubric' tab states the rule in prose: 'Primetime Pt Diff Multiplier | 2x Point Differential | (Any game that kicks off after 6pm ET or isn't played on Sunday)' - it names point differential and nothing else. (2) The wins cell is =XLOOKUP(team, Wins) + XLOOKUP(team, Ties)/2, with no primetime term anywhere in it, and the ESPN Wins/Ties columns are plain win-loss-tie records. So a primetime win is worth the same 10 points as any other win; only its margin is counted twice.",
+  "CAVEAT ON THE MARQUEE DEFINITION - THE PROSE AND THE IMPLEMENTATION DISAGREE, AND THE IMPLEMENTATION IS BROADER THAN EITHER THE RUBRIC'S WORDING OR THE 'Sunday 1:00-7:00pm ET' framing. The Primetimes tab is the operative definition, and it includes Sunday 9:30am ET international games (2025-09-28 Minnesota/Pittsburgh, 2025-10-05 Minnesota/Cleveland, 2025-10-12 Denver/NY Jets, 2025-10-19 LA Rams/Jacksonville and others), which are neither after 6pm ET nor off-Sunday. It also includes Saturday afternoon games (2026-01-03 16:30 Carolina/Tampa Bay). In practice it is 'every game outside the Sunday-afternoon national window', 74 games. Two teams played no listed primetime game at all and so had zero adjustment: the New Orleans Saints and the Tennessee Titans (both Adj. Point Differential = raw differential). This is the live-correctness detail the app should be checked against: if the app's rule is literally 'outside Sunday 1:00-7:00pm ET' it will match this workbook, but if it is the rubric's own wording ('after 6pm ET or not on Sunday') it will MISS the Sunday-morning London/Dublin games and under-double roughly 8 games' margins.",
+  "TIES ARE WORTH 5 POINTS, AND THE WORKBOOK STORES IT AS HALF A WIN. The single Returns wins cell holds Wins + Ties/2 (so Dallas 7.5 and Green Bay 9.5) and is multiplied by 10, making a tie worth 5 points - identical to the app's stated +5. I split this into separate reg_season_win (rate 10) and tie (rate 5) events using the ESPN tab's separate Wins and Ties columns, which is arithmetically identical and truer to the rubric; the note is here so the half-win storage is not mistaken for an error. 2025 had exactly 2 ties (Dallas 7-9-1, Green Bay 9-7-1), so wins sum to 271 and win-equivalents to 272.",
+  "THE 'Scoring Rubric' TAB IS WHERE THE 11,420 COMES FROM, AND IT IS A DESIGN DOC, NOT THIS SEASON'S SCORING. It holds an 'Old:' block (the Calcutta V percent-of-pot schedule: 0.16% per win, 0.25/0.50/1.00/2.00/5.00% playoff bonuses, plus a 'Pt Diff Pool' row that is #REF! broken) and a 'New' block (per-win 20bps, berth 25, div 50, conf 100, SB berth 200, SB win 500, 'Per Point Differential Above -100' 100bps x 32 = 0.32, summing to 1.069 - i.e. 106.9%, which does NOT balance and was evidently abandoned). Alongside them is a worked simulation of the points rubric run on the PRIOR season's (2024) results - Detroit 15 wins / +208, Philadelphia winning the Super Bowl - whose total cell R4 = SUM(R7:R38) evaluates to exactly 11420. So 11,420 was derived by back-testing the points rubric on 2024, and it holds for 2025 as well because differentials cancel. Anyone reusing 11,420 should know it is 32x150 + 272x10 + 3,900 and is only valid for a 17-game/272-game/14-playoff-team season with differentials summing to zero.",
+  "NEGATIVE POINTS AND NEGATIVE PAYOUTS ARE REAL HERE. Three teams finished with negative point totals and the workbook pays out negative dollars: New York Jets -44 pts / -$186.09, Las Vegas Raiders -42 pts / -$177.64, Tennessee Titans -14 pts / -$59.21. The fixed 11,420 divisor makes this possible - an earned-total normalisation could not produce it. Kept with sign.",
+  "OWNER IDENTITY - THIS IS THE WORKBOOK THAT SPELLS EVERYONE OUT, and it is the best identity anchor of the three. Full names are used as the labels themselves throughout: Joey Anthony, Joshua Melnick, Samuel Rosen, Ezra Pemstein, Ed Zhang, Zachary Long, Craig Thompson, Ian Culnane, Shaun McGuire. Cross-pool resolutions this gives: Calcutta V's 'Ian' = Ian Culnane; Calcutta V's 'Joey' = Joey Anthony; Calcutta III's 'Zach L.' / zmlong10@gmail.com = Zachary Long; 'Sam R.' = Samuel Rosen; 'Ed Z.' = Ed Zhang; 'Craig T.' = Craig Thompson. New names not seen in Calcutta III or V: Joshua Melnick, Ezra Pemstein, Shaun McGuire. No emails are recorded on this workbook (the Pot Summary block dropped the Bidder_ID column), so owners[].email is null throughout.",
+  "NO CONSORTIUM STRUCTURE. No leader/member grouping anywhere; consortia is empty. Ian Culnane and Shaun McGuire bought nothing at auction and hold positions only through trades ($0 entry, 0 teams), which is a trading-only participation, not a consortium.",
+  "CROSS-BOOK / PORTFOLIO TRADE: trade 1, 'Sam / Zach 1x Lion King Crossbook' on both legs, dated 2025-08-13, scope 'book', entry_label null. Its arithmetic is portfolio-level: Value of Traded Asset = P41 - P44 + P16/2 = (Samuel Rosen's owner-level Net $ Return) - (Zachary Long's owner-level Net $ Return) + half of the Houston Texans' net return = $1,541.764448 - $9,556.107706 + $327.714536 = -$7,686.628722, booked to Samuel Rosen, with +$7,686.628722 to Zachary Long. At $7,686.63 a side it is by far the largest single item in the pool and it is what drives Sam's Impact of Trades to -$10,844.19 and Zach's to +$10,368.90. Note also that 'Sheet1' (the dead 2024 tab) still carries the older standing note 'Sam / Zach: 25% Crossbook of everything touched'; the 2025 crossbook is 1x, not 25%.",
+  "SHORT SALES AND SYNTHETICS: 5 of the 15 trades are synthetic positions written on lots the writer does not own, and they carry explicit long/short language. Trade 2 - Zach synthetic LONG / Sam synthetic SHORT New England Patriots @ $1,230 strike, 100% (Ezra Pemstein owns the Patriots); payoff = realized - strike, so Zach +$4,048.32 and Sam -$4,048.32. Trade 7 - Zach synthetic LONG / Ezra synthetic SHORT Miami Dolphins @ $1,080, 100% (Samuel Rosen owns Miami); Zach -$627.45, Ezra +$627.45. Trade 14 - Josh synthetic LONG / Sam synthetic SHORT Las Vegas Raiders @ $845, 40%; Josh -$409.05, Sam +$409.05 (note Josh already owned the Raiders outright, so this is an added synthetic leg on top of his own lot, not a transfer). Trade 15 - Sam synthetic LONG / Zach synthetic SHORT Houston Texans @ $1,575, 50%; Sam +$350.21, Zach -$350.21. Plus the trade 1 crossbook. All are marked synthetic:true with signs preserved; leg_side records buy / sell / sell_short / long_own_book.",
+  "ORDINARY EQUITY TRADES: the remaining 10 trades are partial-equity sales, all dated 2025-08-13 or 2025-08-14 (i.e. all pre-season, before a single game): Ravens 20% Ed->Ian (at cost) and Ravens 20% Ed->Zach (at a $3,050 strike vs the $2,980 auction price); Dolphins 20% Sam->Ian; Eagles 10% Joey->Ian; Commanders 20% Ed->Josh; Chiefs 10% Josh->Ed and Chiefs 20% Josh->Ian; Texans 12% Josh->Ed; Packers 10% Josh->Ian; Jets 10% Josh->Shaun. Joshua Melnick is the dominant seller (6 of the 10) and Ian Culnane the dominant buyer (5 of the 10).",
+  "SETTLEMENT / FUNDS FLOW, carried on expected_owners[].funds_flow: Joey Anthony '$3,791.94 to Zach'; Joshua Melnick '$784.33 to Ezra; $4,015.78 to Zach'; Samuel Rosen '$5,918.89 to Zach; $3,383.53 to SB winner'; Ed Zhang '$4,678.87 to Ezra'; Craig Thompson '$1,696.16 to Zach'; Ian Culnane '$1,031.11 to Zach'; Shaun McGuire '$87.61 to Zach'; Ezra Pemstein and Zachary Long are net receivers with no instruction. The '$3,383.53 to SB winner' line is an obligation to a side pot rather than to a named participant and is the only funds-flow entry that does not resolve to a Calcutta owner - worth flagging, since owner Net Returns net to $0.00 only if that line is treated as part of Sam's $9,302.42 obligation rather than as an extra.",
+  "WEEK-BY-WEEK DETAIL EXISTS, ON TWO TABS, AND NEITHER IS THE SCORING RECORD. (1) 'Valuations Over Time' is an owner/team fair-value series by week (Draft, Week 0 through Week 18), populated through Week 13 with a header note '(didn't calc these 2)' and a Current/Prior/WoW-Delta block; e.g. Buffalo runs +$217.36 (Wk1) to -$507.37 (Wk13). (2) 'Calcutta Returns - M2M' is a full duplicate of the Returns tab stamped 'LAST UPDATED: 9/8/25' holding PROJECTED figures (projected win totals like Buffalo 20 and fractional playoff-round probabilities like Ed 3.5 divisional) plus a mark-to-market version of the same 15 trades at their 9/8/25 values (Sam/Zach crossbook +$941.39 rather than the final -$7,686.63). Per instruction the transcription aggregates to WK0/SEASON/PLAYOFFS and every expected figure is taken from the FINAL 'Calcutta Returns' tab (stamped 2/2/26), never from the M2M projection tab.",
+  "'Playoff Odds' is a live FanDuel/ESPNBet odds-scraping tab (to-make, to-miss, stage-of-elimination, season-wins O/U 270) feeding the Returns tab's probability columns U through AF and its 'Mark to Market' column. Forecasting only; no scoring input.",
+  "LEFTOVER TEMPLATE TAB - 'Sheet1' in this workbook is dead 2024 content, byte-identical to Calcutta V's Sheet1: the 2024 auction (Kansas City $1,620 Joey, Detroit $1,510 Ed, ... New England $220 Zach), the 2024 owner set (Anthony, Craig, Ed, Greg, Joey, Ian, Sam, Zach - including Greg and Anthony, who are not Calcutta VIII participants) and the 2024 standing note 'Sam / Zach: 25% Crossbook of everything touched'. It is not 2025 data and is ignored for the transcription. It is same-sport leftover rather than another sport's template - none of the three NFL workbooks contains a tab from a different sport.",
+  "MINOR SOURCE DISAGREEMENT: the 'AuctionPro Results' tab records only a single Winner per lot and so shows Samuel Rosen alone on Houston, New Orleans and the LA Rams and Joshua Melnick alone on Tampa Bay, omitting the co-owner. 'Calcutta Draft Results' and 'Calcutta Returns' both carry the slash strings and the split flag, and only they reproduce the owner-level Entry column, so they are treated as authoritative for ownership. AuctionPro is used only for lot_order (its # column, 1-32).",
+  "lot_order is the 'AuctionPro Results' lot number (1 Buffalo through 32 Seattle). It runs in division order rather than the true bidding sequence, but it is the workbook's own numbering, which neither Calcutta III nor V provides.",
+  "expected.points is the workbook's own SUMPRODUCT point total for each team; expected.realized_return is 'Calcutta Returns'!N at full stored precision. Both were reproduced from events + rules with no adjustment to any input."
+ ]
+}

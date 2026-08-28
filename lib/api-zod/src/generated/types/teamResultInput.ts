@@ -30,6 +30,7 @@ export interface TeamResultInput {
   realizedReturn?: number;
   realizedMultiple?: number;
   netReturn?: number;
+  /** Net return as a decimal fraction of cost (for example, 0.25 means 25%). */
   netPctReturn?: number;
   markToMarket?: number;
 }

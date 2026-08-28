@@ -15,6 +15,8 @@ import {
   CaptureWeekZeroMtmResponse,
   GetMtmSnapshotsQueryParams,
   UpsertMtmSnapshotBody,
+  GetMtmSnapshotsResponse,
+  UpsertMtmSnapshotResponse,
 } from "@workspace/api-zod";
 import { loadSeasonOwnership } from "../lib/seasonOwnership";
 import { captureKalshiWeekZero } from "../lib/kalshiWeekZero";
@@ -35,13 +37,7 @@ import {
   buildMtmMetricRows,
   replaceMtmMetricRows,
 } from "../lib/mtmMetrics";
-
-function isAdminRequest(req: Request): boolean {
-  const adminKey = process.env["ADMIN_API_KEY"];
-  if (!adminKey) return false;
-  const auth = req.headers["authorization"];
-  return auth === `Bearer ${adminKey}`;
-}
+import { requireAdmin } from "../middlewares/requireAdmin";
 
 const router: IRouter = Router();
 class WeekZeroDateCollisionError extends Error {}
@@ -89,7 +85,7 @@ router.get("/mtm", async (req, res): Promise<void> => {
   const { season } = parsed.data;
   const seasonId = await resolveSeasonId(season);
   if (!seasonId) {
-    res.json({ weeks: [], teams: [], owners: [] });
+    res.json(GetMtmSnapshotsResponse.parse({ weeks: [], teams: [], owners: [] }));
     return;
   }
   const calcuttaId = await resolveCalcuttaId(db, {
@@ -300,16 +296,10 @@ router.get("/mtm", async (req, res): Promise<void> => {
     };
   });
 
-  res.json({ weeks, teams: teamSeries, owners: ownerSeries });
+  res.json(GetMtmSnapshotsResponse.parse({ weeks, teams: teamSeries, owners: ownerSeries }));
 });
 
-router.post("/mtm", async (req, res): Promise<void> => {
-  if (!isAdminRequest(req)) {
-    res.status(401).json({
-      error: "Unauthorized. This endpoint requires the ADMIN_API_KEY bearer token.",
-    });
-    return;
-  }
+router.post("/mtm", requireAdmin, async (req, res): Promise<void> => {
 
   const parsed = UpsertMtmSnapshotBody.safeParse(req.body);
   if (!parsed.success) {
@@ -372,16 +362,14 @@ router.post("/mtm", async (req, res): Promise<void> => {
     return;
   }
 
-  res.json(manualWrite.snapshot);
+  res.json(UpsertMtmSnapshotResponse.parse({
+    ...manualWrite.snapshot,
+    mtmValue: Number(manualWrite.snapshot.mtmValue),
+    capturedAt: manualWrite.snapshot.capturedAt?.toISOString() ?? null,
+  }));
 });
 
-router.post("/mtm/week-zero/capture", async (req, res): Promise<void> => {
-  if (!isAdminRequest(req)) {
-    res.status(401).json({
-      error: "Unauthorized. This endpoint requires the ADMIN_API_KEY bearer token.",
-    });
-    return;
-  }
+router.post("/mtm/week-zero/capture", requireAdmin, async (req, res): Promise<void> => {
 
   const parsed = CaptureWeekZeroMtmBody.safeParse(req.body);
   if (!parsed.success) {

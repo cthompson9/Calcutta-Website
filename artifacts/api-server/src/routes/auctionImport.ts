@@ -1,4 +1,5 @@
 import { Router, type IRouter, type Request } from "express";
+import { requireAdmin } from "../middlewares/requireAdmin";
 import { createHash } from "node:crypto";
 import { and, eq, inArray, sql } from "drizzle-orm";
 import {
@@ -36,11 +37,6 @@ import { getOrCreateCalcuttaEntry, resolveCalcuttaId } from "../lib/calcuttaCont
 
 const router: IRouter = Router();
 const COMPLETE_NFL_TEAM_COUNT = 32;
-
-function isAdminRequest(req: Request): boolean {
-  const adminKey = process.env["ADMIN_API_KEY"];
-  return Boolean(adminKey && req.headers.authorization === `Bearer ${adminKey}`);
-}
 
 function normalized(value: string): string {
   return value.trim().toLocaleLowerCase("en-US");
@@ -141,11 +137,7 @@ async function resolveImportTeams(sourceTeams: AuctionProTeam[]): Promise<Resolv
   return resolved;
 }
 
-router.post("/auction/import", async (req, res): Promise<void> => {
-  if (!isAdminRequest(req)) {
-    res.status(401).json({ error: "ADMIN_API_KEY bearer token is required." });
-    return;
-  }
+router.post("/auction/import", requireAdmin, async (req, res): Promise<void> => {
 
   const parsed = ImportAuctionDataBody.safeParse(req.body);
   if (!parsed.success) {
@@ -323,11 +315,7 @@ router.post("/auction/import", async (req, res): Promise<void> => {
 // prices only for the canonical NFL Calcutta. Requires ADMIN_API_KEY. Blocked
 // if the selected entries have approved trades.
 
-router.post("/auction/import/draft-order", async (req, res): Promise<void> => {
-  if (!isAdminRequest(req)) {
-    res.status(401).json({ error: "ADMIN_API_KEY bearer token is required." });
-    return;
-  }
+router.post("/auction/import/draft-order", requireAdmin, async (req, res): Promise<void> => {
 
   const parsed = ImportAuctionDataBody.safeParse(req.body);
   if (!parsed.success) {

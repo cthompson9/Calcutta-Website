@@ -32,6 +32,7 @@ import {
   type NflScheduledGame,
 } from "../lib/nflSchedule";
 import { resolveSeasonIdForSport } from "../lib/calcuttaContext";
+import { RefreshNflStandingsJobResponse } from "@workspace/api-zod";
 
 const router: IRouter = Router();
 const JOB_LOCK_NAMESPACE = 7_142;
@@ -351,16 +352,16 @@ router.post("/jobs/refresh", async (req, res): Promise<void> => {
     }, scope);
 
     if (!locked.acquired) {
-      res.json({
+      res.json(RefreshNflStandingsJobResponse.parse({
         job,
         ran: false,
         reason: "already-running",
         durationMs: Date.now() - startedAtMs,
-      });
+      }));
       return;
     }
 
-    res.json(locked.value);
+    res.json(RefreshNflStandingsJobResponse.parse(locked.value));
   } catch (error) {
     req.log.error(
       { error: error instanceof Error ? error.message : String(error) },
@@ -369,7 +370,7 @@ router.post("/jobs/refresh", async (req, res): Promise<void> => {
     res.status(500).json({
       job,
       ran: false,
-      error: error instanceof Error ? error.message : "Refresh job failed.",
+      error: "Refresh job failed.",
       durationMs: Date.now() - startedAtMs,
     });
   }

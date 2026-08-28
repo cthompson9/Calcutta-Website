@@ -4,9 +4,9 @@
   "private": true,
   "type": "module",
   "scripts": {
-    "dev": "export NODE_ENV=development && pnpm run build && pnpm run start",
+    "dev": "export NODE_ENV=development && pnpm run build && node --enable-source-maps ./dist/index.mjs",
     "build": "node ./build.mjs",
-    "start": "node --enable-source-maps ./dist/index.mjs",
+    "start": "export NODE_ENV=production && node --enable-source-maps ./dist/index.mjs",
     "refresh:nfl-standings": "node --import tsx/esm src/jobs/nflStandingsRefresh.ts",
     "test": "node --import tsx/esm --test --test-concurrency=1 src/**/*.test.mjs",
     "typecheck": "tsc -p tsconfig.json --noEmit"
@@ -19,6 +19,8 @@
     "cors": "^2.8.6",
     "drizzle-orm": "catalog:",
     "express": "^5.2.1",
+    "express-rate-limit": "^8.6.2",
+    "helmet": "^8.1.0",
     "pino": "^9.14.0",
     "pino-http": "^10.5.0",
     "zod": "catalog:"

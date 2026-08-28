@@ -190,7 +190,7 @@ test("game aggregates preserve ordinary and marquee audit inputs and de-duplicat
   );
 });
 
-test("points use the game-level marquee multiplier once and retain playoff bonuses", () => {
+test("marquee weighting applies only to point differential and retains playoff bonuses", () => {
   const result = calculateNflPoints({
     wins: 2, losses: 0, ties: 1, ptDiff: 10,
     ordinaryWins: 1, marqueeWins: 1,
@@ -198,8 +198,10 @@ test("points use the game-level marquee multiplier once and retain playoff bonus
     ordinaryPtDiff: 4, marqueePtDiff: 3,
     playoffBerth: 1, divRound: 1, confRound: 0, sbBerth: 0, winSuperBowl: 0,
   });
-  // 150 + (10 × (1 + 2)) + (5 × 2) + (4 + 3 × 2) + 50 + 100
-  assert.equal(result.points, 350);
+  // 150 + (10 × (1 + 1)) + (5 × (0 + 1)) + (4 + 3 × 2) + 50 + 100
+  assert.equal(result.points, 335);
+  assert.equal(result.breakdown.wins, 20, "marquee wins remain raw win counts");
+  assert.equal(result.breakdown.ties, 5, "marquee ties remain raw tie counts");
   assert.equal(result.breakdown.ptDiff, 10);
 });
 

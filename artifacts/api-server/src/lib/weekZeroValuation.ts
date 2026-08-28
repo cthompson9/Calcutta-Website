@@ -144,6 +144,24 @@ export interface WeekZeroSnapshotRow {
   marketData: Record<string, unknown>;
 }
 
+/**
+ * A partial market capture is diagnostic data, not a valid valuation. Never
+ * persist it: interpolation is useful for displaying the gap but would
+ * otherwise manufacture a complete-looking, flat mark.
+ */
+export function assertCompleteWeekZeroCapture(
+  calculation: WeekZeroCalculation,
+): void {
+  const incomplete = calculation.valuations.filter(
+    (valuation) => valuation.marketStatus === "incomplete",
+  );
+  if (incomplete.length > 0) {
+    throw new Error(
+      `Kalshi Week 0 capture is incomplete for ${incomplete.length} team(s); existing marks were left unchanged.`,
+    );
+  }
+}
+
 export function buildWeekZeroSnapshotRows(
   calculation: WeekZeroCalculation,
   context: {

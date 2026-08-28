@@ -77,11 +77,11 @@ test("NFL adapter is a golden differential match for legacy points, shares, and 
     potSize,
     NFL_PAYOUT_RULES,
   );
-  assert.deepEqual(adapted.map((value) => value.points), [150, 514, 2020]);
+  assert.deepEqual(adapted.map((value) => value.points), [150, 484, 1980]);
   assert.deepEqual(adapted.map((value) => value.fairValue), [
     1282.2898423817865,
-    4393.979859894921,
-    17268.169877408058,
+    4137.521891418564,
+    16926.225919439577,
   ]);
 
   for (let index = 0; index < fixtures.length; index += 1) {
@@ -94,6 +94,48 @@ test("NFL adapter is a golden differential match for legacy points, shares, and 
     assert.equal(adapted[index].netReturn, legacy[index].netReturn);
     assert.equal(adapted[index].multiple, legacy[index].multiple);
   }
+});
+
+test("a complete 272-game NFL season sums to the fixed denominator with arbitrary marquee games", () => {
+  const events = Array.from({ length: 272 }, (_, index) => ({
+    seasonId: 2026,
+    source: "normalization-regression",
+    sourceEventId: `game-${index}`,
+    periodSequence: (index % 18) + 1,
+    homeTeamId: (index % 32) + 1,
+    awayTeamId: ((index + 1) % 32) + 1,
+    homeScore: 21,
+    awayScore: 14,
+    // Thursday for arbitrary marquee games; Sunday afternoon otherwise.
+    actualKickoffAt: index % 3 === 0
+      ? "2026-09-17T00:15:00.000Z"
+      : "2026-09-13T17:00:00.000Z",
+    status: "final",
+  }));
+  const outcomes = NFL_SCORING_ADAPTER.aggregateOutcomes(events);
+  const playoffMetrics = (teamId) => ({
+    playoff_berth: teamId <= 14 ? 1 : 0,
+    div_round: teamId <= 8 ? 1 : 0,
+    conf_round: teamId <= 4 ? 1 : 0,
+    sb_berth: teamId <= 2 ? 1 : 0,
+    win_super_bowl: teamId === 1 ? 1 : 0,
+  });
+  const values = calculateCompetitionTeamValues(
+    NFL_SCORING_ADAPTER,
+    Array.from({ length: 32 }, (_, index) => {
+      const teamId = index + 1;
+      return {
+        teamId,
+        metrics: { ...outcomes.get(teamId).metrics, ...playoffMetrics(teamId) },
+      };
+    }),
+    0,
+    NFL_PAYOUT_RULES,
+  );
+  assert.equal(
+    values.reduce((total, value) => total + value.points, 0),
+    NFL_SCORING_ADAPTER.normalizationDenominator,
+  );
 });
 
 test("NFL adapter produces the same normalized snapshot inputs as the legacy aggregator", () => {

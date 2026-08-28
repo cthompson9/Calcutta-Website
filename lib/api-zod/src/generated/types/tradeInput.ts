@@ -17,5 +17,6 @@ export interface TradeInput {
   /** Percentage of team traded (0–100). Defaults to 100. */
   percentage?: number;
   tradeDate: string;
+  /** @maxLength 2000 */
   notes?: string;
 }

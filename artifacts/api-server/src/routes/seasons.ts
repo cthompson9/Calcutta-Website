@@ -1,16 +1,17 @@
 import { Router, type IRouter } from "express";
 import { db, seasonsTable } from "@workspace/db";
 import { eq } from "drizzle-orm";
-import { CreateSeasonBody } from "@workspace/api-zod";
+import { CreateSeasonBody, CreateSeasonResponse, GetSeasonsResponse } from "@workspace/api-zod";
+import { requireAdmin } from "../middlewares/requireAdmin";
 
 const router: IRouter = Router();
 
 router.get("/seasons", async (_req, res): Promise<void> => {
   const seasons = await db.select().from(seasonsTable).orderBy(seasonsTable.year);
-  res.json(seasons);
+  res.json(GetSeasonsResponse.parse(seasons));
 });
 
-router.post("/seasons", async (req, res): Promise<void> => {
+router.post("/seasons", requireAdmin, async (req, res): Promise<void> => {
   const parsed = CreateSeasonBody.safeParse(req.body);
   if (!parsed.success) {
     res.status(400).json({ error: parsed.error.message });
@@ -21,7 +22,7 @@ router.post("/seasons", async (req, res): Promise<void> => {
     .insert(seasonsTable)
     .values({ year, isActive: isActive ?? false, isComplete: isComplete ?? false, label })
     .returning();
-  res.status(201).json(season);
+  res.status(201).json(CreateSeasonResponse.parse(season));
 });
 
 export default router;

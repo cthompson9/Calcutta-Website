@@ -9,6 +9,8 @@ import {
   eq,
   gt,
   isNull,
+  lt,
+  notExists,
 } from "drizzle-orm";
 import {
   Router,
@@ -29,6 +31,7 @@ const AUTHORIZATION_CODE_LIFETIME_MS = 5 * 60 * 1_000;
 const ACCESS_TOKEN_LIFETIME_MS = 60 * 60 * 1_000;
 const REFRESH_TOKEN_LIFETIME_MS = 30 * 24 * 60 * 60 * 1_000;
 const AUTHORIZATION_SCOPE = "mcp";
+const UNUSED_CLIENT_LIFETIME_MS = 24 * 60 * 60 * 1_000;
 
 type AuthorizationRequest = {
   clientId: string;
@@ -375,6 +378,27 @@ export function createMcpOAuthRouter(): IRouter {
       return;
     }
 
+    // Dynamic registration is intentionally short-lived until the client
+    // completes a flow. This bounds abandoned public-client records.
+    const staleBefore = new Date(Date.now() - UNUSED_CLIENT_LIFETIME_MS);
+    const now = new Date();
+    await db.delete(mcpOauthClientsTable).where(and(
+      lt(mcpOauthClientsTable.createdAt, staleBefore),
+      notExists(db.select({ clientId: mcpOauthTokensTable.clientId })
+        .from(mcpOauthTokensTable)
+        .where(and(
+          eq(mcpOauthTokensTable.clientId, mcpOauthClientsTable.clientId),
+          isNull(mcpOauthTokensTable.revokedAt),
+          gt(mcpOauthTokensTable.expiresAt, now),
+        ))),
+      notExists(db.select({ clientId: mcpOauthAuthorizationCodesTable.clientId })
+        .from(mcpOauthAuthorizationCodesTable)
+        .where(and(
+          eq(mcpOauthAuthorizationCodesTable.clientId, mcpOauthClientsTable.clientId),
+          isNull(mcpOauthAuthorizationCodesTable.usedAt),
+          gt(mcpOauthAuthorizationCodesTable.expiresAt, now),
+        ))),
+    ));
     const clientName = typeof req.body?.client_name === "string"
       ? req.body.client_name.trim().slice(0, 200)
       : null;

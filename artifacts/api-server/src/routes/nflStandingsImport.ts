@@ -2,19 +2,17 @@ import { Router, type IRouter, type Request } from "express";
 import {
   ApplyNflStandingsImportBody,
   PreviewNflStandingsImportBody,
+  ApplyNflStandingsImportResponse,
+  PreviewNflStandingsImportResponse,
 } from "@workspace/api-zod";
 import {
   applyNflStandingsImport,
   NflStandingsImportError,
   previewNflStandingsImport,
 } from "../lib/nflStandingsImport";
+import { requireAdmin } from "../middlewares/requireAdmin";
 
 const router: IRouter = Router();
-
-function isAdminRequest(req: Request): boolean {
-  const adminKey = process.env["ADMIN_API_KEY"];
-  return Boolean(adminKey && req.headers.authorization === `Bearer ${adminKey}`);
-}
 
 function sendImportError(
   error: unknown,
@@ -27,28 +25,20 @@ function sendImportError(
   res.status(500).json({ error: "NFL standings import failed unexpectedly." });
 }
 
-router.post("/results/nfl-standings/preview", async (req, res): Promise<void> => {
-  if (!isAdminRequest(req)) {
-    res.status(401).json({ error: "Unauthorized" });
-    return;
-  }
+router.post("/results/nfl-standings/preview", requireAdmin, async (req, res): Promise<void> => {
   const parsed = PreviewNflStandingsImportBody.safeParse(req.body);
   if (!parsed.success) {
     res.status(400).json({ error: parsed.error.message });
     return;
   }
   try {
-    res.json(await previewNflStandingsImport(parsed.data.seasonYear));
+    res.json(PreviewNflStandingsImportResponse.parse(await previewNflStandingsImport(parsed.data.seasonYear)));
   } catch (error) {
     sendImportError(error, res);
   }
 });
 
-router.post("/results/nfl-standings/apply", async (req, res): Promise<void> => {
-  if (!isAdminRequest(req)) {
-    res.status(401).json({ error: "Unauthorized" });
-    return;
-  }
+router.post("/results/nfl-standings/apply", requireAdmin, async (req, res): Promise<void> => {
   const parsed = ApplyNflStandingsImportBody.safeParse(req.body);
   if (!parsed.success) {
     res.status(400).json({ error: parsed.error.message });
@@ -56,13 +46,13 @@ router.post("/results/nfl-standings/apply", async (req, res): Promise<void> => {
   }
   try {
     const requestId = req.headers["x-request-id"];
-    res.json(
+    res.json(ApplyNflStandingsImportResponse.parse(
       await applyNflStandingsImport({
         seasonYear: parsed.data.seasonYear,
         requestedBy: "admin_api",
         requestId: typeof requestId === "string" ? requestId : undefined,
       }),
-    );
+    ));
   } catch (error) {
     sendImportError(error, res);
   }

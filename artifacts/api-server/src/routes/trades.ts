@@ -17,29 +17,19 @@ import {
   UpdateTradeParams,
   SetTradeStatusBody,
   SetTradeStatusParams,
+  GetTradesResponse,
+  CreateTradeResponse,
+  UpdateTradeResponse,
+  SetTradeStatusResponse,
 } from "@workspace/api-zod";
 import { OWNERSHIP_SEASON_LOCK_NAMESPACE } from "../lib/ownershipShares";
 import { resolveCalcuttaId } from "../lib/calcuttaContext";
+import { createPendingTrade, validateTradeOwnership as validateSharedTradeOwnership } from "../lib/tradeService";
+import { requireAdmin } from "../middlewares/requireAdmin";
 
 const router: IRouter = Router();
 
-const MIN_TRADE_PERCENTAGE = 1;
-const MAX_TRADE_PERCENTAGE = 100;
-
 // ── Ownership-integrity validation ────────────────────────────────────────────
-
-/**
- * Validate a proposed trade against current season state and effective ownership.
- * Returns a human-readable error string when invalid, or null when valid.
- *
- * Checks:
- *  - seller and buyer must differ
- *  - team must be auctioned in the given season (team_season_auctions row exists)
- *
- * Trades deliberately allow a seller to have no long ownership (or to sell more
- * than their current stake). Once approved, those sales create a signed short
- * position in the season ownership ledger.
- */
 async function validateTradeOwnership(args: {
   seasonId: number;
   teamId: number;
@@ -48,51 +38,15 @@ async function validateTradeOwnership(args: {
   toBidderId: number;
   percentage: number;
 }, query: Pick<typeof db, "select"> = db, requireCompletePrimaryOwnership = false): Promise<string | null> {
-  const { fromBidderId, toBidderId, percentage } = args;
-
-  if (fromBidderId === toBidderId) {
-    return "Seller and buyer must be different owners.";
+  if (args.entryId == null) {
+    return "Team is not an entry in the selected Calcutta.";
   }
-
-  if (
-    !Number.isFinite(percentage) ||
-    percentage < MIN_TRADE_PERCENTAGE ||
-    percentage > MAX_TRADE_PERCENTAGE
-  ) {
-    return `Trade percentage must be between ${MIN_TRADE_PERCENTAGE}% and ${MAX_TRADE_PERCENTAGE}%.`;
-  }
-
-  const primaryOwners = await query
-    .select({
-      bidderId: positionsTable.bidderId,
-      ownershipShare: positionsTable.ownershipShare,
-    })
-    .from(positionsTable)
-    .where(and(
-      eq(positionsTable.entryId, args.entryId!),
-      eq(positionsTable.source, "primary"),
-    ));
-  if (primaryOwners.length === 0) {
-    return "Team has no primary positions in the selected Calcutta and cannot be traded.";
-  }
-
-  if (requireCompletePrimaryOwnership) {
-    const total = primaryOwners.reduce((sum, owner) => sum + Number(owner.ownershipShare), 0);
-    if (Math.abs(total - 1) > 0.0000005) {
-      return "The team's original auction ownership is incomplete or invalid.";
-    }
-  }
-
-  return null;
-}
-
-// ── Auth helpers ────────────────────────────────────────────────────────────
-
-function isAdminRequest(req: Request): boolean {
-  const adminKey = process.env["ADMIN_API_KEY"];
-  if (!adminKey) return false;
-  const auth = req.headers["authorization"];
-  return auth === `Bearer ${adminKey}`;
+  return validateSharedTradeOwnership({
+    entryId: args.entryId,
+    fromBidderId: args.fromBidderId,
+    toBidderId: args.toBidderId,
+    percentage: args.percentage,
+  }, query, requireCompletePrimaryOwnership);
 }
 
 // ── Helpers ─────────────────────────────────────────────────────────────────
@@ -171,11 +125,7 @@ async function enrichTrade(tradeId: number) {
 
 // ── GET /trades ──────────────────────────────────────────────────────────────
 
-router.get("/admin/validate", (req: Request, res: Response): void => {
-  if (!isAdminRequest(req)) {
-    res.status(401).json({ error: "Invalid admin key" });
-    return;
-  }
+router.get("/admin/validate", requireAdmin, (_req: Request, res: Response): void => {
   res.status(204).send();
 });
 
@@ -237,7 +187,7 @@ router.get("/trades", async (req, res): Promise<void> => {
     .where(eq(seasonsTable.id, seasonId))
     .limit(1);
 
-  res.json(
+  res.json(GetTradesResponse.parse(
     rows.map((r) => ({
       id: r.id,
       seasonYear: seasonInfo[0]?.year ?? 0,
@@ -258,12 +208,12 @@ router.get("/trades", async (req, res): Promise<void> => {
       tradeDate: r.tradeDate,
       notes: r.notes,
     })),
-  );
+  ));
 });
 
 // ── POST /trades — anyone can create; always starts as pending ────────────────
 
-router.post("/trades", async (req, res): Promise<void> => {
+router.post("/trades", requireAdmin, async (req, res): Promise<void> => {
   const parsed = CreateTradeBody.safeParse(req.body);
   if (!parsed.success) {
     res.status(400).json({ error: parsed.error.message });
@@ -284,60 +234,20 @@ router.post("/trades", async (req, res): Promise<void> => {
     await tx.execute(
       sql`select pg_advisory_xact_lock(${OWNERSHIP_SEASON_LOCK_NAMESPACE}, ${seasonId})`,
     );
-    const calcuttaId = await resolveCalcuttaId(tx, { seasonId, calcuttaId: data.calcuttaId });
-    if (!calcuttaId) return { kind: "invalid" as const, error: "Calcutta not found for this season." };
-    const entryRows = await tx
-      .select({ id: calcuttaEntriesTable.id })
-      .from(calcuttaEntriesTable)
-      .where(and(
-        eq(calcuttaEntriesTable.calcuttaId, calcuttaId),
-        eq(calcuttaEntriesTable.teamId, data.teamId),
-      ))
-      .limit(1);
-    const entryId = entryRows[0]?.id;
-    if (!entryId) return { kind: "invalid" as const, error: "Team is not an entry in the selected Calcutta." };
-    const validationError = await validateTradeOwnership(
-      {
-        seasonId,
-        teamId: data.teamId,
-        fromBidderId: data.fromBidderId,
-        toBidderId: data.toBidderId,
-        percentage: data.percentage ?? 100,
-        entryId,
-      },
-      tx,
-    );
-    if (validationError) return { kind: "invalid" as const, error: validationError };
-
-    let price = data.price;
-    if (price === undefined || price === null) {
-      const primaryRows = await tx
-        .select({ costBasis: positionsTable.costBasis })
-        .from(positionsTable)
-        .where(and(
-          eq(positionsTable.entryId, entryId),
-          eq(positionsTable.source, "primary"),
-        ));
-      const bidAmt = primaryRows.reduce((sum, row) => sum + Number(row.costBasis), 0);
-      price = Math.round(bidAmt * ((data.percentage ?? 100) / 100) * 100) / 100;
-    }
-
-    const [trade] = await tx
-      .insert(tradesTable)
-      .values({
-        seasonId,
-        teamId: data.teamId,
-        entryId,
-        fromBidderId: data.fromBidderId,
-        toBidderId: data.toBidderId,
-        price: price.toFixed(2),
-        percentage: (data.percentage ?? 100).toString(),
-        status: "pending",
-        tradeDate: data.tradeDate,
-        notes: data.notes,
-      })
-      .returning({ id: tradesTable.id });
-    return { kind: "created" as const, tradeId: trade.id };
+    const created = await createPendingTrade(tx, {
+      seasonId,
+      calcuttaId: data.calcuttaId,
+      teamId: data.teamId,
+      fromBidderId: data.fromBidderId,
+      toBidderId: data.toBidderId,
+      percentage: data.percentage,
+      price: data.price ?? undefined,
+      tradeDate: data.tradeDate,
+      notes: data.notes,
+    });
+    return created.ok
+      ? { kind: "created" as const, tradeId: created.tradeId }
+      : { kind: "invalid" as const, error: created.error };
   });
 
   if (outcome.kind === "invalid") {
@@ -346,12 +256,12 @@ router.post("/trades", async (req, res): Promise<void> => {
   }
 
   const enriched = await enrichTrade(outcome.tradeId);
-  res.status(201).json(enriched);
+  res.status(201).json(CreateTradeResponse.parse(enriched));
 });
 
 // ── PATCH /trades/:id — update price, date, notes, percentage (not status) ──
 
-router.patch("/trades/:id", async (req: Request, res: Response): Promise<void> => {
+router.patch("/trades/:id", requireAdmin, async (req: Request, res: Response): Promise<void> => {
   const params = UpdateTradeParams.safeParse(req.params);
   const body = UpdateTradeBody.safeParse(req.body);
   if (!params.success || !body.success) {
@@ -359,12 +269,6 @@ router.patch("/trades/:id", async (req: Request, res: Response): Promise<void> =
     return;
   }
 
-  if (body.data.percentage !== undefined && !isAdminRequest(req)) {
-    res.status(401).json({
-      error: "Changing trade ownership percentage requires the ADMIN_API_KEY bearer token.",
-    });
-    return;
-  }
   if (body.data.price !== undefined && (!Number.isFinite(body.data.price) || body.data.price < 0)) {
     res.status(400).json({ error: "Trade price must be a non-negative number." });
     return;
@@ -427,19 +331,12 @@ router.patch("/trades/:id", async (req: Request, res: Response): Promise<void> =
   }
 
   const enriched = await enrichTrade(params.data.id);
-  res.json(enriched);
+  res.json(UpdateTradeResponse.parse(enriched));
 });
 
 // ── PATCH /trades/:id/status — commissioner confirmation only ───────────────
 
-router.patch("/trades/:id/status", async (req: Request, res: Response): Promise<void> => {
-  if (!isAdminRequest(req)) {
-    res.status(401).json({
-      error: "Unauthorized. This endpoint requires the ADMIN_API_KEY bearer token.",
-    });
-    return;
-  }
-
+router.patch("/trades/:id/status", requireAdmin, async (req: Request, res: Response): Promise<void> => {
   const params = SetTradeStatusParams.safeParse(req.params);
   if (!params.success) {
     res.status(400).json({ error: "Invalid trade id" });
@@ -548,19 +445,12 @@ router.patch("/trades/:id/status", async (req: Request, res: Response): Promise<
     "Commissioner trade decision recorded",
   );
   const enriched = await enrichTrade(id);
-  res.json(enriched);
+  res.json(SetTradeStatusResponse.parse(enriched));
 });
 
 // ── DELETE /trades/:id ────────────────────────────────────────────────────────
 
-router.delete("/trades/:id", async (req: Request, res: Response): Promise<void> => {
-  if (!isAdminRequest(req)) {
-    res.status(401).json({
-      error: "Unauthorized. This endpoint requires the ADMIN_API_KEY bearer token.",
-    });
-    return;
-  }
-
+router.delete("/trades/:id", requireAdmin, async (req: Request, res: Response): Promise<void> => {
   const parsed = DeleteTradeParams.safeParse(req.params);
   if (!parsed.success) {
     res.status(400).json({ error: "Invalid id" });

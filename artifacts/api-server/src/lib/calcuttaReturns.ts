@@ -769,10 +769,10 @@ export function calculateNflPoints(
     snapshot.marqueeTies, snapshot.ordinaryPtDiff, snapshot.marqueePtDiff,
   ].some((value) => value != null && value !== 0);
   const weightedWins = hasGameBreakdown
-    ? (snapshot.ordinaryWins ?? 0) + NFL_MARQUEE_MULTIPLIER * (snapshot.marqueeWins ?? 0)
+    ? (snapshot.ordinaryWins ?? 0) + (snapshot.marqueeWins ?? 0)
     : snapshot.wins;
   const weightedTies = hasGameBreakdown
-    ? (snapshot.ordinaryTies ?? 0) + NFL_MARQUEE_MULTIPLIER * (snapshot.marqueeTies ?? 0)
+    ? (snapshot.ordinaryTies ?? 0) + (snapshot.marqueeTies ?? 0)
     : snapshot.ties;
   const weightedPtDiff = hasGameBreakdown
     ? (snapshot.ordinaryPtDiff ?? 0) + NFL_MARQUEE_MULTIPLIER * (snapshot.marqueePtDiff ?? 0)

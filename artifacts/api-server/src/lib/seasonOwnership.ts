@@ -592,7 +592,7 @@ export async function loadCrossCalcuttaRollup(args: {
           totalMtm: roundMoney(cell.totalMtm),
           totalNetMtm: roundMoney(cell.totalNetMtm),
           netPctReturn:
-            totalCost > 0 ? Math.round((totalNetReturn / totalCost) * 10_000) / 100 : 0,
+            totalCost > 0 ? Math.round((totalNetReturn / totalCost) * 10_000) / 10_000 : 0,
         };
       });
       const present = cells.filter((cell): cell is CalcuttaComparisonCell => Boolean(cell));
@@ -628,7 +628,7 @@ export async function loadCrossCalcuttaRollup(args: {
           totalNetMtm: roundMoney(present.reduce((total, cell) => total + cell.totalNetMtm, 0)),
           netPctReturn:
             aggregateCost > 0
-              ? Math.round((aggregateNet / aggregateCost) * 10_000) / 100
+              ? Math.round((aggregateNet / aggregateCost) * 10_000) / 10_000
               : 0,
         },
       };

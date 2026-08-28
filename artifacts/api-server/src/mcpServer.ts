@@ -58,6 +58,7 @@ import {
 } from "./lib/calcuttaContext";
 import { loadCurrentBidderConsortiums } from "./lib/consortiumMemberships";
 import { applyNflStandingsImport, NflStandingsImportError } from "./lib/nflStandingsImport";
+import { createPendingTrade, validateTradeOwnership } from "./lib/tradeService";
 import {
   mcpProtectedResourceMetadataUrl,
   matchesMcpApiKey,
@@ -111,6 +112,16 @@ async function findBidder(name: string) {
     .where(ilike(biddersTable.name, `%${name}%`))
     .limit(1);
   return rows[0] ?? null;
+}
+
+async function resolveExistingTeam(name: string): Promise<NamedRecord | { error: string }> {
+  const teams = await db.select({ id: teamsTable.id, name: teamsTable.name }).from(teamsTable);
+  return resolveUniqueName(teams, name, "Team");
+}
+
+async function resolveExistingBidder(name: string): Promise<NamedRecord | { error: string }> {
+  const bidders = await db.select({ id: biddersTable.id, name: biddersTable.name }).from(biddersTable);
+  return resolveUniqueName(bidders, name, "Owner");
 }
 
 type NamedRecord = { id: number; name: string };
@@ -184,6 +195,13 @@ async function validateMcpTradeApproval(trade: {
   toBidderId: number;
   percentage: string;
 }, query: Pick<typeof db, "select"> = db, requireCompletePrimaryOwnership = false): Promise<string | null> {
+  return validateTradeOwnership({
+    entryId: trade.entryId,
+    fromBidderId: trade.fromBidderId,
+    toBidderId: trade.toBidderId,
+    percentage: Number(trade.percentage),
+  }, query, requireCompletePrimaryOwnership);
+  /*
   if (trade.fromBidderId === trade.toBidderId) {
     return "Seller and buyer must be different owners.";
   }
@@ -222,6 +240,7 @@ async function validateMcpTradeApproval(trade: {
   // Do not cap a sale to a seller's long stake: approved trades are a signed
   // ledger and may intentionally open or increase a short position.
   return null;
+  */
 }
 
 async function getTeamResult(teamId: number, seasonId: number) {
@@ -947,11 +966,11 @@ function buildMcpServer() {
 
   server.tool(
     "create_trade",
-    "Submit a trade between two owners for a team. New owner names are created automatically. Sales may create a short position. Every trade starts PENDING and requires admin approval before it affects standings.",
+    "Submit a trade between existing owners for an existing, unambiguously identified team. Sales may create a short position. Every trade starts PENDING and requires admin approval before it affects standings.",
     {
       team:        z.string().describe("Full or partial team name, e.g. 'Seattle Seahawks'"),
-      fromOwner:   z.string().describe("Name of owner selling the stake; a new name is registered automatically."),
-      toOwner:     z.string().describe("Name of owner buying the stake; a new name is registered automatically."),
+      fromOwner:   z.string().describe("Name of the existing owner selling the stake."),
+      toOwner:     z.string().describe("Name of the existing owner buying the stake."),
       percentage:  z.number().min(1).max(100).optional().describe("Percentage of team traded (1–100). Default 100."),
       price:       z.number().optional().describe("Trade price in dollars. If omitted, defaults to team's draft cost × percentage / 100."),
       tradeDate:   z.string().optional().describe("Trade date as YYYY-MM-DD. Defaults to today."),
@@ -960,19 +979,15 @@ function buildMcpServer() {
       notes:       z.string().optional().describe("Optional notes about the trade"),
     },
     async ({ team, fromOwner, toOwner, percentage = 100, price, tradeDate, season, calcuttaId, notes }) => {
-      const t = await findTeam(team);
-      if (!t) return text(`Team not found: ${team}`);
-
-      if (normalizeName(fromOwner) === normalizeName(toOwner)) {
-        return text("Error: Seller and buyer must be different owners.");
-      }
-
-      const fromResult = await resolveOrCreateBidder(fromOwner);
+      const teamResult = await resolveExistingTeam(team);
+      if ("error" in teamResult) return text(`Error: ${teamResult.error}`);
+      const fromResult = await resolveExistingBidder(fromOwner);
       if ("error" in fromResult) return text(`Error: ${fromResult.error}`);
-      const toResult = await resolveOrCreateBidder(toOwner);
+      const toResult = await resolveExistingBidder(toOwner);
       if ("error" in toResult) return text(`Error: ${toResult.error}`);
-      const from = fromResult.bidder;
-      const to = toResult.bidder;
+      const t = teamResult;
+      const from = fromResult;
+      const to = toResult;
 
       const year = season ?? await resolveWritableSeasonYear();
       const sid = await resolveSeasonId(year);
@@ -986,73 +1001,14 @@ function buildMcpServer() {
         await tx.execute(
           sql`select pg_advisory_xact_lock(${OWNERSHIP_SEASON_LOCK_NAMESPACE}, ${sid})`,
         );
-        const calcutta = calcuttaId == null
-          ? await getOrCreateCanonicalCalcutta(tx, { seasonId: sid, year })
-          : (await tx
-            .select({ id: calcuttasTable.id })
-            .from(calcuttasTable)
-            .where(and(
-              eq(calcuttasTable.id, calcuttaId),
-              eq(calcuttasTable.seasonId, sid),
-              eq(calcuttasTable.sport, NFL_SPORT),
-            ))
-            .limit(1))[0];
-        if (!calcutta) return { kind: "invalid" as const, error: `Calcutta ${calcuttaId} is not an NFL Calcutta for ${year}.` };
-        const entry = (await tx
-          .select({ id: calcuttaEntriesTable.id })
-          .from(calcuttaEntriesTable)
-          .where(and(
-            eq(calcuttaEntriesTable.calcuttaId, calcutta.id),
-            eq(calcuttaEntriesTable.teamId, t.id),
-          ))
-          .limit(1))[0];
-        if (!entry) {
-          return { kind: "invalid" as const, error: "Team is not an entry in the selected Calcutta." };
-        }
-        const validationError = await validateMcpTradeApproval(
-          {
-            seasonId: sid,
-            teamId: t.id,
-            entryId: entry.id,
-            fromBidderId: from.id,
-            toBidderId: to.id,
-            percentage: percentage.toString(),
-          },
-          tx,
-        );
-        if (validationError) return { kind: "invalid" as const, error: validationError };
-
-        let effectivePrice = price;
-        if (effectivePrice === undefined) {
-          const auctionRows = await tx
-            .select({ costBasis: positionsTable.costBasis })
-            .from(positionsTable)
-            .where(and(
-              eq(positionsTable.entryId, entry.id),
-              eq(positionsTable.source, "primary"),
-            ));
-          effectivePrice = Math.round(
-            auctionRows.reduce((sum, row) => sum + Number(row.costBasis), 0) *
-              (percentage / 100) * 100,
-          ) / 100;
-        }
-
-        const [inserted] = await tx
-          .insert(tradesTable)
-          .values({
-            seasonId: sid,
-            teamId: t.id,
-            entryId: entry.id,
-            fromBidderId: from.id,
-            toBidderId: to.id,
-            price: effectivePrice.toFixed(2),
-            percentage: percentage.toString(),
-            status: "pending",
-            tradeDate: tradeDate ?? todayInNewYork(),
-            notes,
-          })
-          .returning({ id: tradesTable.id });
-        return { kind: "created" as const, tradeId: inserted.id, effectivePrice };
+        const created = await createPendingTrade(tx, {
+          seasonId: sid, calcuttaId, teamId: t.id,
+          fromBidderId: from.id, toBidderId: to.id, percentage, price,
+          tradeDate: tradeDate ?? todayInNewYork(), notes,
+        });
+        return created.ok
+          ? { kind: "created" as const, tradeId: created.tradeId, effectivePrice: created.price }
+          : { kind: "invalid" as const, error: created.error };
       });
       if (outcome.kind === "invalid") return text(`Error: ${outcome.error}`);
 

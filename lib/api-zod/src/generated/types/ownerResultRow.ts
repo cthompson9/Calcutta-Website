@@ -19,6 +19,7 @@ export interface OwnerResultRow {
   totalCost: number;
   totalRealizedReturn: number;
   totalNetReturn: number;
+  /** Net return as a decimal fraction of cost (for example, 0.25 means 25%). */
   netPctReturn: number;
   /** Total MTM gross dollars. */
   totalMtm: number;
