@@ -152,6 +152,12 @@ export interface WeekZeroSnapshotRow {
 export function assertCompleteWeekZeroCapture(
   calculation: WeekZeroCalculation,
 ): void {
+  const uniqueTeams = new Set(calculation.valuations.map((valuation) => valuation.teamId));
+  if (calculation.valuations.length !== 32 || uniqueTeams.size !== 32) {
+    throw new Error(
+      `Kalshi Week 0 capture requires exactly 32 distinct team valuations; existing marks were left unchanged.`,
+    );
+  }
   const incomplete = calculation.valuations.filter(
     (valuation) => valuation.marketStatus === "incomplete",
   );

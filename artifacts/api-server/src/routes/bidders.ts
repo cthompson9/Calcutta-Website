@@ -20,6 +20,7 @@ import { loadSeasonOwnership } from "../lib/seasonOwnership";
 import { loadCurrentBidderConsortiums } from "../lib/consortiumMemberships";
 import { resolveCalcuttaId } from "../lib/calcuttaContext";
 import { requireAdmin } from "../middlewares/requireAdmin";
+import { ErrorResponse, sendParsedJson } from "../lib/sendParsedJson";
 
 const router: IRouter = Router();
 
@@ -52,7 +53,7 @@ async function getBidderResponse(id: number) {
 router.get("/bidders", async (req, res): Promise<void> => {
   const parsed = GetBiddersQueryParams.safeParse(req.query);
   if (!parsed.success) {
-    res.status(400).json({ error: parsed.error.message });
+    sendParsedJson(res, ErrorResponse, { error: parsed.error.message }, 400);
     return;
   }
   const { season: seasonYear } = parsed.data as typeof parsed.data & { calcuttaId?: number };
@@ -61,7 +62,7 @@ router.get("/bidders", async (req, res): Promise<void> => {
     // ── Season-filtered: only return season participants ───────────────────
     const seasonId = await resolveSeasonId(seasonYear);
     if (!seasonId) {
-      res.json([]);
+      sendParsedJson(res, GetBiddersResponse, []);
       return;
     }
 
@@ -70,13 +71,13 @@ router.get("/bidders", async (req, res): Promise<void> => {
       calcuttaId: (parsed.data as typeof parsed.data & { calcuttaId?: number }).calcuttaId,
     });
     if (!calcuttaId) {
-      res.json([]);
+      sendParsedJson(res, GetBiddersResponse, []);
       return;
     }
     const ownership = await loadSeasonOwnership(seasonId, calcuttaId);
 
     if (ownership.participantIds.size === 0) {
-      res.json([]);
+      sendParsedJson(res, GetBiddersResponse, []);
       return;
     }
 
@@ -159,7 +160,7 @@ router.get("/bidders", async (req, res): Promise<void> => {
       };
     });
 
-    res.json(GetBiddersResponse.parse(results));
+    sendParsedJson(res, GetBiddersResponse, results);
     return;
   }
 
@@ -191,13 +192,13 @@ router.get("/bidders", async (req, res): Promise<void> => {
     }>,
   }));
 
-  res.json(GetBiddersResponse.parse(results));
+  sendParsedJson(res, GetBiddersResponse, results);
 });
 
 router.post("/bidders", requireAdmin, async (req, res): Promise<void> => {
   const parsed = CreateBidderBody.safeParse(req.body);
   if (!parsed.success) {
-    res.status(400).json({ error: parsed.error.message });
+    sendParsedJson(res, ErrorResponse, { error: parsed.error.message }, 400);
     return;
   }
 
@@ -206,19 +207,19 @@ router.post("/bidders", requireAdmin, async (req, res): Promise<void> => {
     .values({ name: parsed.data.name })
     .returning();
 
-  res.status(201).json(CreateBidderResponse.parse(await getBidderResponse(bidder.id)));
+  sendParsedJson(res, CreateBidderResponse, await getBidderResponse(bidder.id), 201);
 });
 
 router.patch("/bidders/:id", requireAdmin, async (req, res): Promise<void> => {
   const params = UpdateBidderParams.safeParse(req.params);
   if (!params.success) {
-    res.status(400).json({ error: params.error.message });
+    sendParsedJson(res, ErrorResponse, { error: params.error.message }, 400);
     return;
   }
 
   const parsed = UpdateBidderBody.safeParse(req.body);
   if (!parsed.success) {
-    res.status(400).json({ error: parsed.error.message });
+    sendParsedJson(res, ErrorResponse, { error: parsed.error.message }, 400);
     return;
   }
 
@@ -229,17 +230,17 @@ router.patch("/bidders/:id", requireAdmin, async (req, res): Promise<void> => {
     .returning();
 
   if (!bidder) {
-    res.status(404).json({ error: "Bidder not found" });
+    sendParsedJson(res, ErrorResponse, { error: "Bidder not found" }, 404);
     return;
   }
 
-  res.json(UpdateBidderResponse.parse(await getBidderResponse(bidder.id)));
+  sendParsedJson(res, UpdateBidderResponse, await getBidderResponse(bidder.id));
 });
 
 router.delete("/bidders/:id", requireAdmin, async (req, res): Promise<void> => {
   const params = DeleteBidderParams.safeParse(req.params);
   if (!params.success) {
-    res.status(400).json({ error: params.error.message });
+    sendParsedJson(res, ErrorResponse, { error: params.error.message }, 400);
     return;
   }
 
@@ -249,7 +250,7 @@ router.delete("/bidders/:id", requireAdmin, async (req, res): Promise<void> => {
     .returning();
 
   if (deleted.length === 0) {
-    res.status(404).json({ error: "Bidder not found" });
+    sendParsedJson(res, ErrorResponse, { error: "Bidder not found" }, 404);
     return;
   }
 

@@ -1,4 +1,6 @@
 import { Router, type IRouter, type Request } from "express";
+import { z } from "zod/v4";
+import { ErrorResponse, sendParsedJson } from "../lib/sendParsedJson";
 import { and, asc, eq, gte, lte, sql } from "drizzle-orm";
 import {
   GetPayoutRulesQueryParams,
@@ -52,6 +54,18 @@ import {
 import { requireAdmin } from "../middlewares/requireAdmin";
 
 const router: IRouter = Router();
+const NflGamesResponse = z.array(z.object({}).passthrough());
+const NflGameWriteResponse = z.object({
+  game: z.object({}).passthrough(),
+  snapshotsWritten: z.number(),
+}).strict();
+const PayoutDiagnosticsResponse = z.object({}).passthrough();
+const EntryReturnDiagnosticsResponse = z.object({
+  ok: z.boolean(),
+  calcuttaId: z.number(),
+  auditedEntries: z.number(),
+  issues: z.array(z.object({}).passthrough()),
+}).strict();
 
 async function rebuildNflRealizedSnapshots(
   tx: Parameters<Parameters<typeof db.transaction>[0]>[0],
@@ -211,7 +225,7 @@ async function resolveScoringCalcutta(
 router.get("/periods", async (req, res): Promise<void> => {
   const parsed = GetSportPeriodsQueryParams.safeParse(req.query);
   if (!parsed.success) {
-    res.status(400).json({ error: parsed.error.message });
+    sendParsedJson(res, ErrorResponse, { error: parsed.error.message }, 400);
     return;
   }
   const sport = parsed.data.sport;
@@ -233,24 +247,24 @@ router.get("/periods", async (req, res): Promise<void> => {
 
   // The NFL template is deterministic and lets a newly created pool render its
   // period picker before the first commissioner write seeds the shared rows.
-  res.json(GetSportPeriodsResponse.parse(
+  sendParsedJson(res, GetSportPeriodsResponse,
     periods.length > 0
       ? periods
       : sport === NFL_SPORT
         ? NFL_PERIOD_TEMPLATE
         : [],
-  ));
+  );
 });
 
 router.get("/payout-rules", async (req, res): Promise<void> => {
   const parsed = GetPayoutRulesQueryParams.safeParse(req.query);
   if (!parsed.success) {
-    res.status(400).json({ error: parsed.error.message });
+    sendParsedJson(res, ErrorResponse, { error: parsed.error.message }, 400);
     return;
   }
   const season = await resolveSeason(parsed.data.season);
   if (!season) {
-    res.json(GetPayoutRulesResponse.parse([]));
+    sendParsedJson(res, GetPayoutRulesResponse, []);
     return;
   }
   const calcutta = await resolveScoringCalcutta(
@@ -259,8 +273,8 @@ router.get("/payout-rules", async (req, res): Promise<void> => {
   );
   if (!calcutta) {
     if (parsed.data.calcuttaId != null) {
-      res.status(400).json({ error: "Calcutta must belong to the requested season." });
-    } else res.json(GetPayoutRulesResponse.parse([]));
+      sendParsedJson(res, ErrorResponse, { error: "Calcutta must belong to the requested season." }, 400);
+    } else sendParsedJson(res, GetPayoutRulesResponse, []);
     return;
   }
   const rules = await db
@@ -271,32 +285,32 @@ router.get("/payout-rules", async (req, res): Promise<void> => {
     })
     .from(payoutRulesTable)
     .where(eq(payoutRulesTable.calcuttaId, calcutta.id));
-  res.json(GetPayoutRulesResponse.parse(
+  sendParsedJson(res, GetPayoutRulesResponse,
     rules.map((rule) => ({
       metric: rule.metric,
       dollarsPerUnit: rule.dollarsPerUnit == null ? null : Number(rule.dollarsPerUnit),
       playoffMultiplier: rule.playoffMultiplier == null ? null : Number(rule.playoffMultiplier),
     })),
-  ));
+  );
 });
 
 router.put("/payout-rules", requireAdmin, async (req, res): Promise<void> => {
   const parsed = ReplacePayoutRulesBody.safeParse(req.body);
   if (!parsed.success) {
-    res.status(400).json({ error: parsed.error.message });
+    sendParsedJson(res, ErrorResponse, { error: parsed.error.message }, 400);
     return;
   }
   const duplicateMetric = new Set<string>();
   for (const rule of parsed.data.rules) {
     if (duplicateMetric.has(rule.metric)) {
-      res.status(400).json({ error: `Payout rule "${rule.metric}" was supplied more than once.` });
+      sendParsedJson(res, ErrorResponse, { error: `Payout rule "${rule.metric}" was supplied more than once.` }, 400);
       return;
     }
     duplicateMetric.add(rule.metric);
   }
   const season = await resolveSeason(parsed.data.seasonYear);
   if (!season) {
-    res.status(404).json({ error: `Season ${parsed.data.seasonYear} not found` });
+    sendParsedJson(res, ErrorResponse, { error: `Season ${parsed.data.seasonYear} not found` }, 404);
     return;
   }
   const calcutta = await resolveScoringCalcutta(
@@ -304,7 +318,7 @@ router.put("/payout-rules", requireAdmin, async (req, res): Promise<void> => {
     parsed.data.calcuttaId,
   );
   if (!calcutta) {
-    res.status(400).json({ error: "Calcutta must belong to the requested season." });
+    sendParsedJson(res, ErrorResponse, { error: "Calcutta must belong to the requested season." }, 400);
     return;
   }
   const baseAdapter = getCompetitionScoringAdapter(
@@ -312,7 +326,7 @@ router.put("/payout-rules", requireAdmin, async (req, res): Promise<void> => {
     calcutta.competitionFormat,
   );
   if (!baseAdapter) {
-    res.status(400).json({ error: "This competition does not have a scoring adapter." });
+    sendParsedJson(res, ErrorResponse, { error: "This competition does not have a scoring adapter." }, 400);
     return;
   }
   const configuredAdapter = configureCompetitionScoringAdapter(baseAdapter, [
@@ -331,7 +345,7 @@ router.put("/payout-rules", requireAdmin, async (req, res): Promise<void> => {
     parsed.data.rules,
   );
   if (!rubric.ok) {
-    res.status(400).json({ error: rubric.error });
+    sendParsedJson(res, ErrorResponse, { error: rubric.error }, 400);
     return;
   }
 
@@ -387,18 +401,18 @@ router.put("/payout-rules", requireAdmin, async (req, res): Promise<void> => {
       playoffMultiplier: rule.playoffMultiplier,
     }));
   });
-  res.json(ReplacePayoutRulesResponse.parse(saved));
+  sendParsedJson(res, ReplacePayoutRulesResponse, saved);
 });
 
 router.post("/period-snapshots/week-zero", requireAdmin, async (req, res): Promise<void> => {
   const parsed = InitializeWeekZeroPointsBody.safeParse(req.body);
   if (!parsed.success) {
-    res.status(400).json({ error: parsed.error.message });
+    sendParsedJson(res, ErrorResponse, { error: parsed.error.message }, 400);
     return;
   }
   const season = await resolveSeason(parsed.data.seasonYear);
   if (!season) {
-    res.status(404).json({ error: `Season ${parsed.data.seasonYear} not found` });
+    sendParsedJson(res, ErrorResponse, { error: `Season ${parsed.data.seasonYear} not found` }, 404);
     return;
   }
   const resolvedCalcuttaId = await resolveCalcuttaId(db, {
@@ -406,7 +420,7 @@ router.post("/period-snapshots/week-zero", requireAdmin, async (req, res): Promi
     calcuttaId: parsed.data.calcuttaId,
   });
   if (!resolvedCalcuttaId) {
-    res.status(400).json({ error: "Calcutta must be an NFL pool in the requested season." });
+    sendParsedJson(res, ErrorResponse, { error: "Calcutta must be an NFL pool in the requested season." }, 400);
     return;
   }
 
@@ -419,9 +433,9 @@ router.post("/period-snapshots/week-zero", requireAdmin, async (req, res): Promi
     });
   });
   if (outcome.kind === "no_auctioned_teams") {
-    res.status(400).json({
+    sendParsedJson(res, ErrorResponse, {
       error: "Week 0 requires at least one auctioned NFL team in this Calcutta.",
-    });
+    }, 400);
     return;
   }
 
@@ -435,19 +449,19 @@ router.post("/period-snapshots/week-zero", requireAdmin, async (req, res): Promi
     snapshotsWritten: outcome.snapshotsWritten,
     alreadyInitialized: outcome.alreadyInitialized,
   });
-  res.json(response);
+  sendParsedJson(res, InitializeWeekZeroPointsResponse, response);
 });
 
 router.post("/period-snapshots", requireAdmin, async (req, res): Promise<void> => {
   const parsed = UpsertTeamPeriodSnapshotBody.safeParse(req.body);
   if (!parsed.success) {
-    res.status(400).json({ error: parsed.error.message });
+    sendParsedJson(res, ErrorResponse, { error: parsed.error.message }, 400);
     return;
   }
   const data = parsed.data;
   const season = await resolveSeason(data.seasonYear);
   if (!season) {
-    res.status(404).json({ error: `Season ${data.seasonYear} not found` });
+    sendParsedJson(res, ErrorResponse, { error: `Season ${data.seasonYear} not found` }, 404);
     return;
   }
   const resolvedCalcuttaId = await resolveCalcuttaId(db, {
@@ -455,7 +469,7 @@ router.post("/period-snapshots", requireAdmin, async (req, res): Promise<void> =
     calcuttaId: data.calcuttaId,
   });
   if (!resolvedCalcuttaId) {
-    res.status(400).json({ error: "Calcutta must be an NFL pool in the requested season." });
+    sendParsedJson(res, ErrorResponse, { error: "Calcutta must be an NFL pool in the requested season." }, 400);
     return;
   }
 
@@ -591,25 +605,25 @@ router.post("/period-snapshots", requireAdmin, async (req, res): Promise<void> =
   });
 
   if (outcome.kind === "not_auctioned") {
-    res.status(400).json({
+    sendParsedJson(res, ErrorResponse, {
       error: "Team is not auctioned in this season and cannot receive a period snapshot.",
-    });
+    }, 400);
     return;
   }
   if (outcome.kind === "period_not_found") {
-    res.status(400).json({ error: "The requested NFL period does not exist." });
+    sendParsedJson(res, ErrorResponse, { error: "The requested NFL period does not exist." }, 400);
     return;
   }
   if (outcome.kind === "missing_regular_baseline") {
-    res.status(400).json({
+    sendParsedJson(res, ErrorResponse, {
       error: "Save a Week 18 cumulative baseline for this team and basis before recording a playoff snapshot.",
-    });
+    }, 400);
     return;
   }
   if (outcome.kind === "game_ledger_authoritative") {
-    res.status(409).json({
+    sendParsedJson(res, ErrorResponse, {
       error: "Realized regular-season snapshots are derived from the NFL game ledger. Update the final game instead.",
-    });
+    }, 409);
     return;
   }
 
@@ -643,18 +657,18 @@ router.post("/period-snapshots", requireAdmin, async (req, res): Promise<void> =
     playoffStatus: data.playoffStatus ?? "unknown",
     grossReturn,
   });
-  res.json(response);
+  sendParsedJson(res, UpsertTeamPeriodSnapshotResponse, response);
 });
 
 router.get("/nfl-games", async (req, res): Promise<void> => {
   const seasonYear = Number(req.query.season);
   if (!Number.isInteger(seasonYear)) {
-    res.status(400).json({ error: "season must be an integer NFL season year." });
+    sendParsedJson(res, ErrorResponse, { error: "season must be an integer NFL season year." }, 400);
     return;
   }
   const season = await resolveSeason(seasonYear);
   if (!season) {
-    res.json([]);
+    sendParsedJson(res, NflGamesResponse, []);
     return;
   }
   const games = await db
@@ -662,7 +676,7 @@ router.get("/nfl-games", async (req, res): Promise<void> => {
     .from(nflGamesTable)
     .where(eq(nflGamesTable.seasonId, season.id))
     .orderBy(asc(nflGamesTable.periodSequence), asc(nflGamesTable.actualKickoffAt));
-  res.json(games);
+  sendParsedJson(res, NflGamesResponse, games);
 });
 
 /**
@@ -675,12 +689,12 @@ router.post("/nfl-games", requireAdmin, async (req, res): Promise<void> => {
   const seasonYear = Number(input.seasonYear);
   const periodSequence = Number(input.periodSequence);
   if (!Number.isInteger(seasonYear) || !Number.isInteger(periodSequence) || periodSequence < 1 || periodSequence > 18) {
-    res.status(400).json({ error: "seasonYear and regular-season periodSequence (1–18) are required." });
+    sendParsedJson(res, ErrorResponse, { error: "seasonYear and regular-season periodSequence (1–18) are required." }, 400);
     return;
   }
   const season = await resolveSeason(seasonYear);
   if (!season) {
-    res.status(404).json({ error: `Season ${seasonYear} not found` });
+    sendParsedJson(res, ErrorResponse, { error: `Season ${seasonYear} not found` }, 404);
     return;
   }
   let game;
@@ -703,7 +717,7 @@ router.post("/nfl-games", requireAdmin, async (req, res): Promise<void> => {
     });
     if (!game.sourceGameId) throw new Error("NFL game sourceGameId is required.");
   } catch (error) {
-    res.status(400).json({ error: error instanceof Error ? error.message : "Invalid NFL game." });
+    sendParsedJson(res, ErrorResponse, { error: error instanceof Error ? error.message : "Invalid NFL game." }, 400);
     return;
   }
   const outcome = await db.transaction(async (tx) => {
@@ -721,18 +735,18 @@ router.post("/nfl-games", requireAdmin, async (req, res): Promise<void> => {
     );
     return { game, snapshotsWritten };
   });
-  res.status(201).json(outcome);
+  sendParsedJson(res, NflGameWriteResponse, outcome, 201);
 });
 
 router.get("/payout-diagnostics", async (req, res): Promise<void> => {
   const seasonYear = Number(req.query.season);
   if (!Number.isInteger(seasonYear)) {
-    res.status(400).json({ error: "season must be an integer NFL season year." });
+    sendParsedJson(res, ErrorResponse, { error: "season must be an integer NFL season year." }, 400);
     return;
   }
   const season = await resolveSeason(seasonYear);
   if (!season) {
-    res.status(404).json({ error: `Season ${seasonYear} not found` });
+    sendParsedJson(res, ErrorResponse, { error: `Season ${seasonYear} not found` }, 404);
     return;
   }
   const [auctioned, legacy] = await Promise.all([
@@ -749,7 +763,7 @@ router.get("/payout-diagnostics", async (req, res): Promise<void> => {
   const calculated = calcutta[0]
     ? await loadCalculatedTeamReturnsForCalcutta(calcutta[0].id, undefined, false)
     : new Map();
-  res.json(compareHistoricalPayoutParity(
+  sendParsedJson(res, PayoutDiagnosticsResponse, compareHistoricalPayoutParity(
     auctioned.length,
     legacy.map((row) => ({ teamId: row.teamId, grossReturn: Number(row.realizedReturn) })),
     calculated,
@@ -764,27 +778,27 @@ router.get("/entry-return-diagnostics", requireAdmin, async (req, res): Promise<
     ? undefined
     : Number(req.query.calcuttaId);
   if (!Number.isInteger(seasonYear)) {
-    res.status(400).json({ error: "season must be an integer season year." });
+    sendParsedJson(res, ErrorResponse, { error: "season must be an integer season year." }, 400);
     return;
   }
   if (
     requestedCalcuttaId != null &&
     (!Number.isInteger(requestedCalcuttaId) || requestedCalcuttaId <= 0)
   ) {
-    res.status(400).json({ error: "calcuttaId must be a positive integer." });
+    sendParsedJson(res, ErrorResponse, { error: "calcuttaId must be a positive integer." }, 400);
     return;
   }
   const season = await resolveSeason(seasonYear);
   if (!season) {
-    res.status(404).json({ error: `Season ${seasonYear} not found` });
+    sendParsedJson(res, ErrorResponse, { error: `Season ${seasonYear} not found` }, 404);
     return;
   }
   const calcutta = await resolveScoringCalcutta(season.id, requestedCalcuttaId);
   if (!calcutta) {
-    res.status(400).json({ error: "Calcutta must belong to the requested season." });
+    sendParsedJson(res, ErrorResponse, { error: "Calcutta must belong to the requested season." }, 400);
     return;
   }
-  res.json(await auditStoredEntryReturnDiscrepancies(calcutta.id));
+  sendParsedJson(res, EntryReturnDiagnosticsResponse, await auditStoredEntryReturnDiscrepancies(calcutta.id));
 });
 
 export default router;

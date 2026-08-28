@@ -62,7 +62,7 @@ async function mcpRequest(baseUrl, id, method, params = {}) {
     method: "POST",
     headers: {
       Accept: "application/json, text/event-stream",
-      Authorization: `Bearer ${MCP_KEY}`,
+      Authorization: `Bearer ${ADMIN_KEY}`,
       "Content-Type": "application/json",
     },
     body: JSON.stringify({ jsonrpc: "2.0", id, method, params }),
@@ -472,7 +472,6 @@ describe("period snapshot reporting", { skip: !DATABASE_URL || !ADMIN_KEY }, () 
           period: 3,
           basis: "mtm",
           wins: index + 1,
-          adminKey: ADMIN_KEY,
         },
       });
       const result = JSON.parse(mcpText(response));

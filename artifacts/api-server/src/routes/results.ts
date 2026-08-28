@@ -1,4 +1,6 @@
 import { Router, type IRouter } from "express";
+import { z } from "zod/v4";
+import { ErrorResponse, sendParsedJson } from "../lib/sendParsedJson";
 import { eq, and, ilike, inArray, sql } from "drizzle-orm";
 import {
   db,
@@ -24,6 +26,7 @@ import {
   GetResultsByOwnerResponse,
   GetResultsAvailabilityResponse,
   GetResultsCompareResponse,
+  UpsertTeamResultResponse,
 } from "@workspace/api-zod";
 import {
   loadCrossCalcuttaRollup,
@@ -45,6 +48,11 @@ import { calculateOwnerResultEconomics } from "../lib/ownerResultEconomics";
 import { requireAdmin } from "../middlewares/requireAdmin";
 
 const router: IRouter = Router();
+const UpdateTeamSeedResponse = z.object({
+  teamId: z.number(),
+  seasonYear: z.number(),
+  seed: z.number().nullable(),
+}).strict();
 
 async function resolveSeasonId(year: number): Promise<number | null> {
   const rows = await db
@@ -105,6 +113,8 @@ type ResultDisplay = {
   netMtm?: string | number;
   dollarsPerPoint?: number | null;
   ptsToBreakeven?: number | null;
+  marketStatus: "live" | "stale" | null;
+  marketStatusReasons: string[];
 };
 
 type TeamOwnerEconomicPosition = {
@@ -151,14 +161,18 @@ function resultFromCalculatedSnapshots(
     ? {
         ...legacy,
         isProjectedRecord: basis === "mtm",
-        realizedReturn: 0,
-        realizedMultiple: 0,
-        netReturn: -cost,
-        netPctReturn: cost > 0 ? -1 : 0,
-        markToMarket: 0,
-        netMtm: -cost,
+        realizedReturn: calculated?.realized?.grossReturn ?? 0,
+        realizedMultiple:
+          cost > 0 ? (calculated?.realized?.grossReturn ?? 0) / cost : 0,
+        netReturn: (calculated?.realized?.grossReturn ?? 0) - cost,
+        netPctReturn:
+          cost > 0 ? ((calculated?.realized?.grossReturn ?? 0) - cost) / cost : 0,
+        markToMarket: calculated?.mtm?.grossReturn ?? 0,
+        netMtm: (calculated?.mtm?.grossReturn ?? 0) - cost,
         dollarsPerPoint: null,
         ptsToBreakeven: null,
+        marketStatus: calculated?.mtm?.marketStatus ?? null,
+        marketStatusReasons: calculated?.mtm?.marketStatusReasons ?? [],
       }
     : null;
   if (!payoutRulesConfigured) return legacyDisplay;
@@ -169,8 +183,8 @@ function resultFromCalculatedSnapshots(
     // coverage flags and zero-valued compatibility fields, never stored entry
     // economics.
     if (legacyDisplay) return legacyDisplay;
-    const realizedReturn = 0;
-    const markToMarket = 0;
+    const realizedReturn = calculated?.realized?.grossReturn ?? 0;
+    const markToMarket = calculated?.mtm?.grossReturn ?? 0;
     return {
       isProjectedRecord: basis === "mtm",
       wins: 0,
@@ -194,6 +208,8 @@ function resultFromCalculatedSnapshots(
       netMtm: markToMarket - cost,
       dollarsPerPoint: null,
       ptsToBreakeven: null,
+      marketStatus: calculated?.mtm?.marketStatus ?? null,
+      marketStatusReasons: calculated?.mtm?.marketStatusReasons ?? [],
     };
   }
   const latest = selected.latest;
@@ -235,6 +251,8 @@ function resultFromCalculatedSnapshots(
       totalPot,
       totalRealizedPoints,
     ),
+    marketStatus: calculated.mtm?.marketStatus ?? null,
+    marketStatusReasons: calculated.mtm?.marketStatusReasons ?? [],
   };
 }
 
@@ -295,6 +313,8 @@ function buildTeamResult(
       markToMarket: 0,
       netMtm: 0,
       ptsToBreakeven: null,
+      marketStatus: null,
+      marketStatusReasons: [],
     };
   }
 
@@ -323,6 +343,8 @@ function buildTeamResult(
     markToMarket: roundMoney(Number(result.markToMarket)),
     netMtm: roundMoney(Number(result.netMtm ?? Number(result.markToMarket) - cost)),
     ptsToBreakeven: result.ptsToBreakeven ?? null,
+    marketStatus: result.marketStatus,
+    marketStatusReasons: result.marketStatusReasons,
   };
 }
 
@@ -348,9 +370,18 @@ function buildOwnerTeamResult(
     ownershipSegments,
   } = args;
 
+  const economics = calculateOwnerResultEconomics({
+    effectiveShare,
+    originalCostBasis: ownerCost,
+    tradePaid: 0,
+    tradeReceived: 0,
+    realizedTeamGross: result ? Number(result.realizedReturn) : 0,
+    mtmTeamGross: result ? Number(result.markToMarket) : 0,
+    dollarsPerPoint: result?.dollarsPerPoint ?? null,
+  });
   // This reflects THIS owner's signed effective share. A negative percentage is
   // a short position, not a current-team owner label.
-  const owners = [{ bidderId, bidderName, ownershipShare: effectiveShare }];
+  const owners = [{ bidderId, bidderName, ownershipShare: effectiveShare, ...economics }];
 
   // Owner-specific cost basis is what this bidder paid after trade economics.
   const base = {
@@ -379,13 +410,15 @@ function buildOwnerTeamResult(
       confRound: false,
       sbBerth: false,
       winSuperBowl: false,
-      realizedReturn: 0,
+      realizedReturn: economics.realizedGross,
       realizedMultiple: 0,
-      netReturn: 0,
-      netPctReturn: 0,
-      markToMarket: 0,
-      netMtm: 0,
-      ptsToBreakeven: null,
+      netReturn: economics.net,
+      netPctReturn: ownerCost > 0 ? economics.net / ownerCost : 0,
+      markToMarket: economics.mtmGross,
+      netMtm: economics.mtmNet,
+      ptsToBreakeven: economics.ptsToBreakeven,
+      marketStatus: null,
+      marketStatusReasons: [],
     };
   }
 
@@ -428,6 +461,8 @@ function buildOwnerTeamResult(
     markToMarket: Math.round(markToMarket * 100) / 100,
     netMtm: Math.round(netMtm * 100) / 100,
     ptsToBreakeven,
+    marketStatus: result.marketStatus,
+    marketStatusReasons: result.marketStatusReasons,
   };
 }
 
@@ -440,17 +475,17 @@ router.patch("/results/seed", requireAdmin, async (req, res): Promise<void> => {
     calcuttaId?: number;
   };
   if (!teamId || !seasonYear) {
-    res.status(400).json({ error: "teamId and seasonYear required" });
+    sendParsedJson(res, ErrorResponse, { error: "teamId and seasonYear required" }, 400);
     return;
   }
   const seasonId = await resolveSeasonId(seasonYear);
   if (!seasonId) {
-    res.status(400).json({ error: `Season ${seasonYear} not found` });
+    sendParsedJson(res, ErrorResponse, { error: `Season ${seasonYear} not found` }, 400);
     return;
   }
   const resolvedCalcuttaId = await resolveNflCalcutta(seasonId, calcuttaId);
   if (!resolvedCalcuttaId) {
-    res.status(400).json({ error: "Calcutta must be an NFL pool in the requested season." });
+    sendParsedJson(res, ErrorResponse, { error: "Calcutta must be an NFL pool in the requested season." }, 400);
     return;
   }
   const seedWritten = await db.transaction(async (tx) => {
@@ -482,19 +517,19 @@ router.patch("/results/seed", requireAdmin, async (req, res): Promise<void> => {
     return true;
   });
   if (!seedWritten) {
-    res.status(400).json({
+    sendParsedJson(res, ErrorResponse, {
       error: "Team is not auctioned in this season and cannot receive a playoff seed.",
-    });
+    }, 400);
     return;
   }
-  res.json({ teamId, seasonYear, seed });
+  sendParsedJson(res, UpdateTeamSeedResponse, { teamId, seasonYear, seed });
 });
 
 // GET /results?season=YYYY
 router.get("/results", async (req, res): Promise<void> => {
   const parsed = GetResultsQueryParams.safeParse(req.query);
   if (!parsed.success) {
-    res.status(400).json({ error: parsed.error.message });
+    sendParsedJson(res, ErrorResponse, { error: parsed.error.message }, 400);
     return;
   }
   const { season, calcuttaId, conference, search, period, basis } = parsed.data;
@@ -503,12 +538,12 @@ router.get("/results", async (req, res): Promise<void> => {
   // Unknown season → empty list, never fall back to another season
   const seasonId = await resolveSeasonId(season);
   if (!seasonId) {
-    res.json([]);
+    sendParsedJson(res, GetResultsResponse, []);
     return;
   }
   const resolvedCalcuttaId = await resolveNflCalcutta(seasonId, calcuttaId);
   if (!resolvedCalcuttaId) {
-    res.status(400).json({ error: "Calcutta must be an NFL pool in the requested season." });
+    sendParsedJson(res, ErrorResponse, { error: "Calcutta must be an NFL pool in the requested season." }, 400);
     return;
   }
   await ensureWeekZeroReportingBaseline(seasonId, resolvedCalcuttaId);
@@ -616,7 +651,7 @@ router.get("/results", async (req, res): Promise<void> => {
       );
     });
 
-  res.json(GetResultsResponse.parse(rows));
+  sendParsedJson(res, GetResultsResponse, rows);
 });
 
 // GET /results/by-owner?season=YYYY
@@ -625,7 +660,7 @@ router.get("/results", async (req, res): Promise<void> => {
 router.get("/results/by-owner", async (req, res): Promise<void> => {
   const parsed = GetResultsByOwnerQueryParams.safeParse(req.query);
   if (!parsed.success) {
-    res.status(400).json({ error: parsed.error.message });
+    sendParsedJson(res, ErrorResponse, { error: parsed.error.message }, 400);
     return;
   }
   const { season, calcuttaId, period, basis } = parsed.data;
@@ -635,12 +670,12 @@ router.get("/results/by-owner", async (req, res): Promise<void> => {
   // Unknown season → safe empty response
   const seasonId = await resolveSeasonId(season);
   if (!seasonId) {
-    res.json([]);
+    sendParsedJson(res, GetResultsByOwnerResponse, []);
     return;
   }
   const resolvedCalcuttaId = await resolveNflCalcutta(seasonId, calcuttaId);
   if (!resolvedCalcuttaId) {
-    res.status(400).json({ error: "Calcutta must be an NFL pool in the requested season." });
+    sendParsedJson(res, ErrorResponse, { error: "Calcutta must be an NFL pool in the requested season." }, 400);
     return;
   }
   await ensureWeekZeroReportingBaseline(seasonId, resolvedCalcuttaId);
@@ -825,6 +860,14 @@ router.get("/results/by-owner", async (req, res): Promise<void> => {
           : 0,
       totalMtm: Math.round(o.totalMtm * 100) / 100,
       totalNetMtm: Math.round(o.totalNetMtm * 100) / 100,
+      marketStatus: o.teams.some((team) => team.marketStatus === "stale")
+        ? "stale" as const
+        : o.teams.some((team) => team.marketStatus === "live")
+          ? "live" as const
+          : null,
+      marketStatusReasons: [...new Set(
+        o.teams.flatMap((team) => team.marketStatusReasons),
+      )],
       teams: o.teams.sort((a, b) => a.teamName.localeCompare(b.teamName)),
     }))
     .sort((a, b) =>
@@ -833,7 +876,7 @@ router.get("/results/by-owner", async (req, res): Promise<void> => {
         : b.totalNetReturn - a.totalNetReturn,
     );
 
-  res.json(GetResultsByOwnerResponse.parse(ownerRows));
+  sendParsedJson(res, GetResultsByOwnerResponse, ownerRows);
 });
 
 // GET /results/availability?season=YYYY&basis=mtm
@@ -842,31 +885,30 @@ router.get("/results/by-owner", async (req, res): Promise<void> => {
 router.get("/results/availability", async (req, res): Promise<void> => {
   const parsed = GetResultsAvailabilityQueryParams.safeParse(req.query);
   if (!parsed.success) {
-    res.status(400).json({ error: parsed.error.message });
+    sendParsedJson(res, ErrorResponse, { error: parsed.error.message }, 400);
     return;
   }
 
   const seasonId = await resolveSeasonId(parsed.data.season);
   if (!seasonId) {
-    res.json(GetResultsAvailabilityResponse.parse({ latestPeriod: null, previousPeriod: null }));
+    sendParsedJson(res, GetResultsAvailabilityResponse, { latestPeriod: null, previousPeriod: null });
     return;
   }
   const resolvedCalcuttaId = await resolveNflCalcutta(seasonId, parsed.data.calcuttaId);
   if (!resolvedCalcuttaId) {
-    res.status(400).json({ error: "Calcutta must be an NFL pool in the requested season." });
+    sendParsedJson(res, ErrorResponse, { error: "Calcutta must be an NFL pool in the requested season." }, 400);
     return;
   }
   await ensureWeekZeroReportingBaseline(seasonId, resolvedCalcuttaId);
-
   const periods = await loadReturnSnapshotPeriods(
     seasonId,
     parsed.data.basis ?? "realized",
     resolvedCalcuttaId,
   );
-  res.json(GetResultsAvailabilityResponse.parse({
+  sendParsedJson(res, GetResultsAvailabilityResponse, {
     latestPeriod: periods.at(-1) ?? null,
     previousPeriod: periods.at(-2) ?? null,
-  }));
+  });
 });
 
 // GET /results/compare?seasons=2025,2026
@@ -876,7 +918,7 @@ router.get("/results/availability", async (req, res): Promise<void> => {
 router.get("/results/compare", async (req, res): Promise<void> => {
   const parsed = GetResultsCompareQueryParams.safeParse(req.query);
   if (!parsed.success) {
-    res.status(400).json({ error: parsed.error.message });
+    sendParsedJson(res, ErrorResponse, { error: parsed.error.message }, 400);
     return;
   }
   const selectedYears = parsed.data.seasons
@@ -885,9 +927,9 @@ router.get("/results/compare", async (req, res): Promise<void> => {
     .filter(Number.isInteger);
   const years = [...new Set(selectedYears)].sort((a, b) => a - b);
   if (years.length < 2 || years.length > 6 || years.length !== selectedYears.length) {
-    res.status(400).json({
+    sendParsedJson(res, ErrorResponse, {
       error: "seasons must contain two to six unique numeric season years.",
-    });
+    }, 400);
     return;
   }
 
@@ -898,9 +940,9 @@ router.get("/results/compare", async (req, res): Promise<void> => {
   const availableYears = new Set(available.map((season) => season.year));
   const missing = years.filter((year) => !availableYears.has(year));
   if (missing.length) {
-    res.status(400).json({
+    sendParsedJson(res, ErrorResponse, {
       error: `Season${missing.length === 1 ? "" : "s"} not found: ${missing.join(", ")}`,
-    });
+    }, 400);
     return;
   }
 
@@ -915,19 +957,19 @@ router.get("/results/compare", async (req, res): Promise<void> => {
     (year) => !rollup.calcuttas.some((calcutta) => calcutta.year === year),
   );
   if (missingCalcuttas.length) {
-    res.status(400).json({
+    sendParsedJson(res, ErrorResponse, {
       error: `No canonical NFL Calcutta found for season${missingCalcuttas.length === 1 ? "" : "s"}: ${missingCalcuttas.join(", ")}`,
-    });
+    }, 400);
     return;
   }
-  res.json(GetResultsCompareResponse.parse(rollup));
+  sendParsedJson(res, GetResultsCompareResponse, rollup);
 });
 
 // POST /results/upsert
 router.post("/results/upsert", requireAdmin, async (req, res): Promise<void> => {
   const parsed = UpsertTeamResultBody.safeParse(req.body);
   if (!parsed.success) {
-    res.status(400).json({ error: parsed.error.message });
+    sendParsedJson(res, ErrorResponse, { error: parsed.error.message }, 400);
     return;
   }
   const data = parsed.data;
@@ -936,28 +978,26 @@ router.post("/results/upsert", requireAdmin, async (req, res): Promise<void> => 
   const ties = data.ties ?? 0;
   const recordValues = [wins, losses, ties];
   if (recordValues.some((value) => !Number.isInteger(value) || value < 0)) {
-    res.status(400).json({
+    sendParsedJson(res, ErrorResponse, {
       error:
         "wins, losses, and ties must be whole numbers greater than or equal to zero",
-    });
+    }, 400);
     return;
   }
   if (wins + losses + ties > 17) {
-    res
-      .status(400)
-      .json({
-        error: "wins, losses, and ties cannot total more than 17 games",
-      });
+    sendParsedJson(res, ErrorResponse, {
+      error: "wins, losses, and ties cannot total more than 17 games",
+    }, 400);
     return;
   }
   const seasonId = await resolveSeasonId(data.seasonYear);
   if (!seasonId) {
-    res.status(400).json({ error: `Season ${data.seasonYear} not found` });
+    sendParsedJson(res, ErrorResponse, { error: `Season ${data.seasonYear} not found` }, 400);
     return;
   }
   const resolvedCalcuttaId = await resolveNflCalcutta(seasonId, data.calcuttaId);
   if (!resolvedCalcuttaId) {
-    res.status(400).json({ error: "Calcutta must be an NFL pool in the requested season." });
+    sendParsedJson(res, ErrorResponse, { error: "Calcutta must be an NFL pool in the requested season." }, 400);
     return;
   }
 
@@ -1011,15 +1051,16 @@ router.post("/results/upsert", requireAdmin, async (req, res): Promise<void> => 
     return { kind: "saved" as const, row, cost };
   });
   if (writeOutcome.kind === "not_auctioned") {
-    res.status(400).json({
+    sendParsedJson(res, ErrorResponse, {
       error: "Team is not auctioned in this season and cannot receive results.",
-    });
+    }, 400);
     return;
   }
   const cost = writeOutcome.cost;
   const calculated = await loadCalculatedTeamReturnsForCalcutta(resolvedCalcuttaId);
-  const realizedReturn = calculated.get(data.teamId)?.realized?.grossReturn ?? 0;
-  const markToMarket = calculated.get(data.teamId)?.mtm?.grossReturn ?? 0;
+  const calculatedTeam = calculated.get(data.teamId);
+  const realizedReturn = calculatedTeam?.realized?.grossReturn ?? 0;
+  const markToMarket = calculatedTeam?.mtm?.grossReturn ?? 0;
   const row = {
     ...writeOutcome.row,
     realizedReturn,
@@ -1027,6 +1068,8 @@ router.post("/results/upsert", requireAdmin, async (req, res): Promise<void> => 
     netReturn: realizedReturn - cost,
     netPctReturn: cost > 0 ? (realizedReturn - cost) / cost : 0,
     markToMarket,
+    marketStatus: calculatedTeam?.mtm?.marketStatus ?? null,
+    marketStatusReasons: calculatedTeam?.mtm?.marketStatusReasons ?? [],
   };
 
   // Build response in TeamResultRow shape
@@ -1037,7 +1080,7 @@ router.post("/results/upsert", requireAdmin, async (req, res): Promise<void> => 
     .limit(1);
   const team = teamInfo[0];
   if (!team) {
-    res.status(400).json({ error: `Team ${data.teamId} not found` });
+    sendParsedJson(res, ErrorResponse, { error: `Team ${data.teamId} not found` }, 400);
     return;
   }
 
@@ -1061,10 +1104,10 @@ router.post("/results/upsert", requireAdmin, async (req, res): Promise<void> => 
   const ownershipSegments =
     ownership.ownershipSegmentsByTeam.get(data.teamId) ?? [];
 
-  res.json(
-    GetResultsResponseItem.parse(
-      buildTeamResult(team, row, currentOwners, ownershipSegments, cost),
-    ),
+  sendParsedJson(
+    res,
+    UpsertTeamResultResponse,
+    buildTeamResult(team, row, currentOwners, ownershipSegments, cost),
   );
 });
 

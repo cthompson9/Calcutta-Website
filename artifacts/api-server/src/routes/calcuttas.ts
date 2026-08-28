@@ -2,6 +2,7 @@ import { Router, type IRouter } from "express";
 import { desc, eq } from "drizzle-orm";
 import { db, calcuttasTable, seasonsTable } from "@workspace/db";
 import { GetCalcuttasResponse } from "@workspace/api-zod";
+import { sendParsedJson } from "../lib/sendParsedJson";
 
 const router: IRouter = Router();
 
@@ -77,7 +78,7 @@ router.get("/calcuttas", async (_req, res): Promise<void> => {
         right.id - left.id,
     );
 
-  res.json(GetCalcuttasResponse.parse(options));
+  sendParsedJson(res, GetCalcuttasResponse, options);
 });
 
 export default router;

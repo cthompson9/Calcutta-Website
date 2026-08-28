@@ -1,4 +1,5 @@
 import { Router, type IRouter, type Request } from "express";
+import { ErrorResponse, sendParsedJson } from "../lib/sendParsedJson";
 import { eq, and, ilike, inArray, ne, sql } from "drizzle-orm";
 import { z } from "zod/v4";
 import {
@@ -115,7 +116,7 @@ async function fetchTeamWithOwners(
 router.get("/teams", async (req, res): Promise<void> => {
   const parsed = GetTeamsQueryParams.safeParse(req.query);
   if (!parsed.success) {
-    res.status(400).json({ error: parsed.error.message });
+    sendParsedJson(res, ErrorResponse, { error: parsed.error.message }, 400);
     return;
   }
   const {
@@ -134,7 +135,7 @@ router.get("/teams", async (req, res): Promise<void> => {
     const resolved = await resolveSeasonId(seasonYear, sport);
     if (!resolved) {
       // Unknown season → empty list, no active-season fallback
-      res.json([]);
+      sendParsedJson(res, GetTeamsResponse, []);
       return;
     }
     seasonId = resolved;
@@ -148,7 +149,7 @@ router.get("/teams", async (req, res): Promise<void> => {
     calcuttaId: requestedCalcuttaId,
   });
   if (!calcuttaId) {
-    res.json([]);
+    sendParsedJson(res, GetTeamsResponse, []);
     return;
   }
 
@@ -181,7 +182,7 @@ router.get("/teams", async (req, res): Promise<void> => {
   let teams = await baseQuery.orderBy(teamsTable.conference, teamsTable.division, teamsTable.name);
 
   if (teams.length === 0) {
-    res.json([]);
+    sendParsedJson(res, GetTeamsResponse, []);
     return;
   }
 
@@ -198,7 +199,7 @@ router.get("/teams", async (req, res): Promise<void> => {
     }
     teams = teams.filter((t) => teamsWithEffectiveOwnership.has(t.id));
     if (teams.length === 0) {
-      res.json([]);
+      sendParsedJson(res, GetTeamsResponse, []);
       return;
     }
   }
@@ -218,13 +219,13 @@ router.get("/teams", async (req, res): Promise<void> => {
     })),
   }));
 
-  res.json(GetTeamsResponse.parse(result));
+  sendParsedJson(res, GetTeamsResponse, result);
 });
 
 router.post("/teams", requireAdmin, async (req, res): Promise<void> => {
   const parsed = CreateTeamBody.safeParse(req.body);
   if (!parsed.success) {
-    res.status(400).json({ error: parsed.error.message });
+    sendParsedJson(res, ErrorResponse, { error: parsed.error.message }, 400);
     return;
   }
 
@@ -246,7 +247,7 @@ router.post("/teams", requireAdmin, async (req, res): Promise<void> => {
     })),
   );
   if (!split.ok) {
-    res.status(400).json({ error: split.error });
+    sendParsedJson(res, ErrorResponse, { error: split.error }, 400);
     return;
   }
 
@@ -254,7 +255,7 @@ router.post("/teams", requireAdmin, async (req, res): Promise<void> => {
   if (seasonYear != null) {
     const resolved = await resolveSeasonId(seasonYear, sport);
     if (!resolved) {
-      res.status(400).json({ error: `Season ${seasonYear} not found` });
+      sendParsedJson(res, ErrorResponse, { error: `Season ${seasonYear} not found` }, 400);
       return;
     }
     seasonId = resolved;
@@ -311,28 +312,28 @@ router.post("/teams", requireAdmin, async (req, res): Promise<void> => {
   });
 
   if (outcome.kind === "unknown_owner") {
-    res.status(400).json({ error: "Every primary owner must be an existing bidder." });
+    sendParsedJson(res, ErrorResponse, { error: "Every primary owner must be an existing bidder." }, 400);
     return;
   }
   if (outcome.kind === "calcutta_not_found") {
-    res.status(400).json({ error: "Calcutta not found for this season." });
+    sendParsedJson(res, ErrorResponse, { error: "Calcutta not found for this season." }, 400);
     return;
   }
 
   const full = await fetchTeamWithOwners(outcome.teamId, seasonId, sport, outcome.calcuttaId);
-  res.status(201).json(CreateTeamResponse.parse(full));
+  sendParsedJson(res, CreateTeamResponse, full, 201);
 });
 
 router.get("/teams/:id", async (req, res): Promise<void> => {
   const params = GetTeamParams.safeParse(req.params);
   if (!params.success) {
-    res.status(400).json({ error: params.error.message });
+    sendParsedJson(res, ErrorResponse, { error: params.error.message }, 400);
     return;
   }
 
   const query = TeamContextQuery.safeParse(req.query);
   if (!query.success) {
-    res.status(400).json({ error: query.error.message });
+    sendParsedJson(res, ErrorResponse, { error: query.error.message }, 400);
     return;
   }
   const sport = query.data.sport ?? "NFL";
@@ -340,7 +341,7 @@ router.get("/teams/:id", async (req, res): Promise<void> => {
     ? await getActiveSeasonId(sport)
     : await resolveSeasonId(query.data.season, sport);
   if (seasonId == null) {
-    res.status(404).json({ error: "Team not found" });
+    sendParsedJson(res, ErrorResponse, { error: "Team not found" }, 404);
     return;
   }
   const full = await fetchTeamWithOwners(
@@ -350,22 +351,22 @@ router.get("/teams/:id", async (req, res): Promise<void> => {
     query.data.calcuttaId,
   );
   if (!full) {
-    res.status(404).json({ error: "Team not found" });
+    sendParsedJson(res, ErrorResponse, { error: "Team not found" }, 404);
     return;
   }
-  res.json(GetTeamResponse.parse(full));
+  sendParsedJson(res, GetTeamResponse, full);
 });
 
 router.patch("/teams/:id", requireAdmin, async (req, res): Promise<void> => {
   const params = UpdateTeamParams.safeParse(req.params);
   if (!params.success) {
-    res.status(400).json({ error: params.error.message });
+    sendParsedJson(res, ErrorResponse, { error: params.error.message }, 400);
     return;
   }
 
   const parsed = UpdateTeamBody.safeParse(req.body);
   if (!parsed.success) {
-    res.status(400).json({ error: parsed.error.message });
+    sendParsedJson(res, ErrorResponse, { error: parsed.error.message }, 400);
     return;
   }
 
@@ -388,7 +389,7 @@ router.patch("/teams/:id", requireAdmin, async (req, res): Promise<void> => {
           })),
         );
   if (split && !split.ok) {
-    res.status(400).json({ error: split.error });
+    sendParsedJson(res, ErrorResponse, { error: split.error }, 400);
     return;
   }
 
@@ -396,7 +397,7 @@ router.patch("/teams/:id", requireAdmin, async (req, res): Promise<void> => {
   if (seasonYear != null) {
     const resolved = await resolveSeasonId(seasonYear, sport);
     if (!resolved) {
-      res.status(400).json({ error: `Season ${seasonYear} not found` });
+      sendParsedJson(res, ErrorResponse, { error: `Season ${seasonYear} not found` }, 400);
       return;
     }
     seasonId = resolved;
@@ -527,35 +528,35 @@ router.patch("/teams/:id", requireAdmin, async (req, res): Promise<void> => {
   });
 
   if (updateResult.kind === "not_found") {
-    res.status(404).json({ error: "Team not found" });
+    sendParsedJson(res, ErrorResponse, { error: "Team not found" }, 404);
     return;
   }
   if (updateResult.kind === "unknown_owner") {
-    res.status(400).json({ error: "Every primary owner must be an existing bidder." });
+    sendParsedJson(res, ErrorResponse, { error: "Every primary owner must be an existing bidder." }, 400);
     return;
   }
   if (updateResult.kind === "calcutta_not_found") {
-    res.status(400).json({ error: "Calcutta not found for this season." });
+    sendParsedJson(res, ErrorResponse, { error: "Calcutta not found for this season." }, 400);
     return;
   }
   if (updateResult.kind === "approved_trade") {
-    res.status(409).json({
+    sendParsedJson(res, ErrorResponse, {
       error:
         "This team has approved trades. Preserve that history with a correcting trade instead of replacing primary ownership.",
-    });
+    }, 409);
     return;
   }
   if (updateResult.kind === "primary_cost_not_found") {
-    res.status(400).json({
+    sendParsedJson(res, ErrorResponse, {
       error:
         "The selected Calcutta entry has no primary cost basis. Provide bidAmount when creating its primary ownership split.",
-    });
+    }, 400);
     return;
   }
   if (updateResult.kind === "shared_team_metadata") {
-    res.status(409).json({
+    sendParsedJson(res, ErrorResponse, {
       error: "This team is shared by multiple Calcuttas. Update pool ownership only; shared team metadata cannot be changed from one pool.",
-    });
+    }, 409);
     return;
   }
 
@@ -566,22 +567,22 @@ router.patch("/teams/:id", requireAdmin, async (req, res): Promise<void> => {
     updateResult.calcuttaId,
   );
   if (!full) {
-    res.status(404).json({ error: "Team not found" });
+    sendParsedJson(res, ErrorResponse, { error: "Team not found" }, 404);
     return;
   }
-  res.json(UpdateTeamResponse.parse(full));
+  sendParsedJson(res, UpdateTeamResponse, full);
 });
 
 router.delete("/teams/:id", requireAdmin, async (req, res): Promise<void> => {
   const params = DeleteTeamParams.safeParse(req.params);
   if (!params.success) {
-    res.status(400).json({ error: params.error.message });
+    sendParsedJson(res, ErrorResponse, { error: params.error.message }, 400);
     return;
   }
 
   const query = TeamContextQuery.safeParse(req.query);
   if (!query.success) {
-    res.status(400).json({ error: query.error.message });
+    sendParsedJson(res, ErrorResponse, { error: query.error.message }, 400);
     return;
   }
   const sport = query.data.sport;
@@ -589,7 +590,7 @@ router.delete("/teams/:id", requireAdmin, async (req, res): Promise<void> => {
     ? await getActiveSeasonId(sport)
     : await resolveSeasonId(query.data.season, sport);
   if (seasonId == null) {
-    res.status(404).json({ error: "Team not found" });
+    sendParsedJson(res, ErrorResponse, { error: "Team not found" }, 404);
     return;
   }
 
@@ -599,7 +600,7 @@ router.delete("/teams/:id", requireAdmin, async (req, res): Promise<void> => {
     calcuttaId: query.data.calcuttaId,
   });
   if (calcuttaId == null) {
-    res.status(404).json({ error: "Team not found" });
+    sendParsedJson(res, ErrorResponse, { error: "Team not found" }, 404);
     return;
   }
 
@@ -622,13 +623,13 @@ router.delete("/teams/:id", requireAdmin, async (req, res): Promise<void> => {
       .limit(1),
   ]);
   if (!selectedEntry[0]) {
-    res.status(404).json({ error: "Team not found" });
+    sendParsedJson(res, ErrorResponse, { error: "Team not found" }, 404);
     return;
   }
   if (otherEntry[0]) {
-    res.status(409).json({
+    sendParsedJson(res, ErrorResponse, {
       error: "This team is shared by multiple Calcuttas and cannot be deleted from only one pool.",
-    });
+    }, 409);
     return;
   }
 
@@ -638,7 +639,7 @@ router.delete("/teams/:id", requireAdmin, async (req, res): Promise<void> => {
     .returning();
 
   if (deleted.length === 0) {
-    res.status(404).json({ error: "Team not found" });
+    sendParsedJson(res, ErrorResponse, { error: "Team not found" }, 404);
     return;
   }
 

@@ -1,4 +1,5 @@
 import { timingSafeEqual } from "node:crypto";
+import { ErrorResponse, sendParsedJson } from "../lib/sendParsedJson";
 import { randomUUID } from "node:crypto";
 import { Router, type IRouter, type Request } from "express";
 import { and, eq } from "drizzle-orm";
@@ -218,13 +219,13 @@ export async function withRefreshJobLock<T>(
 
 router.post("/jobs/refresh", async (req, res): Promise<void> => {
   if (!isJobRunnerRequest(req)) {
-    res.status(401).json({ error: "JOB_RUNNER_SECRET bearer token is required." });
+    sendParsedJson(res, ErrorResponse, { error: "JOB_RUNNER_SECRET bearer token is required." }, 401);
     return;
   }
 
   const parsed = RefreshJobBody.safeParse(req.body);
   if (!parsed.success) {
-    res.status(400).json({ error: parsed.error.message });
+    sendParsedJson(res, ErrorResponse, { error: parsed.error.message }, 400);
     return;
   }
 
@@ -237,13 +238,13 @@ router.post("/jobs/refresh", async (req, res): Promise<void> => {
     const expectedCompetition =
       sport === CFB_SPORT ? CFB_REGULAR_SEASON : NFL_REGULAR_SEASON;
     if (competition !== expectedCompetition) {
-      res.status(400).json({
+      sendParsedJson(res, ErrorResponse, {
         error: `${sport} refreshes require competition ${expectedCompetition}.`,
-      });
+      }, 400);
       return;
     }
     if (sport === CFB_SPORT && job === "mtm") {
-      res.status(400).json({ error: "CFB MTM refresh is not supported by this job." });
+      sendParsedJson(res, ErrorResponse, { error: "CFB MTM refresh is not supported by this job." }, 400);
       return;
     }
     const seasonYear = parsed.data.seasonYear ??
@@ -352,27 +353,27 @@ router.post("/jobs/refresh", async (req, res): Promise<void> => {
     }, scope);
 
     if (!locked.acquired) {
-      res.json(RefreshNflStandingsJobResponse.parse({
+      sendParsedJson(res, RefreshNflStandingsJobResponse, {
         job,
         ran: false,
         reason: "already-running",
         durationMs: Date.now() - startedAtMs,
-      }));
+      });
       return;
     }
 
-    res.json(RefreshNflStandingsJobResponse.parse(locked.value));
+    sendParsedJson(res, RefreshNflStandingsJobResponse, locked.value);
   } catch (error) {
     req.log.error(
       { error: error instanceof Error ? error.message : String(error) },
       "External refresh job failed",
     );
-    res.status(500).json({
+    sendParsedJson(res, ErrorResponse, {
       job,
       ran: false,
       error: "Refresh job failed.",
       durationMs: Date.now() - startedAtMs,
-    });
+    }, 500);
   }
 });
 

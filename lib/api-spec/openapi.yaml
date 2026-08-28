@@ -790,7 +790,9 @@ paths:
     post:
       operationId: createTrade
       tags: [trades]
-      summary: Submit a trade for commissioner review (open submission; always pending)
+      summary: Submit a trade for commissioner review (always pending)
+      security:
+        - AdminBearerAuth: []
       requestBody:
         required: true
         content:
@@ -804,6 +806,12 @@ paths:
             application/json:
               schema:
                 $ref: "#/components/schemas/TradeRow"
+        "401":
+          description: ADMIN_API_KEY bearer token required
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
         "400":
           description: Validation error
           content:
@@ -815,7 +823,9 @@ paths:
     patch:
       operationId: updateTrade
       tags: [trades]
-      summary: Update a pending trade record (price, date, notes; percentage edits require ADMIN_API_KEY)
+      summary: Update a pending trade record (admin only)
+      security:
+        - AdminBearerAuth: []
       parameters:
         - name: id
           in: path
@@ -842,7 +852,7 @@ paths:
               schema:
                 $ref: "#/components/schemas/ErrorResponse"
         "401":
-          description: ADMIN_API_KEY bearer token required when changing ownership percentage
+          description: ADMIN_API_KEY bearer token required
           content:
             application/json:
               schema:
@@ -1462,7 +1472,7 @@ components:
   schemas:
     AgentPortfolioTeam:
       type: object
-      required: [team_id, team, abbreviation, ownership_percentage, original_ownership_percentage, cost_basis, trade_paid, trade_received, current_mtm, realized_return, net_mtm, net_return, value_source, wins, losses, ties, point_differential, playoff_status, playoff_seed]
+      required: [team_id, team, abbreviation, ownership_percentage, original_ownership_percentage, cost_basis, trade_paid, trade_received, current_mtm, realized_return, net_mtm, net_return, value_source, wins, losses, ties, point_differential, playoff_status, playoff_seed, market_status, market_status_reasons]
       properties:
         team_id: { type: number }
         team: { type: string }
@@ -1483,9 +1493,16 @@ components:
         point_differential: { type: ["number", "null"] }
         playoff_status: { type: ["string", "null"] }
         playoff_seed: { type: ["number", "null"] }
+        market_status:
+          type: ["string", "null"]
+          enum: [live, stale, null]
+          description: Quality of the Kalshi MTM inputs; null when no authoritative MTM is available.
+        market_status_reasons:
+          type: array
+          items: { type: string }
     AgentOwnerPortfolio:
       type: object
-      required: [owner, season, calcutta_id, basis, through_period, total_cost, current_mtm, realized_return, total_return, roi, calculation_status, teams]
+      required: [owner, season, calcutta_id, basis, through_period, total_cost, current_mtm, realized_return, total_return, roi, calculation_status, market_status, market_status_reasons, teams]
       properties:
         owner: { type: string }
         season: { type: number }
@@ -1498,6 +1515,12 @@ components:
         total_return: { type: ["number", "null"] }
         roi: { type: ["number", "null"] }
         calculation_status: { type: string, enum: [calculated, legacy, mixed, unavailable] }
+        market_status:
+          type: ["string", "null"]
+          enum: [live, stale, null]
+        market_status_reasons:
+          type: array
+          items: { type: string }
         teams:
           type: array
           items: { $ref: "#/components/schemas/AgentPortfolioTeam" }
@@ -1649,7 +1672,7 @@ components:
           items: { $ref: "#/components/schemas/AgentPointsRule" }
     AgentConsortiumLeaderboardRow:
       type: object
-      required: [rank, consortium, owner_count, total_cost, realized_return, current_mtm, net_return, net_mtm, roi]
+      required: [rank, consortium, owner_count, total_cost, realized_return, current_mtm, net_return, net_mtm, roi, market_status, market_status_reasons]
       properties:
         rank: { type: number }
         consortium: { type: string }
@@ -1660,15 +1683,27 @@ components:
         net_return: { type: ["number", "null"] }
         net_mtm: { type: ["number", "null"] }
         roi: { type: ["number", "null"] }
+        market_status:
+          type: ["string", "null"]
+          enum: [live, stale, null]
+        market_status_reasons:
+          type: array
+          items: { type: string }
     AgentConsortiumLeaderboard:
       type: object
-      required: [season, calcutta_id, basis, through_period, membership_view, rows]
+      required: [season, calcutta_id, basis, through_period, membership_view, market_status, market_status_reasons, rows]
       properties:
         season: { type: number }
         calcutta_id: { type: number }
         basis: { type: string, enum: [realized, mtm] }
         through_period: { type: ["number", "null"] }
         membership_view: { type: string, enum: [historical, current] }
+        market_status:
+          type: ["string", "null"]
+          enum: [live, stale, null]
+        market_status_reasons:
+          type: array
+          items: { type: string }
         rows:
           type: array
           items: { $ref: "#/components/schemas/AgentConsortiumLeaderboardRow" }
@@ -2059,6 +2094,15 @@ components:
         ptsToBreakeven:
           type: ["number", "null"]
           description: Remaining realized points needed to reach 1.0x cost, rounded to whole points.
+        marketStatus:
+          type: ["string", "null"]
+          enum: [live, stale, null]
+          description: Quality of the authoritative Kalshi MTM inputs; null when MTM coverage is unavailable.
+        marketStatusReasons:
+          type: array
+          items:
+            type: string
+          description: Human-readable warnings explaining stale MTM inputs.
         seed:
           type: ["number", "null"]
           description: "Playoff seed within conference (1–7). Null if team missed playoffs or seed not yet set."
@@ -2088,6 +2132,8 @@ components:
         - markToMarket
         - netMtm
         - ptsToBreakeven
+        - marketStatus
+        - marketStatusReasons
 
     NflStandingsImportInput:
       type: object
@@ -2448,6 +2494,14 @@ components:
         totalNetMtm:
           type: number
           description: Total MTM gross return minus signed cost basis.
+        marketStatus:
+          type: ["string", "null"]
+          enum: [live, stale, null]
+          description: Worst authoritative MTM quality among this owner's teams.
+        marketStatusReasons:
+          type: array
+          items:
+            type: string
         teams:
           type: array
           items:
@@ -2463,6 +2517,8 @@ components:
         - netPctReturn
         - totalMtm
         - totalNetMtm
+        - marketStatus
+        - marketStatusReasons
         - teams
 
     ResultsAvailability:

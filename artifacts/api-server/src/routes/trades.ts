@@ -26,6 +26,7 @@ import { OWNERSHIP_SEASON_LOCK_NAMESPACE } from "../lib/ownershipShares";
 import { resolveCalcuttaId } from "../lib/calcuttaContext";
 import { createPendingTrade, validateTradeOwnership as validateSharedTradeOwnership } from "../lib/tradeService";
 import { requireAdmin } from "../middlewares/requireAdmin";
+import { ErrorResponse, sendParsedJson } from "../lib/sendParsedJson";
 
 const router: IRouter = Router();
 
@@ -132,18 +133,18 @@ router.get("/admin/validate", requireAdmin, (_req: Request, res: Response): void
 router.get("/trades", async (req, res): Promise<void> => {
   const parsed = GetTradesQueryParams.safeParse(req.query);
   if (!parsed.success) {
-    res.status(400).json({ error: parsed.error.message });
+    sendParsedJson(res, ErrorResponse, { error: parsed.error.message }, 400);
     return;
   }
   const { season } = parsed.data as typeof parsed.data & { calcuttaId?: number };
   const seasonId = await resolveSeasonId(season);
   if (!seasonId) {
-    res.json([]);
+    sendParsedJson(res, GetTradesResponse, []);
     return;
   }
   const calcuttaId = await resolveCalcuttaId(db, { seasonId, calcuttaId: parsed.data.calcuttaId });
   if (!calcuttaId) {
-    res.json([]);
+    sendParsedJson(res, GetTradesResponse, []);
     return;
   }
 
@@ -187,7 +188,7 @@ router.get("/trades", async (req, res): Promise<void> => {
     .where(eq(seasonsTable.id, seasonId))
     .limit(1);
 
-  res.json(GetTradesResponse.parse(
+  sendParsedJson(res, GetTradesResponse,
     rows.map((r) => ({
       id: r.id,
       seasonYear: seasonInfo[0]?.year ?? 0,
@@ -208,7 +209,7 @@ router.get("/trades", async (req, res): Promise<void> => {
       tradeDate: r.tradeDate,
       notes: r.notes,
     })),
-  ));
+  );
 });
 
 // ── POST /trades — anyone can create; always starts as pending ────────────────
@@ -216,17 +217,17 @@ router.get("/trades", async (req, res): Promise<void> => {
 router.post("/trades", requireAdmin, async (req, res): Promise<void> => {
   const parsed = CreateTradeBody.safeParse(req.body);
   if (!parsed.success) {
-    res.status(400).json({ error: parsed.error.message });
+    sendParsedJson(res, ErrorResponse, { error: parsed.error.message }, 400);
     return;
   }
   const data = parsed.data as typeof parsed.data & { calcuttaId?: number };
   if (data.price !== undefined && (!Number.isFinite(data.price) || data.price < 0)) {
-    res.status(400).json({ error: "Trade price must be a non-negative number." });
+    sendParsedJson(res, ErrorResponse, { error: "Trade price must be a non-negative number." }, 400);
     return;
   }
   const seasonId = await resolveSeasonId(data.seasonYear);
   if (!seasonId) {
-    res.status(400).json({ error: `Season ${data.seasonYear} not found` });
+    sendParsedJson(res, ErrorResponse, { error: `Season ${data.seasonYear} not found` }, 400);
     return;
   }
 
@@ -251,12 +252,12 @@ router.post("/trades", requireAdmin, async (req, res): Promise<void> => {
   });
 
   if (outcome.kind === "invalid") {
-    res.status(400).json({ error: outcome.error });
+    sendParsedJson(res, ErrorResponse, { error: outcome.error }, 400);
     return;
   }
 
   const enriched = await enrichTrade(outcome.tradeId);
-  res.status(201).json(CreateTradeResponse.parse(enriched));
+  sendParsedJson(res, CreateTradeResponse, enriched, 201);
 });
 
 // ── PATCH /trades/:id — update price, date, notes, percentage (not status) ──
@@ -265,12 +266,12 @@ router.patch("/trades/:id", requireAdmin, async (req: Request, res: Response): P
   const params = UpdateTradeParams.safeParse(req.params);
   const body = UpdateTradeBody.safeParse(req.body);
   if (!params.success || !body.success) {
-    res.status(400).json({ error: "Invalid request" });
+    sendParsedJson(res, ErrorResponse, { error: "Invalid request" }, 400);
     return;
   }
 
   if (body.data.price !== undefined && (!Number.isFinite(body.data.price) || body.data.price < 0)) {
-    res.status(400).json({ error: "Trade price must be a non-negative number." });
+    sendParsedJson(res, ErrorResponse, { error: "Trade price must be a non-negative number." }, 400);
     return;
   }
 
@@ -318,20 +319,20 @@ router.patch("/trades/:id", requireAdmin, async (req: Request, res: Response): P
   });
 
   if (updateResult.kind === "not_found") {
-    res.status(404).json({ error: "Trade not found" });
+    sendParsedJson(res, ErrorResponse, { error: "Trade not found" }, 404);
     return;
   }
   if (updateResult.kind === "decided") {
-    res.status(409).json({ error: "Decided trades are immutable. Record a new trade instead." });
+    sendParsedJson(res, ErrorResponse, { error: "Decided trades are immutable. Record a new trade instead." }, 409);
     return;
   }
   if (updateResult.kind === "invalid") {
-    res.status(400).json({ error: `Cannot update trade: ${updateResult.error}` });
+    sendParsedJson(res, ErrorResponse, { error: `Cannot update trade: ${updateResult.error}` }, 400);
     return;
   }
 
   const enriched = await enrichTrade(params.data.id);
-  res.json(UpdateTradeResponse.parse(enriched));
+  sendParsedJson(res, UpdateTradeResponse, enriched);
 });
 
 // ── PATCH /trades/:id/status — commissioner confirmation only ───────────────
@@ -339,20 +340,20 @@ router.patch("/trades/:id", requireAdmin, async (req: Request, res: Response): P
 router.patch("/trades/:id/status", requireAdmin, async (req: Request, res: Response): Promise<void> => {
   const params = SetTradeStatusParams.safeParse(req.params);
   if (!params.success) {
-    res.status(400).json({ error: "Invalid trade id" });
+    sendParsedJson(res, ErrorResponse, { error: "Invalid trade id" }, 400);
     return;
   }
   const id = params.data.id;
 
   const body = SetTradeStatusBody.safeParse(req.body);
   if (!body.success) {
-    res.status(400).json({
+    sendParsedJson(res, ErrorResponse, {
       error: 'Body must be { "status": "approved" | "rejected" | "voided", "confirmed": true, "reason"?: string }',
-    });
+    }, 400);
     return;
   }
   if (body.data.status === "voided" && !body.data.reason?.trim()) {
-    res.status(400).json({ error: "Voiding an approved trade requires a non-empty reason." });
+    sendParsedJson(res, ErrorResponse, { error: "Voiding an approved trade requires a non-empty reason." }, 400);
     return;
   }
 
@@ -426,17 +427,17 @@ router.patch("/trades/:id/status", requireAdmin, async (req: Request, res: Respo
   });
 
   if (decision.kind === "not_found") {
-    res.status(404).json({ error: "Trade not found" });
+    sendParsedJson(res, ErrorResponse, { error: "Trade not found" }, 404);
     return;
   }
   if (decision.kind === "already_decided") {
-    res.status(409).json({
+    sendParsedJson(res, ErrorResponse, {
       error: "This trade cannot be changed from its current status. Pending trades can be approved or rejected; approved trades can be rejected or voided.",
-    });
+    }, 409);
     return;
   }
   if (decision.kind === "invalid") {
-    res.status(400).json({ error: `Cannot approve trade: ${decision.error}` });
+    sendParsedJson(res, ErrorResponse, { error: `Cannot approve trade: ${decision.error}` }, 400);
     return;
   }
 
@@ -445,7 +446,7 @@ router.patch("/trades/:id/status", requireAdmin, async (req: Request, res: Respo
     "Commissioner trade decision recorded",
   );
   const enriched = await enrichTrade(id);
-  res.json(SetTradeStatusResponse.parse(enriched));
+  sendParsedJson(res, SetTradeStatusResponse, enriched);
 });
 
 // ── DELETE /trades/:id ────────────────────────────────────────────────────────
@@ -453,7 +454,7 @@ router.patch("/trades/:id/status", requireAdmin, async (req: Request, res: Respo
 router.delete("/trades/:id", requireAdmin, async (req: Request, res: Response): Promise<void> => {
   const parsed = DeleteTradeParams.safeParse(req.params);
   if (!parsed.success) {
-    res.status(400).json({ error: "Invalid id" });
+    sendParsedJson(res, ErrorResponse, { error: "Invalid id" }, 400);
     return;
   }
 
@@ -480,11 +481,11 @@ router.delete("/trades/:id", requireAdmin, async (req: Request, res: Response): 
     return "deleted" as const;
   });
   if (deleteResult === "not_found") {
-    res.status(404).json({ error: "Trade not found" });
+    sendParsedJson(res, ErrorResponse, { error: "Trade not found" }, 404);
     return;
   }
   if (deleteResult === "decided") {
-    res.status(409).json({ error: "Decided trades cannot be deleted. Record a new trade instead." });
+    sendParsedJson(res, ErrorResponse, { error: "Decided trades cannot be deleted. Record a new trade instead." }, 409);
     return;
   }
   res.status(204).send();

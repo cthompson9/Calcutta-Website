@@ -5,6 +5,7 @@
  * NFL Auction Manager API
  * OpenAPI spec version: 0.1.0
  */
+import type { OwnerResultRowMarketStatus } from './ownerResultRowMarketStatus';
 import type { TeamResultRow } from './teamResultRow';
 
 export interface OwnerResultRow {
@@ -25,5 +26,11 @@ export interface OwnerResultRow {
   totalMtm: number;
   /** Total MTM gross return minus signed cost basis. */
   totalNetMtm: number;
+  /**
+     * Worst authoritative MTM quality among this owner's teams.
+     * @nullable
+     */
+  marketStatus: OwnerResultRowMarketStatus;
+  marketStatusReasons: string[];
   teams: TeamResultRow[];
 }

@@ -18,6 +18,7 @@ import {
 import {
   ImportAuctionDataBody,
   ImportAuctionDataResponse,
+  ImportDraftOrderResponse,
 } from "@workspace/api-zod";
 import {
   AuctionProImportError,
@@ -34,6 +35,7 @@ import {
   validatePrimaryOwnership,
 } from "../lib/ownershipShares";
 import { getOrCreateCalcuttaEntry, resolveCalcuttaId } from "../lib/calcuttaContext";
+import { ErrorResponse, sendParsedJson } from "../lib/sendParsedJson";
 
 const router: IRouter = Router();
 const COMPLETE_NFL_TEAM_COUNT = 32;
@@ -141,7 +143,7 @@ router.post("/auction/import", requireAdmin, async (req, res): Promise<void> => 
 
   const parsed = ImportAuctionDataBody.safeParse(req.body);
   if (!parsed.success) {
-    res.status(400).json({ error: parsed.error.message });
+    sendParsedJson(res, ErrorResponse, { error: parsed.error.message }, 400);
     return;
   }
 
@@ -151,7 +153,7 @@ router.post("/auction/import", requireAdmin, async (req, res): Promise<void> => 
     .where(eq(seasonsTable.year, parsed.data.seasonYear))
     .limit(1);
   if (!seasonRows[0]) {
-    res.status(404).json({ error: `Season ${parsed.data.seasonYear} not found.` });
+    sendParsedJson(res, ErrorResponse, { error: `Season ${parsed.data.seasonYear} not found.` }, 404);
     return;
   }
 
@@ -292,19 +294,19 @@ router.post("/auction/import", requireAdmin, async (req, res): Promise<void> => 
       importedOwners: importOutcome.importedOwners,
       source: "AuctionPro JSON export",
     });
-    res.json(result);
+    sendParsedJson(res, ImportAuctionDataResponse, result);
   } catch (error) {
     if (error instanceof ApprovedTradeConflictError) {
-      res.status(409).json({ error: error.message });
+      sendParsedJson(res, ErrorResponse, { error: error.message }, 409);
       return;
     }
     if (error instanceof AuctionProImportError) {
       req.log.warn({ statusCode: error.statusCode }, "AuctionPro import rejected");
-      res.status(error.statusCode).json({ error: error.message });
+      sendParsedJson(res, ErrorResponse, { error: error.message }, error.statusCode);
       return;
     }
     req.log.error({ err: error }, "AuctionPro import failed");
-    res.status(502).json({ error: "AuctionPro import failed unexpectedly." });
+    sendParsedJson(res, ErrorResponse, { error: "AuctionPro import failed unexpectedly." }, 502);
   }
 });
 
@@ -319,7 +321,7 @@ router.post("/auction/import/draft-order", requireAdmin, async (req, res): Promi
 
   const parsed = ImportAuctionDataBody.safeParse(req.body);
   if (!parsed.success) {
-    res.status(400).json({ error: parsed.error.message });
+    sendParsedJson(res, ErrorResponse, { error: parsed.error.message }, 400);
     return;
   }
 
@@ -329,7 +331,7 @@ router.post("/auction/import/draft-order", requireAdmin, async (req, res): Promi
     .where(eq(seasonsTable.year, parsed.data.seasonYear))
     .limit(1);
   if (!seasonRows[0]) {
-    res.status(404).json({ error: `Season ${parsed.data.seasonYear} not found.` });
+    sendParsedJson(res, ErrorResponse, { error: `Season ${parsed.data.seasonYear} not found.` }, 404);
     return;
   }
 
@@ -533,19 +535,19 @@ router.post("/auction/import/draft-order", requireAdmin, async (req, res): Promi
       importedOwners: importOutcome.importedOwners,
       source: "AuctionPro live draft-order",
     });
-    res.json(result);
+    sendParsedJson(res, ImportDraftOrderResponse, result);
   } catch (error) {
     if (error instanceof ApprovedTradeConflictError) {
-      res.status(409).json({ error: error.message });
+      sendParsedJson(res, ErrorResponse, { error: error.message }, 409);
       return;
     }
     if (error instanceof DraftOrderImportError) {
       req.log.warn({ statusCode: error.statusCode }, "Draft-order import rejected");
-      res.status(error.statusCode).json({ error: error.message });
+      sendParsedJson(res, ErrorResponse, { error: error.message }, error.statusCode);
       return;
     }
     req.log.error({ err: error }, "Draft-order import failed");
-    res.status(502).json({ error: "Draft-order import failed unexpectedly." });
+    sendParsedJson(res, ErrorResponse, { error: "Draft-order import failed unexpectedly." }, 502);
   }
 });
 

@@ -4,6 +4,7 @@ import {
   calcuttaEntriesTable,
   calcuttaRulesTable,
   db,
+  mtmSnapshotsTable,
   payoutRulesTable,
   positionsTable,
   seasonsTable,
@@ -75,6 +76,8 @@ export type SnapshotState = SnapshotMetrics & {
   label: string;
   isPlayoff: boolean;
   playoffStatus: PlayoffStatus;
+  marketStatus: "live" | "stale" | null;
+  marketStatusReasons: string[];
   metrics?: Record<string, number>;
 };
 
@@ -83,6 +86,8 @@ export type CompetitionSnapshotState = {
   label: string;
   isPlayoff: boolean;
   playoffStatus: PlayoffStatus;
+  marketStatus: "live" | "stale" | null;
+  marketStatusReasons: string[];
   metrics: Record<string, number>;
 };
 
@@ -263,6 +268,28 @@ function readPlayoffStatus(
     : "unknown";
 }
 
+function readMarketStatus(
+  rows: NormalizedMetricSnapshotRow[],
+): { marketStatus: "live" | "stale" | null; marketStatusReasons: string[] } {
+  const statuses = rows
+    .map((row) => row.sourceData?.["marketStatus"])
+    .filter((value): value is "live" | "stale" =>
+      value === "live" || value === "stale"
+    );
+  const marketStatus = statuses.includes("stale")
+    ? "stale"
+    : statuses.includes("live")
+      ? "live"
+      : null;
+  const marketStatusReasons = [...new Set(rows.flatMap((row) => {
+    const reasons = row.sourceData?.["marketStatusReasons"];
+    return Array.isArray(reasons)
+      ? reasons.filter((reason): reason is string => typeof reason === "string")
+      : [];
+  }))];
+  return { marketStatus, marketStatusReasons };
+}
+
 /**
  * Converts the basis-specific normalized metric vocabularies into complete
  * cumulative calculation snapshots. A partial metric set is omitted rather
@@ -320,6 +347,7 @@ export function buildCompetitionSnapshotStatesFromMetricRows(
       label: first.label,
       isPlayoff: first.isPlayoff,
       playoffStatus: readPlayoffStatus(metricRows),
+      ...readMarketStatus(metricRows),
       metrics: Object.fromEntries(values),
     };
     const byBasis = grouped.get(first.teamId) ??
@@ -944,8 +972,21 @@ export async function initializeNflWeekZeroSnapshots(
 
   let realizedSnapshotsWritten = 0;
   let mtmSnapshotsWritten = 0;
+  const existingMtmSnapshots = await writer
+    .select({ entryId: mtmSnapshotsTable.entryId })
+    .from(mtmSnapshotsTable)
+    .where(sql`${mtmSnapshotsTable.entryId} in (${sql.join(
+      auctionEntries.map((entry) => sql`${entry.entryId}`),
+      sql`, `,
+    )})`);
+  const entriesWithMtmSnapshots = new Set(
+    existingMtmSnapshots.map((snapshot) => snapshot.entryId),
+  );
   for (const entry of auctionEntries) {
     for (const basis of ["realized", "mtm"] as const) {
+      if (basis === "mtm" && entriesWithMtmSnapshots.has(entry.entryId)) {
+        continue;
+      }
       const [inserted] = await writer
         .insert(teamPeriodSnapshotsTable)
         .values({
@@ -1096,6 +1137,8 @@ export type CalculatedPeriodReturn = {
   normalizedShare: number;
   fairValue: number;
   pointsBreakdown: TeamPointsBreakdown;
+  marketStatus: "live" | "stale" | null;
+  marketStatusReasons: string[];
 };
 
 export type CalculatedTeamReturns = {
@@ -1462,6 +1505,9 @@ export async function loadCalculatedTeamReturnsForCalcutta(
         normalizedShare: value.normalizedShare,
         fairValue: value.fairValue,
         pointsBreakdown: value.pointsBreakdown as TeamPointsBreakdown,
+        marketStatus: basis === "mtm" ? genericLatest.marketStatus : null,
+        marketStatusReasons:
+          basis === "mtm" ? genericLatest.marketStatusReasons : [],
       };
       result.set(value.teamId, calculated);
     }

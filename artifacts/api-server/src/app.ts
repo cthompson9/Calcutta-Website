@@ -8,6 +8,7 @@ import router from "./routes";
 import { createMcpRouter } from "./mcpServer";
 import { createMcpOAuthRouter } from "./mcpOAuth";
 import { logger } from "./lib/logger";
+import { InternalErrorResponse, sendParsedJson } from "./lib/sendParsedJson";
 
 const app: Express = express();
 app.set("trust proxy", 1);
@@ -99,7 +100,12 @@ export const apiErrorHandler: express.ErrorRequestHandler = (error, req, res, _n
   const requestId = req.id;
   (req.log ?? logger).error({ err: error, requestId }, "Unhandled API error");
   if (res.headersSent) return;
-  res.status(500).json({ error: "Internal error", requestId });
+  sendParsedJson(
+    res,
+    InternalErrorResponse,
+    { error: "Internal error", requestId: requestId == null ? undefined : String(requestId) },
+    500,
+  );
 };
 
 app.use(apiErrorHandler);

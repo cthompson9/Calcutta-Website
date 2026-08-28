@@ -6,7 +6,8 @@
  * OpenAPI spec version: 0.1.0
  */
 import type { OwnershipSegment } from './ownershipSegment';
-import type { TeamOwner } from './teamOwner';
+import type { ResultTeamOwner } from './resultTeamOwner';
+import type { TeamResultRowMarketStatus } from './teamResultRowMarketStatus';
 import type { TeamResultRowPlayoffStatus } from './teamResultRowPlayoffStatus';
 
 export interface TeamResultRow {
@@ -14,7 +15,7 @@ export interface TeamResultRow {
   teamName: string;
   conference: string;
   division: string;
-  owners: TeamOwner[];
+  owners: ResultTeamOwner[];
   ownershipSegments: OwnershipSegment[];
   cost: number;
   wins: number;
@@ -46,6 +47,13 @@ export interface TeamResultRow {
      * @nullable
      */
   ptsToBreakeven: number | null;
+  /**
+     * Quality of the authoritative Kalshi MTM inputs; null when MTM coverage is unavailable.
+     * @nullable
+     */
+  marketStatus: TeamResultRowMarketStatus;
+  /** Human-readable warnings explaining stale MTM inputs. */
+  marketStatusReasons: string[];
   /**
      * Playoff seed within conference (1–7). Null if team missed playoffs or seed not yet set.
      * @nullable

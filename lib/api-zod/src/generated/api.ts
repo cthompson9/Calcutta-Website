@@ -313,7 +313,7 @@ export const GetResultsResponseItem = zod.object({
   "mtmGross": zod.number().describe('Owner-specific mark-to-market gross return.'),
   "mtmNet": zod.number().describe('Owner-specific mark-to-market gross return less signed cost basis.'),
   "ptsToBreakeven": zod.number().nullable().describe('Signed points to breakeven for this owner position, when point value is available.')
-})),
+}).describe('Signed, trade-aware owner economics for a result team row.')),
   "ownershipSegments": zod.array(zod.object({
   "bidderId": zod.number(),
   "bidderName": zod.string(),
@@ -344,6 +344,8 @@ export const GetResultsResponseItem = zod.object({
   "markToMarket": zod.number().describe('MTM gross dollars from normalized market points.'),
   "netMtm": zod.number().describe('MTM gross return minus cost.'),
   "ptsToBreakeven": zod.number().nullable().describe('Remaining realized points needed to reach 1.0x cost, rounded to whole points.'),
+  "marketStatus": zod.union([zod.literal('live'),zod.literal('stale'),zod.literal(null)]).nullable().describe('Quality of the authoritative Kalshi MTM inputs; null when MTM coverage is unavailable.'),
+  "marketStatusReasons": zod.array(zod.string()).describe('Human-readable warnings explaining stale MTM inputs.'),
   "seed": zod.number().nullish().describe('Playoff seed within conference (1–7). Null if team missed playoffs or seed not yet set.')
 })
 export const GetResultsResponse = zod.array(GetResultsResponseItem)
@@ -377,6 +379,8 @@ export const GetResultsByOwnerResponseItem = zod.object({
   "netPctReturn": zod.number().describe('Net return as a decimal fraction of cost (for example, 0.25 means 25%).'),
   "totalMtm": zod.number().describe('Total MTM gross dollars.'),
   "totalNetMtm": zod.number().describe('Total MTM gross return minus signed cost basis.'),
+  "marketStatus": zod.union([zod.literal('live'),zod.literal('stale'),zod.literal(null)]).nullable().describe('Worst authoritative MTM quality among this owner\'s teams.'),
+  "marketStatusReasons": zod.array(zod.string()),
   "teams": zod.array(zod.object({
   "teamId": zod.number(),
   "teamName": zod.string(),
@@ -385,8 +389,14 @@ export const GetResultsByOwnerResponseItem = zod.object({
   "owners": zod.array(zod.object({
   "bidderId": zod.number(),
   "bidderName": zod.string(),
-  "ownershipShare": zod.number()
-})),
+  "ownershipShare": zod.number().describe('Signed effective fractional share; negative values represent shorts.'),
+  "cost": zod.number().describe('Owner-specific signed cost basis after approved trades.'),
+  "realizedGross": zod.number().describe('Owner-specific realized gross return.'),
+  "net": zod.number().describe('Owner-specific realized gross return less signed cost basis.'),
+  "mtmGross": zod.number().describe('Owner-specific mark-to-market gross return.'),
+  "mtmNet": zod.number().describe('Owner-specific mark-to-market gross return less signed cost basis.'),
+  "ptsToBreakeven": zod.number().nullable().describe('Signed points to breakeven for this owner position, when point value is available.')
+}).describe('Signed, trade-aware owner economics for a result team row.')),
   "ownershipSegments": zod.array(zod.object({
   "bidderId": zod.number(),
   "bidderName": zod.string(),
@@ -417,6 +427,8 @@ export const GetResultsByOwnerResponseItem = zod.object({
   "markToMarket": zod.number().describe('MTM gross dollars from normalized market points.'),
   "netMtm": zod.number().describe('MTM gross return minus cost.'),
   "ptsToBreakeven": zod.number().nullable().describe('Remaining realized points needed to reach 1.0x cost, rounded to whole points.'),
+  "marketStatus": zod.union([zod.literal('live'),zod.literal('stale'),zod.literal(null)]).nullable().describe('Quality of the authoritative Kalshi MTM inputs; null when MTM coverage is unavailable.'),
+  "marketStatusReasons": zod.array(zod.string()).describe('Human-readable warnings explaining stale MTM inputs.'),
   "seed": zod.number().nullish().describe('Playoff seed within conference (1–7). Null if team missed playoffs or seed not yet set.')
 }))
 })
@@ -637,8 +649,14 @@ export const UpsertTeamResultResponse = zod.object({
   "owners": zod.array(zod.object({
   "bidderId": zod.number(),
   "bidderName": zod.string(),
-  "ownershipShare": zod.number()
-})),
+  "ownershipShare": zod.number().describe('Signed effective fractional share; negative values represent shorts.'),
+  "cost": zod.number().describe('Owner-specific signed cost basis after approved trades.'),
+  "realizedGross": zod.number().describe('Owner-specific realized gross return.'),
+  "net": zod.number().describe('Owner-specific realized gross return less signed cost basis.'),
+  "mtmGross": zod.number().describe('Owner-specific mark-to-market gross return.'),
+  "mtmNet": zod.number().describe('Owner-specific mark-to-market gross return less signed cost basis.'),
+  "ptsToBreakeven": zod.number().nullable().describe('Signed points to breakeven for this owner position, when point value is available.')
+}).describe('Signed, trade-aware owner economics for a result team row.')),
   "ownershipSegments": zod.array(zod.object({
   "bidderId": zod.number(),
   "bidderName": zod.string(),
@@ -669,6 +687,8 @@ export const UpsertTeamResultResponse = zod.object({
   "markToMarket": zod.number().describe('MTM gross dollars from normalized market points.'),
   "netMtm": zod.number().describe('MTM gross return minus cost.'),
   "ptsToBreakeven": zod.number().nullable().describe('Remaining realized points needed to reach 1.0x cost, rounded to whole points.'),
+  "marketStatus": zod.union([zod.literal('live'),zod.literal('stale'),zod.literal(null)]).nullable().describe('Quality of the authoritative Kalshi MTM inputs; null when MTM coverage is unavailable.'),
+  "marketStatusReasons": zod.array(zod.string()).describe('Human-readable warnings explaining stale MTM inputs.'),
   "seed": zod.number().nullish().describe('Playoff seed within conference (1–7). Null if team missed playoffs or seed not yet set.')
 })
 
@@ -897,7 +917,7 @@ export const GetTradesResponse = zod.array(GetTradesResponseItem)
 
 
 /**
- * @summary Submit a trade for commissioner review (open submission; always pending)
+ * @summary Submit a trade for commissioner review (always pending)
  */
 export const createTradeBodyNotesMax = 2000;
 
@@ -938,7 +958,7 @@ export const CreateTradeResponse = zod.object({
 
 
 /**
- * @summary Update a pending trade record (price, date, notes; percentage edits require ADMIN_API_KEY)
+ * @summary Update a pending trade record (admin only)
  */
 export const UpdateTradeParams = zod.object({
   "id": zod.coerce.number()
@@ -1275,6 +1295,8 @@ export const GetOwnerPortfolioV2Response = zod.object({
   "total_return": zod.number().nullable(),
   "roi": zod.number().nullable(),
   "calculation_status": zod.enum(['calculated', 'legacy', 'mixed', 'unavailable']),
+  "market_status": zod.union([zod.literal('live'),zod.literal('stale'),zod.literal(null)]).nullable(),
+  "market_status_reasons": zod.array(zod.string()),
   "teams": zod.array(zod.object({
   "team_id": zod.number(),
   "team": zod.string(),
@@ -1294,7 +1316,9 @@ export const GetOwnerPortfolioV2Response = zod.object({
   "ties": zod.number().nullable(),
   "point_differential": zod.number().nullable(),
   "playoff_status": zod.string().nullable(),
-  "playoff_seed": zod.number().nullable()
+  "playoff_seed": zod.number().nullable(),
+  "market_status": zod.union([zod.literal('live'),zod.literal('stale'),zod.literal(null)]).nullable().describe('Quality of the Kalshi MTM inputs; null when no authoritative MTM is available.'),
+  "market_status_reasons": zod.array(zod.string())
 }))
 })
 
@@ -1373,7 +1397,9 @@ export const GetOwnerPortfolioPerformanceV2Response = zod.object({
   "ties": zod.number().nullable(),
   "point_differential": zod.number().nullable(),
   "playoff_status": zod.string().nullable(),
-  "playoff_seed": zod.number().nullable()
+  "playoff_seed": zod.number().nullable(),
+  "market_status": zod.union([zod.literal('live'),zod.literal('stale'),zod.literal(null)]).nullable().describe('Quality of the Kalshi MTM inputs; null when no authoritative MTM is available.'),
+  "market_status_reasons": zod.array(zod.string())
 }))
 })
 
@@ -1661,6 +1687,8 @@ export const GetConsortiumLeaderboardV2Response = zod.object({
   "basis": zod.enum(['realized', 'mtm']),
   "through_period": zod.number().nullable(),
   "membership_view": zod.enum(['historical', 'current']),
+  "market_status": zod.union([zod.literal('live'),zod.literal('stale'),zod.literal(null)]).nullable(),
+  "market_status_reasons": zod.array(zod.string()),
   "rows": zod.array(zod.object({
   "rank": zod.number(),
   "consortium": zod.string(),
@@ -1670,7 +1698,9 @@ export const GetConsortiumLeaderboardV2Response = zod.object({
   "current_mtm": zod.number().nullable(),
   "net_return": zod.number().nullable(),
   "net_mtm": zod.number().nullable(),
-  "roi": zod.number().nullable()
+  "roi": zod.number().nullable(),
+  "market_status": zod.union([zod.literal('live'),zod.literal('stale'),zod.literal(null)]).nullable(),
+  "market_status_reasons": zod.array(zod.string())
 }))
 })
 

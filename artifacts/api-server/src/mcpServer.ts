@@ -61,6 +61,7 @@ import { applyNflStandingsImport, NflStandingsImportError } from "./lib/nflStand
 import { createPendingTrade, validateTradeOwnership } from "./lib/tradeService";
 import {
   mcpProtectedResourceMetadataUrl,
+  matchesAdminApiKey,
   matchesMcpApiKey,
   verifyMcpOAuthAccessToken,
 } from "./mcpOAuth";
@@ -335,9 +336,19 @@ function jsonText(result: { status: number; body: unknown }) {
   };
 }
 
+function commissionerAuthorizationRequired() {
+  return {
+    content: [{
+      type: "text" as const,
+      text: "Error: Commissioner authorization is required for this MCP mutation.",
+    }],
+    isError: true,
+  };
+}
+
 // ─── Build MCP server (called per-request in stateless mode) ─────────────────
 
-function buildMcpServer() {
+function buildMcpServer(isAdmin: boolean) {
   const server = new McpServer({
     name: "nfl-auction",
     version: "1.0.0",
@@ -542,16 +553,13 @@ function buildMcpServer() {
 
   server.tool(
     "import_nfl_standings",
-    "Fetch, validate, and atomically import all 32 teams' current NFL regular-season W/L/T, point differential, and current playoff status from nfl.com. It does not infer weekly reporting snapshots or playoff-round results. Requires ADMIN_API_KEY and confirmed: true.",
+    "Fetch, validate, and atomically import all 32 teams' current NFL regular-season W/L/T, point differential, and current playoff status from nfl.com. It does not infer weekly reporting snapshots or playoff-round results. Requires commissioner transport authorization and confirmed: true.",
     {
       season: z.number().optional().describe("Season year. Defaults to the active season."),
       confirmed: z.literal(true).describe("Must be true to confirm the standings update."),
-      adminKey: z.string().describe("Admin API key"),
     },
-    async ({ season, confirmed: _confirmed, adminKey }) => {
-      if (!process.env["ADMIN_API_KEY"] || adminKey !== process.env["ADMIN_API_KEY"]) {
-        return text("Error: Invalid admin key. Only the pool admin can import NFL standings.");
-      }
+    async ({ season, confirmed: _confirmed }) => {
+      if (!isAdmin) return commissionerAuthorizationRequired();
       const year = season ?? await activeSeasonYear();
       if (!year) return text("Error: No active season is configured for the NFL standings import.");
       try {
@@ -718,17 +726,13 @@ function buildMcpServer() {
 
   server.tool(
     "set_bidder_consortium",
-    "Assign or clear a bidder's consortium. Provide null or an empty string to clear the assignment. Consortium names are reused case-insensitively. Requires ADMIN_API_KEY.",
+    "Assign or clear a bidder's consortium. Provide null or an empty string to clear the assignment. Consortium names are reused case-insensitively. Requires commissioner transport authorization.",
     {
       bidder: z.string().describe("Full or partial bidder name, e.g. 'Zachary Long'"),
       consortium: z.string().max(200).nullable().describe("Consortium name to assign, or null/empty to clear the assignment"),
-      adminKey: z.string().describe("Admin API key — only the pool admin knows this"),
     },
-    async ({ bidder, consortium, adminKey }) => {
-      const expectedKey = process.env["ADMIN_API_KEY"];
-      if (!expectedKey || adminKey !== expectedKey) {
-        return text("Error: Invalid admin key. Only the pool admin can set bidder consortiums.");
-      }
+    async ({ bidder, consortium }) => {
+      if (!isAdmin) return commissionerAuthorizationRequired();
 
       const bidders = await db
         .select({ id: biddersTable.id, name: biddersTable.name })
@@ -829,7 +833,7 @@ function buildMcpServer() {
 
   server.tool(
     "set_team_primary_ownership",
-    "Replace a team's complete original auction ownership split for a season. Use this only to correct the original auction record, not to record a later sale; approved trades must use create_trade. Requires ADMIN_API_KEY. Shares are decimal fractions that must add to 1 exactly (for example, 0.5 and 0.5).",
+    "Replace a team's complete original auction ownership split for a season. Use this only to correct the original auction record, not to record a later sale; approved trades must use create_trade. Requires commissioner transport authorization. Shares are decimal fractions that must add to 1 exactly (for example, 0.5 and 0.5).",
     {
       team: z.string().describe("Full or partial team name, e.g. 'Buffalo Bills' or 'Bills'"),
       owners: z.array(z.object({
@@ -839,13 +843,9 @@ function buildMcpServer() {
       season: z.number().optional().describe("Season year. Defaults to the active season."),
       calcuttaId: z.number().int().positive().optional().describe("Selected NFL Calcutta ID. Defaults to the season's canonical NFL Calcutta."),
       note: z.string().max(500).optional().describe("Optional correction rationale kept in the audit record."),
-      adminKey: z.string().describe("Admin API key — only the pool admin can correct primary ownership."),
     },
-    async ({ team, owners, season, calcuttaId, note, adminKey }) => {
-      const expectedKey = process.env["ADMIN_API_KEY"];
-      if (!expectedKey || adminKey !== expectedKey) {
-        return text("Error: Invalid admin key. Only the pool admin can correct primary ownership.");
-      }
+    async ({ team, owners, season, calcuttaId, note }) => {
+      if (!isAdmin) return commissionerAuthorizationRequired();
 
       const [teams, bidders] = await Promise.all([
         db.select({ id: teamsTable.id, name: teamsTable.name }).from(teamsTable),
@@ -966,7 +966,7 @@ function buildMcpServer() {
 
   server.tool(
     "create_trade",
-    "Submit a trade between existing owners for an existing, unambiguously identified team. Sales may create a short position. Every trade starts PENDING and requires admin approval before it affects standings.",
+    "Submit a trade between existing owners for an existing, unambiguously identified team. Sales may create a short position. Requires commissioner transport authorization. Every trade starts PENDING and requires admin approval before it affects standings.",
     {
       team:        z.string().describe("Full or partial team name, e.g. 'Seattle Seahawks'"),
       fromOwner:   z.string().describe("Name of the existing owner selling the stake."),
@@ -979,6 +979,7 @@ function buildMcpServer() {
       notes:       z.string().optional().describe("Optional notes about the trade"),
     },
     async ({ team, fromOwner, toOwner, percentage = 100, price, tradeDate, season, calcuttaId, notes }) => {
+      if (!isAdmin) return commissionerAuthorizationRequired();
       const teamResult = await resolveExistingTeam(team);
       if ("error" in teamResult) return text(`Error: ${teamResult.error}`);
       const fromResult = await resolveExistingBidder(fromOwner);
@@ -1061,19 +1062,15 @@ function buildMcpServer() {
 
   server.tool(
     "set_trade_status",
-    "Record an approval or rejection for a pending trade, correct an approved trade to rejected, or void an approved trade. Requires the ADMIN_API_KEY plus confirmed: true. Voiding requires a reason and removes the trade from owner standings and returns while preserving its audit trail.",
+    "Record an approval or rejection for a pending trade, correct an approved trade to rejected, or void an approved trade. Requires commissioner transport authorization and confirmed: true. Voiding requires a reason and removes the trade from owner standings and returns while preserving its audit trail.",
     {
       tradeId:  z.number().describe("Trade ID to update"),
       status:   z.enum(["approved", "rejected", "voided"]).describe("New status: approved, rejected, or voided"),
       confirmed: z.literal(true).describe("Must be true to explicitly confirm this irreversible decision"),
       reason: z.string().optional().describe("Required when voiding: why the approved trade is being voided"),
-      adminKey: z.string().describe("Admin API key — only the pool admin knows this"),
     },
-    async ({ tradeId, status, confirmed, adminKey, reason }) => {
-      const expectedKey = process.env["ADMIN_API_KEY"];
-      if (!expectedKey || adminKey !== expectedKey) {
-        return text("Error: Invalid admin key. Only the pool admin can approve or reject trades.");
-      }
+    async ({ tradeId, status, confirmed, reason }) => {
+      if (!isAdmin) return commissionerAuthorizationRequired();
       if (confirmed !== true) {
         return text("Error: Set confirmed to true to record this irreversible trade decision.");
       }
@@ -1254,7 +1251,7 @@ function buildMcpServer() {
 
   server.tool(
     "set_team_period_snapshot",
-    "Upserts a cumulative NFL period snapshot used to calculate returns from payout rules. Requires ADMIN_API_KEY.",
+    "Upserts a cumulative NFL period snapshot used to calculate returns from payout rules. Requires commissioner transport authorization.",
     {
       team: z.string().describe("Full or partial team name"),
       season: z.number().describe("Season year"),
@@ -1271,12 +1268,9 @@ function buildMcpServer() {
       winSuperBowl: z.number().min(0).max(1).default(0),
       playoffStatus: z.enum(["unknown", "alive", "clinched", "eliminated"]).default("unknown"),
       ...calcuttaInput,
-      adminKey: z.string().describe("Admin API key"),
     },
-    async ({ team, season, period, basis, calcuttaId, adminKey, ...metrics }) => {
-      if (!process.env["ADMIN_API_KEY"] || adminKey !== process.env["ADMIN_API_KEY"]) {
-        return text("Error: Invalid admin key. Only the pool admin can write period snapshots.");
-      }
+    async ({ team, season, period, basis, calcuttaId, ...metrics }) => {
+      if (!isAdmin) return commissionerAuthorizationRequired();
       const t = await findTeam(team);
       if (!t) return text(`Team not found: ${team}`);
       const sid = await resolveSeasonId(season);
@@ -1422,7 +1416,7 @@ function buildMcpServer() {
 
   server.tool(
     "set_calcutta_payout_rules",
-    "Replaces every payout rule for a season's canonical NFL Calcutta. Rates are dollars per cumulative metric unit; the playoff multiplier applies to changes recorded in playoff periods. Requires ADMIN_API_KEY.",
+    "Replaces every payout rule for a season's canonical NFL Calcutta. Requires commissioner transport authorization. Rates are dollars per cumulative metric unit; the playoff multiplier applies to changes recorded in playoff periods.",
     {
       season: z.number().describe("Season year"),
       rules: z.array(z.object({
@@ -1430,12 +1424,9 @@ function buildMcpServer() {
         dollarsPerUnit: z.number(),
         playoffMultiplier: z.number().nonnegative().default(2),
       })).min(1),
-      adminKey: z.string().describe("Admin API key"),
     },
-    async ({ season, rules, adminKey }) => {
-      if (!process.env["ADMIN_API_KEY"] || adminKey !== process.env["ADMIN_API_KEY"]) {
-        return text("Error: Invalid admin key. Only the pool admin can configure payout rules.");
-      }
+    async ({ season, rules }) => {
+      if (!isAdmin) return commissionerAuthorizationRequired();
       const sid = await resolveSeasonId(season);
       if (!sid) return text(`Season ${season} not found`);
       if (new Set(rules.map((rule) => rule.metric)).size !== rules.length) {
@@ -1479,19 +1470,15 @@ function buildMcpServer() {
 
   server.tool(
     "set_team_seed",
-    "Set the playoff seed (1–7) for a team in a given season. Use null to clear a seed. Requires ADMIN_API_KEY.",
+    "Set the playoff seed (1–7) for a team in a given season. Use null to clear a seed. Requires commissioner transport authorization.",
     {
       team:     z.string().describe("Full or partial team name, e.g. 'Seattle Seahawks' or 'Seahawks'"),
       seed:     z.number().int().min(1).max(7).nullable().describe("Playoff seed 1–7 (1 = best), or null to clear"),
       season:   z.number().optional().describe("Season year (e.g. 2025). Defaults to most recent completed season."),
       ...calcuttaInput,
-      adminKey: z.string().describe("Admin API key — only the pool admin knows this"),
     },
-    async ({ team, seed, season, calcuttaId, adminKey }) => {
-      const expectedKey = process.env["ADMIN_API_KEY"];
-      if (!expectedKey || adminKey !== expectedKey) {
-        return text("Error: Invalid admin key. Only the pool admin can set seeds.");
-      }
+    async ({ team, seed, season, calcuttaId }) => {
+      if (!isAdmin) return commissionerAuthorizationRequired();
       const t = await findTeam(team);
       if (!t) return text(`Team not found: ${team}`);
       const year = season ?? await defaultSeasonYear();
@@ -1539,7 +1526,7 @@ function buildMcpServer() {
 
   server.tool(
     "set_team_mtm",
-    "Record or update the mark-to-market value for a team on a specific date. Same-date submissions overwrite the previous value; different dates accumulate as separate data points. Requires the ADMIN_API_KEY as adminKey.",
+    "Record or update the mark-to-market value for a team on a specific date. Same-date submissions overwrite the previous value; different dates accumulate as separate data points. Requires commissioner transport authorization.",
     {
       team:         z.string().describe("Full or partial team name, e.g. 'Seattle Seahawks' or 'Seahawks'"),
       mtmValue:     z.number().nonnegative().describe("Mark-to-market value in dollars (e.g. 320 or 45.50)"),
@@ -1547,13 +1534,9 @@ function buildMcpServer() {
       weekNum:      z.number().int().min(0).max(22).optional().describe("Optional week label (0=pre-season, 1–18=regular, 19+=playoffs). Stored for display only."),
       season:       z.number().optional().describe("Season year (e.g. 2026). Defaults to the active season."),
       ...calcuttaInput,
-      adminKey:     z.string().describe("Admin API key — only the pool admin knows this"),
     },
-    async ({ team, mtmValue, snapshotDate, weekNum, season, calcuttaId, adminKey }) => {
-      const expectedKey = process.env["ADMIN_API_KEY"];
-      if (!expectedKey || adminKey !== expectedKey) {
-        return text("Error: Invalid admin key. Only the pool admin can record MTM values.");
-      }
+    async ({ team, mtmValue, snapshotDate, weekNum, season, calcuttaId }) => {
+      if (!isAdmin) return commissionerAuthorizationRequired();
 
       const t = await findTeam(team);
       if (!t) return text(`Team not found: ${team}`);
@@ -1610,7 +1593,12 @@ function buildMcpServer() {
 
 // ─── Auth middleware ─────────────────────────────────────────────────────────
 
-async function checkAuth(req: Request, res: Response): Promise<boolean> {
+type McpPrincipal = {
+  isAdmin: boolean;
+  source: "admin_api_key" | "mcp_api_key" | "oauth";
+};
+
+async function checkAuth(req: Request, res: Response): Promise<McpPrincipal | null> {
   const apiKey = process.env["MCP_API_KEY"];
   if (!apiKey) {
     res.status(503).json({
@@ -1618,13 +1606,20 @@ async function checkAuth(req: Request, res: Response): Promise<boolean> {
       error: { code: -32000, message: "MCP_API_KEY secret is not configured on the server." },
       id: null,
     });
-    return false;
+    return null;
   }
   const auth = req.headers["authorization"];
   const token = typeof auth === "string" && auth.startsWith("Bearer ")
     ? auth.slice("Bearer ".length)
     : "";
-  if (!token || (!matchesMcpApiKey(token) && !await verifyMcpOAuthAccessToken(token))) {
+  if (token && matchesAdminApiKey(token)) {
+    return { isAdmin: true, source: "admin_api_key" };
+  }
+  if (token && matchesMcpApiKey(token)) {
+    return { isAdmin: false, source: "mcp_api_key" };
+  }
+  const oauthPrincipal = token ? await verifyMcpOAuthAccessToken(token) : null;
+  if (!oauthPrincipal) {
     res.set(
       "WWW-Authenticate",
       `Bearer resource_metadata="${mcpProtectedResourceMetadataUrl(req)}"`,
@@ -1637,9 +1632,9 @@ async function checkAuth(req: Request, res: Response): Promise<boolean> {
       },
       id: null,
     });
-    return false;
+    return null;
   }
-  return true;
+  return { isAdmin: oauthPrincipal.isAdmin, source: "oauth" };
 }
 
 // ─── Router ──────────────────────────────────────────────────────────────────
@@ -1649,9 +1644,10 @@ export function createMcpRouter(): IRouter {
 
   // POST / — main message handler (stateless: one server per request)
   router.post("/", async (req, res): Promise<void> => {
-    if (!await checkAuth(req, res)) return;
+    const principal = await checkAuth(req, res);
+    if (!principal) return;
 
-    const server = buildMcpServer();
+    const server = buildMcpServer(principal.isAdmin);
     const transport = new StreamableHTTPServerTransport({ sessionIdGenerator: undefined });
 
     try {

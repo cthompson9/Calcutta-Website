@@ -5,6 +5,7 @@
  * NFL Auction Manager API
  * OpenAPI spec version: 0.1.0
  */
+import type { AgentConsortiumLeaderboardRowMarketStatus } from './agentConsortiumLeaderboardRowMarketStatus';
 
 export interface AgentConsortiumLeaderboardRow {
   rank: number;
@@ -21,4 +22,7 @@ export interface AgentConsortiumLeaderboardRow {
   net_mtm: number | null;
   /** @nullable */
   roi: number | null;
+  /** @nullable */
+  market_status: AgentConsortiumLeaderboardRowMarketStatus;
+  market_status_reasons: string[];
 }

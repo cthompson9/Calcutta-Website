@@ -58,7 +58,7 @@ const ALL_TEAM_TICKERS = [
  */
 function makeKalshiMock(
   realFetch,
-  { delayMs = 0, omitChampionshipTicker = null } = {},
+  { delayMs = 0, omitChampionshipTicker = null, staleTicker = null } = {},
 ) {
   return async function mockedFetch(url, options) {
     const urlStr = url.toString();
@@ -91,8 +91,8 @@ function makeKalshiMock(
         ticker: `${eventTicker}-${t}`,
         yes_bid_dollars: "0.09",
         yes_ask_dollars: "0.11",
-        yes_bid_size_fp: "500",
-        yes_ask_size_fp: "500",
+        yes_bid_size_fp: t === staleTicker ? "1" : "500",
+        yes_ask_size_fp: t === staleTicker ? "1" : "500",
         updated_time: "2026-08-19T12:00:00Z",
       }));
       if (
@@ -384,30 +384,113 @@ describe(
     );
 
     test(
-      "an incomplete market capture keeps raw audit rows but publishes no derived metrics",
+      "an incomplete market capture rejects before replacing prior Week 0 snapshots or metrics",
       async () => {
         const DATE = "9999-09-09";
+        globalThis.fetch = makeKalshiMock(realFetch);
+        const initial = await postWeekZeroCapture({ snapshotDate: DATE });
+        assert.equal(initial.status, 200, "complete setup capture must succeed");
+        const beforeSnapshots = await snapshotsAtDate(DATE);
+        const beforeMetrics = await mtmMetricRowsForEntries(
+          [...entryIdByTeam.values()],
+        );
+        assert.equal(beforeSnapshots.length, 32);
+        assert.equal(beforeMetrics.length, 32 * 8);
+
         globalThis.fetch = makeKalshiMock(realFetch, {
           omitChampionshipTicker: "ARI",
         });
         try {
           const response = await postWeekZeroCapture({ snapshotDate: DATE });
-          assert.equal(response.status, 200);
-          const rawRows = await snapshotsAtDate(DATE);
-          assert.equal(rawRows.length, 32);
-          assert.equal(
-            rawRows.filter((row) => row.marketStatus === "incomplete").length,
-            1,
-          );
-          const metrics = await mtmMetricRowsForEntries(
+          assert.ok(response.status >= 400, "incomplete capture must be rejected");
+          const afterSnapshots = await snapshotsAtDate(DATE);
+          const afterMetrics = await mtmMetricRowsForEntries(
             [...entryIdByTeam.values()],
           );
-          assert.equal(
-            metrics.length,
-            0,
-            "league-normalized assertions must be withheld for an incomplete capture",
+          assert.deepEqual(
+            afterSnapshots,
+            beforeSnapshots,
+            "incomplete input must leave every prior Week 0 snapshot untouched",
           );
-          await deleteSnapshotsByIds(rawRows.map((row) => row.id));
+          assert.deepEqual(
+            afterMetrics,
+            beforeMetrics,
+            "incomplete input must leave every prior derived metric untouched",
+          );
+        } finally {
+          globalThis.fetch = realFetch;
+          const leaked = await snapshotsAtDate(DATE);
+          await deleteSnapshotsByIds(leaked.map((row) => row.id));
+        }
+      },
+    );
+
+    test(
+      "a complete stale capture persists and exposes its warning metadata",
+      async () => {
+        const DATE = "9999-09-11";
+        globalThis.fetch = makeKalshiMock(realFetch, { staleTicker: "ARI" });
+        try {
+          const capture = await postWeekZeroCapture({ snapshotDate: DATE });
+          assert.equal(capture.status, 200, "stale but usable capture must publish");
+          const captureBody = await capture.json();
+          assert.ok(captureBody.marketStatusCounts.stale > 0);
+
+          const response = await fetch(
+            `${baseUrl}/api/mtm?season=9999&calcuttaId=${testCalcuttaId}`,
+          );
+          assert.equal(response.status, 200);
+          const body = await response.json();
+          const weekZero = body.weeks.find((week) => week.snapshotDate === DATE);
+          assert.ok(weekZero, "stored stale capture must be returned");
+          const staleTeams = weekZero.teamValues.filter(
+            (team) => team.marketStatus === "stale",
+          );
+          assert.ok(staleTeams.length > 0);
+          assert.ok(
+            staleTeams.every((team) => team.marketStatusReasons.length > 0),
+            "every stale mark must include warning reasons",
+          );
+
+          const resultResponses = await Promise.all([
+            fetch(`${baseUrl}/api/results?season=9999&calcuttaId=${testCalcuttaId}`),
+            fetch(`${baseUrl}/api/results/by-owner?season=9999&calcuttaId=${testCalcuttaId}`),
+            fetch(
+              `${baseUrl}/api/v2/owner/portfolio?season=9999&calcuttaId=${testCalcuttaId}&owner=${encodeURIComponent("MTM integration fixture bidder 9999")}`,
+            ),
+            fetch(
+              `${baseUrl}/api/v2/leaderboard/consortia?season=9999&calcuttaId=${testCalcuttaId}`,
+            ),
+          ]);
+          assert.ok(resultResponses.every((item) => item.status === 200));
+          const [teamResults, ownerResults, portfolio, leaderboard] =
+            await Promise.all(resultResponses.map((item) => item.json()));
+
+          assert.ok(teamResults.some(
+            (team) =>
+              team.marketStatus === "stale" &&
+              team.marketStatusReasons.length > 0,
+          ));
+          assert.ok(ownerResults.some(
+            (owner) =>
+              owner.marketStatus === "stale" &&
+              owner.marketStatusReasons.length > 0 &&
+              owner.teams.some((team) => team.marketStatus === "stale"),
+          ));
+          assert.equal(portfolio.market_status, "stale");
+          assert.ok(portfolio.market_status_reasons.length > 0);
+          assert.ok(portfolio.teams.some(
+            (team) =>
+              team.market_status === "stale" &&
+              team.market_status_reasons.length > 0,
+          ));
+          assert.equal(leaderboard.market_status, "stale");
+          assert.ok(leaderboard.market_status_reasons.length > 0);
+          assert.ok(leaderboard.rows.some(
+            (row) =>
+              row.market_status === "stale" &&
+              row.market_status_reasons.length > 0,
+          ));
         } finally {
           globalThis.fetch = realFetch;
           const leaked = await snapshotsAtDate(DATE);

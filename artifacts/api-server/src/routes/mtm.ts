@@ -1,4 +1,5 @@
 import { Router, type IRouter, type Request } from "express";
+import { ErrorResponse, sendParsedJson } from "../lib/sendParsedJson";
 import { and, eq, asc, inArray, isNull, ne, or, sql } from "drizzle-orm";
 import {
   db,
@@ -25,6 +26,7 @@ import { resolveCalcuttaId } from "../lib/calcuttaContext";
 import {
   buildWeekZeroSnapshotRows,
   calculateWeekZeroValuations,
+  assertCompleteWeekZeroCapture,
   WEEK_ZERO_SNAPSHOT_KEY,
   type MarketQuote,
 } from "../lib/weekZeroValuation";
@@ -79,13 +81,13 @@ async function resolveSeasonId(year: number): Promise<number | null> {
 router.get("/mtm", async (req, res): Promise<void> => {
   const parsed = GetMtmSnapshotsQueryParams.safeParse(req.query);
   if (!parsed.success) {
-    res.status(400).json({ error: parsed.error.message });
+    sendParsedJson(res, ErrorResponse, { error: parsed.error.message }, 400);
     return;
   }
   const { season } = parsed.data;
   const seasonId = await resolveSeasonId(season);
   if (!seasonId) {
-    res.json(GetMtmSnapshotsResponse.parse({ weeks: [], teams: [], owners: [] }));
+    sendParsedJson(res, GetMtmSnapshotsResponse, { weeks: [], teams: [], owners: [] });
     return;
   }
   const calcuttaId = await resolveCalcuttaId(db, {
@@ -93,7 +95,7 @@ router.get("/mtm", async (req, res): Promise<void> => {
     calcuttaId: parsed.data.calcuttaId,
   });
   if (!calcuttaId) {
-    res.status(400).json({ error: "Calcutta must be an NFL pool in the requested season." });
+    sendParsedJson(res, ErrorResponse, { error: "Calcutta must be an NFL pool in the requested season." }, 400);
     return;
   }
   const entryRows = await db
@@ -296,20 +298,20 @@ router.get("/mtm", async (req, res): Promise<void> => {
     };
   });
 
-  res.json(GetMtmSnapshotsResponse.parse({ weeks, teams: teamSeries, owners: ownerSeries }));
+  sendParsedJson(res, GetMtmSnapshotsResponse, { weeks, teams: teamSeries, owners: ownerSeries });
 });
 
 router.post("/mtm", requireAdmin, async (req, res): Promise<void> => {
 
   const parsed = UpsertMtmSnapshotBody.safeParse(req.body);
   if (!parsed.success) {
-    res.status(400).json({ error: parsed.error.message });
+    sendParsedJson(res, ErrorResponse, { error: parsed.error.message }, 400);
     return;
   }
   const data = parsed.data;
   const seasonId = await resolveSeasonId(data.seasonYear);
   if (!seasonId) {
-    res.status(404).json({ error: `Season ${data.seasonYear} not found` });
+    sendParsedJson(res, ErrorResponse, { error: `Season ${data.seasonYear} not found` }, 404);
     return;
   }
   const calcuttaId = await resolveCalcuttaId(db, {
@@ -317,7 +319,7 @@ router.post("/mtm", requireAdmin, async (req, res): Promise<void> => {
     calcuttaId: data.calcuttaId,
   });
   if (!calcuttaId) {
-    res.status(400).json({ error: "Calcutta must be an NFL pool in the requested season." });
+    sendParsedJson(res, ErrorResponse, { error: "Calcutta must be an NFL pool in the requested season." }, 400);
     return;
   }
   const entry = await db
@@ -329,7 +331,7 @@ router.post("/mtm", requireAdmin, async (req, res): Promise<void> => {
     ))
     .limit(1);
   if (!entry[0]) {
-    res.status(400).json({ error: "Team is not an entry in the selected Calcutta." });
+    sendParsedJson(res, ErrorResponse, { error: "Team is not an entry in the selected Calcutta." }, 400);
     return;
   }
 
@@ -345,35 +347,35 @@ router.post("/mtm", requireAdmin, async (req, res): Promise<void> => {
     weekNum: data.weekNum,
   });
   if (manualWrite.kind === "invalid_value") {
-    res.status(400).json({ error: "MTM value must be a non-negative number." });
+    sendParsedJson(res, ErrorResponse, { error: "MTM value must be a non-negative number." }, 400);
     return;
   }
   if (manualWrite.kind === "not_auctioned") {
-    res.status(400).json({
+    sendParsedJson(res, ErrorResponse, {
       error: "Team is not auctioned in this season and cannot receive an MTM snapshot.",
-    });
+    }, 400);
     return;
   }
   if (manualWrite.kind === "protected_week_zero") {
-    res.status(409).json({
+    sendParsedJson(res, ErrorResponse, {
       error:
         "That team/date is the protected Kalshi Week 0 snapshot. Use the Week 0 recapture action instead.",
-    });
+    }, 409);
     return;
   }
 
-  res.json(UpsertMtmSnapshotResponse.parse({
+  sendParsedJson(res, UpsertMtmSnapshotResponse, {
     ...manualWrite.snapshot,
     mtmValue: Number(manualWrite.snapshot.mtmValue),
     capturedAt: manualWrite.snapshot.capturedAt?.toISOString() ?? null,
-  }));
+  });
 });
 
 router.post("/mtm/week-zero/capture", requireAdmin, async (req, res): Promise<void> => {
 
   const parsed = CaptureWeekZeroMtmBody.safeParse(req.body);
   if (!parsed.success) {
-    res.status(400).json({ error: parsed.error.message });
+    sendParsedJson(res, ErrorResponse, { error: parsed.error.message }, 400);
     return;
   }
 
@@ -385,7 +387,7 @@ router.post("/mtm/week-zero/capture", requireAdmin, async (req, res): Promise<vo
     .limit(1);
   const seasonId = seasonRows[0]?.id;
   if (!seasonId) {
-    res.status(404).json({ error: `Season ${seasonYear} not found` });
+    sendParsedJson(res, ErrorResponse, { error: `Season ${seasonYear} not found` }, 404);
     return;
   }
   const calcuttaId = await resolveCalcuttaId(db, {
@@ -393,7 +395,7 @@ router.post("/mtm/week-zero/capture", requireAdmin, async (req, res): Promise<vo
     calcuttaId: parsed.data.calcuttaId,
   });
   if (!calcuttaId) {
-    res.status(400).json({ error: "Calcutta must be an NFL pool in the requested season." });
+    sendParsedJson(res, ErrorResponse, { error: "Calcutta must be an NFL pool in the requested season." }, 400);
     return;
   }
 
@@ -412,9 +414,9 @@ router.post("/mtm/week-zero/capture", requireAdmin, async (req, res): Promise<vo
     .where(eq(calcuttaEntriesTable.calcuttaId, calcuttaId))
     .orderBy(asc(teamsTable.id));
   if (teams.length !== 32) {
-    res.status(400).json({
+    sendParsedJson(res, ErrorResponse, {
       error: `Week 0 requires all 32 NFL teams; found ${teams.length}.`,
-    });
+    }, 400);
     return;
   }
   const entryIdByTeam = new Map(teams.map((team) => [team.id, team.entryId]));
@@ -441,9 +443,9 @@ router.post("/mtm/week-zero/capture", requireAdmin, async (req, res): Promise<vo
     );
   }
   if (bidCostByEntry.size !== 32) {
-    res.status(400).json({
+    sendParsedJson(res, ErrorResponse, {
       error: `Week 0 requires primary-position bid costs for all 32 selected entries; found ${bidCostByEntry.size}.`,
-    });
+    }, 400);
     return;
   }
   const potSize = [...bidCostByEntry.values()].reduce((total, cost) => total + cost, 0);
@@ -459,17 +461,22 @@ router.post("/mtm/week-zero/capture", requireAdmin, async (req, res): Promise<vo
       potSize,
       capturedAt,
     );
+    // The calculator deliberately interpolates missing contracts for diagnostic
+    // display. Validate the original market coverage before opening any write
+    // transaction so a partial capture cannot replace prior-good rows. Complete
+    // stale captures remain publishable with their warning metadata.
+    assertCompleteWeekZeroCapture(calculation);
   } catch (error) {
     req.log.error(
       { error: error instanceof Error ? error.message : String(error), seasonYear },
       "Kalshi Week 0 capture failed",
     );
-    res.status(502).json({
+    sendParsedJson(res, ErrorResponse, {
       error:
         error instanceof Error
           ? error.message
           : "Kalshi Week 0 capture failed.",
-    });
+    }, 502);
     return;
   }
 
@@ -591,7 +598,7 @@ router.post("/mtm/week-zero/capture", requireAdmin, async (req, res): Promise<vo
     });
   } catch (error) {
     if (error instanceof WeekZeroDateCollisionError) {
-      res.status(409).json({ error: error.message });
+      sendParsedJson(res, ErrorResponse, { error: error.message }, 409);
       return;
     }
     throw error;
@@ -621,7 +628,7 @@ router.post("/mtm/week-zero/capture", requireAdmin, async (req, res): Promise<vo
       manual: 0,
     },
   });
-  res.json(response);
+  sendParsedJson(res, CaptureWeekZeroMtmResponse, response);
 });
 
 export default router;

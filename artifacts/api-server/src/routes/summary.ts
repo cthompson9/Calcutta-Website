@@ -1,4 +1,5 @@
 import { Router, type IRouter } from "express";
+import { ErrorResponse, sendParsedJson } from "../lib/sendParsedJson";
 import { and, eq } from "drizzle-orm";
 import {
   db,
@@ -9,7 +10,7 @@ import {
   teamResultsTable,
   seasonsTable,
 } from "@workspace/db";
-import { GetAuctionSummaryQueryParams } from "@workspace/api-zod";
+import { GetAuctionSummaryQueryParams, GetAuctionSummaryResponse } from "@workspace/api-zod";
 import { loadSeasonOwnership } from "../lib/seasonOwnership";
 import { buildAuctionResults } from "../lib/auctionResults";
 import { resolveCalcuttaId } from "../lib/calcuttaContext";
@@ -19,7 +20,7 @@ const router: IRouter = Router();
 router.get("/summary", async (req, res): Promise<void> => {
   const parsed = GetAuctionSummaryQueryParams.safeParse(req.query);
   if (!parsed.success) {
-    res.status(400).json({ error: parsed.error.message });
+    sendParsedJson(res, ErrorResponse, { error: parsed.error.message }, 400);
     return;
   }
 
@@ -33,7 +34,7 @@ router.get("/summary", async (req, res): Promise<void> => {
     .limit(1);
 
   if (!seasonRows[0]) {
-    res.json({
+    sendParsedJson(res, GetAuctionSummaryResponse, {
       potSize: 0,
       teamsAuctioned: 0,
       avgBidPerTeam: 0,
@@ -50,7 +51,7 @@ router.get("/summary", async (req, res): Promise<void> => {
     calcuttaId: (parsed.data as typeof parsed.data & { calcuttaId?: number }).calcuttaId,
   });
   if (!calcuttaId) {
-    res.status(404).json({ error: "Calcutta not found for this season." });
+    sendParsedJson(res, ErrorResponse, { error: "Calcutta not found for this season." }, 404);
     return;
   }
 
@@ -141,7 +142,7 @@ router.get("/summary", async (req, res): Promise<void> => {
     null,
   );
 
-  res.json({
+  sendParsedJson(res, GetAuctionSummaryResponse, {
     potSize: Math.round(potSize * 100) / 100,
     teamsAuctioned,
     avgBidPerTeam: Math.round(avgBidPerTeam * 100) / 100,

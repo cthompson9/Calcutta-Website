@@ -5,6 +5,7 @@
  * NFL Auction Manager API
  * OpenAPI spec version: 0.1.0
  */
+import type { AgentPortfolioTeamMarketStatus } from './agentPortfolioTeamMarketStatus';
 import type { AgentPortfolioTeamValueSource } from './agentPortfolioTeamValueSource';
 
 export interface AgentPortfolioTeam {
@@ -38,4 +39,10 @@ export interface AgentPortfolioTeam {
   playoff_status: string | null;
   /** @nullable */
   playoff_seed: number | null;
+  /**
+     * Quality of the Kalshi MTM inputs; null when no authoritative MTM is available.
+     * @nullable
+     */
+  market_status: AgentPortfolioTeamMarketStatus;
+  market_status_reasons: string[];
 }

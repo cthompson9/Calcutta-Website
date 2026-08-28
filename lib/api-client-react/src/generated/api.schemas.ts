@@ -14,6 +14,18 @@ export const AgentPortfolioTeamValueSource = {
   unavailable: 'unavailable',
 } as const;
 
+/**
+ * Quality of the Kalshi MTM inputs; null when no authoritative MTM is available.
+ * @nullable
+ */
+export type AgentPortfolioTeamMarketStatus = typeof AgentPortfolioTeamMarketStatus[keyof typeof AgentPortfolioTeamMarketStatus] | null;
+
+
+export const AgentPortfolioTeamMarketStatus = {
+  live: 'live',
+  stale: 'stale',
+} as const;
+
 export interface AgentPortfolioTeam {
   team_id: number;
   team: string;
@@ -45,6 +57,12 @@ export interface AgentPortfolioTeam {
   playoff_status: string | null;
   /** @nullable */
   playoff_seed: number | null;
+  /**
+     * Quality of the Kalshi MTM inputs; null when no authoritative MTM is available.
+     * @nullable
+     */
+  market_status: AgentPortfolioTeamMarketStatus;
+  market_status_reasons: string[];
 }
 
 export type AgentOwnerPortfolioBasis = typeof AgentOwnerPortfolioBasis[keyof typeof AgentOwnerPortfolioBasis];
@@ -65,6 +83,17 @@ export const AgentOwnerPortfolioCalculationStatus = {
   unavailable: 'unavailable',
 } as const;
 
+/**
+ * @nullable
+ */
+export type AgentOwnerPortfolioMarketStatus = typeof AgentOwnerPortfolioMarketStatus[keyof typeof AgentOwnerPortfolioMarketStatus] | null;
+
+
+export const AgentOwnerPortfolioMarketStatus = {
+  live: 'live',
+  stale: 'stale',
+} as const;
+
 export interface AgentOwnerPortfolio {
   owner: string;
   season: number;
@@ -82,6 +111,9 @@ export interface AgentOwnerPortfolio {
   /** @nullable */
   roi: number | null;
   calculation_status: AgentOwnerPortfolioCalculationStatus;
+  /** @nullable */
+  market_status: AgentOwnerPortfolioMarketStatus;
+  market_status_reasons: string[];
   teams: AgentPortfolioTeam[];
 }
 
@@ -292,6 +324,17 @@ export interface AgentPointsRubric {
   rules: AgentPointsRule[];
 }
 
+/**
+ * @nullable
+ */
+export type AgentConsortiumLeaderboardRowMarketStatus = typeof AgentConsortiumLeaderboardRowMarketStatus[keyof typeof AgentConsortiumLeaderboardRowMarketStatus] | null;
+
+
+export const AgentConsortiumLeaderboardRowMarketStatus = {
+  live: 'live',
+  stale: 'stale',
+} as const;
+
 export interface AgentConsortiumLeaderboardRow {
   rank: number;
   consortium: string;
@@ -307,6 +350,9 @@ export interface AgentConsortiumLeaderboardRow {
   net_mtm: number | null;
   /** @nullable */
   roi: number | null;
+  /** @nullable */
+  market_status: AgentConsortiumLeaderboardRowMarketStatus;
+  market_status_reasons: string[];
 }
 
 export type AgentConsortiumLeaderboardBasis = typeof AgentConsortiumLeaderboardBasis[keyof typeof AgentConsortiumLeaderboardBasis];
@@ -325,6 +371,17 @@ export const AgentConsortiumLeaderboardMembershipView = {
   current: 'current',
 } as const;
 
+/**
+ * @nullable
+ */
+export type AgentConsortiumLeaderboardMarketStatus = typeof AgentConsortiumLeaderboardMarketStatus[keyof typeof AgentConsortiumLeaderboardMarketStatus] | null;
+
+
+export const AgentConsortiumLeaderboardMarketStatus = {
+  live: 'live',
+  stale: 'stale',
+} as const;
+
 export interface AgentConsortiumLeaderboard {
   season: number;
   calcutta_id: number;
@@ -332,6 +389,9 @@ export interface AgentConsortiumLeaderboard {
   /** @nullable */
   through_period: number | null;
   membership_view: AgentConsortiumLeaderboardMembershipView;
+  /** @nullable */
+  market_status: AgentConsortiumLeaderboardMarketStatus;
+  market_status_reasons: string[];
   rows: AgentConsortiumLeaderboardRow[];
 }
 
@@ -479,18 +539,6 @@ export interface TeamOwner {
   ownershipShare: number;
 }
 
-export interface ResultTeamOwner {
-  bidderId: number;
-  bidderName: string;
-  ownershipShare: number;
-  cost: number;
-  realizedGross: number;
-  net: number;
-  mtmGross: number;
-  mtmNet: number;
-  ptsToBreakeven: number | null;
-}
-
 export interface Team {
   id: number;
   name: string;
@@ -498,6 +546,28 @@ export interface Team {
   division: TeamDivision;
   bidAmount: number;
   owners: TeamOwner[];
+}
+
+/**
+ * Signed, trade-aware owner economics for a result team row.
+ */
+export interface ResultTeamOwner {
+  bidderId: number;
+  bidderName: string;
+  /** Signed effective fractional share; negative values represent shorts. */
+  ownershipShare: number;
+  /** Owner-specific signed cost basis after approved trades. */
+  cost: number;
+  /** Owner-specific realized gross return. */
+  realizedGross: number;
+  /** Owner-specific realized gross return less signed cost basis. */
+  net: number;
+  /** Owner-specific mark-to-market gross return. */
+  mtmGross: number;
+  /** Owner-specific mark-to-market gross return less signed cost basis. */
+  mtmNet: number;
+  /** Signed points to breakeven for this owner position, when point value is available. */
+  ptsToBreakeven: number | null;
 }
 
 export type OwnershipSegmentSource = typeof OwnershipSegmentSource[keyof typeof OwnershipSegmentSource];
@@ -626,6 +696,18 @@ export const TeamResultRowPlayoffStatus = {
   eliminated: 'eliminated',
 } as const;
 
+/**
+ * Quality of the authoritative Kalshi MTM inputs; null when MTM coverage is unavailable.
+ * @nullable
+ */
+export type TeamResultRowMarketStatus = typeof TeamResultRowMarketStatus[keyof typeof TeamResultRowMarketStatus] | null;
+
+
+export const TeamResultRowMarketStatus = {
+  live: 'live',
+  stale: 'stale',
+} as const;
+
 export interface TeamResultRow {
   teamId: number;
   teamName: string;
@@ -663,6 +745,13 @@ export interface TeamResultRow {
      * @nullable
      */
   ptsToBreakeven: number | null;
+  /**
+     * Quality of the authoritative Kalshi MTM inputs; null when MTM coverage is unavailable.
+     * @nullable
+     */
+  marketStatus: TeamResultRowMarketStatus;
+  /** Human-readable warnings explaining stale MTM inputs. */
+  marketStatusReasons: string[];
   /**
      * Playoff seed within conference (1–7). Null if team missed playoffs or seed not yet set.
      * @nullable
@@ -911,6 +1000,18 @@ export interface WeekZeroPointsInitialization {
   alreadyInitialized: boolean;
 }
 
+/**
+ * Worst authoritative MTM quality among this owner's teams.
+ * @nullable
+ */
+export type OwnerResultRowMarketStatus = typeof OwnerResultRowMarketStatus[keyof typeof OwnerResultRowMarketStatus] | null;
+
+
+export const OwnerResultRowMarketStatus = {
+  live: 'live',
+  stale: 'stale',
+} as const;
+
 export interface OwnerResultRow {
   bidderId: number;
   bidderName: string;
@@ -929,6 +1030,12 @@ export interface OwnerResultRow {
   totalMtm: number;
   /** Total MTM gross return minus signed cost basis. */
   totalNetMtm: number;
+  /**
+     * Worst authoritative MTM quality among this owner's teams.
+     * @nullable
+     */
+  marketStatus: OwnerResultRowMarketStatus;
+  marketStatusReasons: string[];
   teams: TeamResultRow[];
 }
 

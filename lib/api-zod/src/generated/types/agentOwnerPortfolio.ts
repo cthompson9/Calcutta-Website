@@ -7,6 +7,7 @@
  */
 import type { AgentOwnerPortfolioBasis } from './agentOwnerPortfolioBasis';
 import type { AgentOwnerPortfolioCalculationStatus } from './agentOwnerPortfolioCalculationStatus';
+import type { AgentOwnerPortfolioMarketStatus } from './agentOwnerPortfolioMarketStatus';
 import type { AgentPortfolioTeam } from './agentPortfolioTeam';
 
 export interface AgentOwnerPortfolio {
@@ -26,5 +27,8 @@ export interface AgentOwnerPortfolio {
   /** @nullable */
   roi: number | null;
   calculation_status: AgentOwnerPortfolioCalculationStatus;
+  /** @nullable */
+  market_status: AgentOwnerPortfolioMarketStatus;
+  market_status_reasons: string[];
   teams: AgentPortfolioTeam[];
 }

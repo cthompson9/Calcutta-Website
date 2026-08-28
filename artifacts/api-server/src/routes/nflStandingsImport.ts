@@ -5,6 +5,7 @@ import {
   ApplyNflStandingsImportResponse,
   PreviewNflStandingsImportResponse,
 } from "@workspace/api-zod";
+import { ErrorResponse, sendParsedJson } from "../lib/sendParsedJson";
 import {
   applyNflStandingsImport,
   NflStandingsImportError,
@@ -19,20 +20,20 @@ function sendImportError(
   res: import("express").Response,
 ): void {
   if (error instanceof NflStandingsImportError) {
-    res.status(error.statusCode).json({ error: error.message });
+    sendParsedJson(res, ErrorResponse, { error: error.message }, error.statusCode);
     return;
   }
-  res.status(500).json({ error: "NFL standings import failed unexpectedly." });
+  sendParsedJson(res, ErrorResponse, { error: "NFL standings import failed unexpectedly." }, 500);
 }
 
 router.post("/results/nfl-standings/preview", requireAdmin, async (req, res): Promise<void> => {
   const parsed = PreviewNflStandingsImportBody.safeParse(req.body);
   if (!parsed.success) {
-    res.status(400).json({ error: parsed.error.message });
+    sendParsedJson(res, ErrorResponse, { error: parsed.error.message }, 400);
     return;
   }
   try {
-    res.json(PreviewNflStandingsImportResponse.parse(await previewNflStandingsImport(parsed.data.seasonYear)));
+    sendParsedJson(res, PreviewNflStandingsImportResponse, await previewNflStandingsImport(parsed.data.seasonYear));
   } catch (error) {
     sendImportError(error, res);
   }
@@ -41,18 +42,18 @@ router.post("/results/nfl-standings/preview", requireAdmin, async (req, res): Pr
 router.post("/results/nfl-standings/apply", requireAdmin, async (req, res): Promise<void> => {
   const parsed = ApplyNflStandingsImportBody.safeParse(req.body);
   if (!parsed.success) {
-    res.status(400).json({ error: parsed.error.message });
+    sendParsedJson(res, ErrorResponse, { error: parsed.error.message }, 400);
     return;
   }
   try {
     const requestId = req.headers["x-request-id"];
-    res.json(ApplyNflStandingsImportResponse.parse(
+    sendParsedJson(res, ApplyNflStandingsImportResponse,
       await applyNflStandingsImport({
         seasonYear: parsed.data.seasonYear,
         requestedBy: "admin_api",
         requestId: typeof requestId === "string" ? requestId : undefined,
       }),
-    ));
+    );
   } catch (error) {
     sendImportError(error, res);
   }

@@ -158,6 +158,7 @@ export async function runCanonicalMtmRefresh(input: {
     .select({
       entryId: mtmSnapshotsTable.entryId,
       snapshotDate: mtmSnapshotsTable.snapshotDate,
+      source: mtmSnapshotsTable.source,
     })
     .from(mtmSnapshotsTable)
     .where(
@@ -170,6 +171,7 @@ export async function runCanonicalMtmRefresh(input: {
     .select({
       entryId: snapshotMetricsTable.entryId,
       metric: snapshotMetricsTable.metric,
+      source: snapshotMetricsTable.source,
     })
     .from(snapshotMetricsTable)
     .where(and(
@@ -180,6 +182,7 @@ export async function runCanonicalMtmRefresh(input: {
     ));
   if (
     new Set(existing.map((row) => row.entryId)).size === entries.length &&
+    existing.some((row) => row.source === "kalshi") &&
     hasCompleteMtmMetricCoverage(existingMetricRows, entryIds)
   ) {
     return {
@@ -320,6 +323,7 @@ export async function runCanonicalMtmRefresh(input: {
       .select({
         entryId: mtmSnapshotsTable.entryId,
         snapshotDate: mtmSnapshotsTable.snapshotDate,
+        source: mtmSnapshotsTable.source,
       })
       .from(mtmSnapshotsTable)
       .where(
@@ -332,6 +336,7 @@ export async function runCanonicalMtmRefresh(input: {
       .select({
         entryId: snapshotMetricsTable.entryId,
         metric: snapshotMetricsTable.metric,
+        source: snapshotMetricsTable.source,
       })
       .from(snapshotMetricsTable)
       .where(and(
@@ -342,6 +347,7 @@ export async function runCanonicalMtmRefresh(input: {
       ));
     if (
       new Set(current.map((row) => row.entryId)).size === entries.length &&
+      current.some((row) => row.source === "kalshi") &&
       hasCompleteMtmMetricCoverage(currentMetricRows, entryIds)
     ) {
       return "already-marked" as const;

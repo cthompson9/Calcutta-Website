@@ -36,6 +36,7 @@ import { useSeason } from "@/hooks/useSeason";
 import {
   ArrowDownRight,
   ArrowUpRight,
+  AlertTriangle,
   ChevronDown,
   ExternalLink,
   History,
@@ -197,6 +198,15 @@ export default function Results() {
       : tab === "byOwner"
         ? loadingOwners
         : loadingCompare;
+  const staleMtmReasons = useMemo(() => {
+    const teamReasons = (teamResults ?? [])
+      .filter((row) => row.marketStatus === "stale")
+      .flatMap((row) => row.marketStatusReasons);
+    const ownerReasons = (ownerResults ?? [])
+      .filter((row) => row.marketStatus === "stale")
+      .flatMap((row) => row.marketStatusReasons);
+    return [...new Set([...teamReasons, ...ownerReasons])];
+  }, [teamResults, ownerResults]);
 
   const reportBasisLabel = tab === "byTeam"
     ? "Realized team returns + net MTM"
@@ -321,6 +331,24 @@ export default function Results() {
           </button>
         ))}
       </div>
+
+      {tab !== "compare" && staleMtmReasons.length > 0 && (
+        <div
+          className="mx-4 flex items-start gap-3 border border-amber-300 bg-amber-50 px-4 py-3 text-amber-950 dark:border-amber-800 dark:bg-amber-950/40 dark:text-amber-100 md:mx-0"
+          role="status"
+          data-testid="stale-mtm-warning"
+        >
+          <AlertTriangle className="mt-0.5 h-4 w-4 shrink-0" />
+          <div>
+            <p className="font-mono text-xs font-bold uppercase tracking-wider">
+              Stale market inputs — MTM is untrustworthy
+            </p>
+            <p className="mt-1 text-xs">
+              {staleMtmReasons.join(" ")}
+            </p>
+          </div>
+        </div>
+      )}
 
       <div className="px-0 md:px-0">
         {isLoading ? (

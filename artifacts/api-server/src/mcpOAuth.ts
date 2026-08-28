@@ -33,6 +33,36 @@ const REFRESH_TOKEN_LIFETIME_MS = 30 * 24 * 60 * 60 * 1_000;
 const AUTHORIZATION_SCOPE = "mcp";
 const UNUSED_CLIENT_LIFETIME_MS = 24 * 60 * 60 * 1_000;
 
+function isExpiredClient(client: { createdAt: Date }): boolean {
+  return client.createdAt.getTime() <= Date.now() - UNUSED_CLIENT_LIFETIME_MS;
+}
+
+async function isExpiredUnusedClient(client: { clientId: string; createdAt: Date }): Promise<boolean> {
+  if (!isExpiredClient(client)) return false;
+  const now = new Date();
+  const activeToken = await db
+    .select({ clientId: mcpOauthTokensTable.clientId })
+    .from(mcpOauthTokensTable)
+    .where(and(
+      eq(mcpOauthTokensTable.clientId, client.clientId),
+      isNull(mcpOauthTokensTable.revokedAt),
+      gt(mcpOauthTokensTable.expiresAt, now),
+    ))
+    .limit(1);
+  if (activeToken[0]) return false;
+
+  const activeCode = await db
+    .select({ clientId: mcpOauthAuthorizationCodesTable.clientId })
+    .from(mcpOauthAuthorizationCodesTable)
+    .where(and(
+      eq(mcpOauthAuthorizationCodesTable.clientId, client.clientId),
+      isNull(mcpOauthAuthorizationCodesTable.usedAt),
+      gt(mcpOauthAuthorizationCodesTable.expiresAt, now),
+    ))
+    .limit(1);
+  return !activeCode[0];
+}
+
 type AuthorizationRequest = {
   clientId: string;
   redirectUri: string;
@@ -90,6 +120,16 @@ function safelyMatches(value: string, expected: string): boolean {
 export function matchesMcpApiKey(value: string): boolean {
   const expected = process.env["MCP_API_KEY"];
   return Boolean(expected && safelyMatches(value, expected));
+}
+
+export function matchesAdminApiKey(value: string): boolean {
+  const expected = process.env["ADMIN_API_KEY"];
+  const mcpApiKey = process.env["MCP_API_KEY"];
+  return Boolean(
+    expected &&
+    expected !== mcpApiKey &&
+    safelyMatches(value, expected),
+  );
 }
 
 function currentFlowSecret(): string | null {
@@ -319,10 +359,15 @@ async function issueTokenPair(
   };
 }
 
-export async function verifyMcpOAuthAccessToken(token: string): Promise<boolean> {
+export async function verifyMcpOAuthAccessToken(
+  token: string,
+): Promise<{ scope: string; isAdmin: false } | null> {
   const now = new Date();
   const rows = await db
-    .select({ tokenHash: mcpOauthTokensTable.tokenHash })
+    .select({
+      tokenHash: mcpOauthTokensTable.tokenHash,
+      scope: mcpOauthTokensTable.scope,
+    })
     .from(mcpOauthTokensTable)
     .where(and(
       eq(mcpOauthTokensTable.tokenHash, digest(token)),
@@ -331,7 +376,7 @@ export async function verifyMcpOAuthAccessToken(token: string): Promise<boolean>
       gt(mcpOauthTokensTable.expiresAt, now),
     ))
     .limit(1);
-  return Boolean(rows[0]);
+  return rows[0] ? { scope: rows[0].scope, isAdmin: false } : null;
 }
 
 export function createMcpOAuthRouter(): IRouter {
@@ -448,9 +493,12 @@ export function createMcpOAuthRouter(): IRouter {
     const client = clientRows[0];
     const registeredUris = Array.isArray(client?.redirectUris) ? client.redirectUris : [];
     const expectedResource = resourceUrl(req);
+    if (!client || await isExpiredUnusedClient(client)) {
+      sendOAuthError(res, 400, "invalid_client", "The OAuth client registration is expired or unavailable.");
+      return;
+    }
 
     if (
-      !client ||
       responseType !== "code" ||
       !registeredUris.includes(redirectUri) ||
       codeChallengeMethod !== "S256" ||
@@ -514,7 +562,11 @@ export function createMcpOAuthRouter(): IRouter {
       .where(eq(mcpOauthClientsTable.clientId, request.clientId))
       .limit(1);
     const client = clientRows[0];
-    if (!client || !client.redirectUris.includes(request.redirectUri)) {
+    if (
+      !client ||
+      await isExpiredUnusedClient(client) ||
+      !client.redirectUris.includes(request.redirectUri)
+    ) {
       clearAuthorizationCookie(req, res);
       sendOAuthError(res, 400, "invalid_client", "This MCP client is no longer registered.");
       return;
@@ -547,7 +599,7 @@ export function createMcpOAuthRouter(): IRouter {
       .where(eq(mcpOauthClientsTable.clientId, clientId))
       .limit(1);
     const client = clientRows[0];
-    if (!client) {
+    if (!client || await isExpiredUnusedClient(client)) {
       sendOAuthError(res, 401, "invalid_client", "The OAuth client is not registered.");
       return;
     }

@@ -144,7 +144,7 @@ export async function replaceMtmMetricRows(
 }
 
 export function hasCompleteMtmMetricCoverage(
-  rows: Array<Pick<SnapshotMetric, "entryId" | "metric">>,
+  rows: Array<Pick<SnapshotMetric, "entryId" | "metric"> & Partial<Pick<SnapshotMetric, "source">>>,
   entryIds: readonly number[],
 ): boolean {
   if (entryIds.length === 0) return false;
@@ -153,6 +153,10 @@ export function hasCompleteMtmMetricCoverage(
       MTM_METRICS.map((metric) => `${entryId}:${metric}`),
     ),
   );
-  for (const row of rows) expected.delete(`${row.entryId}:${row.metric}`);
+  for (const row of rows) {
+    if (row.source !== "week_zero") {
+      expected.delete(`${row.entryId}:${row.metric}`);
+    }
+  }
   return expected.size === 0;
 }

@@ -14,3 +14,14 @@ Derived MTM metrics are published only when the entire league capture is complet
 **Why:** League-wide probability normalization means one zero-imputed missing quote can distort otherwise complete teams. A missing realized point differential is also not evidence that the value is zero.
 
 **How to apply:** Treat raw capture and derived metric publication as separate quality layers committed atomically. Retry incomplete captures without exposing partial normalized metrics, and fail an in-season mark rather than filling a missing realized point differential.
+
+Complete stale captures may publish only with their stale status and warning
+reasons visible. Synthetic Week 0 baseline rows use `source=week_zero` and never
+count as authoritative Kalshi coverage.
+
+**Why:** A baseline preserves opening-return behavior, but it must not prevent a
+later real market capture or masquerade as trusted market evidence.
+
+**How to apply:** Reject incomplete manual or scheduled captures before any
+replacement write; preserve prior-good rows; short-circuit refresh only when
+Kalshi-sourced marks and authoritative metric coverage both exist.

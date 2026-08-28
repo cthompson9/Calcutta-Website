@@ -41,7 +41,7 @@ async function mcpRequest(baseUrl, id, method, params = {}) {
     method: "POST",
     headers: {
       Accept: "application/json, text/event-stream",
-      Authorization: `Bearer ${MCP_KEY}`,
+      Authorization: `Bearer ${ADMIN_KEY}`,
       "Content-Type": "application/json",
     },
     body: JSON.stringify({
@@ -129,16 +129,22 @@ describe("bidder consortiums", { skip: !canRun }, () => {
     const toolNames = tools.result.tools.map((tool) => tool.name);
     assert.ok(toolNames.includes("get_bidder_consortium"));
     assert.ok(toolNames.includes("set_bidder_consortium"));
+    for (const tool of tools.result.tools) {
+      assert.equal(
+        Object.hasOwn(tool.inputSchema?.properties ?? {}, "adminKey"),
+        false,
+        `${tool.name} must rely on authenticated MCP transport rather than an adminKey tool argument`,
+      );
+    }
 
-    const unauthorized = await mcpRequest(baseUrl, 3, "tools/call", {
+    const transportAuthorized = await mcpRequest(baseUrl, 3, "tools/call", {
       name: "set_bidder_consortium",
       arguments: {
         bidder: bidder.name,
         consortium: "Should Not Save",
-        adminKey: "incorrect",
       },
     });
-    assert.match(mcpText(unauthorized), /invalid admin key/i);
+    assert.equal(mcpText(transportAuthorized), `Consortium set: ${bidder.name} → Should Not Save.`);
 
     const consortiumName = `Cleanup Group ${Date.now()}`;
     const assigned = await mcpRequest(baseUrl, 4, "tools/call", {
@@ -146,7 +152,6 @@ describe("bidder consortiums", { skip: !canRun }, () => {
       arguments: {
         bidder: bidder.name,
         consortium: `  Cleanup   Group ${consortiumName.split(" ").pop()}  `,
-        adminKey: ADMIN_KEY,
       },
     });
     assert.equal(mcpText(assigned), `Consortium set: ${bidder.name} → ${consortiumName}.`);
@@ -163,7 +168,6 @@ describe("bidder consortiums", { skip: !canRun }, () => {
       arguments: {
         bidder: secondBidder.name,
         consortium: consortiumName.toLowerCase(),
-        adminKey: ADMIN_KEY,
       },
     });
     assert.equal(mcpText(reused), `Consortium set: ${secondBidder.name} → ${consortiumName}.`);
@@ -207,7 +211,6 @@ describe("bidder consortiums", { skip: !canRun }, () => {
       arguments: {
         bidder: bidder.name,
         consortium: reassignedName,
-        adminKey: ADMIN_KEY,
       },
     });
     assert.equal(
@@ -248,7 +251,6 @@ describe("bidder consortiums", { skip: !canRun }, () => {
       arguments: {
         bidder: bidder.name,
         consortium: null,
-        adminKey: ADMIN_KEY,
       },
     });
     assert.equal(mcpText(cleared), `Consortium cleared: ${bidder.name}.`);

@@ -18,6 +18,7 @@ import type {
   UseQueryOptions,
   UseQueryResult
 } from '@tanstack/react-query';
+
 import type {
   AgentConsortiumLeaderboard,
   AgentErrorResponse,
@@ -187,6 +188,12 @@ export function useHealthCheck<TData = Awaited<ReturnType<typeof healthCheck>>, 
 
   return withQueryKey(query, queryOptions.queryKey);
 }
+
+
+
+
+
+
 
 export const getGetSeasonsUrl = () => {
 
@@ -2183,7 +2190,7 @@ export const getCreateTradeUrl = () => {
 }
 
 /**
- * @summary Submit a trade for commissioner review (open submission; always pending)
+ * @summary Submit a trade for commissioner review (always pending)
  */
 export const createTrade = async (tradeInput: TradeInput, options?: Parameters<typeof customFetch>[1]): Promise<TradeRow> => {
 
@@ -2232,7 +2239,7 @@ const {mutation: mutationOptions, request: requestOptions} = options ?
     export type CreateTradeMutationError = ErrorType<ErrorResponse>
 
     /**
- * @summary Submit a trade for commissioner review (open submission; always pending)
+ * @summary Submit a trade for commissioner review (always pending)
  */
 export const useCreateTrade = <TError = ErrorType<ErrorResponse>,
     TContext = unknown>(options?: { mutation?:UseMutationOptions<Awaited<ReturnType<typeof createTrade>>, TError,{data: BodyType<TradeInput>}, TContext>, request?: SecondParameter<typeof customFetch>}
@@ -2254,7 +2261,7 @@ export const getUpdateTradeUrl = (id: number,) => {
 }
 
 /**
- * @summary Update a pending trade record (price, date, notes; percentage edits require ADMIN_API_KEY)
+ * @summary Update a pending trade record (admin only)
  */
 export const updateTrade = async (id: number,
     tradeUpdate: TradeUpdate, options?: Parameters<typeof customFetch>[1]): Promise<TradeRow> => {
@@ -2304,7 +2311,7 @@ const {mutation: mutationOptions, request: requestOptions} = options ?
     export type UpdateTradeMutationError = ErrorType<ErrorResponse>
 
     /**
- * @summary Update a pending trade record (price, date, notes; percentage edits require ADMIN_API_KEY)
+ * @summary Update a pending trade record (admin only)
  */
 export const useUpdateTrade = <TError = ErrorType<ErrorResponse>,
     TContext = unknown>(options?: { mutation?:UseMutationOptions<Awaited<ReturnType<typeof updateTrade>>, TError,{id: number;data: BodyType<TradeUpdate>}, TContext>, request?: SecondParameter<typeof customFetch>}

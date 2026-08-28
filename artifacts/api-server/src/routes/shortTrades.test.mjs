@@ -251,7 +251,7 @@ describe("short trades and new trade participants", { skip: !canRun }, () => {
     const response = await fetch(`${baseUrl}/api/mcp`, {
       method: "POST",
       headers: {
-        Authorization: `Bearer ${MCP_KEY}`,
+        Authorization: `Bearer ${ADMIN_KEY}`,
         "Content-Type": "application/json",
         Accept: "application/json, text/event-stream",
       },
@@ -287,7 +287,6 @@ describe("short trades and new trade participants", { skip: !canRun }, () => {
         { owner: primaryBuyer.name, share: 0.5 },
       ],
       season: seasonYear,
-      adminKey: ADMIN_KEY,
     });
     assert.match(JSON.stringify(result), /Primary ownership corrected/i);
     const primaryPositions = await db
@@ -795,7 +794,6 @@ describe("short trades and new trade participants", { skip: !canRun }, () => {
     const missingConfirmation = await callMcpTool("set_trade_status", {
       tradeId: pendingTrade.id,
       status: "approved",
-      adminKey: ADMIN_KEY,
     });
     assert.match(
       JSON.stringify(missingConfirmation),
@@ -807,7 +805,6 @@ describe("short trades and new trade participants", { skip: !canRun }, () => {
       tradeId: pendingTrade.id,
       status: "approved",
       confirmed: true,
-      adminKey: ADMIN_KEY,
     });
     assert.match(JSON.stringify(approved), /APPROVED/);
 
@@ -815,7 +812,6 @@ describe("short trades and new trade participants", { skip: !canRun }, () => {
       tradeId: pendingTrade.id,
       status: "rejected",
       confirmed: true,
-      adminKey: ADMIN_KEY,
     });
     assert.match(JSON.stringify(correctedToRejected), /REJECTED/);
 
@@ -859,7 +855,6 @@ describe("short trades and new trade participants", { skip: !canRun }, () => {
       tradeId: voidableTrade.id,
       status: "approved",
       confirmed: true,
-      adminKey: ADMIN_KEY,
     });
     assert.match(JSON.stringify(voidApproval), /APPROVED/);
 
@@ -867,7 +862,6 @@ describe("short trades and new trade participants", { skip: !canRun }, () => {
       tradeId: voidableTrade.id,
       status: "voided",
       confirmed: true,
-      adminKey: ADMIN_KEY,
     });
     assert.match(JSON.stringify(missingReasonVoid), /reason/i);
 
@@ -876,7 +870,6 @@ describe("short trades and new trade participants", { skip: !canRun }, () => {
       status: "voided",
       confirmed: true,
       reason: "MCP correction of an incorrectly approved trade",
-      adminKey: ADMIN_KEY,
     });
     assert.match(JSON.stringify(voided), /VOIDED/);
     const [voidedStoredTrade] = await db

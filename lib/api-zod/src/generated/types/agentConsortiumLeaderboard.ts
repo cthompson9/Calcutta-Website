@@ -6,6 +6,7 @@
  * OpenAPI spec version: 0.1.0
  */
 import type { AgentConsortiumLeaderboardBasis } from './agentConsortiumLeaderboardBasis';
+import type { AgentConsortiumLeaderboardMarketStatus } from './agentConsortiumLeaderboardMarketStatus';
 import type { AgentConsortiumLeaderboardMembershipView } from './agentConsortiumLeaderboardMembershipView';
 import type { AgentConsortiumLeaderboardRow } from './agentConsortiumLeaderboardRow';
 
@@ -16,5 +17,8 @@ export interface AgentConsortiumLeaderboard {
   /** @nullable */
   through_period: number | null;
   membership_view: AgentConsortiumLeaderboardMembershipView;
+  /** @nullable */
+  market_status: AgentConsortiumLeaderboardMarketStatus;
+  market_status_reasons: string[];
   rows: AgentConsortiumLeaderboardRow[];
 }

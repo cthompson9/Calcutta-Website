@@ -19,6 +19,8 @@ const canRun = Boolean(DATABASE_URL && MCP_KEY && SESSION_SECRET && ADMIN_KEY);
 let app;
 let db;
 let mcpOauthClientsTable;
+let mcpOauthAuthorizationCodesTable;
+let mcpOauthTokensTable;
 let runDatabaseMigrations;
 
 if (canRun) {
@@ -26,6 +28,8 @@ if (canRun) {
   ({
     db,
     mcpOauthClientsTable,
+    mcpOauthAuthorizationCodesTable,
+    mcpOauthTokensTable,
     runDatabaseMigrations,
   } = await import("@workspace/db"));
 }
@@ -75,6 +79,57 @@ async function requestMcp(baseUrl, token) {
   });
 }
 
+async function callMcpTool(baseUrl, token, name, args) {
+  const response = await fetch(`${baseUrl}/api/mcp`, {
+    method: "POST",
+    headers: {
+      "Content-Type": "application/json",
+      Accept: "application/json, text/event-stream",
+      Authorization: `Bearer ${token}`,
+    },
+    body: JSON.stringify({
+      jsonrpc: "2.0",
+      id: 2,
+      method: "tools/call",
+      params: { name, arguments: args },
+    }),
+  });
+  const body = await response.text();
+  assert.equal(response.status, 200, body);
+  const json = body.trim().startsWith("event:")
+    ? body.split("\n").find((line) => line.startsWith("data: "))?.slice("data: ".length)
+    : body;
+  assert.ok(json, body);
+  return JSON.parse(json);
+}
+
+const PRIVILEGED_MCP_CALLS = [
+  ["import_nfl_standings", { confirmed: true }],
+  ["set_bidder_consortium", { bidder: "Missing bidder", consortium: null }],
+  ["set_team_primary_ownership", {
+    team: "Missing team",
+    owners: [{ owner: "Missing owner", share: 1 }],
+  }],
+  ["create_trade", {
+    team: "Missing team",
+    fromOwner: "Missing seller",
+    toOwner: "Missing buyer",
+  }],
+  ["set_trade_status", { tradeId: 2_147_483_647, status: "rejected", confirmed: true }],
+  ["set_team_period_snapshot", {
+    team: "Missing team",
+    season: 2099,
+    period: 0,
+    basis: "realized",
+  }],
+  ["set_calcutta_payout_rules", {
+    season: 2099,
+    rules: [{ metric: "win", dollarsPerUnit: 1, playoffMultiplier: 2 }],
+  }],
+  ["set_team_seed", { team: "Missing team", seed: null }],
+  ["set_team_mtm", { team: "Missing team", mtmValue: 1 }],
+];
+
 describe("MCP OAuth authorization", { skip: !canRun }, () => {
   let server;
   let baseUrl;
@@ -122,7 +177,26 @@ describe("MCP OAuth authorization", { skip: !canRun }, () => {
     assert.equal(staticKeyRequest.status, 200);
 
     const adminKeyRequest = await requestMcp(baseUrl, ADMIN_KEY);
-    assert.equal(adminKeyRequest.status, 401);
+    assert.equal(adminKeyRequest.status, 200);
+
+    for (const [name, args] of PRIVILEGED_MCP_CALLS) {
+      const denied = await callMcpTool(baseUrl, MCP_KEY, name, args);
+      assert.equal(denied.result?.isError, true, name);
+      assert.match(denied.result.content[0].text, /Commissioner authorization is required/, name);
+    }
+
+    const readable = await callMcpTool(baseUrl, MCP_KEY, "get_team_cost", {
+      team: "Missing team",
+      season: 2099,
+    });
+    assert.notEqual(readable.result?.isError, true);
+
+    const adminMutation = await callMcpTool(baseUrl, ADMIN_KEY, "set_team_seed", {
+      team: "Missing team",
+      seed: null,
+    });
+    assert.notEqual(adminMutation.result?.isError, true);
+    assert.match(adminMutation.result.content[0].text, /Team not found/);
   });
 
   test("exchanges MCP-key approval for revocable OAuth credentials", async () => {
@@ -215,6 +289,20 @@ describe("MCP OAuth authorization", { skip: !canRun }, () => {
 
     const oauthRequest = await requestMcp(baseUrl, tokens.access_token);
     assert.equal(oauthRequest.status, 200);
+    for (const [name, args] of PRIVILEGED_MCP_CALLS) {
+      const oauthMutation = await callMcpTool(baseUrl, tokens.access_token, name, args);
+      assert.equal(oauthMutation.result?.isError, true, name);
+      assert.match(
+        oauthMutation.result.content[0].text,
+        /Commissioner authorization is required/,
+        name,
+      );
+    }
+
+    await db
+      .update(mcpOauthClientsTable)
+      .set({ createdAt: new Date("2000-01-01T00:00:00.000Z") })
+      .where(eq(mcpOauthClientsTable.clientId, clientId));
 
     const replay = await fetch(`${baseUrl}/api/mcp/oauth/token`, {
       method: "POST",
@@ -255,5 +343,103 @@ describe("MCP OAuth authorization", { skip: !canRun }, () => {
     assert.equal(revoke.status, 200);
     const revokedRequest = await requestMcp(baseUrl, refreshedTokens.access_token);
     assert.equal(revokedRequest.status, 401);
+  });
+
+  test("registration removes stale inactive clients but preserves clients with active credentials", async () => {
+    const old = new Date("2000-01-01T00:00:00.000Z");
+    const future = new Date(Date.now() + 60_000);
+    const inactiveId = `stale_${Date.now()}`;
+    const activeId = `active_${Date.now()}`;
+    await db.insert(mcpOauthClientsTable).values([
+      { clientId: inactiveId, redirectUris: ["https://example.test/inactive"], createdAt: old },
+      { clientId: activeId, redirectUris: ["https://example.test/active"], createdAt: old },
+    ]);
+    await db.insert(mcpOauthTokensTable).values({
+      tokenHash: `test_${activeId}`,
+      tokenType: "access",
+      clientId: activeId,
+      scope: "mcp",
+      resource: `${baseUrl}/api/mcp`,
+      expiresAt: future,
+    });
+    const response = await fetch(`${baseUrl}/api/mcp/oauth/register`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json", "X-Forwarded-For": "198.51.100.91" },
+      body: JSON.stringify({ redirect_uris: ["https://example.test/new"] }),
+    });
+    assert.equal(response.status, 201);
+    assert.equal((await db.select().from(mcpOauthClientsTable).where(eq(mcpOauthClientsTable.clientId, inactiveId))).length, 0);
+    assert.equal((await db.select().from(mcpOauthClientsTable).where(eq(mcpOauthClientsTable.clientId, activeId))).length, 1);
+  });
+
+  test("expired unused registrations are rejected while active authorization codes remain valid", async () => {
+    const redirectUri = "https://example.test/callback";
+    const register = async (ip) => {
+      const response = await fetch(`${baseUrl}/api/mcp/oauth/register`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json", "X-Forwarded-For": ip },
+        body: JSON.stringify({ redirect_uris: [redirectUri] }),
+      });
+      assert.equal(response.status, 201);
+      return (await response.json()).client_id;
+    };
+    const authorizationUrl = (clientId, challenge) => {
+      const url = new URL(`${baseUrl}/api/mcp/oauth/authorize`);
+      url.searchParams.set("client_id", clientId);
+      url.searchParams.set("redirect_uri", redirectUri);
+      url.searchParams.set("response_type", "code");
+      url.searchParams.set("code_challenge", challenge);
+      url.searchParams.set("code_challenge_method", "S256");
+      return url;
+    };
+    const expire = (clientId) => db.update(mcpOauthClientsTable)
+      .set({ createdAt: new Date("2000-01-01T00:00:00.000Z") })
+      .where(eq(mcpOauthClientsTable.clientId, clientId));
+
+    const getClient = await register("198.51.100.92");
+    await expire(getClient);
+    assert.equal((await fetch(authorizationUrl(getClient, createPkcePair().challenge))).status, 400);
+
+    const approvalClient = await register("198.51.100.93");
+    const approvalPkce = createPkcePair();
+    const approvalPage = await fetch(authorizationUrl(approvalClient, approvalPkce.challenge));
+    const approvalCookie = firstCookie(approvalPage);
+    await expire(approvalClient);
+    const approval = await fetch(`${baseUrl}/api/mcp/oauth/authorize`, {
+      method: "POST",
+      redirect: "manual",
+      headers: { "Content-Type": "application/x-www-form-urlencoded", Cookie: approvalCookie },
+      body: new URLSearchParams({ decision: "approve", mcpApiKey: MCP_KEY }),
+    });
+    assert.equal(approval.status, 400);
+    assert.equal((await approval.json()).error, "invalid_client");
+
+    const tokenClient = await register("198.51.100.94");
+    const tokenPkce = createPkcePair();
+    const tokenPage = await fetch(authorizationUrl(tokenClient, tokenPkce.challenge));
+    const tokenApproval = await fetch(`${baseUrl}/api/mcp/oauth/authorize`, {
+      method: "POST",
+      redirect: "manual",
+      headers: { "Content-Type": "application/x-www-form-urlencoded", Cookie: firstCookie(tokenPage) },
+      body: new URLSearchParams({ decision: "approve", mcpApiKey: MCP_KEY }),
+    });
+    const code = new URL(tokenApproval.headers.get("location")).searchParams.get("code");
+    await expire(tokenClient);
+    const token = await fetch(`${baseUrl}/api/mcp/oauth/token`, {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/x-www-form-urlencoded",
+        "X-Forwarded-For": "198.51.100.95",
+      },
+      body: new URLSearchParams({
+        grant_type: "authorization_code",
+        client_id: tokenClient,
+        redirect_uri: redirectUri,
+        code,
+        code_verifier: tokenPkce.verifier,
+      }),
+    });
+    assert.equal(token.status, 200);
+    assert.ok((await token.json()).refresh_token);
   });
 });

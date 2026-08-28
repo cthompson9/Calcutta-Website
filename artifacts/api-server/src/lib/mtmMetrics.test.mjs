@@ -142,6 +142,14 @@ test("coverage requires every supported metric for every selected entry", () => 
   const second = first.map((row) => ({ ...row, entryId: 108 }));
   assert.equal(hasCompleteMtmMetricCoverage([...first, ...second], [107, 108]), true);
   assert.equal(
+    hasCompleteMtmMetricCoverage(
+      first.map((row) => ({ ...row, source: "week_zero" })),
+      [107],
+    ),
+    false,
+    "synthetic Week 0 baseline rows are not authoritative MTM coverage",
+  );
+  assert.equal(
     hasCompleteMtmMetricCoverage([...first, ...second.slice(1)], [107, 108]),
     false,
   );

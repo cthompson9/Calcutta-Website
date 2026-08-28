@@ -103,6 +103,32 @@ test("incomplete captures cannot be persisted as Week 0 marks", () => {
   );
 });
 
+test("stale but complete captures remain publishable with warning metadata", () => {
+  const snapshots = Array.from({ length: 32 }, (_, index) => teamSnapshot(index));
+  snapshots[0] = teamSnapshot(0, {
+    playoff: marketQuoteFromTopOfBook({
+      ticker: "STALE-PLAYOFF",
+      kind: "playoff",
+      bid: 0.49,
+      ask: 0.51,
+      bidDepth: 1,
+      askDepth: 1,
+      updatedAt: "2026-08-01T00:00:00Z",
+    }),
+  });
+  const calculation = calculateWeekZeroValuations(
+    snapshots,
+    3_200,
+    new Date("2026-08-01T00:00:00.000Z"),
+  );
+  assert.equal(calculation.valuations[0].marketStatus, "stale");
+  assert.doesNotThrow(() => assertCompleteWeekZeroCapture(calculation));
+  assert.ok(
+    calculation.valuations[0].marketStatusReasons.length > 0,
+    "stale valuation must explain its warning status",
+  );
+});
+
 test("Week 0 calculation reconciles points, shares, pot, and round totals", () => {
   const snapshots = Array.from({ length: 32 }, (_, index) =>
     teamSnapshot(index),

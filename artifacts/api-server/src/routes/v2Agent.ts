@@ -1,4 +1,5 @@
 import { and, asc, desc, eq, gte, inArray, lte, or } from "drizzle-orm";
+import { ErrorResponse, sendParsedJson } from "../lib/sendParsedJson";
 import { z } from "zod";
 import {
   db,
@@ -122,6 +123,8 @@ type TeamPortfolioRow = {
   ties: number | null;
   pointDifferential: number | null;
   playoffStatus: string | null;
+  marketStatus: "live" | "stale" | null;
+  marketStatusReasons: string[];
 };
 
 type Portfolio = {
@@ -137,6 +140,8 @@ type Portfolio = {
   totalReturn: number | null;
   roi: number | null;
   calculationStatus: "calculated" | "legacy" | "mixed" | "unavailable";
+  marketStatus: "live" | "stale" | null;
+  marketStatusReasons: string[];
 };
 
 const TEAM_ABBREVIATION_BY_NAME = new Map(
@@ -184,6 +189,8 @@ function portfolioTeamView(row: TeamPortfolioRow) {
     point_differential: row.pointDifferential,
     playoff_status: row.playoffStatus,
     playoff_seed: null,
+    market_status: row.marketStatus,
+    market_status_reasons: row.marketStatusReasons,
   };
 }
 
@@ -200,6 +207,8 @@ function portfolioView(body: Portfolio) {
     total_return: body.totalReturn,
     roi: body.roi,
     calculation_status: body.calculationStatus,
+    market_status: body.marketStatus,
+    market_status_reasons: body.marketStatusReasons,
     teams: body.teams.map(portfolioTeamView),
   };
 }
@@ -349,6 +358,8 @@ async function buildPortfolio(
       netMtm: currentMtm == null ? null : roundMoney(currentMtm - costBasis),
       netReturn: realizedReturn == null ? null : roundMoney(realizedReturn - costBasis),
       valueSource: source,
+      marketStatus: calc?.mtm?.marketStatus ?? null,
+      marketStatusReasons: calc?.mtm?.marketStatusReasons ?? [],
       ...metrics,
     });
   }
@@ -387,6 +398,14 @@ async function buildPortfolio(
       ? roundMoney((totalReturn - totalCost) / totalCost)
       : null,
     calculationStatus,
+    marketStatus: rows.some((row) => row.marketStatus === "stale")
+      ? "stale"
+      : rows.some((row) => row.marketStatus === "live")
+        ? "live"
+        : null,
+    marketStatusReasons: [...new Set(
+      rows.flatMap((row) => row.marketStatusReasons),
+    )],
   };
 }
 
@@ -816,7 +835,7 @@ export async function getConsortiumLeaderboard(args: z.input<typeof leaderboardQ
   if (!isContext(context)) return { status: context.status, body: { error: context.error } };
   const ownership = await loadSeasonOwnership(context.seasonId, context.calcuttaId);
   const consortiums = await loadCalcuttaConsortiums(context.calcuttaId, parsed.membershipView);
-  const groups = new Map<string, { totalCost: number; totalReturn: number; totalMtm: number; realizedAvailable: boolean; mtmAvailable: boolean; owners: Set<number> }>();
+  const groups = new Map<string, { totalCost: number; totalReturn: number; totalMtm: number; realizedAvailable: boolean; mtmAvailable: boolean; owners: Set<number>; marketStatuses: Set<"live" | "stale">; marketStatusReasons: Set<string> }>();
   for (const bidderId of ownership.participantIds) {
     const name = consortiums.get(bidderId) ?? "Unassigned";
     const portfolio = await buildPortfolio(
@@ -826,13 +845,17 @@ export async function getConsortiumLeaderboard(args: z.input<typeof leaderboardQ
       parsed.basis,
       parsed.period,
     );
-    const group = groups.get(name) ?? { totalCost: 0, totalReturn: 0, totalMtm: 0, realizedAvailable: true, mtmAvailable: true, owners: new Set<number>() };
+    const group = groups.get(name) ?? { totalCost: 0, totalReturn: 0, totalMtm: 0, realizedAvailable: true, mtmAvailable: true, owners: new Set<number>(), marketStatuses: new Set<"live" | "stale">(), marketStatusReasons: new Set<string>() };
     group.totalCost += portfolio.totalCost;
     if (portfolio.realizedReturn == null) group.realizedAvailable = false;
     else group.totalReturn += portfolio.realizedReturn;
     if (portfolio.currentMtm == null) group.mtmAvailable = false;
     else group.totalMtm += portfolio.currentMtm;
     group.owners.add(bidderId);
+    if (portfolio.marketStatus) group.marketStatuses.add(portfolio.marketStatus);
+    for (const reason of portfolio.marketStatusReasons) {
+      group.marketStatusReasons.add(reason);
+    }
     groups.set(name, group);
   }
   const rows = [...groups.entries()].map(([consortium, group]) => {
@@ -848,8 +871,22 @@ export async function getConsortiumLeaderboard(args: z.input<typeof leaderboardQ
       net_return: parsed.basis === "realized" && net != null ? roundMoney(net) : null,
       net_mtm: parsed.basis === "mtm" && net != null ? roundMoney(net) : null,
       roi: net != null && group.totalCost > 0 ? roundMoney(net / group.totalCost) : null,
+      market_status: group.marketStatuses.has("stale")
+        ? "stale" as const
+        : group.marketStatuses.has("live")
+          ? "live" as const
+          : null,
+      market_status_reasons: [...group.marketStatusReasons],
     };
   }).sort((a, b) => (parsed.basis === "mtm" ? (b.net_mtm ?? 0) - (a.net_mtm ?? 0) : (b.net_return ?? 0) - (a.net_return ?? 0)));
+  const marketStatus = rows.some((row) => row.market_status === "stale")
+    ? "stale"
+    : rows.some((row) => row.market_status === "live")
+      ? "live"
+      : null;
+  const marketStatusReasons = [...new Set(
+    rows.flatMap((row) => row.market_status_reasons),
+  )];
   return {
     status: 200,
     body: validateResponse(GetConsortiumLeaderboardV2Response, {
@@ -858,54 +895,60 @@ export async function getConsortiumLeaderboard(args: z.input<typeof leaderboardQ
       basis: parsed.basis,
       through_period: parsed.period ?? null,
       membership_view: parsed.membershipView,
+      market_status: marketStatus,
+      market_status_reasons: marketStatusReasons,
       rows: rows.map((row, index) => ({ rank: index + 1, ...row })),
     }),
   };
 }
 
-function respond(result: { status: number; body: unknown }, res: import("express").Response) {
-  res.status(result.status).json(result.body);
+function respond(
+  result: { status: number; body: unknown },
+  res: import("express").Response,
+  schema: { parse(body: unknown): unknown },
+) {
+  sendParsedJson(res, result.status >= 400 ? ErrorResponse : schema, result.body, result.status);
 }
 
 router.get("/v2/owner/portfolio", async (req, res): Promise<void> => {
   const parsed = ownerQuery.safeParse(req.query);
-  if (!parsed.success) { res.status(400).json({ error: parsed.error.message }); return; }
-  respond(await getOwnerPortfolio(parsed.data), res);
+  if (!parsed.success) { sendParsedJson(res, ErrorResponse, { error: parsed.error.message }, 400); return; }
+  respond(await getOwnerPortfolio(parsed.data), res, GetOwnerPortfolioV2Response);
 });
 router.get("/v2/owner/summary", async (req, res): Promise<void> => {
   const parsed = ownerQuery.safeParse(req.query);
-  if (!parsed.success) { res.status(400).json({ error: parsed.error.message }); return; }
-  respond(await getOwnerSummary(parsed.data), res);
+  if (!parsed.success) { sendParsedJson(res, ErrorResponse, { error: parsed.error.message }, 400); return; }
+  respond(await getOwnerSummary(parsed.data), res, GetOwnerSummaryV2Response);
 });
 router.get("/v2/owner/portfolio/performance", async (req, res): Promise<void> => {
   const parsed = ownerQuery.safeParse(req.query);
-  if (!parsed.success) { res.status(400).json({ error: parsed.error.message }); return; }
-  respond(await getOwnerPortfolioPerformance(parsed.data), res);
+  if (!parsed.success) { sendParsedJson(res, ErrorResponse, { error: parsed.error.message }, 400); return; }
+  respond(await getOwnerPortfolioPerformance(parsed.data), res, GetOwnerPortfolioPerformanceV2Response);
 });
 router.get("/v2/schedule", async (req, res): Promise<void> => {
   const parsed = scheduleQuery.safeParse(req.query);
-  if (!parsed.success) { res.status(400).json({ error: parsed.error.message }); return; }
-  respond(await getSchedule(parsed.data), res);
+  if (!parsed.success) { sendParsedJson(res, ErrorResponse, { error: parsed.error.message }, 400); return; }
+  respond(await getSchedule(parsed.data), res, GetScheduleV2Response);
 });
 router.get("/v2/team/schedule", async (req, res): Promise<void> => {
   const parsed = teamScheduleQuery.safeParse(req.query);
-  if (!parsed.success) { res.status(400).json({ error: parsed.error.message }); return; }
-  respond(await getTeamSchedule(parsed.data), res);
+  if (!parsed.success) { sendParsedJson(res, ErrorResponse, { error: parsed.error.message }, 400); return; }
+  respond(await getTeamSchedule(parsed.data), res, GetTeamScheduleV2Response);
 });
 router.get("/v2/game", async (req, res): Promise<void> => {
   const parsed = gameQuery.safeParse(req.query);
-  if (!parsed.success) { res.status(400).json({ error: parsed.error.message }); return; }
-  respond(await getGame(parsed.data), res);
+  if (!parsed.success) { sendParsedJson(res, ErrorResponse, { error: parsed.error.message }, 400); return; }
+  respond(await getGame(parsed.data), res, GetGameV2Response);
 });
 router.get("/v2/points-rubric", async (req, res): Promise<void> => {
   const parsed = rubricQuery.safeParse(req.query);
-  if (!parsed.success) { res.status(400).json({ error: parsed.error.message }); return; }
-  respond(await getPointsRubric(parsed.data), res);
+  if (!parsed.success) { sendParsedJson(res, ErrorResponse, { error: parsed.error.message }, 400); return; }
+  respond(await getPointsRubric(parsed.data), res, GetPointsRubricV2Response);
 });
 router.get("/v2/leaderboard/consortia", async (req, res): Promise<void> => {
   const parsed = leaderboardQuery.safeParse(req.query);
-  if (!parsed.success) { res.status(400).json({ error: parsed.error.message }); return; }
-  respond(await getConsortiumLeaderboard(parsed.data), res);
+  if (!parsed.success) { sendParsedJson(res, ErrorResponse, { error: parsed.error.message }, 400); return; }
+  respond(await getConsortiumLeaderboard(parsed.data), res, GetConsortiumLeaderboardV2Response);
 });
 
 export default router;
