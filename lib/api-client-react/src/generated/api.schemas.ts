@@ -1116,6 +1116,131 @@ export interface CalcuttaComparisonRow {
   aggregate: CalcuttaComparisonAggregate;
 }
 
+export interface HistoricalPool {
+  id: number;
+  edition_number: number;
+  name: string;
+  sport: string;
+  format_key: string;
+  season_year: number;
+  /** @nullable */
+  pot_size: number | null;
+  pot_size_available: boolean;
+  status: string;
+}
+
+export interface HistoricalPoolEntryTeam {
+  id: number;
+  name: string;
+  /** @nullable */
+  seed: number | null;
+  resolved: boolean;
+}
+
+export interface HistoricalPoolEntryOwner {
+  id: number;
+  owner: string;
+  share: number;
+}
+
+export type HistoricalPoolEntryKind = typeof HistoricalPoolEntryKind[keyof typeof HistoricalPoolEntryKind];
+
+
+export const HistoricalPoolEntryKind = {
+  single: 'single',
+  bundle: 'bundle',
+  placeholder: 'placeholder',
+} as const;
+
+/**
+ * @nullable
+ */
+export type HistoricalPoolEntryAttributes = { [key: string]: unknown } | null;
+
+export interface HistoricalPoolEntry {
+  id: number;
+  label: string;
+  kind: HistoricalPoolEntryKind;
+  /** @nullable */
+  attributes: HistoricalPoolEntryAttributes;
+  /** @nullable */
+  price: number | null;
+  price_available: boolean;
+  teams: HistoricalPoolEntryTeam[];
+  ownership: HistoricalPoolEntryOwner[];
+  /** @nullable */
+  tracking: string | null;
+  /** @nullable */
+  points: number | null;
+  points_available: boolean;
+  /** @nullable */
+  payout: number | null;
+  payout_available: boolean;
+}
+
+export interface HistoricalPoolOwner {
+  id: number;
+  owner: string;
+  lots: number;
+  /** @nullable */
+  cost: number | null;
+  cost_available: boolean;
+  /** @nullable */
+  payout: number | null;
+  payout_available: boolean;
+}
+
+export type HistoricalPoolTradeScope = typeof HistoricalPoolTradeScope[keyof typeof HistoricalPoolTradeScope];
+
+
+export const HistoricalPoolTradeScope = {
+  entry: 'entry',
+  book: 'book',
+  synthetic_book: 'synthetic_book',
+  sidebet: 'sidebet',
+  cash: 'cash',
+} as const;
+
+/**
+ * @nullable
+ */
+export type HistoricalPoolTradeBasis = typeof HistoricalPoolTradeBasis[keyof typeof HistoricalPoolTradeBasis] | null;
+
+
+export const HistoricalPoolTradeBasis = {
+  lion_king: 'lion_king',
+  net: 'net',
+} as const;
+
+export interface HistoricalPoolTrade {
+  id: number;
+  /** @nullable */
+  sheet_ref: string | null;
+  /** @nullable */
+  trade_date: string | null;
+  /** @nullable */
+  detail: string | null;
+  scope: HistoricalPoolTradeScope;
+  /** @nullable */
+  entry: string | null;
+  /** @nullable */
+  from_owner: string | null;
+  /** @nullable */
+  to_owner: string | null;
+  /** @nullable */
+  reference_owner: string | null;
+  /** @nullable */
+  share: number | null;
+  /** @nullable */
+  cash: number | null;
+  cash_available: boolean;
+  /** @nullable */
+  factor: number | null;
+  /** @nullable */
+  basis: HistoricalPoolTradeBasis;
+  status: string;
+}
+
 export type CalcuttaComparisonResponseGroupBy = typeof CalcuttaComparisonResponseGroupBy[keyof typeof CalcuttaComparisonResponseGroupBy];
 
 

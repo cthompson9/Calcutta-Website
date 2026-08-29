@@ -1268,6 +1268,112 @@ export const ImportDraftOrderResponse = zod.object({
 
 
 /**
+ * @summary List reconciled historical Calcuttas from the normalized model
+ */
+export const GetHistoricalPoolsV2ResponseItem = zod.object({
+  "id": zod.number(),
+  "edition_number": zod.number(),
+  "name": zod.string(),
+  "sport": zod.string(),
+  "format_key": zod.string(),
+  "season_year": zod.number(),
+  "pot_size": zod.number().nullable(),
+  "pot_size_available": zod.boolean(),
+  "status": zod.string()
+})
+export const GetHistoricalPoolsV2Response = zod.array(GetHistoricalPoolsV2ResponseItem)
+
+
+/**
+ * @summary Return normalized auction lots, ownership, tracking, and payouts
+ */
+
+
+
+export const GetHistoricalPoolEntriesV2Params = zod.object({
+  "id": zod.coerce.number().min(1).describe('Normalized historical pool identifier. Only Calcuttas I through XI are available here.')
+})
+
+export const GetHistoricalPoolEntriesV2ResponseItem = zod.object({
+  "id": zod.number(),
+  "label": zod.string(),
+  "kind": zod.enum(['single', 'bundle', 'placeholder']),
+  "attributes": zod.record(zod.string(), zod.unknown()).nullable(),
+  "price": zod.number().nullable(),
+  "price_available": zod.boolean(),
+  "teams": zod.array(zod.object({
+  "id": zod.number(),
+  "name": zod.string(),
+  "seed": zod.number().nullable(),
+  "resolved": zod.boolean()
+})),
+  "ownership": zod.array(zod.object({
+  "id": zod.number(),
+  "owner": zod.string(),
+  "share": zod.number()
+})),
+  "tracking": zod.string().nullable(),
+  "points": zod.number().nullable(),
+  "points_available": zod.boolean(),
+  "payout": zod.number().nullable(),
+  "payout_available": zod.boolean()
+})
+export const GetHistoricalPoolEntriesV2Response = zod.array(GetHistoricalPoolEntriesV2ResponseItem)
+
+
+/**
+ * @summary Return normalized per-owner historical totals
+ */
+
+
+
+export const GetHistoricalPoolOwnersV2Params = zod.object({
+  "id": zod.coerce.number().min(1).describe('Normalized historical pool identifier. Only Calcuttas I through XI are available here.')
+})
+
+export const GetHistoricalPoolOwnersV2ResponseItem = zod.object({
+  "id": zod.number(),
+  "owner": zod.string(),
+  "lots": zod.number(),
+  "cost": zod.number().nullable(),
+  "cost_available": zod.boolean(),
+  "payout": zod.number().nullable(),
+  "payout_available": zod.boolean()
+})
+export const GetHistoricalPoolOwnersV2Response = zod.array(GetHistoricalPoolOwnersV2ResponseItem)
+
+
+/**
+ * @summary Return normalized entry and book trades
+ */
+
+
+
+export const GetHistoricalPoolTradesV2Params = zod.object({
+  "id": zod.coerce.number().min(1).describe('Normalized historical pool identifier. Only Calcuttas I through XI are available here.')
+})
+
+export const GetHistoricalPoolTradesV2ResponseItem = zod.object({
+  "id": zod.number(),
+  "sheet_ref": zod.string().nullable(),
+  "trade_date": zod.string().nullable(),
+  "detail": zod.string().nullable(),
+  "scope": zod.enum(['entry', 'book', 'synthetic_book', 'sidebet', 'cash']),
+  "entry": zod.string().nullable(),
+  "from_owner": zod.string().nullable(),
+  "to_owner": zod.string().nullable(),
+  "reference_owner": zod.string().nullable(),
+  "share": zod.number().nullable(),
+  "cash": zod.number().nullable(),
+  "cash_available": zod.boolean(),
+  "factor": zod.number().nullable(),
+  "basis": zod.union([zod.literal('lion_king'),zod.literal('net'),zod.literal(null)]).nullable(),
+  "status": zod.string()
+})
+export const GetHistoricalPoolTradesV2Response = zod.array(GetHistoricalPoolTradesV2ResponseItem)
+
+
+/**
  * @summary Return every current signed position for one owner
  */
 export const getOwnerPortfolioV2QueryPeriodMin = 0;

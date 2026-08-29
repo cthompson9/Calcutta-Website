@@ -7,4 +7,4 @@ Historical cross-pool reporting must use the explicitly approved owner identity 
 
 **Why:** The same person used several label styles across pools, while deceptively similar labels also belong to different people. The user approved the conservative mapping on August 28, 2026.
 
-**How to apply:** Require full-corpus identity validation before any historical money import or cross-pool aggregation. Treat mapping changes as money-affecting and require renewed factual review.
+**How to apply:** Require full-corpus identity validation before any historical money import or cross-pool aggregation. Treat mapping changes as money-affecting and require renewed factual review. On an unchanged-source replay, converge identities through the exact edition/source-label provenance link; an older display name is not an identity signal and must never be fuzzy-matched.
