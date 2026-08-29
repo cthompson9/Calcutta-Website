@@ -4,7 +4,7 @@
 # are intentional non-merges for records with no reliable cross-pool anchor.
 # Do not replace those with fuzzy name matching.
 version: 1
-review_status: pending_user_review
+review_status: approved
 records:
   - record: "Austin P."
     person: "Austin P."

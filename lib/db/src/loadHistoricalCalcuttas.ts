@@ -322,6 +322,104 @@ async function persistHistoricalCalcutta(
         and source_hash=${sourceHash}
     `);
     if (prior.rows.length) {
+      const existingCalcutta = await tx.execute(sql`
+        select id from normalized_calcuttas
+        where edition_number=${doc.edition}
+      `);
+      const calcuttaId = Number(
+        (existingCalcutta.rows[0] as { id: number } | undefined)?.id,
+      );
+      if (!calcuttaId) {
+        throw new Error(
+          `Historical import provenance exists for edition ${doc.edition} without its normalized pool.`,
+        );
+      }
+      for (const owner of doc.owners) {
+        const record = historicalOwnerRecordKey(owner.label, owner.name, doc.edition);
+        const person = ownerIdentity.records.find(
+          (mapping) => mapping.record === record,
+        )?.person;
+        if (!person) throw new Error(`Missing approved owner identity for ${record}.`);
+        const linked = await tx.execute(sql`
+          select owner_id from normalized_calcutta_owners
+          where calcutta_id=${calcuttaId} and label=${owner.label}
+        `);
+        const priorOwnerId = Number(
+          (linked.rows[0] as { owner_id: number } | undefined)?.owner_id,
+        );
+        if (!priorOwnerId) {
+          throw new Error(
+            `Historical edition ${doc.edition} is missing owner link ${owner.label}.`,
+          );
+        }
+        const canonical = await tx.execute(sql`
+          insert into normalized_owners(display_name,email)
+          values(${person},${owner.email ?? null})
+          on conflict(display_name) do update set display_name=excluded.display_name
+          returning id
+        `);
+        const canonicalOwnerId = Number(
+          (canonical.rows[0] as { id: number }).id,
+        );
+        if (canonicalOwnerId === priorOwnerId) continue;
+        await tx.execute(sql`
+          update normalized_positions
+          set owner_id=${canonicalOwnerId}
+          where owner_id=${priorOwnerId}
+            and entry_id in (
+              select id from normalized_entries where calcutta_id=${calcuttaId}
+            )
+        `);
+        await tx.execute(sql`
+          update normalized_trades
+          set
+            from_owner_id=case
+              when from_owner_id=${priorOwnerId} then ${canonicalOwnerId}
+              else from_owner_id
+            end,
+            to_owner_id=case
+              when to_owner_id=${priorOwnerId} then ${canonicalOwnerId}
+              else to_owner_id
+            end,
+            reference_owner_id=case
+              when reference_owner_id=${priorOwnerId} then ${canonicalOwnerId}
+              else reference_owner_id
+            end
+          where calcutta_id=${calcuttaId}
+            and ${priorOwnerId} in (
+              from_owner_id,
+              to_owner_id,
+              reference_owner_id
+            )
+        `);
+        await tx.execute(sql`
+          update normalized_expected_owner_results
+          set owner_id=${canonicalOwnerId}
+          where calcutta_id=${calcuttaId} and owner_id=${priorOwnerId}
+        `);
+        await tx.execute(sql`
+          update normalized_calcutta_owners
+          set owner_id=${canonicalOwnerId}
+          where calcutta_id=${calcuttaId} and owner_id=${priorOwnerId}
+        `);
+        await tx.execute(sql`
+          delete from normalized_owners old
+          where old.id=${priorOwnerId}
+            and not exists (
+              select 1 from normalized_calcutta_owners where owner_id=old.id
+            )
+            and not exists (
+              select 1 from normalized_positions where owner_id=old.id
+            )
+            and not exists (
+              select 1 from normalized_trades
+              where old.id in (from_owner_id,to_owner_id,reference_owner_id)
+            )
+            and not exists (
+              select 1 from normalized_expected_owner_results where owner_id=old.id
+            )
+        `);
+      }
       await tx.execute(sql`
         update normalized_calcuttas
         set format_key=${effectiveFormatKey}
