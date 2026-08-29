@@ -6,6 +6,18 @@ export const platformSchemaMigration = {
     update calcuttas
       set competition_format = coalesce(competition_format, 'NFL_REGULAR_SEASON'),
           status = coalesce(status, 'active');
+    do $$
+    begin
+      if exists (
+        select 1
+        from calcuttas
+        where competition_format is null or status is null
+      ) then
+        raise exception
+          'Cannot tighten calcuttas platform columns: nullable backfill left unresolved rows';
+      end if;
+    end
+    $$;
     alter table calcuttas alter column competition_format set default 'NFL_REGULAR_SEASON';
     alter table calcuttas alter column competition_format set not null;
     alter table calcuttas alter column status set default 'active';
@@ -18,6 +30,8 @@ export const platformSchemaMigration = {
       calcutta_id integer not null references calcuttas(id) on delete cascade,
       rule_name text not null,
       rule_type text,
+      calculation text,
+      condition text,
       value numeric(16, 6),
       multiplier numeric(16, 6),
       description text,
@@ -27,26 +41,39 @@ export const platformSchemaMigration = {
       constraint calcutta_rules_rule_type_supported
         check (rule_type is null or rule_type in ('points', 'fixed_pct', 'shared_pool'))
     );
+    alter table calcutta_rules add column if not exists calculation text;
+    alter table calcutta_rules add column if not exists condition text;
     create unique index if not exists calcutta_rules_calcutta_rule_idx
       on calcutta_rules(calcutta_id, rule_name);
 
     insert into calcutta_rules (
-      calcutta_id, rule_name, rule_type, value, multiplier, description, active
+      calcutta_id, rule_name, rule_type, calculation, condition,
+      value, multiplier, description, active
     )
-    select c.id, rule_seed.rule_name, 'points', rule_seed.value, null,
+    select c.id, rule_seed.rule_name, 'points', rule_seed.calculation,
+      rule_seed.condition, rule_seed.value, rule_seed.multiplier,
       rule_seed.description, true
     from calcuttas c
     inner join seasons s on s.id = c.season_id
     cross join (
       values
-        ('banked', 150.000000::numeric, 'Starting banked points'),
-        ('win', 10.000000::numeric, 'Points awarded per win')
-    ) as rule_seed(rule_name, value, description)
+        ('banked_points', 'fixed', null, 150.000000::numeric, null::numeric, 'Starting banked points'),
+        ('regular_season_win', 'win', null, 10.000000::numeric, null::numeric, 'Points awarded per regular-season win'),
+        ('point_differential', 'pt_diff', null, null::numeric, null::numeric, 'Points awarded for adjusted point differential'),
+        ('marquee_point_differential', 'pt_diff', 'is_marquee', null::numeric, 2.000000::numeric, 'Marquee games double point differential only'),
+        ('playoff_berth', 'playoff_berth', null, null::numeric, null::numeric, 'Points awarded for qualifying for the playoffs'),
+        ('divisional_round', 'div_round', null, null::numeric, null::numeric, 'Points awarded for reaching the divisional round'),
+        ('conference_championship', 'conf_round', null, null::numeric, null::numeric, 'Points awarded for reaching the conference championship'),
+        ('super_bowl_appearance', 'sb_berth', null, null::numeric, null::numeric, 'Points awarded for reaching the Super Bowl'),
+        ('super_bowl_win', 'win_super_bowl', null, null::numeric, null::numeric, 'Points awarded for winning the Super Bowl')
+    ) as rule_seed(rule_name, calculation, condition, value, multiplier, description)
     where s.year in (2025, 2026)
       and c.sport = 'NFL'
       and c.is_canonical = true
     on conflict (calcutta_id, rule_name) do update
       set rule_type = excluded.rule_type,
+          calculation = excluded.calculation,
+          condition = excluded.condition,
           value = excluded.value,
           multiplier = excluded.multiplier,
           description = excluded.description,
@@ -140,7 +167,7 @@ export const platformSchemaMigration = {
 
     create table if not exists snapshot_metrics (
       id serial primary key,
-      entry_id integer not null references calcutta_entries(id) on delete cascade,
+      entry_id integer references calcutta_entries(id) on delete cascade,
       period_id integer not null references sport_periods(id) on delete cascade,
       basis text not null,
       metric text not null,
@@ -177,6 +204,10 @@ export const platformSchemaMigration = {
 
     do $$
     begin
+      if exists (select 1 from trades where entry_id is null) then
+        raise exception
+          'Cannot tighten trades.entry_id: nullable backfill left unresolved rows';
+      end if;
       if exists (
         select 1
         from trades t

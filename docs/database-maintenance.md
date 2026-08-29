@@ -15,6 +15,22 @@ Do not run ad-hoc production DDL, database push commands against production, or
 startup-time migrations. The Publish flow is the supported production schema
 change path and will surface destructive or rename operations for confirmation.
 
+## Phase 1 release gate
+
+The Phase 1 ownership/MTM release remains development-only until the normal
+production Publish flow has a recoverable backup and its schema preview has
+been reviewed. Do not use `drizzle-kit push`, overwrite production data, or run
+interactive production DDL for this release.
+
+Before publishing, development must have applied
+`0024_phase1_release_safety_v1`. That migration verifies non-empty
+`team_bidders` coverage against primary positions, trade and MTM entry
+round-trips, protected row-count preservation, and the complete canonical NFL
+rule seed for 2025 and 2026. A failed gate is a release blocker; it must not be
+bypassed. The populated `team_period_snapshots` table remains preserved, and
+the legacy stored-return columns remain in place for a later, separately gated
+migration after calculated returns have served real traffic.
+
 ## Legacy consortium membership bridge (completed)
 
 The production move from the legacy `bidders.consortium_id` relation to dated

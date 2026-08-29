@@ -3,6 +3,10 @@ export const mtmEntryScopeMigration = {
   sql: `
     lock table mtm_snapshots, calcuttas, calcutta_entries in share row exclusive mode;
 
+    create temporary table phase1_mtm_entry_scope_baseline
+      on commit drop
+      as select count(*)::bigint as row_count from mtm_snapshots;
+
     alter table mtm_snapshots add column if not exists entry_id integer;
 
     -- Legacy MTM rows belong to the single canonical NFL entry for their
@@ -43,6 +47,34 @@ export const mtmEntryScopeMigration = {
     where ms.entry_id is null
       and ms.season_id = canonical.season_id
       and ms.team_id = canonical.team_id;
+
+    do $$
+    begin
+      if exists (select 1 from mtm_snapshots where entry_id is null) then
+        raise exception
+          'Cannot tighten mtm_snapshots.entry_id: nullable backfill left unresolved rows';
+      end if;
+      if exists (
+        select 1
+        from mtm_snapshots ms
+        inner join calcutta_entries ce on ce.id = ms.entry_id
+        inner join calcuttas c on c.id = ce.calcutta_id
+        where ce.team_id is distinct from ms.team_id
+           or c.season_id is distinct from ms.season_id
+      ) then
+        raise exception
+          'Cannot tighten mtm_snapshots.entry_id: entry mapping does not round-trip to team and season';
+      end if;
+      if (
+        select count(*)::bigint from mtm_snapshots
+      ) <> (
+        select row_count from phase1_mtm_entry_scope_baseline
+      ) then
+        raise exception
+          'Cannot tighten mtm_snapshots.entry_id: row count changed during backfill';
+      end if;
+    end
+    $$;
 
     alter table mtm_snapshots
       drop constraint if exists mtm_snapshots_entry_id_calcutta_entries_id_fk;

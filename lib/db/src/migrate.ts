@@ -19,6 +19,7 @@ import {
   normalizedHistoricalMigration,
   historicalCalcuttaRostersMigration,
   historicalCalcuttaLinksMigration,
+  phase1ReleaseSafetyMigration,
 } from "./migrations";
 
 const migrations = [
@@ -40,6 +41,7 @@ const migrations = [
   normalizedHistoricalMigration,
   historicalCalcuttaRostersMigration,
   historicalCalcuttaLinksMigration,
+  phase1ReleaseSafetyMigration,
 ] as const;
 
 /**
