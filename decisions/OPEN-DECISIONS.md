@@ -93,3 +93,6 @@ swings 17% (1,476–1,732) and the choice moves every payout by up to that much.
 - **Book positions are a first-class instrument.** Owners may hold synthetic exposure without
   winning any lot.
 - **Entry-level trades need no new machinery.** Verified across all 456 lots.
+- **Cross-pool owner identity is reviewed.** All 109 declared owner records have an explicit
+  approved alias or non-merge in `owner-identity.json`; unsupported future labels block the
+  historical load.

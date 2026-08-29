@@ -10,6 +10,11 @@ import {
   type OwnerIdentityDocument,
   validateOwnerIdentity,
 } from "./ownerIdentity";
+import {
+  resolveHistoricalOwnerIdentity,
+  validateHistoricalOwnerIdentityRecords,
+  validatePersistedHistoricalOwnerIdentities,
+} from "./historicalOwnerIdentity";
 
 export type HistoricalTrade = {
   sheet_ref?: string | number | null;
@@ -140,6 +145,10 @@ export function validateHistoricalDocument(
 
   requireUnique(doc.owners.map((owner) => owner.label), "Owner labels");
   requireUnique(doc.entries.map((entry) => entry.label), "Entry labels");
+  validateHistoricalOwnerIdentityRecords(
+    doc.edition,
+    doc.owners.map((owner) => owner.label),
+  );
   const periodKeys = new Set((doc.periods ?? []).map((period) => period.key));
   const ownerLabels = new Set(doc.owners.map((owner) => owner.label));
   const potCents = Math.round(doc.pot_size * 100);
@@ -335,21 +344,44 @@ async function persistHistoricalCalcutta(
         );
       }
       for (const owner of doc.owners) {
-        const record = historicalOwnerRecordKey(owner.label, owner.name, doc.edition);
-        const person = ownerIdentity.records.find(
+        const record = historicalOwnerRecordKey(
+          owner.label,
+          owner.name,
+          doc.edition,
+        );
+        const previouslyApprovedPerson = ownerIdentity.records.find(
           (mapping) => mapping.record === record,
         )?.person;
-        if (!person) throw new Error(`Missing approved owner identity for ${record}.`);
+        if (!previouslyApprovedPerson) {
+          throw new Error(`Missing approved owner identity for ${record}.`);
+        }
+        const person = resolveHistoricalOwnerIdentity(
+          doc.edition,
+          owner.label,
+        ).person;
         const linked = await tx.execute(sql`
-          select owner_id from normalized_calcutta_owners
-          where calcutta_id=${calcuttaId} and label=${owner.label}
+          select co.owner_id,o.display_name
+          from normalized_calcutta_owners co
+          join normalized_owners o on o.id=co.owner_id
+          where co.calcutta_id=${calcuttaId} and co.label=${owner.label}
         `);
-        const priorOwnerId = Number(
-          (linked.rows[0] as { owner_id: number } | undefined)?.owner_id,
-        );
+        const priorLink = linked.rows[0] as
+          | { owner_id: number; display_name: string }
+          | undefined;
+        const priorOwnerId = Number(priorLink?.owner_id);
         if (!priorOwnerId) {
           throw new Error(
             `Historical edition ${doc.edition} is missing owner link ${owner.label}.`,
+          );
+        }
+        const permittedPriorPeople = new Set([
+          record,
+          previouslyApprovedPerson,
+          person,
+        ]);
+        if (!permittedPriorPeople.has(String(priorLink?.display_name))) {
+          throw new Error(
+            `Historical edition ${doc.edition} owner ${owner.label} has a different owner identity mapping.`,
           );
         }
         const canonical = await tx.execute(sql`
@@ -420,6 +452,20 @@ async function persistHistoricalCalcutta(
             )
         `);
       }
+      const persistedOwners = await tx.execute(sql`
+        select co.label,o.display_name
+        from normalized_calcutta_owners co
+        join normalized_owners o on o.id=co.owner_id
+        where co.calcutta_id=${calcuttaId}
+      `);
+      validatePersistedHistoricalOwnerIdentities(
+        doc.edition,
+        doc.owners.map((owner) => owner.label),
+        persistedOwners.rows.map((row) => ({
+          label: String(row.label),
+          person: String(row.display_name),
+        })),
+      );
       await tx.execute(sql`
         update normalized_calcuttas
         set format_key=${effectiveFormatKey}
@@ -477,11 +523,10 @@ async function persistHistoricalCalcutta(
     const ownerIds = new Map<string, number>();
     for (const owner of doc.owners) {
       // Identity is resolved by the reviewed mapping, never by fuzzy matching.
-      const record = historicalOwnerRecordKey(owner.label, owner.name, doc.edition);
-      const identity = ownerIdentity.records.find((mapping) => mapping.record === record)?.person;
-      if (!identity) {
-        throw new Error(`Missing approved owner identity for ${record}.`);
-      }
+      const identity = resolveHistoricalOwnerIdentity(
+        doc.edition,
+        owner.label,
+      ).person;
       const row = await tx.execute(sql`
         insert into normalized_owners(display_name,email)
         values(${identity},${owner.email ?? null})

@@ -1,4 +1,5 @@
-# Manual identity review for the 73 normalized owner records.
+# Compatibility projection of the exact edition/label decisions in
+# owner-identity.json onto the loader's 73 legacy normalized records.
 #
 # A record is the loader's pool-aware source identity.  Approved self-mappings
 # are intentional non-merges for records with no reliable cross-pool anchor.
@@ -40,7 +41,7 @@ records:
     person: "Nate F."
     status: approved
   - record: "Sam F."
-    person: "Sam F."
+    person: "Sam Ford"
     status: approved
   - record: "Sam R."
     person: "Samuel Rosen"
@@ -52,13 +53,13 @@ records:
     person: "Zachary Long"
     status: approved
   - record: "Zach M."
-    person: "Zach M."
+    person: "Zack Miller"
     status: approved
   - record: "Justin C."
     person: "Justin C."
     status: approved
   - record: "Matt M."
-    person: "Matt"
+    person: "Matt M."
     status: approved
   - record: "Ryan M"
     person: "Ryan M"
@@ -88,7 +89,7 @@ records:
     person: "Joey Anthony"
     status: approved
   - record: "Matt [ed4]"
-    person: "Matt"
+    person: "Matt M."
     status: approved
   - record: "Sam [ed4]"
     person: "Samuel Rosen"
@@ -115,7 +116,7 @@ records:
     person: "Joey Anthony"
     status: approved
   - record: "Ian [ed5]"
-    person: "Ian Culnane"
+    person: "Ian [ed5]"
     status: approved
   - record: "Samuel Rosen"
     person: "Samuel Rosen"
@@ -139,7 +140,7 @@ records:
     person: "Joey Anthony"
     status: approved
   - record: "Matt [ed6]"
-    person: "Matt"
+    person: "Matt M."
     status: approved
   - record: "Sam [ed6]"
     person: "Samuel Rosen"
@@ -154,7 +155,7 @@ records:
     person: "Colton [ed6]"
     status: approved
   - record: "Shaun [ed6]"
-    person: "Shaun McGuire"
+    person: "Shaun [ed6]"
     status: approved
   - record: "Sam [ed7]"
     person: "Samuel Rosen"
@@ -193,7 +194,7 @@ records:
     person: "Ed Zhang"
     status: approved
   - record: "Ezra [ed9]"
-    person: "Ezra Pemstein"
+    person: "Ezra [ed9]"
     status: approved
   - record: "Greg [ed9]"
     person: "Greg"
@@ -208,7 +209,7 @@ records:
     person: "Zachary Long"
     status: approved
   - record: "Josh [ed9]"
-    person: "Joshua Melnick"
+    person: "Josh [ed9]"
     status: approved
   - record: "KD [ed10]"
     person: "KD [ed10]"
@@ -230,7 +231,7 @@ non_merges:
   - left_person: "Zachary Long"
     left_records: "Zach L.|Zach [ed4]|Zach [ed5]|Zach [ed6]|Zach [ed7]|Zach [ed9]|ZL [ed10]|Zachary Long"
     right_person: "Zack Miller"
-    right_records: "Zack M.|Zack [ed4]|Zack [ed6]"
+    right_records: "Zach M.|Zack M.|Zack [ed4]|Zack [ed6]"
     reason: "The handoff explicitly identifies Zach and Zack as separate owners."
   - left_person: "Joey Anthony"
     left_records: "Joey [ed4]|Joey Anthony|Joey [ed6]|Joey [ed9]"
@@ -239,11 +240,26 @@ non_merges:
     reason: "Joey Anthony and Anthony C. are explicitly separate owners."
   - left_person: "Samuel Rosen"
     left_records: "Sam R.|Sam [ed4]|Samuel Rosen|Sam [ed6]|Sam [ed7]|Sam [ed9]|SR [ed10]"
-    right_person: "Sam F."
+    right_person: "Sam Ford"
     right_records: "Sam F."
     reason: "Sam F. is a distinct initialed record from Sam R./Samuel Rosen."
-  - left_person: "Zachary Long"
-    left_records: "Zach L.|Zach [ed4]|Zach [ed5]|Zach [ed6]|Zach [ed7]|Zach [ed9]|ZL [ed10]|Zachary Long"
-    right_person: "Zach M."
-    right_records: "Zach M."
-    reason: "Zach M. has no reliable anchor to Zachary Long and is retained separately."
+  - left_person: "Ian Culnane"
+    left_records: "Ian Culnane"
+    right_person: "Ian [ed5]"
+    right_records: "Ian [ed5]"
+    reason: "The bare Ian record has no independent anchor to Ian Culnane."
+  - left_person: "Shaun McGuire"
+    left_records: "Shaun McGuire"
+    right_person: "Shaun [ed6]"
+    right_records: "Shaun [ed6]"
+    reason: "The bare Shaun record has no independent anchor to Shaun McGuire."
+  - left_person: "Ezra Pemstein"
+    left_records: "Ezra Pemstein"
+    right_person: "Ezra [ed9]"
+    right_records: "Ezra [ed9]"
+    reason: "The Calcutta IX email is scrambled and cannot anchor the bare Ezra record."
+  - left_person: "Joshua Melnick"
+    left_records: "Joshua Melnick"
+    right_person: "Josh [ed9]"
+    right_records: "Josh [ed9]"
+    reason: "First-name similarity alone does not anchor the bare Josh record."

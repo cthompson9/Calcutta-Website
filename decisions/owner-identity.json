@@ -1,0 +1,204 @@
+{
+  "version": 1,
+  "record_format": "edition|label",
+  "decisions": [
+    {
+      "person": "Austin P.",
+      "decision": "approved_alias",
+      "rationale": "The exact label repeats in Calcuttas I and II.",
+      "records": ["1|Austin P.", "2|Austin P."]
+    },
+    {
+      "person": "Ben F.",
+      "decision": "approved_alias",
+      "rationale": "The exact label repeats in Calcuttas I through III.",
+      "records": ["1|Ben F.", "2|Ben F.", "3|Ben F."]
+    },
+    {
+      "person": "Billy S.",
+      "decision": "approved_alias",
+      "rationale": "The exact label and source email repeat in Calcuttas I through III.",
+      "records": ["1|Billy S.", "2|Billy S.", "3|Billy S."]
+    },
+    {
+      "person": "Cameron H.",
+      "decision": "approved_alias",
+      "rationale": "The exact label and source email repeat in Calcuttas I and III.",
+      "records": ["1|Cameron H.", "3|Cameron H."]
+    },
+    {
+      "person": "Chris H.",
+      "decision": "approved_alias",
+      "rationale": "The H-initial label and source email are consistent in Calcuttas I through III; the later bare Chris record is a separate explicit alias in the same historical naming transition.",
+      "records": ["1|Chris H.", "2|Chris H.", "3|Chris H.", "4|Chris", "6|Chris", "9|Chris"]
+    },
+    {
+      "person": "Craig Thompson",
+      "decision": "approved_alias",
+      "rationale": "Craig T. repeats with the same source email in Calcuttas I through III, and Calcuttas V, VIII, and XI spell out Craig Thompson; the bare Craig records are the same naming transition.",
+      "records": ["1|Craig T.", "2|Craig T.", "3|Craig T.", "4|Craig", "5|Craig", "6|Craig", "8|Craig Thompson", "9|Craig", "11|Craig Thompson"]
+    },
+    {
+      "person": "Damon H.",
+      "decision": "approved_alias",
+      "rationale": "The exact label and source email repeat in Calcuttas I through III.",
+      "records": ["1|Damon H.", "2|Damon H.", "3|Damon H."]
+    },
+    {
+      "person": "Ed Zhang",
+      "decision": "approved_alias",
+      "rationale": "Ed Z. repeats with the same source email in Calcuttas I through III; Calcuttas V, VIII, and XI spell out Ed Zhang; the bare Ed records and EZ record are explicitly identified as the same owner by the source trade notes and initials roster.",
+      "records": ["1|Ed Z.", "2|Ed Z.", "3|Ed Z.", "4|Ed", "5|Ed", "6|Ed", "7|Ed", "8|Ed Zhang", "9|Ed", "10|EZ", "11|Ed Zhang"]
+    },
+    {
+      "person": "Henry A.",
+      "decision": "approved_alias",
+      "rationale": "The exact label and source email repeat in Calcuttas I through III.",
+      "records": ["1|Henry A.", "2|Henry A.", "3|Henry A."]
+    },
+    {
+      "person": "Justin C.",
+      "decision": "approved_alias",
+      "rationale": "The exact label and source email repeat in Calcuttas II and III.",
+      "records": ["2|Justin C.", "3|Justin C."]
+    },
+    {
+      "person": "Michael W.",
+      "decision": "approved_alias",
+      "rationale": "The exact label and source email repeat in Calcuttas I and II.",
+      "records": ["1|Michael W.", "2|Michael W."]
+    },
+    {
+      "person": "Nate F.",
+      "decision": "approved_alias",
+      "rationale": "The exact label and source email repeat in Calcuttas I and II.",
+      "records": ["1|Nate F.", "2|Nate F."]
+    },
+    {
+      "person": "Ryan M",
+      "decision": "approved_non_merge",
+      "rationale": "This record appears only once; it is retained as its own identity rather than inferred from an initial or another surname.",
+      "records": ["2|Ryan M"]
+    },
+    {
+      "person": "Sam Ford",
+      "decision": "approved_alias",
+      "rationale": "Sam F. repeats in Calcuttas I and III and the Calcutta III source email identifies the Ford surname; this is explicitly distinct from Samuel Rosen.",
+      "records": ["1|Sam F.", "3|Sam F."]
+    },
+    {
+      "person": "Samuel Rosen",
+      "decision": "approved_alias",
+      "rationale": "Sam R. repeats in Calcuttas I through III, Samuel Rosen is spelled out in Calcuttas V, VIII, and XI, and SR is the matching initials record; the bare Sam records are the same naming transition.",
+      "records": ["1|Sam R.", "2|Sam R.", "3|Sam R.", "4|Sam", "5|Sam", "6|Sam", "7|Sam", "8|Samuel Rosen", "9|Sam", "10|SR", "11|Samuel Rosen"]
+    },
+    {
+      "person": "Todd C.",
+      "decision": "approved_non_merge",
+      "rationale": "This record appears only once; it is retained as its own identity rather than inferred from an initial or another owner.",
+      "records": ["1|Todd C."]
+    },
+    {
+      "person": "Zachary Long",
+      "decision": "approved_alias",
+      "rationale": "Zach L. repeats with the same source email in Calcuttas I through III, Zachary Long is spelled out in Calcuttas VIII and XI, and ZL is the matching initials record; the bare Zach records are the same naming transition.",
+      "records": ["1|Zach L.", "2|Zach L.", "3|Zach L.", "4|Zach", "5|Zach", "6|Zach", "7|Zach", "8|Zachary Long", "9|Zach", "10|ZL", "11|Zachary Long"]
+    },
+    {
+      "person": "Zack Miller",
+      "decision": "approved_alias",
+      "rationale": "Zach M. and Zack M. carry the Miller source email where the source is reliable, and the later bare Zack records are the same naming transition; this identity is explicitly distinct from Zachary Long.",
+      "records": ["1|Zach M.", "2|Zack M.", "3|Zack M.", "4|Zack", "6|Zack"]
+    },
+    {
+      "person": "Anthony Calcagni",
+      "decision": "approved_alias",
+      "rationale": "Anthony C. is spelled out with the Calcagni source email in Calcutta III, and Calcutta V repeats that email for Anthony; the Calcutta IV email is known to be scrambled. This is explicitly distinct from Joey Anthony.",
+      "records": ["3|Anthony C.", "4|Anthony", "5|Anthony"]
+    },
+    {
+      "person": "Greg",
+      "decision": "approved_alias",
+      "rationale": "The repeated bare Greg record is treated as one owner across Calcuttas IV, V, VI, and IX; GK is explicitly named Greg in Calcutta X. Scrambled cross-sheet emails are not used as evidence.",
+      "records": ["4|Greg", "5|Greg", "6|Greg", "9|Greg", "10|GK"]
+    },
+    {
+      "person": "Joey Anthony",
+      "decision": "approved_alias",
+      "rationale": "Joey Anthony is spelled out in Calcuttas V, VIII, and XI; the bare Joey records are the same naming transition. This is explicitly distinct from Anthony Calcagni.",
+      "records": ["4|Joey", "5|Joey", "6|Joey", "8|Joey Anthony", "9|Joey", "11|Joey Anthony"]
+    },
+    {
+      "person": "Matt M.",
+      "decision": "approved_alias",
+      "rationale": "Matt M. repeats with the same source email in Calcuttas II and III, and the bare Matt records are the same naming transition; scrambled emails in Calcuttas IV and VI are not used as evidence.",
+      "records": ["2|Matt M.", "3|Matt M.", "4|Matt", "6|Matt"]
+    },
+    {
+      "person": "Ezra Pemstein",
+      "decision": "approved_alias",
+      "rationale": "The exact full name repeats in Calcuttas VIII and XI.",
+      "records": ["8|Ezra Pemstein", "11|Ezra Pemstein"]
+    },
+    {
+      "person": "Joshua Melnick",
+      "decision": "approved_non_merge",
+      "rationale": "The full name appears once; Josh [ed9] is not merged on first-name similarity without an independent source anchor.",
+      "records": ["8|Joshua Melnick"]
+    },
+    {
+      "person": "Ian Culnane",
+      "decision": "approved_non_merge",
+      "rationale": "The full name appears once; Ian [ed5] is not merged on first-name similarity without an independent source anchor.",
+      "records": ["8|Ian Culnane"]
+    },
+    {
+      "person": "Shaun McGuire",
+      "decision": "approved_non_merge",
+      "rationale": "The full name appears once; Shaun [ed6] is not merged on first-name similarity without an independent source anchor.",
+      "records": ["8|Shaun McGuire"]
+    },
+    {
+      "person": "Ezra [ed9]",
+      "decision": "approved_non_merge",
+      "rationale": "The bare Ezra record has a known scrambled email and no independent link to Ezra Pemstein, so it remains distinct.",
+      "records": ["9|Ezra"]
+    },
+    {
+      "person": "Josh [ed9]",
+      "decision": "approved_non_merge",
+      "rationale": "The bare Josh record is not merged with Joshua Melnick on first-name similarity alone.",
+      "records": ["9|Josh"]
+    },
+    {
+      "person": "Colton [ed6]",
+      "decision": "approved_non_merge",
+      "rationale": "This record appears only once and has no independent cross-pool anchor.",
+      "records": ["6|Colton"]
+    },
+    {
+      "person": "Kurt [ed7]",
+      "decision": "approved_non_merge",
+      "rationale": "This record appears only once and has no independent cross-pool anchor.",
+      "records": ["7|Kurt"]
+    },
+    {
+      "person": "KD [ed10]",
+      "decision": "approved_non_merge",
+      "rationale": "The initials record appears only once and has no independent cross-pool anchor.",
+      "records": ["10|KD"]
+    },
+    {
+      "person": "Ian [ed5]",
+      "decision": "approved_non_merge",
+      "rationale": "The bare Ian record is not merged with Ian Culnane on first-name similarity alone.",
+      "records": ["5|Ian"]
+    },
+    {
+      "person": "Shaun [ed6]",
+      "decision": "approved_non_merge",
+      "rationale": "The bare Shaun record is not merged with Shaun McGuire on first-name similarity alone.",
+      "records": ["6|Shaun"]
+    }
+  ]
+}
