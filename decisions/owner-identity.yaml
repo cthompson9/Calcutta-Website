@@ -1,0 +1,249 @@
+# Manual identity review for the 73 normalized owner records.
+#
+# A record is the loader's pool-aware source identity.  Approved self-mappings
+# are intentional non-merges for records with no reliable cross-pool anchor.
+# Do not replace those with fuzzy name matching.
+version: 1
+review_status: pending_user_review
+records:
+  - record: "Austin P."
+    person: "Austin P."
+    status: approved
+  - record: "Ben F."
+    person: "Ben F."
+    status: approved
+  - record: "Billy S."
+    person: "Billy S."
+    status: approved
+  - record: "Cameron H."
+    person: "Cameron H."
+    status: approved
+  - record: "Chris H."
+    person: "Chris H."
+    status: approved
+  - record: "Craig T."
+    person: "Craig Thompson"
+    status: approved
+  - record: "Damon H."
+    person: "Damon H."
+    status: approved
+  - record: "Ed Z."
+    person: "Ed Zhang"
+    status: approved
+  - record: "Henry A."
+    person: "Henry A."
+    status: approved
+  - record: "Michael W."
+    person: "Michael W."
+    status: approved
+  - record: "Nate F."
+    person: "Nate F."
+    status: approved
+  - record: "Sam F."
+    person: "Sam F."
+    status: approved
+  - record: "Sam R."
+    person: "Samuel Rosen"
+    status: approved
+  - record: "Todd C."
+    person: "Todd C."
+    status: approved
+  - record: "Zach L."
+    person: "Zachary Long"
+    status: approved
+  - record: "Zach M."
+    person: "Zach M."
+    status: approved
+  - record: "Justin C."
+    person: "Justin C."
+    status: approved
+  - record: "Matt M."
+    person: "Matt"
+    status: approved
+  - record: "Ryan M"
+    person: "Ryan M"
+    status: approved
+  - record: "Zack M."
+    person: "Zack Miller"
+    status: approved
+  - record: "Anthony C."
+    person: "Anthony Calcagni"
+    status: approved
+  - record: "Anthony [ed4]"
+    person: "Anthony Calcagni"
+    status: approved
+  - record: "Chris [ed4]"
+    person: "Chris H."
+    status: approved
+  - record: "Craig [ed4]"
+    person: "Craig Thompson"
+    status: approved
+  - record: "Ed [ed4]"
+    person: "Ed Zhang"
+    status: approved
+  - record: "Greg [ed4]"
+    person: "Greg"
+    status: approved
+  - record: "Joey [ed4]"
+    person: "Joey Anthony"
+    status: approved
+  - record: "Matt [ed4]"
+    person: "Matt"
+    status: approved
+  - record: "Sam [ed4]"
+    person: "Samuel Rosen"
+    status: approved
+  - record: "Zach [ed4]"
+    person: "Zachary Long"
+    status: approved
+  - record: "Zack [ed4]"
+    person: "Zack Miller"
+    status: approved
+  - record: "Anthony [ed5]"
+    person: "Anthony Calcagni"
+    status: approved
+  - record: "Craig Thompson"
+    person: "Craig Thompson"
+    status: approved
+  - record: "Ed Zhang"
+    person: "Ed Zhang"
+    status: approved
+  - record: "Greg [ed5]"
+    person: "Greg"
+    status: approved
+  - record: "Joey Anthony"
+    person: "Joey Anthony"
+    status: approved
+  - record: "Ian [ed5]"
+    person: "Ian Culnane"
+    status: approved
+  - record: "Samuel Rosen"
+    person: "Samuel Rosen"
+    status: approved
+  - record: "Zach [ed5]"
+    person: "Zachary Long"
+    status: approved
+  - record: "Chris [ed6]"
+    person: "Chris H."
+    status: approved
+  - record: "Craig [ed6]"
+    person: "Craig Thompson"
+    status: approved
+  - record: "Ed [ed6]"
+    person: "Ed Zhang"
+    status: approved
+  - record: "Greg [ed6]"
+    person: "Greg"
+    status: approved
+  - record: "Joey [ed6]"
+    person: "Joey Anthony"
+    status: approved
+  - record: "Matt [ed6]"
+    person: "Matt"
+    status: approved
+  - record: "Sam [ed6]"
+    person: "Samuel Rosen"
+    status: approved
+  - record: "Zach [ed6]"
+    person: "Zachary Long"
+    status: approved
+  - record: "Zack [ed6]"
+    person: "Zack Miller"
+    status: approved
+  - record: "Colton [ed6]"
+    person: "Colton [ed6]"
+    status: approved
+  - record: "Shaun [ed6]"
+    person: "Shaun McGuire"
+    status: approved
+  - record: "Sam [ed7]"
+    person: "Samuel Rosen"
+    status: approved
+  - record: "Ed [ed7]"
+    person: "Ed Zhang"
+    status: approved
+  - record: "Kurt [ed7]"
+    person: "Kurt [ed7]"
+    status: approved
+  - record: "Zach [ed7]"
+    person: "Zachary Long"
+    status: approved
+  - record: "Joshua Melnick"
+    person: "Joshua Melnick"
+    status: approved
+  - record: "Ezra Pemstein"
+    person: "Ezra Pemstein"
+    status: approved
+  - record: "Zachary Long"
+    person: "Zachary Long"
+    status: approved
+  - record: "Ian Culnane"
+    person: "Ian Culnane"
+    status: approved
+  - record: "Shaun McGuire"
+    person: "Shaun McGuire"
+    status: approved
+  - record: "Chris [ed9]"
+    person: "Chris H."
+    status: approved
+  - record: "Craig [ed9]"
+    person: "Craig Thompson"
+    status: approved
+  - record: "Ed [ed9]"
+    person: "Ed Zhang"
+    status: approved
+  - record: "Ezra [ed9]"
+    person: "Ezra Pemstein"
+    status: approved
+  - record: "Greg [ed9]"
+    person: "Greg"
+    status: approved
+  - record: "Joey [ed9]"
+    person: "Joey Anthony"
+    status: approved
+  - record: "Sam [ed9]"
+    person: "Samuel Rosen"
+    status: approved
+  - record: "Zach [ed9]"
+    person: "Zachary Long"
+    status: approved
+  - record: "Josh [ed9]"
+    person: "Joshua Melnick"
+    status: approved
+  - record: "KD [ed10]"
+    person: "KD [ed10]"
+    status: approved
+  - record: "SR [ed10]"
+    person: "Samuel Rosen"
+    status: approved
+  - record: "ZL [ed10]"
+    person: "Zachary Long"
+    status: approved
+  - record: "GK [ed10]"
+    person: "Greg"
+    status: approved
+  - record: "EZ [ed10]"
+    person: "Ed Zhang"
+    status: approved
+
+non_merges:
+  - left_person: "Zachary Long"
+    left_records: "Zach L.|Zach [ed4]|Zach [ed5]|Zach [ed6]|Zach [ed7]|Zach [ed9]|ZL [ed10]|Zachary Long"
+    right_person: "Zack Miller"
+    right_records: "Zack M.|Zack [ed4]|Zack [ed6]"
+    reason: "The handoff explicitly identifies Zach and Zack as separate owners."
+  - left_person: "Joey Anthony"
+    left_records: "Joey [ed4]|Joey Anthony|Joey [ed6]|Joey [ed9]"
+    right_person: "Anthony Calcagni"
+    right_records: "Anthony C.|Anthony [ed4]|Anthony [ed5]"
+    reason: "Joey Anthony and Anthony C. are explicitly separate owners."
+  - left_person: "Samuel Rosen"
+    left_records: "Sam R.|Sam [ed4]|Samuel Rosen|Sam [ed6]|Sam [ed7]|Sam [ed9]|SR [ed10]"
+    right_person: "Sam F."
+    right_records: "Sam F."
+    reason: "Sam F. is a distinct initialed record from Sam R./Samuel Rosen."
+  - left_person: "Zachary Long"
+    left_records: "Zach L.|Zach [ed4]|Zach [ed5]|Zach [ed6]|Zach [ed7]|Zach [ed9]|ZL [ed10]|Zachary Long"
+    right_person: "Zach M."
+    right_records: "Zach M."
+    reason: "Zach M. has no reliable anchor to Zachary Long and is retained separately."

@@ -13,6 +13,7 @@
     "backfill-period-snapshots": "pnpm --filter @workspace/api-server exec tsx ../../lib/db/src/backfillPeriodSnapshots.ts",
     "backfill-owner-positions": "pnpm --filter @workspace/api-server exec tsx ../../lib/db/src/backfillOwnerPositions.ts",
     "load-historical-calcuttas": "pnpm --filter @workspace/api-server exec tsx ../../lib/db/src/scripts/loadHistoricalCalcuttas.ts",
+    "audit-owner-identity": "pnpm --filter @workspace/api-server exec tsx ../../lib/db/src/scripts/auditOwnerIdentity.ts",
     "test": "pnpm --filter @workspace/api-server exec node --import tsx/esm --test ../../lib/db/src/**/*.test.mjs ../../lib/db/src/**/*.test.ts"
   },
   "dependencies": {

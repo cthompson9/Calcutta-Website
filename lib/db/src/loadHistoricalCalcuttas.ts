@@ -1,8 +1,15 @@
 import { createHash } from "node:crypto";
 import { readFile, readdir } from "node:fs/promises";
-import { basename, join } from "node:path";
+import { basename, join, resolve } from "node:path";
 import { sql } from "drizzle-orm";
 import { db } from "./index";
+import {
+  historicalOwnerRecordKey,
+  loadOwnerIdentityFile,
+  ownerIdentityError,
+  type OwnerIdentityDocument,
+  validateOwnerIdentity,
+} from "./ownerIdentity";
 
 export type HistoricalTrade = {
   sheet_ref?: string | number | null;
@@ -226,20 +233,23 @@ function normalizedTradeScope(trade: HistoricalTrade): HistoricalTrade["scope"] 
  * Loads one immutable historical source in one transaction. Expected result
  * tables are comparison targets only and are never queried by this loader.
  */
-export async function loadHistoricalCalcuttaFile(
-  path: string,
-  requestedBy = "stage-1-history-loader",
+type PreparedHistoricalDocument = {
+  doc: HistoricalDocument;
+  source: string;
+  sourceHash: string;
+  validation: HistoricalValidation;
+};
+
+async function persistHistoricalCalcutta(
+  prepared: PreparedHistoricalDocument,
+  requestedBy: string,
+  ownerIdentity: OwnerIdentityDocument,
 ): Promise<{
   loaded: boolean;
   edition: number;
   validation: HistoricalValidation;
 }> {
-  const bytes = await readFile(path);
-  const sourceHash = createHash("sha256").update(bytes).digest("hex");
-  const doc = JSON.parse(bytes.toString("utf8")) as HistoricalDocument;
-  const validation = validateHistoricalDocument(doc);
-  const source = basename(path);
-
+  const { doc, source, sourceHash, validation } = prepared;
   return db.transaction(async (tx) => {
     await tx.execute(sql`select pg_advisory_xact_lock(841204, ${doc.edition})`);
     const [formatSport, structure] = formats[doc.format_key];
@@ -368,13 +378,12 @@ export async function loadHistoricalCalcuttaFile(
 
     const ownerIds = new Map<string, number>();
     for (const owner of doc.owners) {
-      // A supplied multi-word name is global. Bare labels stay pool-scoped;
-      // no fuzzy matching is allowed because Zach and Zack are distinct.
-      const name = owner.name?.trim();
-      const identity =
-        name && name.includes(" ")
-          ? name
-          : `${owner.label} [ed${doc.edition}]`;
+      // Identity is resolved by the reviewed mapping, never by fuzzy matching.
+      const record = historicalOwnerRecordKey(owner.label, owner.name, doc.edition);
+      const identity = ownerIdentity.records.find((mapping) => mapping.record === record)?.person;
+      if (!identity) {
+        throw new Error(`Missing approved owner identity for ${record}.`);
+      }
       const row = await tx.execute(sql`
         insert into normalized_owners(display_name,email)
         values(${identity},${owner.email ?? null})
@@ -538,6 +547,7 @@ export async function loadHistoricalCalcuttaFile(
 export async function loadAllHistoricalCalcuttas(
   directory: string,
   requestedBy = "stage-1-history-loader",
+  ownerIdentityPath = resolve(directory, "../decisions/owner-identity.yaml"),
 ): Promise<
   Array<{
     loaded: boolean;
@@ -553,10 +563,28 @@ export async function loadAllHistoricalCalcuttas(
       `Expected 11 historical Calcutta files in ${directory}, found ${files.length}.`,
     );
   }
+  const prepared = await Promise.all(
+    files.map(async (file): Promise<PreparedHistoricalDocument> => {
+      const bytes = await readFile(join(directory, file));
+      const doc = JSON.parse(bytes.toString("utf8")) as HistoricalDocument;
+      return {
+        doc,
+        source: basename(file),
+        sourceHash: createHash("sha256").update(bytes).digest("hex"),
+        validation: validateHistoricalDocument(doc),
+      };
+    }),
+  );
+  const identityDocument = await loadOwnerIdentityFile(ownerIdentityPath);
+  const identityReport = validateOwnerIdentity(
+    identityDocument,
+    prepared.map(({ doc }) => doc),
+  );
+  if (!identityReport.passed) throw ownerIdentityError(identityReport);
   const results = [];
-  for (const file of files) {
+  for (const source of prepared) {
     results.push(
-      await loadHistoricalCalcuttaFile(join(directory, file), requestedBy),
+      await persistHistoricalCalcutta(source, requestedBy, identityDocument),
     );
   }
   return results;
