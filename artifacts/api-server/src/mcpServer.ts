@@ -726,10 +726,10 @@ function buildMcpServer(isAdmin: boolean) {
 
   server.tool(
     "set_bidder_consortium",
-    "Assign or clear a bidder's consortium. Provide null or an empty string to clear the assignment. Consortium names are reused case-insensitively. Requires commissioner transport authorization.",
+    "Assign or clear a bidder's consortium. Provide a non-empty label to assign one, or null to explicitly clear the assignment. Empty and whitespace-only labels are rejected. Consortium names are reused case-insensitively. Requires commissioner transport authorization.",
     {
       bidder: z.string().describe("Full or partial bidder name, e.g. 'Zachary Long'"),
-      consortium: z.string().max(200).nullable().describe("Consortium name to assign, or null/empty to clear the assignment"),
+      consortium: z.string().max(200).nullable().describe("Non-empty consortium name to assign, or null to explicitly clear the assignment"),
     },
     async ({ bidder, consortium }) => {
       if (!isAdmin) return commissionerAuthorizationRequired();
@@ -741,6 +741,11 @@ function buildMcpServer(isAdmin: boolean) {
       if ("error" in bidderMatch) return text(`Error: ${bidderMatch.error}`);
 
       const normalizedConsortium = consortium?.trim().replace(/\s+/g, " ") ?? "";
+      if (consortium !== null && !normalizedConsortium) {
+        return text(
+          "Error: A consortium label is required. Use null only when explicitly clearing the assignment.",
+        );
+      }
       let consortiumId: number | null = null;
       let consortiumName: string | null = null;
 

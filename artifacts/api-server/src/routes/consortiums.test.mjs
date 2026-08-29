@@ -137,7 +137,21 @@ describe("bidder consortiums", { skip: !canRun }, () => {
       );
     }
 
-    const transportAuthorized = await mcpRequest(baseUrl, 3, "tools/call", {
+    const missingLabel = await mcpRequest(baseUrl, 3, "tools/call", {
+      name: "set_bidder_consortium",
+      arguments: {
+        bidder: bidder.name,
+        consortium: "   ",
+      },
+    });
+    assert.match(mcpText(missingLabel), /label is required/i);
+    const afterMissingLabel = await mcpRequest(baseUrl, 4, "tools/call", {
+      name: "get_bidder_consortium",
+      arguments: { bidder: bidder.name },
+    });
+    assert.equal(mcpText(afterMissingLabel), "null");
+
+    const transportAuthorized = await mcpRequest(baseUrl, 5, "tools/call", {
       name: "set_bidder_consortium",
       arguments: {
         bidder: bidder.name,
@@ -147,7 +161,7 @@ describe("bidder consortiums", { skip: !canRun }, () => {
     assert.equal(mcpText(transportAuthorized), `Consortium set: ${bidder.name} → Should Not Save.`);
 
     const consortiumName = `Cleanup Group ${Date.now()}`;
-    const assigned = await mcpRequest(baseUrl, 4, "tools/call", {
+    const assigned = await mcpRequest(baseUrl, 6, "tools/call", {
       name: "set_bidder_consortium",
       arguments: {
         bidder: bidder.name,
@@ -163,7 +177,7 @@ describe("bidder consortiums", { skip: !canRun }, () => {
     assert.ok(consortium);
     createdConsortia.push(consortium);
 
-    const reused = await mcpRequest(baseUrl, 5, "tools/call", {
+    const reused = await mcpRequest(baseUrl, 7, "tools/call", {
       name: "set_bidder_consortium",
       arguments: {
         bidder: secondBidder.name,
@@ -182,7 +196,7 @@ describe("bidder consortiums", { skip: !canRun }, () => {
       (error) => /duplicate key/i.test(error.cause?.message ?? error.message),
     );
 
-    const fetched = await mcpRequest(baseUrl, 5, "tools/call", {
+    const fetched = await mcpRequest(baseUrl, 8, "tools/call", {
       name: "get_bidder_consortium",
       arguments: { bidder: bidder.name.toLowerCase() },
     });
@@ -206,7 +220,7 @@ describe("bidder consortiums", { skip: !canRun }, () => {
       .where(eq(consortiumMembershipsTable.id, initialMembership.id));
 
     const reassignedName = `Reassigned Group ${Date.now()}`;
-    const reassigned = await mcpRequest(baseUrl, 5, "tools/call", {
+    const reassigned = await mcpRequest(baseUrl, 9, "tools/call", {
       name: "set_bidder_consortium",
       arguments: {
         bidder: bidder.name,
@@ -246,7 +260,7 @@ describe("bidder consortiums", { skip: !canRun }, () => {
       reassignedName,
     );
 
-    const cleared = await mcpRequest(baseUrl, 6, "tools/call", {
+    const cleared = await mcpRequest(baseUrl, 10, "tools/call", {
       name: "set_bidder_consortium",
       arguments: {
         bidder: bidder.name,
@@ -255,19 +269,19 @@ describe("bidder consortiums", { skip: !canRun }, () => {
     });
     assert.equal(mcpText(cleared), `Consortium cleared: ${bidder.name}.`);
 
-    const afterClear = await mcpRequest(baseUrl, 7, "tools/call", {
+    const afterClear = await mcpRequest(baseUrl, 11, "tools/call", {
       name: "get_bidder_consortium",
       arguments: { bidder: bidder.name },
     });
     assert.equal(mcpText(afterClear), "null");
 
-    const ambiguous = await mcpRequest(baseUrl, 8, "tools/call", {
+    const ambiguous = await mcpRequest(baseUrl, 12, "tools/call", {
       name: "get_bidder_consortium",
       arguments: { bidder: "Consortium Fixture" },
     });
     assert.match(mcpText(ambiguous), /ambiguous/i);
 
-    const unknown = await mcpRequest(baseUrl, 9, "tools/call", {
+    const unknown = await mcpRequest(baseUrl, 13, "tools/call", {
       name: "get_bidder_consortium",
       arguments: { bidder: "No Such Bidder" },
     });
