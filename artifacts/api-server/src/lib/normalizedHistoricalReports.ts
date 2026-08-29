@@ -46,6 +46,9 @@ type HistoricalEntryOwnerRow = {
   label: string;
   share: NumericValue;
   source: "primary" | "trade";
+  consortium: string | null;
+  rosterStatus: "mapped" | "unassigned" | "not_supplied";
+  rosterSourceOwnerLabel: string | null;
 };
 
 type HistoricalOwnerRow = {
@@ -55,6 +58,9 @@ type HistoricalOwnerRow = {
   lotCount: NumericValue;
   cost: NumericValue;
   payout: NumericValue;
+  consortium: string | null;
+  rosterStatus: "mapped" | "unassigned" | "not_supplied";
+  rosterSourceOwnerLabel: string | null;
 };
 
 type HistoricalCrossPoolOwnerRow = HistoricalOwnerRow & {
@@ -219,13 +225,24 @@ export async function loadNormalizedHistoricalEntries(poolId: number) {
         o.display_name as "ownerName",
         co.label,
         p.share,
-        p.source
+        p.source,
+        consortium.name as consortium,
+        case
+          when roster.owner_id is null then 'not_supplied'
+          when roster.consortium_id is null then 'unassigned'
+          else 'mapped'
+        end as "rosterStatus",
+        roster.source_owner_label as "rosterSourceOwnerLabel"
       from normalized_positions p
       join normalized_entries e on e.id = p.entry_id
       join normalized_owners o on o.id = p.owner_id
       join normalized_calcutta_owners co
         on co.calcutta_id = e.calcutta_id
        and co.owner_id = o.id
+      left join historical_calcutta_rosters roster
+        on roster.calcutta_id = e.calcutta_id
+       and roster.owner_id = o.id
+      left join consortia consortium on consortium.id = roster.consortium_id
       where e.calcutta_id = ${poolId}
       order by p.entry_id, p.source, o.display_name
     `),
@@ -263,6 +280,9 @@ export async function loadNormalizedHistoricalEntries(poolId: number) {
       label: owner.label,
       share: numberOrNull(owner.share) ?? 0,
       source: owner.source,
+      consortium: owner.consortium,
+      rosterStatus: owner.rosterStatus,
+      rosterSourceOwnerLabel: owner.rosterSourceOwnerLabel,
     })),
     tracking: row.tracking,
     points: numberOrNull(row.points),
@@ -313,7 +333,14 @@ export async function loadNormalizedHistoricalOwners(poolId: number) {
       array[co.label] as labels,
       coalesce(r.lots, 0) as "lotCount",
       case when r.owner_id is not null then r.cost else expected.cost end as cost,
-      case when r.owner_id is not null then r.payout else expected.realized end as payout
+      case when r.owner_id is not null then r.payout else expected.realized end as payout,
+      consortium.name as consortium,
+      case
+        when roster.owner_id is null then 'not_supplied'
+        when roster.consortium_id is null then 'unassigned'
+        else 'mapped'
+      end as "rosterStatus",
+      roster.source_owner_label as "rosterSourceOwnerLabel"
     from normalized_calcutta_owners co
     join normalized_owners o on o.id = co.owner_id
     left join primary_rollups r on r.owner_id = o.id
@@ -321,6 +348,10 @@ export async function loadNormalizedHistoricalOwners(poolId: number) {
     left join normalized_expected_owner_results expected
       on expected.calcutta_id = co.calcutta_id
      and expected.owner_id = o.id
+    left join historical_calcutta_rosters roster
+      on roster.calcutta_id = co.calcutta_id
+     and roster.owner_id = o.id
+    left join consortia consortium on consortium.id = roster.consortium_id
     where co.calcutta_id = ${poolId}
       and (
         r.owner_id is not null
@@ -340,6 +371,9 @@ export async function loadNormalizedHistoricalOwners(poolId: number) {
     costAvailable: hasValue(row.cost),
     payout: numberOrNull(row.payout),
     payoutAvailable: hasValue(row.payout),
+    consortium: row.consortium,
+    rosterStatus: row.rosterStatus,
+    rosterSourceOwnerLabel: row.rosterSourceOwnerLabel,
   }));
 }
 
@@ -389,13 +423,24 @@ export async function loadNormalizedHistoricalOwnerResults() {
       array[co.label] as labels,
       covered.lots as "lotCount",
       covered.cost,
-      covered.payout
+      covered.payout,
+      consortium.name as consortium,
+      case
+        when roster.owner_id is null then 'not_supplied'
+        when roster.consortium_id is null then 'unassigned'
+        else 'mapped'
+      end as "rosterStatus",
+      roster.source_owner_label as "rosterSourceOwnerLabel"
     from covered_results covered
     join normalized_calcuttas c on c.id = covered.pool_id
     join normalized_owners o on o.id = covered.owner_id
     join normalized_calcutta_owners co
       on co.calcutta_id = c.id
      and co.owner_id = o.id
+    left join historical_calcutta_rosters roster
+      on roster.calcutta_id = c.id
+     and roster.owner_id = o.id
+    left join consortia consortium on consortium.id = roster.consortium_id
     order by c.edition_number desc, covered.payout desc nulls last, o.display_name
   `);
 
@@ -411,6 +456,9 @@ export async function loadNormalizedHistoricalOwnerResults() {
     costAvailable: hasValue(row.cost),
     payout: numberOrNull(row.payout),
     payoutAvailable: hasValue(row.payout),
+    consortium: row.consortium,
+    rosterStatus: row.rosterStatus,
+    rosterSourceOwnerLabel: row.rosterSourceOwnerLabel,
   }));
 }
 

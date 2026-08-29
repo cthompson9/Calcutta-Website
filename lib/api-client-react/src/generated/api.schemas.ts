@@ -1096,6 +1096,15 @@ export const HistoricalPoolEntryOwnerSource = {
   trade: 'trade',
 } as const;
 
+export type HistoricalPoolEntryOwnerRosterStatus = typeof HistoricalPoolEntryOwnerRosterStatus[keyof typeof HistoricalPoolEntryOwnerRosterStatus];
+
+
+export const HistoricalPoolEntryOwnerRosterStatus = {
+  mapped: 'mapped',
+  unassigned: 'unassigned',
+  not_supplied: 'not_supplied',
+} as const;
+
 export interface HistoricalPoolEntryOwner {
   ownerId: number;
   ownerName: string;
@@ -1103,6 +1112,11 @@ export interface HistoricalPoolEntryOwner {
   /** Signed fractional ownership share. */
   share: number;
   source: HistoricalPoolEntryOwnerSource;
+  /** @nullable */
+  consortium: string | null;
+  rosterStatus: HistoricalPoolEntryOwnerRosterStatus;
+  /** @nullable */
+  rosterSourceOwnerLabel: string | null;
 }
 
 export type HistoricalPoolEntryKind = typeof HistoricalPoolEntryKind[keyof typeof HistoricalPoolEntryKind];
@@ -1149,6 +1163,15 @@ export interface HistoricalPoolEntry {
   payoutAvailable: boolean;
 }
 
+export type HistoricalPoolOwnerRosterStatus = typeof HistoricalPoolOwnerRosterStatus[keyof typeof HistoricalPoolOwnerRosterStatus];
+
+
+export const HistoricalPoolOwnerRosterStatus = {
+  mapped: 'mapped',
+  unassigned: 'unassigned',
+  not_supplied: 'not_supplied',
+} as const;
+
 export interface HistoricalPoolOwner {
   ownerId: number;
   ownerName: string;
@@ -1167,6 +1190,11 @@ export interface HistoricalPoolOwner {
      */
   payout: number | null;
   payoutAvailable: boolean;
+  /** @nullable */
+  consortium: string | null;
+  rosterStatus: HistoricalPoolOwnerRosterStatus;
+  /** @nullable */
+  rosterSourceOwnerLabel: string | null;
 }
 
 export type HistoricalCrossPoolOwnerResult = HistoricalPoolOwner & {

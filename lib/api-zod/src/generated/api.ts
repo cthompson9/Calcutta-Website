@@ -14,8 +14,6 @@ import * as zod from 'zod';
 export const HealthCheckResponse = zod.object({
   "status": zod.string()
 })
-
-
 /**
  * @summary List all seasons
  */
@@ -114,7 +112,6 @@ export const CreateTeamResponse = zod.object({
 }))
 })
 
-
 /**
  * @summary Get a single team
  */
@@ -134,8 +131,6 @@ export const GetTeamResponse = zod.object({
   "ownershipShare": zod.number()
 }))
 })
-
-
 /**
  * @summary Update a team entry
  */
@@ -175,8 +170,6 @@ export const UpdateTeamResponse = zod.object({
   "ownershipShare": zod.number()
 }))
 })
-
-
 /**
  * @summary Delete a team entry
  */
@@ -387,7 +380,10 @@ export const GetHistoricalOwnersResponseItem = zod.object({
   "cost": zod.number().nullable().describe('Normalized historical cost; null when owner cost coverage is unavailable.'),
   "costAvailable": zod.boolean(),
   "payout": zod.number().nullable().describe('Normalized historical payout; null when owner payout coverage is unavailable.'),
-  "payoutAvailable": zod.boolean()
+  "payoutAvailable": zod.boolean(),
+  "consortium": zod.string().nullable(),
+  "rosterStatus": zod.enum(['mapped', 'unassigned', 'not_supplied']),
+  "rosterSourceOwnerLabel": zod.string().nullable()
 }).and(zod.object({
   "poolId": zod.number(),
   "editionNumber": zod.number(),
@@ -421,7 +417,10 @@ export const GetHistoricalPoolEntriesResponseItem = zod.object({
   "ownerName": zod.string(),
   "label": zod.string(),
   "share": zod.number().describe('Signed fractional ownership share.'),
-  "source": zod.enum(['primary', 'trade'])
+  "source": zod.enum(['primary', 'trade']),
+  "consortium": zod.string().nullable(),
+  "rosterStatus": zod.enum(['mapped', 'unassigned', 'not_supplied']),
+  "rosterSourceOwnerLabel": zod.string().nullable()
 })),
   "tracking": zod.string().nullable(),
   "points": zod.number().nullable().describe('Imported comparison points; null when the source did not provide points.'),
@@ -447,7 +446,10 @@ export const GetHistoricalPoolOwnersResponseItem = zod.object({
   "cost": zod.number().nullable().describe('Normalized historical cost; null when owner cost coverage is unavailable.'),
   "costAvailable": zod.boolean(),
   "payout": zod.number().nullable().describe('Normalized historical payout; null when owner payout coverage is unavailable.'),
-  "payoutAvailable": zod.boolean()
+  "payoutAvailable": zod.boolean(),
+  "consortium": zod.string().nullable(),
+  "rosterStatus": zod.enum(['mapped', 'unassigned', 'not_supplied']),
+  "rosterSourceOwnerLabel": zod.string().nullable()
 })
 export const GetHistoricalPoolOwnersResponse = zod.array(GetHistoricalPoolOwnersResponseItem)
 
@@ -608,8 +610,6 @@ export const PreviewNflStandingsImportResponse = zod.object({
   "changed": zod.boolean()
 }))
 })
-
-
 /**
  * Requires the ADMIN_API_KEY bearer token. The NFL source URL is fixed server-side.
  * @summary Atomically import the current NFL standings
@@ -1456,8 +1456,6 @@ export const GetOwnerPortfolioV2Response = zod.object({
   "market_status_reasons": zod.array(zod.string())
 }))
 })
-
-
 /**
  * @summary Return owner portfolio totals
  */
@@ -1838,3 +1836,4 @@ export const GetConsortiumLeaderboardV2Response = zod.object({
   "market_status_reasons": zod.array(zod.string())
 }))
 })
+// End of generated schemas.

@@ -2742,7 +2742,15 @@ components:
         source:
           type: string
           enum: [primary, trade]
-      required: [ownerId, ownerName, label, share, source]
+        consortium:
+          type: ["string", "null"]
+        rosterStatus:
+          type: string
+          enum: [mapped, unassigned, not_supplied]
+        rosterSourceOwnerLabel:
+          type: ["string", "null"]
+      required:
+        [ownerId, ownerName, label, share, source, consortium, rosterStatus, rosterSourceOwnerLabel]
 
     HistoricalPoolEntry:
       type: object
@@ -2821,6 +2829,13 @@ components:
           description: Normalized historical payout; null when owner payout coverage is unavailable.
         payoutAvailable:
           type: boolean
+        consortium:
+          type: ["string", "null"]
+        rosterStatus:
+          type: string
+          enum: [mapped, unassigned, not_supplied]
+        rosterSourceOwnerLabel:
+          type: ["string", "null"]
       required:
         - ownerId
         - ownerName
@@ -2830,6 +2845,9 @@ components:
         - costAvailable
         - payout
         - payoutAvailable
+        - consortium
+        - rosterStatus
+        - rosterSourceOwnerLabel
 
     HistoricalCrossPoolOwnerResult:
       allOf:

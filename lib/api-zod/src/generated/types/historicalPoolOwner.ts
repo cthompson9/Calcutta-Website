@@ -5,6 +5,7 @@
  * NFL Auction Manager API
  * OpenAPI spec version: 0.1.0
  */
+import type { HistoricalPoolOwnerRosterStatus } from './historicalPoolOwnerRosterStatus';
 
 export interface HistoricalPoolOwner {
   ownerId: number;
@@ -24,4 +25,9 @@ export interface HistoricalPoolOwner {
      */
   payout: number | null;
   payoutAvailable: boolean;
+  /** @nullable */
+  consortium: string | null;
+  rosterStatus: HistoricalPoolOwnerRosterStatus;
+  /** @nullable */
+  rosterSourceOwnerLabel: string | null;
 }

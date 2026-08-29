@@ -25,9 +25,10 @@ test(
   "historical V2 endpoints expose only reconciled normalized pools with honest coverage",
   { skip: !DATABASE_URL },
   async (context) => {
-    const [{ db }, { default: app }] = await Promise.all([
+    const [{ db }, { default: app }, { loadCalcuttaConsortiums }] = await Promise.all([
       import("@workspace/db"),
       import("../app.ts"),
+      import("../lib/consortiumMemberships.ts"),
     ]);
     const loaded = await db.execute(sql`
       select count(*)::int as count
@@ -59,6 +60,7 @@ test(
       let ownerCount = 0;
       let tradeCount = 0;
       let trackingCount = 0;
+      const ownersByEdition = new Map();
 
       for (const pool of pools) {
         const [entriesResponse, ownersResponse, tradesResponse] = await Promise.all([
@@ -74,6 +76,7 @@ test(
           ownersResponse.json(),
           tradesResponse.json(),
         ]);
+        ownersByEdition.set(pool.editionNumber, owners);
         entryCount += entries.length;
         ownerCount += owners.length;
         tradeCount += trades.length;
@@ -88,9 +91,15 @@ test(
           Array.isArray(entry.teams) &&
           Array.isArray(entry.ownership)
         ));
+        assert.ok(entries.flatMap((entry) => entry.ownership).every((owner) =>
+          ["mapped", "unassigned", "not_supplied"].includes(owner.rosterStatus) &&
+          Object.hasOwn(owner, "consortium") &&
+          Object.hasOwn(owner, "rosterSourceOwnerLabel")
+        ));
         assert.ok(owners.every((owner) =>
           owner.costAvailable === (owner.cost != null) &&
-          owner.payoutAvailable === (owner.payout != null)
+          owner.payoutAvailable === (owner.payout != null) &&
+          ["mapped", "unassigned", "not_supplied"].includes(owner.rosterStatus)
         ));
         assert.ok(trades.every((trade) =>
           trade.cashAvailable === (trade.cash != null)
@@ -103,6 +112,93 @@ test(
       assert.equal(ownerCount, 84);
       assert.equal(tradeCount, 118);
       assert.ok(trackingCount > 0);
+
+      assert.deepEqual(
+        {
+          consortium: ownersByEdition.get(1).find(
+            (owner) => owner.ownerName === "Craig Thompson",
+          ).consortium,
+          status: ownersByEdition.get(1).find(
+            (owner) => owner.ownerName === "Craig Thompson",
+          ).rosterStatus,
+        },
+        { consortium: "Craig T.", status: "mapped" },
+      );
+      assert.deepEqual(
+        {
+          consortium: ownersByEdition.get(1).find(
+            (owner) => owner.ownerName === "Cameron H.",
+          ).consortium,
+          status: ownersByEdition.get(1).find(
+            (owner) => owner.ownerName === "Cameron H.",
+          ).rosterStatus,
+        },
+        { consortium: null, status: "unassigned" },
+      );
+      assert.deepEqual(
+        {
+          consortium: ownersByEdition.get(10).find(
+            (owner) => owner.ownerName === "KD [ed10]",
+          ).consortium,
+          source: ownersByEdition.get(10).find(
+            (owner) => owner.ownerName === "KD [ed10]",
+          ).rosterSourceOwnerLabel,
+        },
+        {
+          consortium: "Kurt D. / Joey A.",
+          source: "Kevin/Daniel?",
+        },
+      );
+      assert.deepEqual(
+        {
+          consortium: ownersByEdition.get(11).find(
+            (owner) => owner.ownerName === "Ezra Pemstein",
+          ).consortium,
+          status: ownersByEdition.get(11).find(
+            (owner) => owner.ownerName === "Ezra Pemstein",
+          ).rosterStatus,
+        },
+        { consortium: null, status: "unassigned" },
+      );
+
+      const calcuttaRows = await db.execute(sql`
+        select id, year, sport
+        from calcuttas
+        where (year = 2025 and sport = 'NFL')
+           or (year = 2026 and sport = 'NFL')
+        order by year
+      `);
+      const historicalCalcuttaId = Number(calcuttaRows.rows[0].id);
+      const liveCalcuttaId = Number(calcuttaRows.rows[1].id);
+      const bidderRows = await db.execute(sql`
+        select id, name from bidders where name in ('Craig Thompson', 'Zachary Long')
+      `);
+      const bidderIds = new Map(
+        bidderRows.rows.map((row) => [row.name, Number(row.id)]),
+      );
+      const [historicalRoster, historicalCurrentRoster, liveHistoricalRoster, liveCurrentRoster] =
+        await Promise.all([
+          loadCalcuttaConsortiums(historicalCalcuttaId, "historical"),
+          loadCalcuttaConsortiums(historicalCalcuttaId, "current"),
+          loadCalcuttaConsortiums(liveCalcuttaId, "historical"),
+          loadCalcuttaConsortiums(liveCalcuttaId, "current"),
+        ]);
+      assert.equal(
+        historicalRoster.get(bidderIds.get("Craig Thompson")),
+        "Craig T.",
+      );
+      assert.equal(
+        historicalRoster.get(bidderIds.get("Zachary Long")),
+        "Zach L. / Greg K.",
+      );
+      assert.notEqual(
+        historicalRoster.get(bidderIds.get("Craig Thompson")),
+        historicalCurrentRoster.get(bidderIds.get("Craig Thompson")),
+      );
+      assert.equal(
+        liveHistoricalRoster.get(bidderIds.get("Craig Thompson")),
+        liveCurrentRoster.get(bidderIds.get("Craig Thompson")),
+      );
 
       const invalid = await fetch(`${baseUrl}/api/v2/pool/not-a-number/entries`);
       assert.equal(invalid.status, 400);

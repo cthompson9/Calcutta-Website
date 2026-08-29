@@ -47,4 +47,5 @@ export * from "./schema/index";
 export * from "./ownerPositions";
 export * from "./migrate";
 export * from "./loadHistoricalCalcuttas";
+export * from "./historicalConsortiumRosters";
 export { explicitRecordFromStoredValues } from "./regularSeasonRecord";

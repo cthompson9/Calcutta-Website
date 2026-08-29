@@ -5,6 +5,7 @@
  * NFL Auction Manager API
  * OpenAPI spec version: 0.1.0
  */
+import type { HistoricalPoolEntryOwnerRosterStatus } from './historicalPoolEntryOwnerRosterStatus';
 import type { HistoricalPoolEntryOwnerSource } from './historicalPoolEntryOwnerSource';
 
 export interface HistoricalPoolEntryOwner {
@@ -14,4 +15,9 @@ export interface HistoricalPoolEntryOwner {
   /** Signed fractional ownership share. */
   share: number;
   source: HistoricalPoolEntryOwnerSource;
+  /** @nullable */
+  consortium: string | null;
+  rosterStatus: HistoricalPoolEntryOwnerRosterStatus;
+  /** @nullable */
+  rosterSourceOwnerLabel: string | null;
 }

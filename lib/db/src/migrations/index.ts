@@ -14,3 +14,5 @@ export { canonicalCalcuttaScopeMigration } from "./0017CanonicalCalcuttaScope";
 export { competitionScoringMigration } from "./0018CompetitionScoring";
 export { scopedSnapshotMetricsMigration } from "./0019ScopedSnapshotMetrics";
 export { normalizedHistoricalMigration } from "./0020NormalizedHistorical";
+export { historicalCalcuttaRostersMigration } from "./0021HistoricalCalcuttaRosters";
+export { historicalCalcuttaLinksMigration } from "./0023HistoricalCalcuttaLinks";
