@@ -13,3 +13,4 @@ export { sportScopedEventIngestionMigration } from "./0016SportScopedEventIngest
 export { canonicalCalcuttaScopeMigration } from "./0017CanonicalCalcuttaScope";
 export { competitionScoringMigration } from "./0018CompetitionScoring";
 export { scopedSnapshotMetricsMigration } from "./0019ScopedSnapshotMetrics";
+export { normalizedHistoricalMigration } from "./0020NormalizedHistorical";
