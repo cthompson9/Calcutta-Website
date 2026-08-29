@@ -148,6 +148,26 @@ const knownBookVarianceAllowlist = new Map<
   ],
 ]);
 
+export function getKnownHistoricalBookVariance(
+  edition: number,
+  sheetRef: string | null,
+): { derived: number; booked: number } | null {
+  if (sheetRef == null) return null;
+  return knownBookVarianceAllowlist.get(`${edition}:${sheetRef}`) ?? null;
+}
+
+export function isKnownHistoricalSourceVariance(
+  edition: number,
+  expectedPot: number,
+  entryPriceTotal: number,
+): boolean {
+  return (
+    edition === 1 &&
+    within(expectedPot, 9610, 0.01) &&
+    within(entryPriceTotal, 9613, 0.01)
+  );
+}
+
 export function scoreHistoricalPool(pool: HistoricalPool, entries: HistoricalEntry[]): HistoricalScore {
   const periodWeights = new Map((pool.periods ?? []).map((period) => [period.key, period.weight ?? 1]));
   const events = new Map(entries.map((entry) => [entry.id, entry.events ?? []]));

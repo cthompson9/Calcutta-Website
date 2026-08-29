@@ -84,6 +84,7 @@
       "person": "Sam Ford",
       "decision": "approved_alias",
       "rationale": "Sam F. repeats in Calcuttas I and III and the Calcutta III source email identifies the Ford surname; this is explicitly distinct from Samuel Rosen.",
+      "approvedPriorPeople": ["Sam F."],
       "records": ["1|Sam F.", "3|Sam F."]
     },
     {
@@ -132,6 +133,7 @@
       "person": "Matt M.",
       "decision": "approved_alias",
       "rationale": "Matt M. repeats with the same source email in Calcuttas II and III, and the bare Matt records are the same naming transition; scrambled emails in Calcuttas IV and VI are not used as evidence.",
+      "approvedPriorPeople": ["Matt"],
       "records": ["2|Matt M.", "3|Matt M.", "4|Matt", "6|Matt"]
     },
     {
@@ -162,12 +164,14 @@
       "person": "Ezra [ed9]",
       "decision": "approved_non_merge",
       "rationale": "The bare Ezra record has a known scrambled email and no independent link to Ezra Pemstein, so it remains distinct.",
+      "approvedPriorPeople": ["Ezra Pemstein"],
       "records": ["9|Ezra"]
     },
     {
       "person": "Josh [ed9]",
       "decision": "approved_non_merge",
       "rationale": "The bare Josh record is not merged with Joshua Melnick on first-name similarity alone.",
+      "approvedPriorPeople": ["Joshua Melnick"],
       "records": ["9|Josh"]
     },
     {
@@ -192,12 +196,14 @@
       "person": "Ian [ed5]",
       "decision": "approved_non_merge",
       "rationale": "The bare Ian record is not merged with Ian Culnane on first-name similarity alone.",
+      "approvedPriorPeople": ["Ian Culnane"],
       "records": ["5|Ian"]
     },
     {
       "person": "Shaun [ed6]",
       "decision": "approved_non_merge",
       "rationale": "The bare Shaun record is not merged with Shaun McGuire on first-name similarity alone.",
+      "approvedPriorPeople": ["Shaun McGuire"],
       "records": ["6|Shaun"]
     }
   ]

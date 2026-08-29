@@ -7,13 +7,21 @@
  */
 
 export interface HistoricalPoolOwner {
-  id: number;
-  owner: string;
-  lots: number;
-  /** @nullable */
+  ownerId: number;
+  ownerName: string;
+  labels: string[];
+  /** Fractional number of auction lots held. */
+  lotCount: number;
+  /**
+     * Normalized historical cost; null when owner cost coverage is unavailable.
+     * @nullable
+     */
   cost: number | null;
-  cost_available: boolean;
-  /** @nullable */
+  costAvailable: boolean;
+  /**
+     * Normalized historical payout; null when owner payout coverage is unavailable.
+     * @nullable
+     */
   payout: number | null;
-  payout_available: boolean;
+  payoutAvailable: boolean;
 }

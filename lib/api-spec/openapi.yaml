@@ -376,6 +376,137 @@ paths:
                 items:
                   $ref: "#/components/schemas/TeamResultRow"
 
+  /v2/pools:
+    get:
+      operationId: getHistoricalPools
+      tags: [historical]
+      summary: List normalized historical Calcuttas
+      description: Returns the immutable normalized historical pool catalog, ordered newest edition first. Calcutta XII is intentionally not part of this read model.
+      responses:
+        "200":
+          description: Normalized historical pools
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: "#/components/schemas/HistoricalPool"
+
+  /v2/owners:
+    get:
+      operationId: getHistoricalOwners
+      tags: [historical]
+      summary: List canonical owner results across normalized historical Calcuttas
+      description: Returns covered owner roll-ups for Calcuttas I–XI with stable canonical owner IDs so clients can compare the same approved person across pools.
+      responses:
+        "200":
+          description: Cross-pool normalized historical owner results
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: "#/components/schemas/HistoricalCrossPoolOwnerResult"
+
+  /v2/pool/{id}/entries:
+    get:
+      operationId: getHistoricalPoolEntries
+      tags: [historical]
+      summary: List entries in a normalized historical Calcutta
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: number
+      responses:
+        "400":
+          description: Invalid historical pool id
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+        "200":
+          description: Normalized historical auction entries
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: "#/components/schemas/HistoricalPoolEntry"
+        "404":
+          description: Historical pool not found
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+
+  /v2/pool/{id}/owners:
+    get:
+      operationId: getHistoricalPoolOwners
+      tags: [historical]
+      summary: List canonical owner totals for a normalized historical Calcutta
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: number
+      responses:
+        "400":
+          description: Invalid historical pool id
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+        "200":
+          description: Normalized historical owner roll-ups
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: "#/components/schemas/HistoricalPoolOwner"
+        "404":
+          description: Historical pool not found
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+
+  /v2/pool/{id}/trades:
+    get:
+      operationId: getHistoricalPoolTrades
+      tags: [historical]
+      summary: List normalized historical entry and book trades
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: number
+      responses:
+        "400":
+          description: Invalid historical pool id
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+        "200":
+          description: Normalized historical trades
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: "#/components/schemas/HistoricalPoolTrade"
+        "404":
+          description: Historical pool not found
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+
   /results/by-owner:
     get:
       operationId: getResultsByOwner
@@ -1197,84 +1328,6 @@ paths:
             application/json:
               schema:
                 $ref: "#/components/schemas/ErrorResponse"
-
-  /v2/pools:
-    get:
-      operationId: getHistoricalPoolsV2
-      tags: [historical]
-      summary: List reconciled historical Calcuttas from the normalized model
-      responses:
-        "200":
-          description: Historical pools ordered by edition number descending
-          content:
-            application/json:
-              schema:
-                type: array
-                items:
-                  $ref: "#/components/schemas/HistoricalPool"
-
-  /v2/pool/{id}/entries:
-    get:
-      operationId: getHistoricalPoolEntriesV2
-      tags: [historical]
-      summary: Return normalized auction lots, ownership, tracking, and payouts
-      parameters:
-        - $ref: "#/components/parameters/HistoricalPoolId"
-      responses:
-        "200":
-          description: Historical pool entries
-          content:
-            application/json:
-              schema:
-                type: array
-                items:
-                  $ref: "#/components/schemas/HistoricalPoolEntry"
-        "400":
-          $ref: "#/components/responses/AgentError"
-        "404":
-          $ref: "#/components/responses/AgentError"
-
-  /v2/pool/{id}/owners:
-    get:
-      operationId: getHistoricalPoolOwnersV2
-      tags: [historical]
-      summary: Return normalized per-owner historical totals
-      parameters:
-        - $ref: "#/components/parameters/HistoricalPoolId"
-      responses:
-        "200":
-          description: Historical pool owners
-          content:
-            application/json:
-              schema:
-                type: array
-                items:
-                  $ref: "#/components/schemas/HistoricalPoolOwner"
-        "400":
-          $ref: "#/components/responses/AgentError"
-        "404":
-          $ref: "#/components/responses/AgentError"
-
-  /v2/pool/{id}/trades:
-    get:
-      operationId: getHistoricalPoolTradesV2
-      tags: [historical]
-      summary: Return normalized entry and book trades
-      parameters:
-        - $ref: "#/components/parameters/HistoricalPoolId"
-      responses:
-        "200":
-          description: Historical pool trades
-          content:
-            application/json:
-              schema:
-                type: array
-                items:
-                  $ref: "#/components/schemas/HistoricalPoolTrade"
-        "400":
-          $ref: "#/components/responses/AgentError"
-        "404":
-          $ref: "#/components/responses/AgentError"
 
   /v2/owner/portfolio:
     get:
@@ -2607,6 +2660,270 @@ components:
         - marketStatusReasons
         - teams
 
+    HistoricalPool:
+      type: object
+      properties:
+        id:
+          type: number
+        editionNumber:
+          type: number
+        name:
+          type: string
+        sport:
+          type: string
+        formatKey:
+          type: string
+        seasonYear:
+          type: number
+        asOfDate:
+          type: ["string", "null"]
+        potSize:
+          type: ["number", "null"]
+          description: Historical pool pot size; null when the normalized source does not provide it.
+        potSizeAvailable:
+          type: boolean
+        entryPriceTotal:
+          type: ["number", "null"]
+          description: Sum of normalized auction entry prices.
+        entryPriceTotalAvailable:
+          type: boolean
+        entryPricePotDifference:
+          type: ["number", "null"]
+          description: Entry-price total less the recorded pot size.
+        entryPricePotDifferenceAvailable:
+          type: boolean
+        entryPricePotVarianceStatus:
+          type: string
+          enum: [unavailable, matched, known_variance, unexpected_variance]
+        status:
+          type: string
+      required:
+        - id
+        - editionNumber
+        - name
+        - sport
+        - formatKey
+        - seasonYear
+        - asOfDate
+        - potSize
+        - potSizeAvailable
+        - entryPriceTotal
+        - entryPriceTotalAvailable
+        - entryPricePotDifference
+        - entryPricePotDifferenceAvailable
+        - entryPricePotVarianceStatus
+        - status
+
+    HistoricalPoolEntryTeam:
+      type: object
+      properties:
+        id:
+          type: number
+        name:
+          type: string
+        seed:
+          type: ["number", "null"]
+        resolved:
+          type: boolean
+      required: [id, name, seed, resolved]
+
+    HistoricalPoolEntryOwner:
+      type: object
+      properties:
+        ownerId:
+          type: number
+        ownerName:
+          type: string
+        label:
+          type: string
+        share:
+          type: number
+          description: Signed fractional ownership share.
+        source:
+          type: string
+          enum: [primary, trade]
+      required: [ownerId, ownerName, label, share, source]
+
+    HistoricalPoolEntry:
+      type: object
+      properties:
+        id:
+          type: number
+        label:
+          type: string
+        kind:
+          type: string
+          enum: [single, bundle, placeholder]
+        attributes:
+          type: ["object", "null"]
+          additionalProperties: true
+        price:
+          type: ["number", "null"]
+          description: Auction price; null when the normalized source does not provide it.
+        priceAvailable:
+          type: boolean
+        teams:
+          type: array
+          items:
+            $ref: "#/components/schemas/HistoricalPoolEntryTeam"
+        ownership:
+          type: array
+          items:
+            $ref: "#/components/schemas/HistoricalPoolEntryOwner"
+        tracking:
+          type: ["string", "null"]
+        points:
+          type: ["number", "null"]
+          description: Imported comparison points; null when the source did not provide points.
+        pointsAvailable:
+          type: boolean
+        payout:
+          type: ["number", "null"]
+          description: Imported comparison payout; null when the source did not provide a payout.
+        payoutAvailable:
+          type: boolean
+      required:
+        - id
+        - label
+        - kind
+        - attributes
+        - price
+        - priceAvailable
+        - teams
+        - ownership
+        - tracking
+        - points
+        - pointsAvailable
+        - payout
+        - payoutAvailable
+
+    HistoricalPoolOwner:
+      type: object
+      properties:
+        ownerId:
+          type: number
+        ownerName:
+          type: string
+        labels:
+          type: array
+          items:
+            type: string
+        lotCount:
+          type: number
+          description: Fractional number of auction lots held.
+        cost:
+          type: ["number", "null"]
+          description: Normalized historical cost; null when owner cost coverage is unavailable.
+        costAvailable:
+          type: boolean
+        payout:
+          type: ["number", "null"]
+          description: Normalized historical payout; null when owner payout coverage is unavailable.
+        payoutAvailable:
+          type: boolean
+      required:
+        - ownerId
+        - ownerName
+        - labels
+        - lotCount
+        - cost
+        - costAvailable
+        - payout
+        - payoutAvailable
+
+    HistoricalCrossPoolOwnerResult:
+      allOf:
+        - $ref: "#/components/schemas/HistoricalPoolOwner"
+        - type: object
+          properties:
+            poolId:
+              type: number
+            editionNumber:
+              type: number
+            poolName:
+              type: string
+          required:
+            - poolId
+            - editionNumber
+            - poolName
+
+    HistoricalPoolTrade:
+      type: object
+      properties:
+        id:
+          type: number
+        sheetRef:
+          type: ["string", "null"]
+        tradeDate:
+          type: ["string", "null"]
+        detail:
+          type: ["string", "null"]
+        scope:
+          type: string
+          enum: [entry, book, synthetic_book, sidebet, cash]
+        entryId:
+          type: ["number", "null"]
+        entryLabel:
+          type: ["string", "null"]
+        fromOwnerId:
+          type: ["number", "null"]
+        fromOwnerName:
+          type: ["string", "null"]
+        toOwnerId:
+          type: ["number", "null"]
+        toOwnerName:
+          type: ["string", "null"]
+        pct:
+          type: ["number", "null"]
+        cash:
+          type: ["number", "null"]
+          description: Trade cash; null when the source did not provide cash.
+        cashAvailable:
+          type: boolean
+        factor:
+          type: ["number", "null"]
+        basis:
+          type: ["string", "null"]
+          enum: [lion_king, net, null]
+        knownBookVariance:
+          type: boolean
+          description: True only for a reviewed, allowlisted difference between derived and booked cash.
+        derivedCash:
+          type: ["number", "null"]
+          description: Rules-derived book value for reviewed known variances.
+        derivedCashAvailable:
+          type: boolean
+        absoluteCashDifference:
+          type: ["number", "null"]
+          description: Absolute derived cash less absolute booked cash for a reviewed known variance.
+        absoluteCashDifferenceAvailable:
+          type: boolean
+        status:
+          type: string
+      required:
+        - id
+        - sheetRef
+        - tradeDate
+        - detail
+        - scope
+        - entryId
+        - entryLabel
+        - fromOwnerId
+        - fromOwnerName
+        - toOwnerId
+        - toOwnerName
+        - pct
+        - cash
+        - cashAvailable
+        - factor
+        - basis
+        - knownBookVariance
+        - derivedCash
+        - derivedCashAvailable
+        - absoluteCashDifference
+        - absoluteCashDifferenceAvailable
+        - status
+
     ResultsAvailability:
       type: object
       properties:
@@ -2760,145 +3077,6 @@ components:
         - consortium
         - calcuttas
         - aggregate
-
-    HistoricalPool:
-      type: object
-      properties:
-        id: { type: number }
-        edition_number: { type: number }
-        name: { type: string }
-        sport: { type: string }
-        format_key: { type: string }
-        season_year: { type: number }
-        pot_size: { type: ["number", "null"] }
-        pot_size_available: { type: boolean }
-        status: { type: string }
-      required:
-        - id
-        - edition_number
-        - name
-        - sport
-        - format_key
-        - season_year
-        - pot_size
-        - pot_size_available
-        - status
-
-    HistoricalPoolEntryTeam:
-      type: object
-      properties:
-        id: { type: number }
-        name: { type: string }
-        seed: { type: ["number", "null"] }
-        resolved: { type: boolean }
-      required: [id, name, seed, resolved]
-
-    HistoricalPoolEntryOwner:
-      type: object
-      properties:
-        id: { type: number }
-        owner: { type: string }
-        share: { type: number }
-      required: [id, owner, share]
-
-    HistoricalPoolEntry:
-      type: object
-      properties:
-        id: { type: number }
-        label: { type: string }
-        kind:
-          type: string
-          enum: [single, bundle, placeholder]
-        attributes:
-          type: ["object", "null"]
-          additionalProperties: true
-        price: { type: ["number", "null"] }
-        price_available: { type: boolean }
-        teams:
-          type: array
-          items:
-            $ref: "#/components/schemas/HistoricalPoolEntryTeam"
-        ownership:
-          type: array
-          items:
-            $ref: "#/components/schemas/HistoricalPoolEntryOwner"
-        tracking: { type: ["string", "null"] }
-        points: { type: ["number", "null"] }
-        points_available: { type: boolean }
-        payout: { type: ["number", "null"] }
-        payout_available: { type: boolean }
-      required:
-        - id
-        - label
-        - kind
-        - attributes
-        - price
-        - price_available
-        - teams
-        - ownership
-        - tracking
-        - points
-        - points_available
-        - payout
-        - payout_available
-
-    HistoricalPoolOwner:
-      type: object
-      properties:
-        id: { type: number }
-        owner: { type: string }
-        lots: { type: number }
-        cost: { type: ["number", "null"] }
-        cost_available: { type: boolean }
-        payout: { type: ["number", "null"] }
-        payout_available: { type: boolean }
-      required:
-        - id
-        - owner
-        - lots
-        - cost
-        - cost_available
-        - payout
-        - payout_available
-
-    HistoricalPoolTrade:
-      type: object
-      properties:
-        id: { type: number }
-        sheet_ref: { type: ["string", "null"] }
-        trade_date: { type: ["string", "null"] }
-        detail: { type: ["string", "null"] }
-        scope:
-          type: string
-          enum: [entry, book, synthetic_book, sidebet, cash]
-        entry: { type: ["string", "null"] }
-        from_owner: { type: ["string", "null"] }
-        to_owner: { type: ["string", "null"] }
-        reference_owner: { type: ["string", "null"] }
-        share: { type: ["number", "null"] }
-        cash: { type: ["number", "null"] }
-        cash_available: { type: boolean }
-        factor: { type: ["number", "null"] }
-        basis:
-          type: ["string", "null"]
-          enum: [lion_king, net, null]
-        status: { type: string }
-      required:
-        - id
-        - sheet_ref
-        - trade_date
-        - detail
-        - scope
-        - entry
-        - from_owner
-        - to_owner
-        - reference_owner
-        - share
-        - cash
-        - cash_available
-        - factor
-        - basis
-        - status
 
     CalcuttaComparisonResponse:
       type: object

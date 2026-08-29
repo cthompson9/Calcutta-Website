@@ -4,8 +4,10 @@ import { basename, join, resolve } from "node:path";
 import { sql } from "drizzle-orm";
 import { db } from "./index";
 import {
+  historicalOwnerRecordKey,
   loadOwnerIdentityFile,
   ownerIdentityError,
+  type OwnerIdentityDocument,
   validateOwnerIdentity,
 } from "./ownerIdentity";
 import {
@@ -250,6 +252,7 @@ type PreparedHistoricalDocument = {
 async function persistHistoricalCalcutta(
   prepared: PreparedHistoricalDocument,
   requestedBy: string,
+  ownerIdentity: OwnerIdentityDocument,
 ): Promise<{
   loaded: boolean;
   edition: number;
@@ -341,10 +344,22 @@ async function persistHistoricalCalcutta(
         );
       }
       for (const owner of doc.owners) {
-        const person = resolveHistoricalOwnerIdentity(
+        const record = historicalOwnerRecordKey(
+          owner.label,
+          owner.name,
+          doc.edition,
+        );
+        const previouslyApprovedPerson = ownerIdentity.records.find(
+          (mapping) => mapping.record === record,
+        )?.person;
+        if (!previouslyApprovedPerson) {
+          throw new Error(`Missing approved owner identity for ${record}.`);
+        }
+        const resolvedIdentity = resolveHistoricalOwnerIdentity(
           doc.edition,
           owner.label,
-        ).person;
+        );
+        const person = resolvedIdentity.person;
         const linked = await tx.execute(sql`
           select co.owner_id,o.display_name
           from normalized_calcutta_owners co
@@ -360,9 +375,17 @@ async function persistHistoricalCalcutta(
             `Historical edition ${doc.edition} is missing owner link ${owner.label}.`,
           );
         }
-        // This exact pool/label link and the unchanged source hash are the
-        // provenance boundary. The display name may come from an older reviewed
-        // mapping, so convergence never treats it as a fuzzy identity signal.
+        const permittedPriorPeople = new Set([
+          record,
+          previouslyApprovedPerson,
+          person,
+          ...resolvedIdentity.approvedPriorPeople,
+        ]);
+        if (!permittedPriorPeople.has(String(priorLink?.display_name))) {
+          throw new Error(
+            `Historical edition ${doc.edition} owner ${owner.label} has a different owner identity mapping.`,
+          );
+        }
         const canonical = await tx.execute(sql`
           insert into normalized_owners(display_name,email)
           values(${person},${owner.email ?? null})
@@ -705,7 +728,9 @@ export async function loadAllHistoricalCalcuttas(
   if (!identityReport.passed) throw ownerIdentityError(identityReport);
   const results = [];
   for (const source of prepared) {
-    results.push(await persistHistoricalCalcutta(source, requestedBy));
+    results.push(
+      await persistHistoricalCalcutta(source, requestedBy, identityDocument),
+    );
   }
   return results;
 }

@@ -8,6 +8,7 @@ type IdentityDecisionGroup = {
   decision: OwnerIdentityDecision;
   rationale: string;
   records: string[];
+  approvedPriorPeople?: string[];
 };
 
 type IdentityMappingFile = {
@@ -20,6 +21,7 @@ export type HistoricalOwnerIdentity = {
   person: string;
   decision: OwnerIdentityDecision;
   rationale: string;
+  approvedPriorPeople: string[];
 };
 
 const mappingPath = fileURLToPath(
@@ -60,6 +62,7 @@ for (const group of mapping.decisions) {
       person: group.person,
       decision: group.decision,
       rationale: group.rationale,
+      approvedPriorPeople: group.approvedPriorPeople ?? [],
     });
   }
 }

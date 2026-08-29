@@ -13,7 +13,7 @@ import periodsRouter from "./periods";
 import nflStandingsImportRouter from "./nflStandingsImport";
 import jobsRouter from "./jobs";
 import v2AgentRouter from "./v2Agent";
-import historicalV2Router from "./historicalV2";
+import normalizedHistoricalRouter from "./normalizedHistorical";
 
 const router = Router();
 
@@ -31,6 +31,6 @@ router.use(periodsRouter);
 router.use(nflStandingsImportRouter);
 router.use(jobsRouter);
 router.use(v2AgentRouter);
-router.use(historicalV2Router);
+router.use(normalizedHistoricalRouter);
 
 export default router;

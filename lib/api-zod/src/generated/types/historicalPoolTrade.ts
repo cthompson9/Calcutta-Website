@@ -11,28 +11,49 @@ import type { HistoricalPoolTradeScope } from './historicalPoolTradeScope';
 export interface HistoricalPoolTrade {
   id: number;
   /** @nullable */
-  sheet_ref: string | null;
+  sheetRef: string | null;
   /** @nullable */
-  trade_date: string | null;
+  tradeDate: string | null;
   /** @nullable */
   detail: string | null;
   scope: HistoricalPoolTradeScope;
   /** @nullable */
-  entry: string | null;
+  entryId: number | null;
   /** @nullable */
-  from_owner: string | null;
+  entryLabel: string | null;
   /** @nullable */
-  to_owner: string | null;
+  fromOwnerId: number | null;
   /** @nullable */
-  reference_owner: string | null;
+  fromOwnerName: string | null;
   /** @nullable */
-  share: number | null;
+  toOwnerId: number | null;
   /** @nullable */
+  toOwnerName: string | null;
+  /** @nullable */
+  pct: number | null;
+  /**
+     * Trade cash; null when the source did not provide cash.
+     * @nullable
+     */
   cash: number | null;
-  cash_available: boolean;
+  cashAvailable: boolean;
   /** @nullable */
   factor: number | null;
   /** @nullable */
   basis: HistoricalPoolTradeBasis;
+  /** True only for a reviewed, allowlisted difference between derived and booked cash. */
+  knownBookVariance: boolean;
+  /**
+     * Rules-derived book value for reviewed known variances.
+     * @nullable
+     */
+  derivedCash: number | null;
+  derivedCashAvailable: boolean;
+  /**
+     * Absolute derived cash less absolute booked cash for a reviewed known variance.
+     * @nullable
+     */
+  absoluteCashDifference: number | null;
+  absoluteCashDifferenceAvailable: boolean;
   status: string;
 }

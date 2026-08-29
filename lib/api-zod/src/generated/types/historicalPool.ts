@@ -5,16 +5,35 @@
  * NFL Auction Manager API
  * OpenAPI spec version: 0.1.0
  */
+import type { HistoricalPoolEntryPricePotVarianceStatus } from './historicalPoolEntryPricePotVarianceStatus';
 
 export interface HistoricalPool {
   id: number;
-  edition_number: number;
+  editionNumber: number;
   name: string;
   sport: string;
-  format_key: string;
-  season_year: number;
+  formatKey: string;
+  seasonYear: number;
   /** @nullable */
-  pot_size: number | null;
-  pot_size_available: boolean;
+  asOfDate: string | null;
+  /**
+     * Historical pool pot size; null when the normalized source does not provide it.
+     * @nullable
+     */
+  potSize: number | null;
+  potSizeAvailable: boolean;
+  /**
+     * Sum of normalized auction entry prices.
+     * @nullable
+     */
+  entryPriceTotal: number | null;
+  entryPriceTotalAvailable: boolean;
+  /**
+     * Entry-price total less the recorded pot size.
+     * @nullable
+     */
+  entryPricePotDifference: number | null;
+  entryPricePotDifferenceAvailable: boolean;
+  entryPricePotVarianceStatus: HistoricalPoolEntryPricePotVarianceStatus;
   status: string;
 }

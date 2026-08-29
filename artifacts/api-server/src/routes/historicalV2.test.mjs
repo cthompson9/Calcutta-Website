@@ -44,13 +44,13 @@ test(
       assert.equal(poolsResponse.status, 200);
       const pools = await poolsResponse.json();
       assert.deepEqual(
-        pools.map((pool) => pool.edition_number),
+        pools.map((pool) => pool.editionNumber),
         [11, 10, 9, 8, 7, 6, 5, 4, 3, 2, 1],
       );
       assert.equal(pools.length, 11);
       assert.ok(pools.every((pool) =>
-        typeof pool.pot_size_available === "boolean" &&
-        pool.edition_number <= 11
+        typeof pool.potSizeAvailable === "boolean" &&
+        pool.editionNumber <= 11
       ));
 
       let entryCount = 0;
@@ -77,30 +77,30 @@ test(
         entryCount += entries.length;
         ownerCount += owners.length;
         tradeCount += trades.length;
-        pointCoverage += entries.filter((entry) => entry.points_available).length;
-        payoutCoverage += entries.filter((entry) => entry.payout_available).length;
+        pointCoverage += entries.filter((entry) => entry.pointsAvailable).length;
+        payoutCoverage += entries.filter((entry) => entry.payoutAvailable).length;
         trackingCount += entries.filter((entry) => entry.tracking != null).length;
 
         assert.ok(entries.every((entry) =>
-          entry.price_available === (entry.price != null) &&
-          entry.points_available === (entry.points != null) &&
-          entry.payout_available === (entry.payout != null) &&
+          entry.priceAvailable === (entry.price != null) &&
+          entry.pointsAvailable === (entry.points != null) &&
+          entry.payoutAvailable === (entry.payout != null) &&
           Array.isArray(entry.teams) &&
           Array.isArray(entry.ownership)
         ));
         assert.ok(owners.every((owner) =>
-          owner.cost_available === (owner.cost != null) &&
-          owner.payout_available === (owner.payout != null)
+          owner.costAvailable === (owner.cost != null) &&
+          owner.payoutAvailable === (owner.payout != null)
         ));
         assert.ok(trades.every((trade) =>
-          trade.cash_available === (trade.cash != null)
+          trade.cashAvailable === (trade.cash != null)
         ));
       }
 
       assert.equal(entryCount, 456);
       assert.equal(pointCoverage, 112);
       assert.equal(payoutCoverage, 456);
-      assert.equal(ownerCount, 80);
+      assert.equal(ownerCount, 84);
       assert.equal(tradeCount, 118);
       assert.ok(trackingCount > 0);
 

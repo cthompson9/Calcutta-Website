@@ -59,6 +59,7 @@ import type {
   GetTeamsParams,
   GetTradesParams,
   HealthStatus,
+  HistoricalCrossPoolOwnerResult,
   HistoricalPool,
   HistoricalPoolEntry,
   HistoricalPoolOwner,
@@ -1169,6 +1170,393 @@ export function useGetResults<TData = Awaited<ReturnType<typeof getResults>>, TE
  ):  UseQueryResult<TData, TError> & { queryKey: QueryKey } {
 
   const queryOptions = getGetResultsQueryOptions(params,options)
+
+  const query = useQuery(queryOptions) as  UseQueryResult<TData, TError> & { queryKey: QueryKey };
+
+  return withQueryKey(query, queryOptions.queryKey);
+}
+
+
+
+
+
+
+
+export const getGetHistoricalPoolsUrl = () => {
+
+
+
+
+  return `/api/v2/pools`
+}
+
+/**
+ * Returns the immutable normalized historical pool catalog, ordered newest edition first. Calcutta XII is intentionally not part of this read model.
+ * @summary List normalized historical Calcuttas
+ */
+export const getHistoricalPools = async ( options?: Parameters<typeof customFetch>[1]): Promise<HistoricalPool[]> => {
+
+  return customFetch<HistoricalPool[]>(getGetHistoricalPoolsUrl(),
+  {
+    ...options,
+    method: 'GET'
+
+
+  }
+);}
+
+
+
+
+
+export const getGetHistoricalPoolsQueryKey = () => {
+    return [
+    `/api/v2/pools`
+    ] as const;
+    }
+
+
+export const getGetHistoricalPoolsQueryOptions = <TData = Awaited<ReturnType<typeof getHistoricalPools>>, TError = ErrorType<unknown>>( options?: { query?:UseQueryOptions<Awaited<ReturnType<typeof getHistoricalPools>>, TError, TData>, request?: SecondParameter<typeof customFetch>}
+) => {
+
+const {query: queryOptions, request: requestOptions} = options ?? {};
+
+  const queryKey =  queryOptions?.queryKey ?? getGetHistoricalPoolsQueryKey();
+
+
+
+    const queryFn: QueryFunction<Awaited<ReturnType<typeof getHistoricalPools>>> = ({ signal }) => getHistoricalPools({ signal, ...requestOptions });
+
+
+
+
+
+   return  { queryKey, queryFn, ...queryOptions} as UseQueryOptions<Awaited<ReturnType<typeof getHistoricalPools>>, TError, TData> & { queryKey: QueryKey }
+}
+
+export type GetHistoricalPoolsQueryResult = NonNullable<Awaited<ReturnType<typeof getHistoricalPools>>>
+export type GetHistoricalPoolsQueryError = ErrorType<unknown>
+
+
+/**
+ * @summary List normalized historical Calcuttas
+ */
+
+export function useGetHistoricalPools<TData = Awaited<ReturnType<typeof getHistoricalPools>>, TError = ErrorType<unknown>>(
+  options?: { query?:UseQueryOptions<Awaited<ReturnType<typeof getHistoricalPools>>, TError, TData>, request?: SecondParameter<typeof customFetch>}
+
+ ):  UseQueryResult<TData, TError> & { queryKey: QueryKey } {
+
+  const queryOptions = getGetHistoricalPoolsQueryOptions(options)
+
+  const query = useQuery(queryOptions) as  UseQueryResult<TData, TError> & { queryKey: QueryKey };
+
+  return withQueryKey(query, queryOptions.queryKey);
+}
+
+
+
+
+
+
+
+export const getGetHistoricalOwnersUrl = () => {
+
+
+
+
+  return `/api/v2/owners`
+}
+
+/**
+ * Returns covered owner roll-ups for Calcuttas I–XI with stable canonical owner IDs so clients can compare the same approved person across pools.
+ * @summary List canonical owner results across normalized historical Calcuttas
+ */
+export const getHistoricalOwners = async ( options?: Parameters<typeof customFetch>[1]): Promise<HistoricalCrossPoolOwnerResult[]> => {
+
+  return customFetch<HistoricalCrossPoolOwnerResult[]>(getGetHistoricalOwnersUrl(),
+  {
+    ...options,
+    method: 'GET'
+
+
+  }
+);}
+
+
+
+
+
+export const getGetHistoricalOwnersQueryKey = () => {
+    return [
+    `/api/v2/owners`
+    ] as const;
+    }
+
+
+export const getGetHistoricalOwnersQueryOptions = <TData = Awaited<ReturnType<typeof getHistoricalOwners>>, TError = ErrorType<unknown>>( options?: { query?:UseQueryOptions<Awaited<ReturnType<typeof getHistoricalOwners>>, TError, TData>, request?: SecondParameter<typeof customFetch>}
+) => {
+
+const {query: queryOptions, request: requestOptions} = options ?? {};
+
+  const queryKey =  queryOptions?.queryKey ?? getGetHistoricalOwnersQueryKey();
+
+
+
+    const queryFn: QueryFunction<Awaited<ReturnType<typeof getHistoricalOwners>>> = ({ signal }) => getHistoricalOwners({ signal, ...requestOptions });
+
+
+
+
+
+   return  { queryKey, queryFn, ...queryOptions} as UseQueryOptions<Awaited<ReturnType<typeof getHistoricalOwners>>, TError, TData> & { queryKey: QueryKey }
+}
+
+export type GetHistoricalOwnersQueryResult = NonNullable<Awaited<ReturnType<typeof getHistoricalOwners>>>
+export type GetHistoricalOwnersQueryError = ErrorType<unknown>
+
+
+/**
+ * @summary List canonical owner results across normalized historical Calcuttas
+ */
+
+export function useGetHistoricalOwners<TData = Awaited<ReturnType<typeof getHistoricalOwners>>, TError = ErrorType<unknown>>(
+  options?: { query?:UseQueryOptions<Awaited<ReturnType<typeof getHistoricalOwners>>, TError, TData>, request?: SecondParameter<typeof customFetch>}
+
+ ):  UseQueryResult<TData, TError> & { queryKey: QueryKey } {
+
+  const queryOptions = getGetHistoricalOwnersQueryOptions(options)
+
+  const query = useQuery(queryOptions) as  UseQueryResult<TData, TError> & { queryKey: QueryKey };
+
+  return withQueryKey(query, queryOptions.queryKey);
+}
+
+
+
+
+
+
+
+export const getGetHistoricalPoolEntriesUrl = (id: number,) => {
+
+
+
+
+  return `/api/v2/pool/${id}/entries`
+}
+
+/**
+ * @summary List entries in a normalized historical Calcutta
+ */
+export const getHistoricalPoolEntries = async (id: number, options?: Parameters<typeof customFetch>[1]): Promise<HistoricalPoolEntry[]> => {
+
+  return customFetch<HistoricalPoolEntry[]>(getGetHistoricalPoolEntriesUrl(id),
+  {
+    ...options,
+    method: 'GET'
+
+
+  }
+);}
+
+
+
+
+
+export const getGetHistoricalPoolEntriesQueryKey = (id: number,) => {
+    return [
+    `/api/v2/pool/${id}/entries`
+    ] as const;
+    }
+
+
+export const getGetHistoricalPoolEntriesQueryOptions = <TData = Awaited<ReturnType<typeof getHistoricalPoolEntries>>, TError = ErrorType<ErrorResponse>>(id: number, options?: { query?:UseQueryOptions<Awaited<ReturnType<typeof getHistoricalPoolEntries>>, TError, TData>, request?: SecondParameter<typeof customFetch>}
+) => {
+
+const {query: queryOptions, request: requestOptions} = options ?? {};
+
+  const queryKey =  queryOptions?.queryKey ?? getGetHistoricalPoolEntriesQueryKey(id);
+
+
+
+    const queryFn: QueryFunction<Awaited<ReturnType<typeof getHistoricalPoolEntries>>> = ({ signal }) => getHistoricalPoolEntries(id, { signal, ...requestOptions });
+
+
+
+
+
+   return  { queryKey, queryFn, enabled: id !== null && id !== undefined, ...queryOptions} as UseQueryOptions<Awaited<ReturnType<typeof getHistoricalPoolEntries>>, TError, TData> & { queryKey: QueryKey }
+}
+
+export type GetHistoricalPoolEntriesQueryResult = NonNullable<Awaited<ReturnType<typeof getHistoricalPoolEntries>>>
+export type GetHistoricalPoolEntriesQueryError = ErrorType<ErrorResponse>
+
+
+/**
+ * @summary List entries in a normalized historical Calcutta
+ */
+
+export function useGetHistoricalPoolEntries<TData = Awaited<ReturnType<typeof getHistoricalPoolEntries>>, TError = ErrorType<ErrorResponse>>(
+ id: number, options?: { query?:UseQueryOptions<Awaited<ReturnType<typeof getHistoricalPoolEntries>>, TError, TData>, request?: SecondParameter<typeof customFetch>}
+
+ ):  UseQueryResult<TData, TError> & { queryKey: QueryKey } {
+
+  const queryOptions = getGetHistoricalPoolEntriesQueryOptions(id,options)
+
+  const query = useQuery(queryOptions) as  UseQueryResult<TData, TError> & { queryKey: QueryKey };
+
+  return withQueryKey(query, queryOptions.queryKey);
+}
+
+
+
+
+
+
+
+export const getGetHistoricalPoolOwnersUrl = (id: number,) => {
+
+
+
+
+  return `/api/v2/pool/${id}/owners`
+}
+
+/**
+ * @summary List canonical owner totals for a normalized historical Calcutta
+ */
+export const getHistoricalPoolOwners = async (id: number, options?: Parameters<typeof customFetch>[1]): Promise<HistoricalPoolOwner[]> => {
+
+  return customFetch<HistoricalPoolOwner[]>(getGetHistoricalPoolOwnersUrl(id),
+  {
+    ...options,
+    method: 'GET'
+
+
+  }
+);}
+
+
+
+
+
+export const getGetHistoricalPoolOwnersQueryKey = (id: number,) => {
+    return [
+    `/api/v2/pool/${id}/owners`
+    ] as const;
+    }
+
+
+export const getGetHistoricalPoolOwnersQueryOptions = <TData = Awaited<ReturnType<typeof getHistoricalPoolOwners>>, TError = ErrorType<ErrorResponse>>(id: number, options?: { query?:UseQueryOptions<Awaited<ReturnType<typeof getHistoricalPoolOwners>>, TError, TData>, request?: SecondParameter<typeof customFetch>}
+) => {
+
+const {query: queryOptions, request: requestOptions} = options ?? {};
+
+  const queryKey =  queryOptions?.queryKey ?? getGetHistoricalPoolOwnersQueryKey(id);
+
+
+
+    const queryFn: QueryFunction<Awaited<ReturnType<typeof getHistoricalPoolOwners>>> = ({ signal }) => getHistoricalPoolOwners(id, { signal, ...requestOptions });
+
+
+
+
+
+   return  { queryKey, queryFn, enabled: id !== null && id !== undefined, ...queryOptions} as UseQueryOptions<Awaited<ReturnType<typeof getHistoricalPoolOwners>>, TError, TData> & { queryKey: QueryKey }
+}
+
+export type GetHistoricalPoolOwnersQueryResult = NonNullable<Awaited<ReturnType<typeof getHistoricalPoolOwners>>>
+export type GetHistoricalPoolOwnersQueryError = ErrorType<ErrorResponse>
+
+
+/**
+ * @summary List canonical owner totals for a normalized historical Calcutta
+ */
+
+export function useGetHistoricalPoolOwners<TData = Awaited<ReturnType<typeof getHistoricalPoolOwners>>, TError = ErrorType<ErrorResponse>>(
+ id: number, options?: { query?:UseQueryOptions<Awaited<ReturnType<typeof getHistoricalPoolOwners>>, TError, TData>, request?: SecondParameter<typeof customFetch>}
+
+ ):  UseQueryResult<TData, TError> & { queryKey: QueryKey } {
+
+  const queryOptions = getGetHistoricalPoolOwnersQueryOptions(id,options)
+
+  const query = useQuery(queryOptions) as  UseQueryResult<TData, TError> & { queryKey: QueryKey };
+
+  return withQueryKey(query, queryOptions.queryKey);
+}
+
+
+
+
+
+
+
+export const getGetHistoricalPoolTradesUrl = (id: number,) => {
+
+
+
+
+  return `/api/v2/pool/${id}/trades`
+}
+
+/**
+ * @summary List normalized historical entry and book trades
+ */
+export const getHistoricalPoolTrades = async (id: number, options?: Parameters<typeof customFetch>[1]): Promise<HistoricalPoolTrade[]> => {
+
+  return customFetch<HistoricalPoolTrade[]>(getGetHistoricalPoolTradesUrl(id),
+  {
+    ...options,
+    method: 'GET'
+
+
+  }
+);}
+
+
+
+
+
+export const getGetHistoricalPoolTradesQueryKey = (id: number,) => {
+    return [
+    `/api/v2/pool/${id}/trades`
+    ] as const;
+    }
+
+
+export const getGetHistoricalPoolTradesQueryOptions = <TData = Awaited<ReturnType<typeof getHistoricalPoolTrades>>, TError = ErrorType<ErrorResponse>>(id: number, options?: { query?:UseQueryOptions<Awaited<ReturnType<typeof getHistoricalPoolTrades>>, TError, TData>, request?: SecondParameter<typeof customFetch>}
+) => {
+
+const {query: queryOptions, request: requestOptions} = options ?? {};
+
+  const queryKey =  queryOptions?.queryKey ?? getGetHistoricalPoolTradesQueryKey(id);
+
+
+
+    const queryFn: QueryFunction<Awaited<ReturnType<typeof getHistoricalPoolTrades>>> = ({ signal }) => getHistoricalPoolTrades(id, { signal, ...requestOptions });
+
+
+
+
+
+   return  { queryKey, queryFn, enabled: id !== null && id !== undefined, ...queryOptions} as UseQueryOptions<Awaited<ReturnType<typeof getHistoricalPoolTrades>>, TError, TData> & { queryKey: QueryKey }
+}
+
+export type GetHistoricalPoolTradesQueryResult = NonNullable<Awaited<ReturnType<typeof getHistoricalPoolTrades>>>
+export type GetHistoricalPoolTradesQueryError = ErrorType<ErrorResponse>
+
+
+/**
+ * @summary List normalized historical entry and book trades
+ */
+
+export function useGetHistoricalPoolTrades<TData = Awaited<ReturnType<typeof getHistoricalPoolTrades>>, TError = ErrorType<ErrorResponse>>(
+ id: number, options?: { query?:UseQueryOptions<Awaited<ReturnType<typeof getHistoricalPoolTrades>>, TError, TData>, request?: SecondParameter<typeof customFetch>}
+
+ ):  UseQueryResult<TData, TError> & { queryKey: QueryKey } {
+
+  const queryOptions = getGetHistoricalPoolTradesQueryOptions(id,options)
 
   const query = useQuery(queryOptions) as  UseQueryResult<TData, TError> & { queryKey: QueryKey };
 
@@ -3002,314 +3390,6 @@ export const useImportDraftOrder = <TError = ErrorType<ErrorResponse>,
       return useMutation(getImportDraftOrderMutationOptions(options));
     }
 
-export const getGetHistoricalPoolsV2Url = () => {
-
-
-
-
-  return `/api/v2/pools`
-}
-
-/**
- * @summary List reconciled historical Calcuttas from the normalized model
- */
-export const getHistoricalPoolsV2 = async ( options?: Parameters<typeof customFetch>[1]): Promise<HistoricalPool[]> => {
-
-  return customFetch<HistoricalPool[]>(getGetHistoricalPoolsV2Url(),
-  {
-    ...options,
-    method: 'GET'
-
-
-  }
-);}
-
-
-
-
-
-export const getGetHistoricalPoolsV2QueryKey = () => {
-    return [
-    `/api/v2/pools`
-    ] as const;
-    }
-
-
-export const getGetHistoricalPoolsV2QueryOptions = <TData = Awaited<ReturnType<typeof getHistoricalPoolsV2>>, TError = ErrorType<unknown>>( options?: { query?:UseQueryOptions<Awaited<ReturnType<typeof getHistoricalPoolsV2>>, TError, TData>, request?: SecondParameter<typeof customFetch>}
-) => {
-
-const {query: queryOptions, request: requestOptions} = options ?? {};
-
-  const queryKey =  queryOptions?.queryKey ?? getGetHistoricalPoolsV2QueryKey();
-
-
-
-    const queryFn: QueryFunction<Awaited<ReturnType<typeof getHistoricalPoolsV2>>> = ({ signal }) => getHistoricalPoolsV2({ signal, ...requestOptions });
-
-
-
-
-
-   return  { queryKey, queryFn, ...queryOptions} as UseQueryOptions<Awaited<ReturnType<typeof getHistoricalPoolsV2>>, TError, TData> & { queryKey: QueryKey }
-}
-
-export type GetHistoricalPoolsV2QueryResult = NonNullable<Awaited<ReturnType<typeof getHistoricalPoolsV2>>>
-export type GetHistoricalPoolsV2QueryError = ErrorType<unknown>
-
-
-/**
- * @summary List reconciled historical Calcuttas from the normalized model
- */
-
-export function useGetHistoricalPoolsV2<TData = Awaited<ReturnType<typeof getHistoricalPoolsV2>>, TError = ErrorType<unknown>>(
-  options?: { query?:UseQueryOptions<Awaited<ReturnType<typeof getHistoricalPoolsV2>>, TError, TData>, request?: SecondParameter<typeof customFetch>}
-
- ):  UseQueryResult<TData, TError> & { queryKey: QueryKey } {
-
-  const queryOptions = getGetHistoricalPoolsV2QueryOptions(options)
-
-  const query = useQuery(queryOptions) as  UseQueryResult<TData, TError> & { queryKey: QueryKey };
-
-  return withQueryKey(query, queryOptions.queryKey);
-}
-
-
-
-
-
-
-
-export const getGetHistoricalPoolEntriesV2Url = (id: number,) => {
-
-
-
-
-  return `/api/v2/pool/${id}/entries`
-}
-
-/**
- * @summary Return normalized auction lots, ownership, tracking, and payouts
- */
-export const getHistoricalPoolEntriesV2 = async (id: number, options?: Parameters<typeof customFetch>[1]): Promise<HistoricalPoolEntry[]> => {
-
-  return customFetch<HistoricalPoolEntry[]>(getGetHistoricalPoolEntriesV2Url(id),
-  {
-    ...options,
-    method: 'GET'
-
-
-  }
-);}
-
-
-
-
-
-export const getGetHistoricalPoolEntriesV2QueryKey = (id: number,) => {
-    return [
-    `/api/v2/pool/${id}/entries`
-    ] as const;
-    }
-
-
-export const getGetHistoricalPoolEntriesV2QueryOptions = <TData = Awaited<ReturnType<typeof getHistoricalPoolEntriesV2>>, TError = ErrorType<AgentErrorResponse>>(id: number, options?: { query?:UseQueryOptions<Awaited<ReturnType<typeof getHistoricalPoolEntriesV2>>, TError, TData>, request?: SecondParameter<typeof customFetch>}
-) => {
-
-const {query: queryOptions, request: requestOptions} = options ?? {};
-
-  const queryKey =  queryOptions?.queryKey ?? getGetHistoricalPoolEntriesV2QueryKey(id);
-
-
-
-    const queryFn: QueryFunction<Awaited<ReturnType<typeof getHistoricalPoolEntriesV2>>> = ({ signal }) => getHistoricalPoolEntriesV2(id, { signal, ...requestOptions });
-
-
-
-
-
-   return  { queryKey, queryFn, enabled: id !== null && id !== undefined, ...queryOptions} as UseQueryOptions<Awaited<ReturnType<typeof getHistoricalPoolEntriesV2>>, TError, TData> & { queryKey: QueryKey }
-}
-
-export type GetHistoricalPoolEntriesV2QueryResult = NonNullable<Awaited<ReturnType<typeof getHistoricalPoolEntriesV2>>>
-export type GetHistoricalPoolEntriesV2QueryError = ErrorType<AgentErrorResponse>
-
-
-/**
- * @summary Return normalized auction lots, ownership, tracking, and payouts
- */
-
-export function useGetHistoricalPoolEntriesV2<TData = Awaited<ReturnType<typeof getHistoricalPoolEntriesV2>>, TError = ErrorType<AgentErrorResponse>>(
- id: number, options?: { query?:UseQueryOptions<Awaited<ReturnType<typeof getHistoricalPoolEntriesV2>>, TError, TData>, request?: SecondParameter<typeof customFetch>}
-
- ):  UseQueryResult<TData, TError> & { queryKey: QueryKey } {
-
-  const queryOptions = getGetHistoricalPoolEntriesV2QueryOptions(id,options)
-
-  const query = useQuery(queryOptions) as  UseQueryResult<TData, TError> & { queryKey: QueryKey };
-
-  return withQueryKey(query, queryOptions.queryKey);
-}
-
-
-
-
-
-
-
-export const getGetHistoricalPoolOwnersV2Url = (id: number,) => {
-
-
-
-
-  return `/api/v2/pool/${id}/owners`
-}
-
-/**
- * @summary Return normalized per-owner historical totals
- */
-export const getHistoricalPoolOwnersV2 = async (id: number, options?: Parameters<typeof customFetch>[1]): Promise<HistoricalPoolOwner[]> => {
-
-  return customFetch<HistoricalPoolOwner[]>(getGetHistoricalPoolOwnersV2Url(id),
-  {
-    ...options,
-    method: 'GET'
-
-
-  }
-);}
-
-
-
-
-
-export const getGetHistoricalPoolOwnersV2QueryKey = (id: number,) => {
-    return [
-    `/api/v2/pool/${id}/owners`
-    ] as const;
-    }
-
-
-export const getGetHistoricalPoolOwnersV2QueryOptions = <TData = Awaited<ReturnType<typeof getHistoricalPoolOwnersV2>>, TError = ErrorType<AgentErrorResponse>>(id: number, options?: { query?:UseQueryOptions<Awaited<ReturnType<typeof getHistoricalPoolOwnersV2>>, TError, TData>, request?: SecondParameter<typeof customFetch>}
-) => {
-
-const {query: queryOptions, request: requestOptions} = options ?? {};
-
-  const queryKey =  queryOptions?.queryKey ?? getGetHistoricalPoolOwnersV2QueryKey(id);
-
-
-
-    const queryFn: QueryFunction<Awaited<ReturnType<typeof getHistoricalPoolOwnersV2>>> = ({ signal }) => getHistoricalPoolOwnersV2(id, { signal, ...requestOptions });
-
-
-
-
-
-   return  { queryKey, queryFn, enabled: id !== null && id !== undefined, ...queryOptions} as UseQueryOptions<Awaited<ReturnType<typeof getHistoricalPoolOwnersV2>>, TError, TData> & { queryKey: QueryKey }
-}
-
-export type GetHistoricalPoolOwnersV2QueryResult = NonNullable<Awaited<ReturnType<typeof getHistoricalPoolOwnersV2>>>
-export type GetHistoricalPoolOwnersV2QueryError = ErrorType<AgentErrorResponse>
-
-
-/**
- * @summary Return normalized per-owner historical totals
- */
-
-export function useGetHistoricalPoolOwnersV2<TData = Awaited<ReturnType<typeof getHistoricalPoolOwnersV2>>, TError = ErrorType<AgentErrorResponse>>(
- id: number, options?: { query?:UseQueryOptions<Awaited<ReturnType<typeof getHistoricalPoolOwnersV2>>, TError, TData>, request?: SecondParameter<typeof customFetch>}
-
- ):  UseQueryResult<TData, TError> & { queryKey: QueryKey } {
-
-  const queryOptions = getGetHistoricalPoolOwnersV2QueryOptions(id,options)
-
-  const query = useQuery(queryOptions) as  UseQueryResult<TData, TError> & { queryKey: QueryKey };
-
-  return withQueryKey(query, queryOptions.queryKey);
-}
-
-
-
-
-
-
-
-export const getGetHistoricalPoolTradesV2Url = (id: number,) => {
-
-
-
-
-  return `/api/v2/pool/${id}/trades`
-}
-
-/**
- * @summary Return normalized entry and book trades
- */
-export const getHistoricalPoolTradesV2 = async (id: number, options?: Parameters<typeof customFetch>[1]): Promise<HistoricalPoolTrade[]> => {
-
-  return customFetch<HistoricalPoolTrade[]>(getGetHistoricalPoolTradesV2Url(id),
-  {
-    ...options,
-    method: 'GET'
-
-
-  }
-);}
-
-
-
-
-
-export const getGetHistoricalPoolTradesV2QueryKey = (id: number,) => {
-    return [
-    `/api/v2/pool/${id}/trades`
-    ] as const;
-    }
-
-
-export const getGetHistoricalPoolTradesV2QueryOptions = <TData = Awaited<ReturnType<typeof getHistoricalPoolTradesV2>>, TError = ErrorType<AgentErrorResponse>>(id: number, options?: { query?:UseQueryOptions<Awaited<ReturnType<typeof getHistoricalPoolTradesV2>>, TError, TData>, request?: SecondParameter<typeof customFetch>}
-) => {
-
-const {query: queryOptions, request: requestOptions} = options ?? {};
-
-  const queryKey =  queryOptions?.queryKey ?? getGetHistoricalPoolTradesV2QueryKey(id);
-
-
-
-    const queryFn: QueryFunction<Awaited<ReturnType<typeof getHistoricalPoolTradesV2>>> = ({ signal }) => getHistoricalPoolTradesV2(id, { signal, ...requestOptions });
-
-
-
-
-
-   return  { queryKey, queryFn, enabled: id !== null && id !== undefined, ...queryOptions} as UseQueryOptions<Awaited<ReturnType<typeof getHistoricalPoolTradesV2>>, TError, TData> & { queryKey: QueryKey }
-}
-
-export type GetHistoricalPoolTradesV2QueryResult = NonNullable<Awaited<ReturnType<typeof getHistoricalPoolTradesV2>>>
-export type GetHistoricalPoolTradesV2QueryError = ErrorType<AgentErrorResponse>
-
-
-/**
- * @summary Return normalized entry and book trades
- */
-
-export function useGetHistoricalPoolTradesV2<TData = Awaited<ReturnType<typeof getHistoricalPoolTradesV2>>, TError = ErrorType<AgentErrorResponse>>(
- id: number, options?: { query?:UseQueryOptions<Awaited<ReturnType<typeof getHistoricalPoolTradesV2>>, TError, TData>, request?: SecondParameter<typeof customFetch>}
-
- ):  UseQueryResult<TData, TError> & { queryKey: QueryKey } {
-
-  const queryOptions = getGetHistoricalPoolTradesV2QueryOptions(id,options)
-
-  const query = useQuery(queryOptions) as  UseQueryResult<TData, TError> & { queryKey: QueryKey };
-
-  return withQueryKey(query, queryOptions.queryKey);
-}
-
-
-
-
-
-
-
 export const getGetOwnerPortfolioV2Url = (params: GetOwnerPortfolioV2Params,) => {
   const normalizedParams = new URLSearchParams();
 
@@ -3975,10 +4055,3 @@ export function useGetConsortiumLeaderboardV2<TData = Awaited<ReturnType<typeof 
 
   return withQueryKey(query, queryOptions.queryKey);
 }
-
-
-
-
-
-
-

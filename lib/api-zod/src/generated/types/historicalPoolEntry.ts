@@ -16,17 +16,26 @@ export interface HistoricalPoolEntry {
   kind: HistoricalPoolEntryKind;
   /** @nullable */
   attributes: HistoricalPoolEntryAttributes;
-  /** @nullable */
+  /**
+     * Auction price; null when the normalized source does not provide it.
+     * @nullable
+     */
   price: number | null;
-  price_available: boolean;
+  priceAvailable: boolean;
   teams: HistoricalPoolEntryTeam[];
   ownership: HistoricalPoolEntryOwner[];
   /** @nullable */
   tracking: string | null;
-  /** @nullable */
+  /**
+     * Imported comparison points; null when the source did not provide points.
+     * @nullable
+     */
   points: number | null;
-  points_available: boolean;
-  /** @nullable */
+  pointsAvailable: boolean;
+  /**
+     * Imported comparison payout; null when the source did not provide a payout.
+     * @nullable
+     */
   payout: number | null;
-  payout_available: boolean;
+  payoutAvailable: boolean;
 }
