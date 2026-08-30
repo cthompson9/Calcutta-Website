@@ -46,6 +46,7 @@ import { loadCalcuttaConsortiums, loadSeasonConsortiums } from "../lib/consortiu
 import { resolveCalcuttaId } from "../lib/calcuttaContext";
 import { calculateOwnerResultEconomics } from "../lib/ownerResultEconomics";
 import { requireAdmin } from "../middlewares/requireAdmin";
+import { getMtmPipelineStatus } from "../lib/mtmPipeline";
 
 const router: IRouter = Router();
 const weekZeroBaselineInFlight = new Map<number, Promise<void>>();
@@ -140,6 +141,72 @@ type TeamOwnerEconomicPosition = {
   tradeReceived: number;
 };
 
+type CurrentPipelineMtm = {
+  grossReturn: number;
+  marketStatus: "live" | "stale";
+  marketStatusReasons: string[];
+};
+
+type CurrentPipelineMtmSet = {
+  values: Map<number, CurrentPipelineMtm>;
+  unavailableReasons: string[];
+};
+
+async function loadCurrentPipelineMtmByTeam(
+  seasonYear: number,
+  calcuttaId: number,
+  expectedTeamIds: number[],
+): Promise<CurrentPipelineMtmSet | null> {
+  const status = await getMtmPipelineStatus(seasonYear, calcuttaId);
+  // A pool with no pipeline history retains its existing historical reporting
+  // behavior. Once a pipeline attempt exists, however, that ledger is
+  // authoritative and Results must not silently fall back to another MTM source.
+  if (!status) return null;
+  if (!status.currentSnapshotId) {
+    return {
+      values: new Map(),
+      unavailableReasons: status.staleReasons.length > 0
+        ? status.staleReasons
+        : ["No successful MTM snapshot is available."],
+    };
+  }
+
+  const values = new Map<number, CurrentPipelineMtm>();
+  for (const valuation of status.valuations) {
+    const teamId = Number(valuation.teamId);
+    const grossReturn = Number(valuation.expectedPayout);
+    if (!Number.isInteger(teamId) || !Number.isFinite(grossReturn)) continue;
+    values.set(teamId, {
+      grossReturn,
+      marketStatus: status.stale ? "stale" : "live",
+      marketStatusReasons: status.staleReasons,
+    });
+  }
+
+  // The pipeline publishes only complete captures. If storage is unexpectedly
+  // partial, fail closed and leave the existing report basis untouched rather
+  // than mixing two MTM sources in one Results response.
+  if (!expectedTeamIds.every((teamId) => values.has(teamId))) {
+    return {
+      values: new Map(),
+      unavailableReasons: ["The latest MTM snapshot does not cover every team in this Calcutta."],
+    };
+  }
+  return { values, unavailableReasons: [] };
+}
+
+function currentPipelineTeamMtm(
+  current: CurrentPipelineMtmSet | null,
+  teamId: number,
+): CurrentPipelineMtm | undefined {
+  if (!current) return undefined;
+  return current.values.get(teamId) ?? {
+    grossReturn: 0,
+    marketStatus: "stale",
+    marketStatusReasons: current.unavailableReasons,
+  };
+}
+
 function calculatePtsToBreakeven(
   netReturn: number,
   totalPot: number,
@@ -170,7 +237,16 @@ function resultFromCalculatedSnapshots(
   payoutRulesConfigured: boolean,
   totalPot: number,
   totalRealizedPoints: number | null,
+  currentPipelineMtm?: CurrentPipelineMtm,
 ): ResultDisplay | null {
+  const currentMtmGross =
+    currentPipelineMtm?.grossReturn ?? calculated?.mtm?.grossReturn ?? 0;
+  const currentMtmStatus =
+    currentPipelineMtm?.marketStatus ?? calculated?.mtm?.marketStatus ?? null;
+  const currentMtmStatusReasons =
+    currentPipelineMtm?.marketStatusReasons ??
+    calculated?.mtm?.marketStatusReasons ??
+    [];
   const legacyDisplay = legacy
     ? {
         ...legacy,
@@ -181,12 +257,12 @@ function resultFromCalculatedSnapshots(
         netReturn: (calculated?.realized?.grossReturn ?? 0) - cost,
         netPctReturn:
           cost > 0 ? ((calculated?.realized?.grossReturn ?? 0) - cost) / cost : 0,
-        markToMarket: calculated?.mtm?.grossReturn ?? 0,
-        netMtm: (calculated?.mtm?.grossReturn ?? 0) - cost,
+        markToMarket: currentMtmGross,
+        netMtm: currentMtmGross - cost,
         dollarsPerPoint: null,
         ptsToBreakeven: null,
-        marketStatus: calculated?.mtm?.marketStatus ?? null,
-        marketStatusReasons: calculated?.mtm?.marketStatusReasons ?? [],
+        marketStatus: currentMtmStatus,
+        marketStatusReasons: currentMtmStatusReasons,
       }
     : null;
   if (!payoutRulesConfigured) return legacyDisplay;
@@ -198,7 +274,7 @@ function resultFromCalculatedSnapshots(
     // economics.
     if (legacyDisplay) return legacyDisplay;
     const realizedReturn = calculated?.realized?.grossReturn ?? 0;
-    const markToMarket = calculated?.mtm?.grossReturn ?? 0;
+    const markToMarket = currentMtmGross;
     return {
       isProjectedRecord: basis === "mtm",
       wins: 0,
@@ -222,8 +298,8 @@ function resultFromCalculatedSnapshots(
       netMtm: markToMarket - cost,
       dollarsPerPoint: null,
       ptsToBreakeven: null,
-      marketStatus: calculated?.mtm?.marketStatus ?? null,
-      marketStatusReasons: calculated?.mtm?.marketStatusReasons ?? [],
+      marketStatus: currentMtmStatus,
+      marketStatusReasons: currentMtmStatusReasons,
     };
   }
   const latest = selected.latest;
@@ -231,7 +307,7 @@ function resultFromCalculatedSnapshots(
   // Realized and MTM coverage are independent. A valid snapshot for the
   // selected view must never zero the other legacy financial field.
   const realizedReturn = calculated.realized?.grossReturn ?? 0;
-  const markToMarket = calculated.mtm?.grossReturn ?? 0;
+  const markToMarket = currentMtmGross;
   const netReturn = realizedReturn - cost;
   const netMtm = markToMarket - cost;
   const dollarsPerPoint =
@@ -265,8 +341,8 @@ function resultFromCalculatedSnapshots(
       totalPot,
       totalRealizedPoints,
     ),
-    marketStatus: calculated.mtm?.marketStatus ?? null,
-    marketStatusReasons: calculated.mtm?.marketStatusReasons ?? [],
+    marketStatus: currentMtmStatus,
+    marketStatusReasons: currentMtmStatusReasons,
   };
 }
 
@@ -584,6 +660,11 @@ router.get("/results", async (req, res): Promise<void> => {
     resolvedCalcuttaId,
     period,
   );
+  const currentPipelineMtmByTeam = await loadCurrentPipelineMtmByTeam(
+    season,
+    resolvedCalcuttaId,
+    calcuttaTeamIds,
+  );
   // Week 0 is the fixed 150-point opening allocation and can be valued from
   // the default rubric before a commissioner saves custom payout rates.
   const payoutRulesConfigured =
@@ -658,6 +739,7 @@ router.get("/results", async (req, res): Promise<void> => {
           payoutRulesConfigured,
           totalPot,
           totalRealizedPoints,
+          currentPipelineTeamMtm(currentPipelineMtmByTeam, t.id),
         ),
         currentOwners,
         ownershipSegments,
@@ -712,6 +794,11 @@ router.get("/results/by-owner", async (req, res): Promise<void> => {
   const calculatedResults = await loadCalculatedTeamReturnsForCalcutta(
     resolvedCalcuttaId,
     period,
+  );
+  const currentPipelineMtmByTeam = await loadCurrentPipelineMtmByTeam(
+    season,
+    resolvedCalcuttaId,
+    calcuttaTeamIds,
   );
   const payoutRulesConfigured =
     period === 0 || await hasConfiguredPayoutRulesForCalcutta(resolvedCalcuttaId);
@@ -814,6 +901,7 @@ router.get("/results/by-owner", async (req, res): Promise<void> => {
         payoutRulesConfigured,
         totalPot,
         totalRealizedPoints,
+        currentPipelineTeamMtm(currentPipelineMtmByTeam, teamId),
       );
 
       // Owner-result reporting preserves the signed ledger position. A short

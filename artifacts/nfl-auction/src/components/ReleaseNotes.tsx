@@ -13,6 +13,26 @@ export type ReleaseNote = {
 
 export const releaseNotes: ReleaseNote[] = [
   {
+    date: "August 30, 2026",
+    updates: [
+      {
+        title: "One live MTM mark across every report",
+        description:
+          "The MTM and Results tabs now use the same latest complete team values, with signed ownership shares carrying those values through to each owner and consortium.",
+      },
+      {
+        title: "A faster, clearer MTM view",
+        description:
+          "Current team payouts are now filterable, sortable, color scaled, and charted from the new valuation pipeline, with one clear update time and less legacy clutter.",
+      },
+      {
+        title: "API structure optimized for connected assistants",
+        description:
+          "The API now exposes a cleaner pool-scoped structure designed for efficient MCP calls across portfolios, values, results, schedules, scoring, and audit context.",
+      },
+    ],
+  },
+  {
     date: "August 26, 2026",
     updates: [
       {

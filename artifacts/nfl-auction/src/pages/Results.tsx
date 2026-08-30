@@ -209,8 +209,8 @@ export default function Results() {
   }, [teamResults, ownerResults]);
 
   const reportBasisLabel = tab === "byTeam"
-    ? "Realized team returns + net MTM"
-    : "Net mark-to-market";
+    ? "Realized team returns + latest MTM"
+    : "Latest net mark-to-market";
   const selectedPeriodLabel = period == null
     ? "latest available period"
     : periods?.find((item) => item.sequence === period)?.label ?? `Period ${period}`;
@@ -706,7 +706,7 @@ function DesktopResultsCommandCenter({
               </span>
             </div>
             <p className="mt-2 max-w-xl text-sm text-muted-foreground">
-              Live net mark-to-market standings based on the latest available snapshots.
+              Live net mark-to-market standings based on the latest complete MTM mark.
             </p>
           </div>
           <div className="grid grid-cols-2 gap-x-8 gap-y-4 sm:grid-cols-4 lg:min-w-[44rem]">
@@ -750,10 +750,10 @@ function DesktopResultsCommandCenter({
               Coverage
             </p>
             <p className="mt-1 font-mono text-sm font-bold">
-               MTM snapshots
+               Latest complete mark
             </p>
             <p className="mt-1 text-xs text-muted-foreground">
-               Net MTM values may remain unavailable until a snapshot is captured.
+               Team values and signed consortium allocations share one current MTM source.
             </p>
           </div>
         </div>
@@ -2318,7 +2318,7 @@ function ByTeamView({
 
       <p className="text-[10px] md:text-xs text-muted-foreground font-mono">
         {rowCount} {splitByOwner ? "owner-team rows" : "teams"} ·{" "}
-        Realized columns and points to breakeven use realized snapshots; net MTM is live.
+         Realized columns and points to breakeven use realized snapshots; net MTM uses the latest complete mark.
       </p>
     </div>
   );

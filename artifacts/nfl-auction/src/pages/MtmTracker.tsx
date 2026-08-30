@@ -1,23 +1,15 @@
 import { useEffect, useState } from "react";
 import {
-  useGetMtmSnapshots,
   useGetTeams,
   useCaptureWeekZeroMtm,
   useGetBidders,
-  useGetMtmPipelineEvidence,
-  getGetMtmSnapshotsQueryKey,
-  getGetTeamsQueryKey,
-  getGetMtmPipelineEvidenceQueryKey,
 } from "@workspace/api-client-react";
 import type {
   MtmData,
   MtmWeekData,
   MtmTeamWeekMarketStatus,
-  MtmPipelineAttempt,
-  MtmPipelineEvidenceQuote,
-  MtmPipelineReceivedMarket,
 } from "@workspace/api-client-react";
-import { useQueryClient } from "@tanstack/react-query";
+import { useQuery } from "@tanstack/react-query";
 import { formatCurrency } from "@/lib/utils";
 import { cn } from "@/lib/utils";
 import { useSeason } from "@/hooks/useSeason";
@@ -74,6 +66,7 @@ type PipelineOwnerValue = {
 
 type PipelineValuation = {
   entryId: number;
+  teamId: number | null;
   teamName: string;
   expectedPoints: string;
   expectedPayout: string;
@@ -96,27 +89,82 @@ type PipelineStatus = {
   valuations: PipelineValuation[];
 };
 
+type MtmPipelineAttempt = {
+  id: number;
+  status: "ok" | "failed";
+  trigger: "scheduled" | "manual";
+  asOf: string;
+  createdAt: string;
+  methodVersion: string | null;
+  error: string | null;
+  quoteCount: number;
+};
+
+type MtmPipelineReceivedMarket = {
+  series: string;
+  quoteCount: number;
+  teams: string[];
+};
+
+type MtmPipelineEvidenceQuote = {
+  series: string;
+  ticker: string;
+  team: string | null;
+  strike: number | null;
+  bid: number | null;
+  ask: number | null;
+  volume: number | null;
+  fetchedAt: string;
+};
+
+type MtmPipelineEvidenceResponse = {
+  attempts: MtmPipelineAttempt[];
+  selectedAttempt: (MtmPipelineAttempt & {
+    diagnostics: Record<string, unknown> | null;
+    receivedMarkets: MtmPipelineReceivedMarket[];
+    failedSources: string[];
+    quotes: MtmPipelineEvidenceQuote[];
+  }) | null;
+};
+
+function useGetMtmPipelineEvidence(
+  params: { season: number; calcuttaId?: number; attemptId?: number },
+  options: {
+    query: { enabled: boolean; queryKey: readonly unknown[] };
+    request: { headers: Record<string, string> };
+  },
+) {
+  return useQuery<MtmPipelineEvidenceResponse>({
+    queryKey: options.query.queryKey,
+    enabled: options.query.enabled,
+    queryFn: async () => {
+      const search = new URLSearchParams({ season: String(params.season) });
+      if (params.calcuttaId != null) search.set("calcuttaId", String(params.calcuttaId));
+      if (params.attemptId != null) search.set("attemptId", String(params.attemptId));
+      const response = await fetch(`/api/mtm/pipeline/evidence?${search}`, {
+        headers: options.request.headers,
+      });
+      if (!response.ok) throw new Error("Unable to load MTM evidence.");
+      return response.json() as Promise<MtmPipelineEvidenceResponse>;
+    },
+  });
+}
+
+function getGetMtmPipelineEvidenceQueryKey(
+  params: { season: number; calcuttaId?: number; attemptId?: number },
+) {
+  return ["/api/mtm/pipeline/evidence", params] as const;
+}
+
 // ── Page ──────────────────────────────────────────────────────────────────────
 
 export default function MtmTracker() {
-  const queryClient = useQueryClient();
   const { year, selectedCalcutta } = useSeason();
   const isNflCalcutta = selectedCalcutta?.sport === "NFL";
   const calcuttaId = isNflCalcutta ? selectedCalcutta.id : undefined;
-  const { data, isLoading, refetch } = useGetMtmSnapshots(
-    { season: year, calcuttaId },
-    {
-      query: {
-        enabled: isNflCalcutta,
-        queryKey: getGetMtmSnapshotsQueryKey({ season: year, calcuttaId }),
-      },
-    },
-  );
   const { data: bidders } = useGetBidders({});
   const consortiumByName = bidderConsortiumsByName(bidders);
   const [adminKey, setAdminKey] = useState<string | null>(null);
-  const [showEntry, setShowEntry] = useState(false);
-  const [showEvidence, setShowEvidence] = useState(false);
   const [pipelineStatus, setPipelineStatus] = useState<PipelineStatus | null>(null);
   const [pipelineLoading, setPipelineLoading] = useState(false);
   const [pipelineRunning, setPipelineRunning] = useState(false);
@@ -160,9 +208,6 @@ export default function MtmTracker() {
       const payload = await response.json().catch(() => null) as { error?: string } | null;
       if (!response.ok) throw new Error(payload?.error ?? "MTM recalculation failed.");
       toast.success("In-season MTM mark recalculated.");
-      await queryClient.invalidateQueries({
-        queryKey: getGetMtmPipelineEvidenceQueryKey(),
-      });
       await loadPipelineStatus();
     } catch (error) {
       toast.error(error instanceof Error ? error.message : "MTM recalculation failed.");
@@ -180,15 +225,13 @@ export default function MtmTracker() {
     setAdminKey(null);
   }
 
-  const hasData = data && data.weeks.length > 0;
-
   return (
     <div className="space-y-5 px-4 pb-6 pt-4 md:space-y-6 md:p-8 max-w-5xl mx-auto">
       <header className="flex flex-col md:flex-row md:items-end justify-between gap-4">
         <div>
           <h1 className="text-3xl md:text-5xl font-extrabold uppercase tracking-tighter mb-1" data-testid="text-mtm-title">MTM Tracker</h1>
           <p className="text-muted-foreground font-mono text-xs md:text-sm uppercase tracking-widest">
-            Mark-to-market · week by week · {year}
+            Current team and consortium values · {year}
           </p>
         </div>
         <div className="flex items-center gap-3">
@@ -203,69 +246,10 @@ export default function MtmTracker() {
           running={pipelineRunning}
           canRecalculate={Boolean(adminKey)}
           onRecalculate={() => void recalculatePipeline()}
+          consortiumByName={consortiumByName}
         />
       )}
 
-      {/* Admin evidence inspector */}
-      {adminKey && isNflCalcutta && (
-        <div className="border border-indigo-900/30 bg-indigo-950/5">
-          <button
-            onClick={() => setShowEvidence((v) => !v)}
-            className="w-full flex items-center justify-between px-4 py-3 text-xs font-mono font-bold uppercase tracking-widest text-indigo-700 dark:text-indigo-400 hover:bg-indigo-900/10 transition-colors"
-          >
-            <span className="flex items-center gap-2">
-              <Search className="w-3.5 h-3.5" />
-              Evidence Ledger
-            </span>
-            {showEvidence ? <ChevronUp className="w-3.5 h-3.5" /> : <ChevronDown className="w-3.5 h-3.5" />}
-          </button>
-          {showEvidence && (
-            <div className="border-t border-indigo-900/20">
-              <MtmEvidenceInspector year={year} calcuttaId={calcuttaId} adminKey={adminKey} />
-            </div>
-          )}
-        </div>
-      )}
-
-      {/* Admin data-entry panel */}
-      {adminKey && isNflCalcutta && (
-        <div className="border border-primary/30 bg-primary/5">
-          <button
-            onClick={() => setShowEntry((v) => !v)}
-            className="w-full flex items-center justify-between px-4 py-3 text-xs font-mono font-bold uppercase tracking-widest text-primary hover:bg-primary/10 transition-colors"
-          >
-            <span className="flex items-center gap-2">
-              <Plus className="w-3.5 h-3.5" />
-              Enter MTM Data
-            </span>
-            {showEntry ? <ChevronUp className="w-3.5 h-3.5" /> : <ChevronDown className="w-3.5 h-3.5" />}
-          </button>
-          {showEntry && (
-            <div className="border-t border-primary/20 p-4">
-              <MtmEntryForm
-                year={year}
-                calcuttaId={calcuttaId}
-                adminKey={adminKey}
-                onSuccess={() => {
-                  void refetch();
-                  setShowEntry(false);
-                }}
-              />
-            </div>
-          )}
-        </div>
-      )}
-
-      {isLoading ? (
-        <div className="space-y-4 animate-pulse">
-          <div className="h-64 bg-muted border border-border" />
-          <div className="h-48 bg-muted border border-border" />
-        </div>
-      ) : !hasData ? (
-        <EmptyState year={year} isAdmin={!!adminKey} onEnterData={() => setShowEntry(true)} />
-      ) : (
-        <MtmContent data={data!} consortiumByName={consortiumByName} />
-      )}
     </div>
   );
 }
@@ -276,13 +260,20 @@ function PipelineMarkPanel({
   running,
   canRecalculate,
   onRecalculate,
+  consortiumByName,
 }: {
   status: PipelineStatus | null;
   loading: boolean;
   running: boolean;
   canRecalculate: boolean;
   onRecalculate: () => void;
+  consortiumByName: Map<string, string>;
 }) {
+  type SortKey = "team" | "owner" | "points" | "payout" | "price" | "multiple" | "prior";
+  const [search, setSearch] = useState("");
+  const [sortKey, setSortKey] = useState<SortKey>("payout");
+  const [sortAsc, setSortAsc] = useState(false);
+
   if (loading && !status) {
     return (
       <section className="border border-border bg-card p-5 text-sm font-mono text-muted-foreground">
@@ -295,8 +286,8 @@ function PipelineMarkPanel({
       <section className="border border-dashed border-border bg-card p-5">
         <div className="flex flex-wrap items-center justify-between gap-3">
           <div>
-            <p className="font-mono text-xs font-bold uppercase tracking-widest">In-season valuation engine</p>
-            <p className="mt-1 text-sm text-muted-foreground">No frozen-engine mark has been recorded for this pool.</p>
+            <p className="font-mono text-xs font-bold uppercase tracking-widest">Latest Mark</p>
+            <p className="mt-1 text-sm text-muted-foreground">No complete MTM mark has been recorded for this pool.</p>
           </div>
           <button
             type="button"
@@ -312,35 +303,83 @@ function PipelineMarkPanel({
     );
   }
 
-  const valuations = [...status.valuations].sort(
-    (a, b) => Number(b.expectedPayout) - Number(a.expectedPayout),
+  function ownerText(valuation: PipelineValuation) {
+    return (valuation.owners ?? [])
+      .map((owner) => combinedOwnerLabel(owner.name, consortiumByName))
+      .join(" / ");
+  }
+
+  const query = search.trim().toLowerCase();
+  const filtered = status.valuations.filter((valuation) =>
+    !query ||
+    valuation.teamName.toLowerCase().includes(query) ||
+    ownerText(valuation).toLowerCase().includes(query)
   );
-  const ownerValues = new Map<string, number>();
-  for (const valuation of valuations) {
-    for (const owner of valuation.owners ?? []) {
-      ownerValues.set(owner.name, (ownerValues.get(owner.name) ?? 0) + Number(owner.bookValue));
+  const valuations = [...filtered].sort((a, b) => {
+    const previousA = a.previousExpectedPayout == null ? null : Number(a.previousExpectedPayout);
+    const previousB = b.previousExpectedPayout == null ? null : Number(b.previousExpectedPayout);
+    const values: Record<Exclude<SortKey, "team" | "owner">, [number, number]> = {
+      points: [Number(a.expectedPoints), Number(b.expectedPoints)],
+      payout: [Number(a.expectedPayout), Number(b.expectedPayout)],
+      price: [Number(a.auctionPrice ?? -Infinity), Number(b.auctionPrice ?? -Infinity)],
+      multiple: [Number(a.mtmMultiple ?? -Infinity), Number(b.mtmMultiple ?? -Infinity)],
+      prior: [
+        previousA == null ? -Infinity : Number(a.expectedPayout) - previousA,
+        previousB == null ? -Infinity : Number(b.expectedPayout) - previousB,
+      ],
+    };
+    const difference = sortKey === "team"
+      ? a.teamName.localeCompare(b.teamName)
+      : sortKey === "owner"
+        ? ownerText(a).localeCompare(ownerText(b))
+        : values[sortKey][0] - values[sortKey][1];
+    return sortAsc ? difference : -difference;
+  });
+  const maxPayout = Math.max(1, ...status.valuations.map((valuation) => Number(valuation.expectedPayout)));
+  const minPayout = Math.min(...status.valuations.map((valuation) => Number(valuation.expectedPayout)));
+  const payoutRange = Math.max(1, maxPayout - minPayout);
+  const maxMultiple = Math.max(1, ...status.valuations.map((valuation) => Number(valuation.mtmMultiple ?? 1)));
+
+  function handleSort(key: SortKey) {
+    if (sortKey === key) setSortAsc((value) => !value);
+    else {
+      setSortKey(key);
+      setSortAsc(key === "team" || key === "owner");
     }
   }
-  const ownerRows = [...ownerValues.entries()].sort((a, b) => b[1] - a[1]);
+
+  function SortButton({ label, value }: { label: string; value: SortKey }) {
+    const active = sortKey === value;
+    return (
+      <button
+        type="button"
+        onClick={() => handleSort(value)}
+        className={cn(
+          "inline-flex items-center gap-1 font-mono text-[10px] font-bold uppercase tracking-wider hover:text-foreground",
+          active ? "text-primary" : "text-muted-foreground",
+        )}
+      >
+        {label}
+        {active && <span aria-hidden="true">{sortAsc ? "↑" : "↓"}</span>}
+      </button>
+    );
+  }
 
   return (
     <section className="border border-border bg-card">
       <div className="flex flex-wrap items-start justify-between gap-4 border-b border-border p-4">
         <div>
-          <div className="flex flex-wrap items-center gap-2">
-            <h2 className="font-mono text-sm font-bold uppercase tracking-widest">Frozen-engine in-season mark</h2>
-            <span className={cn(
-              "border px-2 py-0.5 font-mono text-[10px] font-bold uppercase tracking-wider",
-              status.stale
-                ? "border-amber-500/50 bg-amber-500/10 text-amber-700"
-                : "border-emerald-500/50 bg-emerald-500/10 text-emerald-700",
-            )}>
-              {status.stale ? "Prior-good / stale" : "Current"}
-            </span>
-          </div>
+          <h2 className="font-mono text-sm font-bold uppercase tracking-widest">Latest Mark</h2>
           <p className="mt-1 text-xs text-muted-foreground">
-            Current mark {status.currentAsOf
-              ? new Date(status.currentAsOf).toLocaleString("en-US", { timeZone: "America/New_York" })
+            Last update: {status.currentAsOf
+              ? new Date(status.currentAsOf).toLocaleString("en-US", {
+                  timeZone: "America/New_York",
+                  month: "short",
+                  day: "numeric",
+                  year: "numeric",
+                  hour: "numeric",
+                  minute: "2-digit",
+                })
               : "not available"}
           </p>
         </div>
@@ -369,16 +408,58 @@ function PipelineMarkPanel({
       )}
 
       {valuations.length > 0 && (
-        <div className="overflow-x-auto">
-          <table className="w-full min-w-[760px] text-sm">
+        <>
+          <div className="border-b border-border p-4">
+            <div className="mb-3 flex flex-col gap-3 sm:flex-row sm:items-end sm:justify-between">
+              <div>
+                <h3 className="font-mono text-xs font-bold uppercase tracking-widest">Expected payout by team</h3>
+                <p className="mt-1 text-xs text-muted-foreground">Current pipeline values from the latest complete mark.</p>
+              </div>
+              <label className="relative block sm:w-72">
+                <Search className="pointer-events-none absolute left-2.5 top-2.5 h-3.5 w-3.5 text-muted-foreground" />
+                <span className="sr-only">Filter MTM rows</span>
+                <input
+                  type="search"
+                  value={search}
+                  onChange={(event) => setSearch(event.target.value)}
+                  placeholder="Filter team or consortium…"
+                  className="w-full border border-border bg-background py-2 pl-8 pr-3 font-mono text-xs outline-none focus:border-primary focus:ring-1 focus:ring-primary"
+                />
+              </label>
+            </div>
+            <div className="grid max-h-[28rem] gap-x-6 gap-y-2 overflow-y-auto pr-1 md:grid-cols-2">
+              {[...valuations]
+                .sort((a, b) => Number(b.expectedPayout) - Number(a.expectedPayout))
+                .map((valuation) => {
+                  const payout = Number(valuation.expectedPayout);
+                  return (
+                    <div key={valuation.entryId} className="grid grid-cols-[minmax(7rem,10rem)_1fr_5rem] items-center gap-2 text-xs">
+                      <span className="truncate font-semibold" title={valuation.teamName}>{valuation.teamName}</span>
+                      <div className="h-3 bg-muted/70">
+                        <div
+                          className="h-full bg-emerald-500"
+                          style={{ width: `${Math.max(2, (payout / maxPayout) * 100)}%` }}
+                        />
+                      </div>
+                      <span className="text-right font-mono">{formatCurrency(payout)}</span>
+                    </div>
+                  );
+                })}
+            </div>
+          </div>
+
+          <div className="table-scroll">
+          <table className="w-full min-w-[940px] text-sm">
+            <caption className="sr-only">Sortable latest MTM values by team</caption>
             <thead className="border-b border-border bg-muted/40 font-mono text-[10px] uppercase tracking-wider text-muted-foreground">
               <tr>
-                <th className="px-4 py-2 text-left">Lot</th>
-                <th className="px-3 py-2 text-right">Expected pts</th>
-                <th className="px-3 py-2 text-right">Expected payout</th>
-                <th className="px-3 py-2 text-right">Auction price</th>
-                <th className="px-3 py-2 text-right">Multiple</th>
-                <th className="px-4 py-2 text-right">Δ prior mark</th>
+                <th className="px-4 py-2 text-left"><SortButton label="Team" value="team" /></th>
+                <th className="px-3 py-2 text-left"><SortButton label="Consortium" value="owner" /></th>
+                <th className="px-3 py-2 text-right"><SortButton label="Expected pts" value="points" /></th>
+                <th className="px-3 py-2 text-right"><SortButton label="Expected payout" value="payout" /></th>
+                <th className="px-3 py-2 text-right"><SortButton label="Auction price" value="price" /></th>
+                <th className="px-3 py-2 text-right"><SortButton label="Multiple" value="multiple" /></th>
+                <th className="px-4 py-2 text-right"><SortButton label="Vs prior" value="prior" /></th>
               </tr>
             </thead>
             <tbody className="divide-y divide-border">
@@ -389,14 +470,45 @@ function PipelineMarkPanel({
                   ? null
                   : Number(valuation.previousExpectedPayout);
                 const delta = previousPayout == null ? null : payout - previousPayout;
+                const multiple = valuation.mtmMultiple == null ? null : Number(valuation.mtmMultiple);
+                const payoutIntensity = (payout - minPayout) / payoutRange;
+                const multipleIntensity = multiple == null
+                  ? 0
+                  : multiple < 1
+                    ? Math.min(1, 1 - multiple)
+                    : Math.min(1, (multiple - 1) / Math.max(0.01, maxMultiple - 1));
                 return (
                   <tr key={valuation.entryId}>
                     <td className="px-4 py-2 font-semibold">{valuation.teamName}</td>
+                    <td className="max-w-[18rem] px-3 py-2 text-xs text-muted-foreground">
+                      {ownerText(valuation) || "—"}
+                    </td>
                     <td className="px-3 py-2 text-right font-mono">{Number(valuation.expectedPoints).toFixed(2)}</td>
-                    <td className="px-3 py-2 text-right font-mono">{formatCurrency(payout)}</td>
+                    <td
+                      className="px-3 py-2 text-right font-mono font-semibold"
+                      style={{ backgroundColor: `rgba(16, 185, 129, ${0.06 + payoutIntensity * 0.42})` }}
+                    >
+                      {formatCurrency(payout)}
+                    </td>
                     <td className="px-3 py-2 text-right font-mono">{price == null ? "—" : formatCurrency(price)}</td>
-                    <td className="px-3 py-2 text-right font-mono">{valuation.mtmMultiple == null ? "—" : `${Number(valuation.mtmMultiple).toFixed(2)}×`}</td>
-                    <td className={cn("px-4 py-2 text-right font-mono font-semibold", delta != null && (delta >= 0 ? "text-emerald-700" : "text-red-700"))}>
+                    <td
+                      className="px-3 py-2 text-right font-mono font-semibold"
+                      style={{
+                        backgroundColor: multiple == null || Math.abs(multiple - 1) < 0.005
+                          ? undefined
+                          : multiple < 1
+                            ? `rgba(239, 68, 68, ${0.08 + multipleIntensity * 0.42})`
+                            : `rgba(16, 185, 129, ${0.08 + multipleIntensity * 0.42})`,
+                      }}
+                    >
+                      {multiple == null ? "—" : `${multiple.toFixed(2)}×`}
+                    </td>
+                    <td className={cn(
+                      "px-4 py-2 text-right font-mono font-semibold",
+                      delta != null && delta > 0 && "bg-emerald-500/15 text-emerald-700 dark:text-emerald-300",
+                      delta != null && delta < 0 && "bg-red-500/15 text-red-700 dark:text-red-300",
+                      delta === 0 && "text-muted-foreground",
+                    )}>
                       {delta == null ? "—" : `${delta >= 0 ? "+" : ""}${formatCurrency(delta)}`}
                     </td>
                   </tr>
@@ -404,34 +516,12 @@ function PipelineMarkPanel({
               })}
             </tbody>
           </table>
-        </div>
-      )}
-
-      <div className="grid gap-0 border-t border-border md:grid-cols-2">
-        <div className="border-b border-border p-4 md:border-b-0 md:border-r">
-          <h3 className="font-mono text-xs font-bold uppercase tracking-widest">Owner book value</h3>
-          <div className="mt-3 space-y-2">
-            {ownerRows.length === 0 ? (
-              <p className="text-xs text-muted-foreground">Owner positions are unavailable.</p>
-            ) : ownerRows.map(([name, value]) => (
-              <div key={name} className="flex items-center justify-between gap-3 text-sm">
-                <span>{name}</span>
-                <span className="font-mono font-semibold">{formatCurrency(value)}</span>
-              </div>
-            ))}
           </div>
-        </div>
-        <div className="p-4">
-          <h3 className="font-mono text-xs font-bold uppercase tracking-widest">Diagnostics</h3>
-          {status.diagnostics ? (
-            <pre className="mt-3 max-h-52 overflow-auto whitespace-pre-wrap break-words bg-muted/40 p-3 font-mono text-[10px] text-muted-foreground">
-              {JSON.stringify(status.diagnostics, null, 2)}
-            </pre>
-          ) : (
-            <p className="mt-3 text-xs text-muted-foreground">No diagnostics have been published.</p>
-          )}
-        </div>
-      </div>
+          <div className="border-t border-border px-4 py-3 font-mono text-[10px] uppercase tracking-widest text-muted-foreground">
+            {valuations.length} of {status.valuations.length} teams
+          </div>
+        </>
+      )}
     </section>
   );
 }
