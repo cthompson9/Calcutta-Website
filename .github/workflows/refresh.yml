@@ -3,7 +3,7 @@ name: Calcutta refresh
 on:
   schedule:
     - cron: "*/5 * * * *"
-    - cron: "0 10,11 * * 2"
+    - cron: "0 7,8 * * 2"
   workflow_dispatch:
     inputs:
       job:
@@ -42,7 +42,7 @@ jobs:
               NFL|CFB|both) echo "sport=$REQUESTED_SPORT" >> "$GITHUB_OUTPUT" ;;
               *) echo "Unsupported sport" >&2; exit 1 ;;
             esac
-          elif [ "${{ github.event.schedule }}" = "0 10,11 * * 2" ]; then
+          elif [ "${{ github.event.schedule }}" = "0 7,8 * * 2" ]; then
             echo "name=mtm" >> "$GITHUB_OUTPUT"
             echo "sport=NFL" >> "$GITHUB_OUTPUT"
           else
@@ -56,6 +56,14 @@ jobs:
           CALCUTTA_APP_URL: ${{ secrets.CALCUTTA_APP_URL }}
           CALCUTTA_JOB_SECRET: ${{ secrets.CALCUTTA_JOB_SECRET }}
         run: |
+          if [ "${{ github.event_name }}" = "schedule" ] && [ "$REFRESH_JOB" = "mtm" ]; then
+            et_hour="$(TZ=America/New_York date +%H)"
+            if [ "$et_hour" != "03" ]; then
+              echo "Skipping duplicate DST candidate; New York hour is $et_hour"
+              exit 0
+            fi
+          fi
+
           trigger_refresh() {
             case "$1" in
               NFL) competition="NFL_REGULAR_SEASON" ;;

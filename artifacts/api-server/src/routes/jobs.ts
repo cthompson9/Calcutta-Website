@@ -5,7 +5,7 @@ import { Router, type IRouter, type Request } from "express";
 import { and, eq } from "drizzle-orm";
 import { z } from "zod/v4";
 import { db, pool, refreshJobStatesTable } from "@workspace/db";
-import { runCanonicalMtmRefresh } from "../lib/jobMtmRefresh";
+import { runMtmPipeline, withMtmLock } from "../lib/mtmPipeline";
 import {
   resolveNflStandingsRefreshSeasonYear,
   runNflStandingsRefresh,
@@ -259,10 +259,28 @@ router.post("/jobs/refresh", async (req, res): Promise<void> => {
 
     const locked = await withRefreshJobLock(async () => {
       if (job === "mtm") {
-        const result = await runCanonicalMtmRefresh({ seasonYear });
+        const mtmLocked = await withMtmLock(
+          { seasonYear },
+          () => runMtmPipeline({
+            seasonYear,
+            trigger: "scheduled",
+          }),
+        );
+        if (!mtmLocked.acquired) {
+          return {
+            job,
+            ran: false,
+            reason: "already-running" as const,
+            durationMs: Date.now() - startedAtMs,
+          };
+        }
+        const result = mtmLocked.value;
         return {
           job,
-          ...result,
+          ran: result.status === "ok",
+          snapshotId: result.id,
+          status: result.status,
+          error: result.error ?? undefined,
           durationMs: Date.now() - startedAtMs,
         };
       }
@@ -362,6 +380,10 @@ router.post("/jobs/refresh", async (req, res): Promise<void> => {
       return;
     }
 
+    if (job === "mtm") {
+      res.json(locked.value);
+      return;
+    }
     sendParsedJson(res, RefreshNflStandingsJobResponse, locked.value);
   } catch (error) {
     req.log.error(

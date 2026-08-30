@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import {
   useGetMtmSnapshots,
   useGetTeams,
@@ -11,7 +11,7 @@ import type { MtmData, MtmWeekData, MtmTeamWeekMarketStatus } from "@workspace/a
 import { formatCurrency } from "@/lib/utils";
 import { cn } from "@/lib/utils";
 import { useSeason } from "@/hooks/useSeason";
-import { TrendingUp, TrendingDown, Lock, Unlock, Plus, X, ChevronDown, ChevronUp, Activity, AlertTriangle, ShieldCheck, Zap, Info, ServerOff } from "lucide-react";
+import { TrendingUp, TrendingDown, Lock, Unlock, Plus, X, ChevronDown, ChevronUp, Activity, AlertTriangle, ShieldCheck, Zap, Info, ServerOff, RefreshCw } from "lucide-react";
 import { toast } from "sonner";
 import {
   bidderConsortiumsByName,
@@ -56,6 +56,36 @@ async function upsertMtmSnapshot(
   }
 }
 
+type PipelineOwnerValue = {
+  name: string;
+  share: number;
+  bookValue: number;
+};
+
+type PipelineValuation = {
+  entryId: number;
+  teamName: string;
+  expectedPoints: string;
+  expectedPayout: string;
+  previousExpectedPayout: string | null;
+  auctionPrice: string | null;
+  mtmMultiple: string | null;
+  owners: PipelineOwnerValue[];
+};
+
+type PipelineStatus = {
+  id: number;
+  currentSnapshotId: number | null;
+  asOf: string;
+  currentAsOf: string | null;
+  status: "ok" | "failed";
+  error: string | null;
+  stale: boolean;
+  staleReasons: string[];
+  diagnostics: Record<string, unknown> | null;
+  valuations: PipelineValuation[];
+};
+
 // ── Page ──────────────────────────────────────────────────────────────────────
 
 export default function MtmTracker() {
@@ -75,6 +105,57 @@ export default function MtmTracker() {
   const consortiumByName = bidderConsortiumsByName(bidders);
   const [adminKey, setAdminKey] = useState<string | null>(null);
   const [showEntry, setShowEntry] = useState(false);
+  const [pipelineStatus, setPipelineStatus] = useState<PipelineStatus | null>(null);
+  const [pipelineLoading, setPipelineLoading] = useState(false);
+  const [pipelineRunning, setPipelineRunning] = useState(false);
+
+  async function loadPipelineStatus() {
+    if (!isNflCalcutta) {
+      setPipelineStatus(null);
+      return;
+    }
+    setPipelineLoading(true);
+    try {
+      const params = new URLSearchParams({ season: String(year) });
+      if (calcuttaId) params.set("calcuttaId", String(calcuttaId));
+      const response = await fetch(`/api/mtm/pipeline/status?${params}`);
+      if (!response.ok) throw new Error("Unable to load the in-season MTM mark.");
+      const payload = await response.json() as { status: PipelineStatus | null };
+      setPipelineStatus(payload.status);
+    } catch (error) {
+      toast.error(error instanceof Error ? error.message : "Unable to load the in-season MTM mark.");
+    } finally {
+      setPipelineLoading(false);
+    }
+  }
+
+  useEffect(() => {
+    void loadPipelineStatus();
+  }, [year, calcuttaId, isNflCalcutta]);
+
+  async function recalculatePipeline() {
+    if (!adminKey) return;
+    setPipelineRunning(true);
+    try {
+      const response = await fetch("/api/mtm/pipeline/recalc", {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+          Authorization: `Bearer ${adminKey}`,
+        },
+        body: JSON.stringify({ season: year, calcuttaId }),
+      });
+      const payload = await response.json().catch(() => null) as { error?: string } | null;
+      if (!response.ok) throw new Error(payload?.error ?? "MTM recalculation failed.");
+      toast.success("In-season MTM mark recalculated.");
+      await loadPipelineStatus();
+    } catch (error) {
+      toast.error(error instanceof Error ? error.message : "MTM recalculation failed.");
+      await loadPipelineStatus();
+    } finally {
+      setPipelineRunning(false);
+    }
+  }
 
   function saveAdminKey(key: string) {
     setAdminKey(key);
@@ -99,6 +180,16 @@ export default function MtmTracker() {
           <AdminPanel adminKey={adminKey} onSetKey={saveAdminKey} onClearKey={clearAdminKey} />
         </div>
       </header>
+
+      {isNflCalcutta && (
+        <PipelineMarkPanel
+          status={pipelineStatus}
+          loading={pipelineLoading}
+          running={pipelineRunning}
+          canRecalculate={Boolean(adminKey)}
+          onRecalculate={() => void recalculatePipeline()}
+        />
+      )}
 
       {/* Admin data-entry panel */}
       {adminKey && isNflCalcutta && (
@@ -140,6 +231,172 @@ export default function MtmTracker() {
         <MtmContent data={data!} consortiumByName={consortiumByName} />
       )}
     </div>
+  );
+}
+
+function PipelineMarkPanel({
+  status,
+  loading,
+  running,
+  canRecalculate,
+  onRecalculate,
+}: {
+  status: PipelineStatus | null;
+  loading: boolean;
+  running: boolean;
+  canRecalculate: boolean;
+  onRecalculate: () => void;
+}) {
+  if (loading && !status) {
+    return (
+      <section className="border border-border bg-card p-5 text-sm font-mono text-muted-foreground">
+        Loading in-season MTM status…
+      </section>
+    );
+  }
+  if (!status) {
+    return (
+      <section className="border border-dashed border-border bg-card p-5">
+        <div className="flex flex-wrap items-center justify-between gap-3">
+          <div>
+            <p className="font-mono text-xs font-bold uppercase tracking-widest">In-season valuation engine</p>
+            <p className="mt-1 text-sm text-muted-foreground">No frozen-engine mark has been recorded for this pool.</p>
+          </div>
+          <button
+            type="button"
+            disabled={!canRecalculate || running}
+            onClick={onRecalculate}
+            className="inline-flex items-center gap-2 border border-primary px-3 py-2 font-mono text-xs font-bold uppercase tracking-widest text-primary disabled:cursor-not-allowed disabled:opacity-40"
+          >
+            <RefreshCw className={cn("h-4 w-4", running && "animate-spin")} />
+            Calculate mark
+          </button>
+        </div>
+      </section>
+    );
+  }
+
+  const valuations = [...status.valuations].sort(
+    (a, b) => Number(b.expectedPayout) - Number(a.expectedPayout),
+  );
+  const ownerValues = new Map<string, number>();
+  for (const valuation of valuations) {
+    for (const owner of valuation.owners ?? []) {
+      ownerValues.set(owner.name, (ownerValues.get(owner.name) ?? 0) + Number(owner.bookValue));
+    }
+  }
+  const ownerRows = [...ownerValues.entries()].sort((a, b) => b[1] - a[1]);
+
+  return (
+    <section className="border border-border bg-card">
+      <div className="flex flex-wrap items-start justify-between gap-4 border-b border-border p-4">
+        <div>
+          <div className="flex flex-wrap items-center gap-2">
+            <h2 className="font-mono text-sm font-bold uppercase tracking-widest">Frozen-engine in-season mark</h2>
+            <span className={cn(
+              "border px-2 py-0.5 font-mono text-[10px] font-bold uppercase tracking-wider",
+              status.stale
+                ? "border-amber-500/50 bg-amber-500/10 text-amber-700"
+                : "border-emerald-500/50 bg-emerald-500/10 text-emerald-700",
+            )}>
+              {status.stale ? "Prior-good / stale" : "Current"}
+            </span>
+          </div>
+          <p className="mt-1 text-xs text-muted-foreground">
+            Current mark {status.currentAsOf
+              ? new Date(status.currentAsOf).toLocaleString("en-US", { timeZone: "America/New_York" })
+              : "not available"}
+          </p>
+        </div>
+        <button
+          type="button"
+          disabled={!canRecalculate || running}
+          onClick={onRecalculate}
+          title={canRecalculate ? "Recalculate from current evidence" : "Unlock commissioner controls to recalculate"}
+          className="inline-flex items-center gap-2 border border-primary px-3 py-2 font-mono text-xs font-bold uppercase tracking-widest text-primary hover:bg-primary/10 disabled:cursor-not-allowed disabled:opacity-40"
+        >
+          <RefreshCw className={cn("h-4 w-4", running && "animate-spin")} />
+          {running ? "Calculating" : "Recalculate"}
+        </button>
+      </div>
+
+      {status.staleReasons.length > 0 && (
+        <div className="border-b border-amber-500/30 bg-amber-500/10 px-4 py-3 text-sm text-amber-800">
+          <p className="flex items-center gap-2 font-semibold">
+            <AlertTriangle className="h-4 w-4 shrink-0" />
+            The latest attempt did not replace the prior successful mark.
+          </p>
+          <ul className="mt-1 list-disc pl-6 text-xs">
+            {status.staleReasons.map((reason) => <li key={reason}>{reason}</li>)}
+          </ul>
+        </div>
+      )}
+
+      {valuations.length > 0 && (
+        <div className="overflow-x-auto">
+          <table className="w-full min-w-[760px] text-sm">
+            <thead className="border-b border-border bg-muted/40 font-mono text-[10px] uppercase tracking-wider text-muted-foreground">
+              <tr>
+                <th className="px-4 py-2 text-left">Lot</th>
+                <th className="px-3 py-2 text-right">Expected pts</th>
+                <th className="px-3 py-2 text-right">Expected payout</th>
+                <th className="px-3 py-2 text-right">Auction price</th>
+                <th className="px-3 py-2 text-right">Multiple</th>
+                <th className="px-4 py-2 text-right">Δ prior mark</th>
+              </tr>
+            </thead>
+            <tbody className="divide-y divide-border">
+              {valuations.map((valuation) => {
+                const payout = Number(valuation.expectedPayout);
+                const price = valuation.auctionPrice == null ? null : Number(valuation.auctionPrice);
+                const previousPayout = valuation.previousExpectedPayout == null
+                  ? null
+                  : Number(valuation.previousExpectedPayout);
+                const delta = previousPayout == null ? null : payout - previousPayout;
+                return (
+                  <tr key={valuation.entryId}>
+                    <td className="px-4 py-2 font-semibold">{valuation.teamName}</td>
+                    <td className="px-3 py-2 text-right font-mono">{Number(valuation.expectedPoints).toFixed(2)}</td>
+                    <td className="px-3 py-2 text-right font-mono">{formatCurrency(payout)}</td>
+                    <td className="px-3 py-2 text-right font-mono">{price == null ? "—" : formatCurrency(price)}</td>
+                    <td className="px-3 py-2 text-right font-mono">{valuation.mtmMultiple == null ? "—" : `${Number(valuation.mtmMultiple).toFixed(2)}×`}</td>
+                    <td className={cn("px-4 py-2 text-right font-mono font-semibold", delta != null && (delta >= 0 ? "text-emerald-700" : "text-red-700"))}>
+                      {delta == null ? "—" : `${delta >= 0 ? "+" : ""}${formatCurrency(delta)}`}
+                    </td>
+                  </tr>
+                );
+              })}
+            </tbody>
+          </table>
+        </div>
+      )}
+
+      <div className="grid gap-0 border-t border-border md:grid-cols-2">
+        <div className="border-b border-border p-4 md:border-b-0 md:border-r">
+          <h3 className="font-mono text-xs font-bold uppercase tracking-widest">Owner book value</h3>
+          <div className="mt-3 space-y-2">
+            {ownerRows.length === 0 ? (
+              <p className="text-xs text-muted-foreground">Owner positions are unavailable.</p>
+            ) : ownerRows.map(([name, value]) => (
+              <div key={name} className="flex items-center justify-between gap-3 text-sm">
+                <span>{name}</span>
+                <span className="font-mono font-semibold">{formatCurrency(value)}</span>
+              </div>
+            ))}
+          </div>
+        </div>
+        <div className="p-4">
+          <h3 className="font-mono text-xs font-bold uppercase tracking-widest">Diagnostics</h3>
+          {status.diagnostics ? (
+            <pre className="mt-3 max-h-52 overflow-auto whitespace-pre-wrap break-words bg-muted/40 p-3 font-mono text-[10px] text-muted-foreground">
+              {JSON.stringify(status.diagnostics, null, 2)}
+            </pre>
+          ) : (
+            <p className="mt-3 text-xs text-muted-foreground">No diagnostics have been published.</p>
+          )}
+        </div>
+      </div>
+    </section>
   );
 }
 

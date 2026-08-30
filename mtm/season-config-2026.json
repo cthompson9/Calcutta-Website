@@ -1,0 +1,56 @@
+{
+  "season": 2026,
+  "pool": "Calcutta XII",
+  "rubric": {
+    "format": "fixed_inventory",
+    "banked": 150,
+    "per_win": 10,
+    "per_tie": 5,
+    "per_pt_diff": 1,
+    "marquee_multiplier": 2,
+    "marquee_window_rule": "diff counts double for any game OUTSIDE Sunday 1:00pm-7:00pm ET kickoff (includes Sat games, Sun 9:30am international, MNF/TNF/SNF) - per RULES.md, the code's window test is authoritative, not the rubric prose",
+    "bonuses": {
+      "berth": 50,
+      "divisional": 100,
+      "conference": 200,
+      "sb_berth": 400,
+      "sb_win": 800
+    },
+    "denominator": 11420,
+    "denominator_note": "32*150 banked + 272*10 game wins + 3900 playoff bonuses; pt diff is zero-sum. ERA-SPECIFIC: recompute if games/season or playoff field changes."
+  },
+  "stage_targets": {
+    "comment": "League-wide inventory each stage's probabilities must sum to. Exact by NFL structure.",
+    "berth": 14,
+    "divisional": 8,
+    "conference": 4,
+    "sb_berth": 2,
+    "sb_win": 1
+  },
+  "games_per_team": 17,
+  "kalshi": {
+    "base_url": "https://api.elections.kalshi.com/trade-api/v2",
+    "series": {
+      "win_totals": "KXNFLWINS",
+      "game_winner": "KXNFLGAME",
+      "game_spread": "CONFIRM_AT_SEASON_START",
+      "stage_of_elimination": "KXNFLSTAGEOFELIM"
+    },
+    "series_note": "Win totals ladder = 'N or more wins' contracts per team. Confirm elimination + spread series tickers each season via GET /series?category=... or /events search; tickers change (e.g. KXSB-27 vs KXSB-26).",
+    "event_pattern_note": "Event ticker = SERIES-{seasonCode}{TEAM}, e.g. KXNFLSTAGEOFELIM-27BUF (27 = 2026 season, matching KXSB-27). Team code is the event ticker suffix. Season code increments each year - update on rollover."
+  },
+  "pricing": {
+    "wins_price": "mid",
+    "playoff_price": "bid_plus_1c",
+    "min_quote_volume": 0,
+    "max_spread_for_mid": 0.15,
+    "stale_after_hours": 168
+  },
+  "sim": {
+    "margin_sd": 13.5,
+    "hfa_points": 1.6,
+    "rating_fit_lr": 0.5,
+    "rating_fit_iters": 200,
+    "monte_carlo_runs": 20000
+  }
+}

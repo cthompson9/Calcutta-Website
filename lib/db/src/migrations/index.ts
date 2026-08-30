@@ -17,3 +17,5 @@ export { normalizedHistoricalMigration } from "./0020NormalizedHistorical";
 export { historicalCalcuttaRostersMigration } from "./0021HistoricalCalcuttaRosters";
 export { historicalCalcuttaLinksMigration } from "./0023HistoricalCalcuttaLinks";
 export { phase1ReleaseSafetyMigration } from "./0024Phase1ReleaseSafety";
+export { mtmPipelineMigration } from "./0025MtmPipeline";
+export { mtmRatingPrecisionMigration } from "./0026MtmRatingPrecision";

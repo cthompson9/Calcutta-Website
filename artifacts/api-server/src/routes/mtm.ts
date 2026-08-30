@@ -40,6 +40,12 @@ import {
   replaceMtmMetricRows,
 } from "../lib/mtmMetrics";
 import { requireAdmin } from "../middlewares/requireAdmin";
+import {
+  getMtmPipelineStatus,
+  runMtmPipeline,
+  withMtmLock,
+} from "../lib/mtmPipeline";
+import { z } from "zod/v4";
 
 const router: IRouter = Router();
 class WeekZeroDateCollisionError extends Error {}
@@ -77,6 +83,63 @@ async function resolveSeasonId(year: number): Promise<number | null> {
     .limit(1);
   return rows[0]?.id ?? null;
 }
+
+const MtmPipelineQuery = z.object({
+  season: z.coerce.number().int().min(2000).max(2200),
+  calcuttaId: z.coerce.number().int().positive().optional(),
+});
+
+const MtmPipelineRecalcBody = z.object({
+  season: z.number().int().min(2000).max(2200),
+  calcuttaId: z.number().int().positive().optional(),
+}).strict();
+
+router.get("/mtm/pipeline/status", async (req, res): Promise<void> => {
+  const parsed = MtmPipelineQuery.safeParse(req.query);
+  if (!parsed.success) {
+    sendParsedJson(res, ErrorResponse, { error: parsed.error.message }, 400);
+    return;
+  }
+  const status = await getMtmPipelineStatus(parsed.data.season, parsed.data.calcuttaId);
+  res.json({ status });
+});
+
+router.post("/mtm/pipeline/recalc", requireAdmin, async (req, res): Promise<void> => {
+  const parsed = MtmPipelineRecalcBody.safeParse(req.body);
+  if (!parsed.success) {
+    sendParsedJson(res, ErrorResponse, { error: parsed.error.message }, 400);
+    return;
+  }
+  const lockInput = {
+    seasonYear: parsed.data.season,
+    calcuttaId: parsed.data.calcuttaId,
+  };
+  const locked = await withMtmLock(lockInput, async () => {
+    const current = await getMtmPipelineStatus(parsed.data.season, parsed.data.calcuttaId);
+    if (current && Date.now() - Date.parse(current.asOf) < 5 * 60 * 1000) {
+      return { cooldown: true as const };
+    }
+    return {
+      cooldown: false as const,
+      result: await runMtmPipeline({
+        seasonYear: parsed.data.season,
+        calcuttaId: parsed.data.calcuttaId,
+        trigger: "manual",
+      }),
+    };
+  });
+  if (!locked.acquired) {
+    sendParsedJson(res, ErrorResponse, { error: "An MTM calculation is already running." }, 409);
+    return;
+  }
+  if (locked.value.cooldown) {
+    sendParsedJson(res, ErrorResponse, {
+      error: "An MTM calculation has already been requested in the last five minutes.",
+    }, 409);
+    return;
+  }
+  res.status(locked.value.result.status === "ok" ? 200 : 502).json(locked.value.result);
+});
 
 router.get("/mtm", async (req, res): Promise<void> => {
   const parsed = GetMtmSnapshotsQueryParams.safeParse(req.query);

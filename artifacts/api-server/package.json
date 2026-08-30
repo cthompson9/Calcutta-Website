@@ -7,10 +7,10 @@
     "dev": "export NODE_ENV=development && pnpm run build && node --enable-source-maps ./dist/index.mjs",
     "build": "node ./build.mjs",
     "start": "export NODE_ENV=production && node --enable-source-maps ./dist/index.mjs",
-    "refresh:nfl-standings": "node --import tsx/esm src/jobs/nflStandingsRefresh.ts",
-    "test": "node --import tsx/esm --test --test-concurrency=1 src/**/*.test.mjs",
-    "test:historical": "node --import tsx/esm --test src/lib/historicalScoring.test.mjs",
-    "reconcile:historical": "node --import tsx/esm src/scripts/reconcileHistoricalCalcuttas.ts",
+    "refresh:nfl-standings": "tsx src/jobs/nflStandingsRefresh.ts",
+    "test": "tsx --test --test-concurrency=1 src/**/*.test.mjs",
+    "test:historical": "tsx --test src/lib/historicalScoring.test.mjs",
+    "reconcile:historical": "tsx src/scripts/reconcileHistoricalCalcuttas.ts",
     "typecheck": "tsc -p tsconfig.json --noEmit"
   },
   "dependencies": {

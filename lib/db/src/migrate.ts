@@ -20,6 +20,8 @@ import {
   historicalCalcuttaRostersMigration,
   historicalCalcuttaLinksMigration,
   phase1ReleaseSafetyMigration,
+  mtmPipelineMigration,
+  mtmRatingPrecisionMigration,
 } from "./migrations";
 
 const migrations = [
@@ -42,6 +44,8 @@ const migrations = [
   historicalCalcuttaRostersMigration,
   historicalCalcuttaLinksMigration,
   phase1ReleaseSafetyMigration,
+  mtmPipelineMigration,
+  mtmRatingPrecisionMigration,
 ] as const;
 
 /**
