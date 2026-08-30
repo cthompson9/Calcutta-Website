@@ -52,6 +52,18 @@ test("API applies CORS, security headers, strict limits, and write authenticatio
     assert.equal(blockedOrigin.status, 500);
     assert.equal((await blockedOrigin.json()).error, "Internal error");
 
+    const oauthForm = await fetch(`${url}/api/mcp/oauth/authorize`, {
+      method: "POST",
+      headers: {
+        Origin: "https://not-allowed.example",
+        "X-Forwarded-For": "198.51.100.30",
+        "Content-Type": "application/x-www-form-urlencoded",
+      },
+      body: "decision=approve",
+    });
+    assert.equal(oauthForm.status, 400);
+    assert.notEqual((await oauthForm.json()).error, "Internal error");
+
     for (const path of ["/api/bidders", "/api/seasons", "/api/trades", "/api/trades/1"]) {
       const response = await fetch(`${url}${path}`, {
         method: path === "/api/trades/1" ? "PATCH" : "POST",

@@ -65,7 +65,7 @@ app.use(
 );
 app.use(helmet());
 app.use(globalLimiter);
-app.use(cors({
+const apiCors = cors({
   credentials: true,
   origin(origin, callback) {
     if (!origin || allowedOrigins.has(origin)) {
@@ -74,7 +74,19 @@ app.use(cors({
     }
     callback(new Error("Origin is not allowed by CORS"));
   },
-}));
+});
+
+// OAuth authorization is a top-level browser form flow. Its POST back to the
+// approval endpoint carries an Origin header, but it is not a cross-origin API
+// request and should not be rejected by the API CORS policy. Keep CORS enabled
+// for the other OAuth endpoints, which may be called as API requests.
+app.use((req, res, next) => {
+  if (req.method === "POST" && req.path === "/api/mcp/oauth/authorize") {
+    next();
+    return;
+  }
+  apiCors(req, res, next);
+});
 app.use(express.json());
 app.use(express.urlencoded({ extended: true }));
 
