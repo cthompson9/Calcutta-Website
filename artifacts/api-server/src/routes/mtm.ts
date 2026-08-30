@@ -1,10 +1,12 @@
 import { Router, type IRouter, type Request } from "express";
 import { ErrorResponse, sendParsedJson } from "../lib/sendParsedJson";
-import { and, eq, asc, inArray, isNull, ne, or, sql } from "drizzle-orm";
+import { and, eq, asc, desc, inArray, isNull, ne, or, sql } from "drizzle-orm";
 import {
   db,
   teamsTable,
   mtmSnapshotsTable,
+  mtmSnapshotTable,
+  mtmMarketQuoteTable,
   seasonsTable,
   calcuttaEntriesTable,
   positionsTable,
@@ -18,6 +20,8 @@ import {
   UpsertMtmSnapshotBody,
   GetMtmSnapshotsResponse,
   UpsertMtmSnapshotResponse,
+  GetMtmPipelineEvidenceQueryParams,
+  GetMtmPipelineEvidenceResponse,
 } from "@workspace/api-zod";
 import { loadSeasonOwnership } from "../lib/seasonOwnership";
 import { captureKalshiWeekZero } from "../lib/kalshiWeekZero";
@@ -94,6 +98,25 @@ const MtmPipelineRecalcBody = z.object({
   calcuttaId: z.number().int().positive().optional(),
 }).strict();
 
+function pipelineQuoteErrors(
+  diagnostics: Record<string, unknown> | null,
+  error: string | null,
+): string[] {
+  const structured = diagnostics?.quoteErrors;
+  if (Array.isArray(structured)) {
+    return structured.filter((item): item is string => typeof item === "string");
+  }
+  const prefix = "Kalshi quote collection was incomplete: ";
+  return error?.startsWith(prefix)
+    ? error.slice(prefix.length).split("; ").filter(Boolean)
+    : [];
+}
+
+function pipelineQuoteTeam(team: string | null, ticker: string): string | null {
+  if (team) return team;
+  return /-\d{2}([A-Z]{2,3})-/.exec(ticker)?.[1] ?? null;
+}
+
 router.get("/mtm/pipeline/status", async (req, res): Promise<void> => {
   const parsed = MtmPipelineQuery.safeParse(req.query);
   if (!parsed.success) {
@@ -102,6 +125,124 @@ router.get("/mtm/pipeline/status", async (req, res): Promise<void> => {
   }
   const status = await getMtmPipelineStatus(parsed.data.season, parsed.data.calcuttaId);
   res.json({ status });
+});
+
+router.get("/mtm/pipeline/evidence", requireAdmin, async (req, res): Promise<void> => {
+  const parsed = GetMtmPipelineEvidenceQueryParams.safeParse(req.query);
+  if (!parsed.success) {
+    sendParsedJson(res, ErrorResponse, { error: parsed.error.message }, 400);
+    return;
+  }
+
+  const seasonId = await resolveSeasonId(parsed.data.season);
+  if (!seasonId) {
+    sendParsedJson(res, ErrorResponse, { error: `Season ${parsed.data.season} not found` }, 404);
+    return;
+  }
+  const calcuttaId = await resolveCalcuttaId(db, {
+    seasonId,
+    calcuttaId: parsed.data.calcuttaId,
+  });
+  if (!calcuttaId) {
+    sendParsedJson(res, ErrorResponse, {
+      error: "Calcutta must be an NFL pool in the requested season.",
+    }, 404);
+    return;
+  }
+
+  const attemptRows = await db
+    .select()
+    .from(mtmSnapshotTable)
+    .where(eq(mtmSnapshotTable.poolId, calcuttaId))
+    .orderBy(desc(mtmSnapshotTable.createdAt));
+  const attemptIds = attemptRows.map((attempt) => attempt.id);
+  const quoteCountRows = attemptIds.length === 0
+    ? []
+    : await db
+      .select({
+        snapshotId: mtmMarketQuoteTable.snapshotId,
+        quoteCount: sql<number>`count(*)`,
+      })
+      .from(mtmMarketQuoteTable)
+      .where(inArray(mtmMarketQuoteTable.snapshotId, attemptIds))
+      .groupBy(mtmMarketQuoteTable.snapshotId);
+  const quoteCountByAttempt = new Map(
+    quoteCountRows.map((row) => [row.snapshotId, Number(row.quoteCount)]),
+  );
+  const attempts = attemptRows.map((attempt) => ({
+    id: attempt.id,
+    status: attempt.status as "ok" | "failed",
+    trigger: attempt.trigger as "scheduled" | "manual",
+    asOf: attempt.asOf.toISOString(),
+    createdAt: attempt.createdAt.toISOString(),
+    methodVersion: attempt.methodVersion,
+    error: attempt.error,
+    quoteCount: quoteCountByAttempt.get(attempt.id) ?? 0,
+  }));
+
+  if (attempts.length === 0) {
+    sendParsedJson(res, GetMtmPipelineEvidenceResponse, {
+      attempts,
+      selectedAttempt: null,
+    });
+    return;
+  }
+
+  const selectedId = parsed.data.attemptId ?? attempts[0]!.id;
+  const selectedRow = attemptRows.find((attempt) => attempt.id === selectedId);
+  if (!selectedRow) {
+    sendParsedJson(res, ErrorResponse, {
+      error: "MTM attempt was not found in the selected Calcutta.",
+    }, 404);
+    return;
+  }
+
+  const quoteRows = await db
+    .select()
+    .from(mtmMarketQuoteTable)
+    .where(eq(mtmMarketQuoteTable.snapshotId, selectedId))
+    .orderBy(
+      asc(mtmMarketQuoteTable.series),
+      asc(mtmMarketQuoteTable.team),
+      asc(mtmMarketQuoteTable.marketTicker),
+    );
+  const receivedBySeries = new Map<string, { quoteCount: number; teams: Set<string> }>();
+  for (const quote of quoteRows) {
+    const received = receivedBySeries.get(quote.series) ?? {
+      quoteCount: 0,
+      teams: new Set<string>(),
+    };
+    received.quoteCount += 1;
+    const team = pipelineQuoteTeam(quote.team, quote.marketTicker);
+    if (team) received.teams.add(team);
+    receivedBySeries.set(quote.series, received);
+  }
+
+  const selectedAttempt = {
+    ...attempts.find((attempt) => attempt.id === selectedId)!,
+    diagnostics: selectedRow.diagnostics,
+    receivedMarkets: [...receivedBySeries.entries()].map(([series, received]) => ({
+      series,
+      quoteCount: received.quoteCount,
+      teams: [...received.teams].sort(),
+    })),
+    failedSources: pipelineQuoteErrors(selectedRow.diagnostics, selectedRow.error),
+    quotes: quoteRows.map((quote) => ({
+      source: quote.source,
+      series: quote.series,
+      ticker: quote.marketTicker,
+      team: pipelineQuoteTeam(quote.team, quote.marketTicker),
+      bid: parseOptionalNumber(quote.yesBid),
+      ask: parseOptionalNumber(quote.yesAsk),
+      strike: parseOptionalNumber(quote.strike),
+      volume: quote.volume,
+      fetchedAt: quote.fetchedAt.toISOString(),
+    })),
+  };
+  sendParsedJson(res, GetMtmPipelineEvidenceResponse, {
+    attempts,
+    selectedAttempt,
+  });
 });
 
 router.post("/mtm/pipeline/recalc", requireAdmin, async (req, res): Promise<void> => {

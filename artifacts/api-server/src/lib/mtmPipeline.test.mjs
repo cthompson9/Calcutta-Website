@@ -79,6 +79,20 @@ test("retains a fulfilled win-total response when the paired stage request fails
   assert.match(merged.errors[0], /stage of elimination.*timeout/);
 });
 
+test("treats an empty successful Kalshi response as missing market evidence", () => {
+  const merged = mtmPipelineTestUtils.mergeTeamQuoteResults(
+    "BUF",
+    { win_totals: "KXNFLWINS", stage_of_elimination: "KXNFLSTAGEOFELIM" },
+    { status: "fulfilled", value: [] },
+    { status: "fulfilled", value: [] },
+  );
+  assert.deepEqual(merged.raw, []);
+  assert.deepEqual(merged.errors, [
+    "BUF win totals: no markets received",
+    "BUF stage of elimination: no markets received",
+  ]);
+});
+
 test("rejects overlap between completed and remaining canonical fixtures", () => {
   const completed = ["1:BUF:NYJ"];
   const remaining = [

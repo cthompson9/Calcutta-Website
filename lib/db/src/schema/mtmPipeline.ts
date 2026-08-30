@@ -39,7 +39,7 @@ export const mtmSnapshotTable = pgTable(
     createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
   },
   (t) => [
-    uniqueIndex("mtm_snapshot_pool_as_of_hour_idx").on(t.poolId, t.asOfHour),
+    index("mtm_snapshot_pool_as_of_hour_idx").on(t.poolId, t.asOfHour),
     index("mtm_snapshot_pool_created_idx").on(t.poolId, t.createdAt),
     check("mtm_snapshot_trigger_supported", sql`${t.trigger} IN ('scheduled', 'manual')`),
     check("mtm_snapshot_status_supported", sql`${t.status} IN ('ok', 'failed')`),

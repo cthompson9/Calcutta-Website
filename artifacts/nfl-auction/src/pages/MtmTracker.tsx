@@ -4,14 +4,24 @@ import {
   useGetTeams,
   useCaptureWeekZeroMtm,
   useGetBidders,
+  useGetMtmPipelineEvidence,
   getGetMtmSnapshotsQueryKey,
   getGetTeamsQueryKey,
+  getGetMtmPipelineEvidenceQueryKey,
 } from "@workspace/api-client-react";
-import type { MtmData, MtmWeekData, MtmTeamWeekMarketStatus } from "@workspace/api-client-react";
+import type {
+  MtmData,
+  MtmWeekData,
+  MtmTeamWeekMarketStatus,
+  MtmPipelineAttempt,
+  MtmPipelineEvidenceQuote,
+  MtmPipelineReceivedMarket,
+} from "@workspace/api-client-react";
+import { useQueryClient } from "@tanstack/react-query";
 import { formatCurrency } from "@/lib/utils";
 import { cn } from "@/lib/utils";
 import { useSeason } from "@/hooks/useSeason";
-import { TrendingUp, TrendingDown, Lock, Unlock, Plus, X, ChevronDown, ChevronUp, Activity, AlertTriangle, ShieldCheck, Zap, Info, ServerOff, RefreshCw } from "lucide-react";
+import { TrendingUp, TrendingDown, Lock, Unlock, Plus, X, ChevronDown, ChevronUp, Activity, AlertTriangle, ShieldCheck, Zap, Info, ServerOff, RefreshCw, Search, ListFilter } from "lucide-react";
 import { toast } from "sonner";
 import {
   bidderConsortiumsByName,
@@ -89,6 +99,7 @@ type PipelineStatus = {
 // ── Page ──────────────────────────────────────────────────────────────────────
 
 export default function MtmTracker() {
+  const queryClient = useQueryClient();
   const { year, selectedCalcutta } = useSeason();
   const isNflCalcutta = selectedCalcutta?.sport === "NFL";
   const calcuttaId = isNflCalcutta ? selectedCalcutta.id : undefined;
@@ -105,6 +116,7 @@ export default function MtmTracker() {
   const consortiumByName = bidderConsortiumsByName(bidders);
   const [adminKey, setAdminKey] = useState<string | null>(null);
   const [showEntry, setShowEntry] = useState(false);
+  const [showEvidence, setShowEvidence] = useState(false);
   const [pipelineStatus, setPipelineStatus] = useState<PipelineStatus | null>(null);
   const [pipelineLoading, setPipelineLoading] = useState(false);
   const [pipelineRunning, setPipelineRunning] = useState(false);
@@ -148,6 +160,9 @@ export default function MtmTracker() {
       const payload = await response.json().catch(() => null) as { error?: string } | null;
       if (!response.ok) throw new Error(payload?.error ?? "MTM recalculation failed.");
       toast.success("In-season MTM mark recalculated.");
+      await queryClient.invalidateQueries({
+        queryKey: getGetMtmPipelineEvidenceQueryKey(),
+      });
       await loadPipelineStatus();
     } catch (error) {
       toast.error(error instanceof Error ? error.message : "MTM recalculation failed.");
@@ -189,6 +204,27 @@ export default function MtmTracker() {
           canRecalculate={Boolean(adminKey)}
           onRecalculate={() => void recalculatePipeline()}
         />
+      )}
+
+      {/* Admin evidence inspector */}
+      {adminKey && isNflCalcutta && (
+        <div className="border border-indigo-900/30 bg-indigo-950/5">
+          <button
+            onClick={() => setShowEvidence((v) => !v)}
+            className="w-full flex items-center justify-between px-4 py-3 text-xs font-mono font-bold uppercase tracking-widest text-indigo-700 dark:text-indigo-400 hover:bg-indigo-900/10 transition-colors"
+          >
+            <span className="flex items-center gap-2">
+              <Search className="w-3.5 h-3.5" />
+              Evidence Ledger
+            </span>
+            {showEvidence ? <ChevronUp className="w-3.5 h-3.5" /> : <ChevronDown className="w-3.5 h-3.5" />}
+          </button>
+          {showEvidence && (
+            <div className="border-t border-indigo-900/20">
+              <MtmEvidenceInspector year={year} calcuttaId={calcuttaId} adminKey={adminKey} />
+            </div>
+          )}
+        </div>
       )}
 
       {/* Admin data-entry panel */}
@@ -1442,5 +1478,260 @@ function MarketStatusBadge({
       <Icon className="h-3 w-3" />
       {config.label}
     </span>
+  );
+}
+
+function isWinTotalSeries(series: string, ticker?: string) {
+  const value = `${series} ${ticker ?? ""}`.toLowerCase();
+  return value.includes("win") || value.includes("total");
+}
+
+function formatEvidenceQuote(value: number | null) {
+  return value == null ? "—" : value.toFixed(2);
+}
+
+function MtmEvidenceInspector({
+  year,
+  calcuttaId,
+  adminKey,
+}: {
+  year: number;
+  calcuttaId?: number;
+  adminKey: string;
+}) {
+  const [attemptId, setAttemptId] = useState<number | undefined>(undefined);
+
+  useEffect(() => {
+    setAttemptId(undefined);
+  }, [year, calcuttaId]);
+
+  const { data, isLoading, error, isRefetching } = useGetMtmPipelineEvidence(
+    { season: year, calcuttaId, attemptId },
+    {
+      query: {
+        enabled: Boolean(adminKey),
+        queryKey: getGetMtmPipelineEvidenceQueryKey({ season: year, calcuttaId, attemptId }),
+      },
+      request: {
+        headers: { Authorization: `Bearer ${adminKey}` },
+      },
+    }
+  );
+
+  if (isLoading && !data) {
+    return (
+      <div className="p-8 text-center text-sm font-mono text-muted-foreground animate-pulse">
+        Loading evidence ledger...
+      </div>
+    );
+  }
+
+  if (error) {
+    return (
+      <div className="p-8 text-center text-sm font-mono text-red-600 bg-red-500/10">
+        Failed to load evidence. Please check your admin key or try again.
+      </div>
+    );
+  }
+
+  if (!data) return null;
+
+  const attempts = data.attempts || [];
+  const attempt = data.selectedAttempt;
+
+  return (
+    <div className="flex flex-col md:flex-row h-[600px] bg-card text-card-foreground">
+      {/* Sidebar */}
+      <div className="w-full md:w-80 border-r border-border flex flex-col h-full bg-muted/10">
+         <div className="p-3 border-b border-border bg-muted/40 flex items-center justify-between">
+            <span className="font-mono text-xs font-bold uppercase tracking-widest text-muted-foreground">Audit Trail</span>
+            {isRefetching && <RefreshCw className="w-3 h-3 animate-spin text-muted-foreground" />}
+         </div>
+         <div className="overflow-y-auto flex-1 p-2 space-y-1">
+           {attempts.length === 0 ? (
+             <div className="p-4 text-center text-xs font-mono text-muted-foreground">No attempts found</div>
+            ) : (
+              attempts.map((a: MtmPipelineAttempt) => {
+               const isSelected = attemptId ? attemptId === a.id : attempt?.id === a.id;
+               return (
+                 <button
+                   key={a.id}
+                   onClick={() => setAttemptId(a.id)}
+                   className={cn(
+                     "w-full text-left p-3 border transition-colors text-sm rounded-sm",
+                      isSelected
+                        ? "border-indigo-500/50 bg-indigo-500/10 shadow-sm"
+                       : "border-transparent hover:border-border hover:bg-muted/50"
+                   )}
+                 >
+                   <div className="flex items-center justify-between mb-1.5">
+                     <span className="font-mono font-semibold text-xs tracking-tight">
+                       {new Date(a.createdAt).toLocaleString("en-US", { month: "short", day: "numeric", hour: "numeric", minute: "2-digit" })}
+                     </span>
+                     <span className={cn("px-1.5 py-0.5 text-[9px] font-mono font-bold uppercase tracking-wider rounded-sm", a.status === "ok" ? "bg-emerald-500/15 text-emerald-700 dark:text-emerald-400" : "bg-red-500/15 text-red-700 dark:text-red-400")}>
+                       {a.status}
+                     </span>
+                   </div>
+                   <div className="text-[10px] font-mono text-muted-foreground flex justify-between items-center">
+                      <span className="uppercase">{a.trigger}</span>
+                      <span>{a.quoteCount} quotes</span>
+                   </div>
+                 </button>
+               );
+             })
+           )}
+         </div>
+       </div>
+
+      {/* Main */}
+      <div className="flex-1 flex flex-col h-full overflow-hidden bg-background">
+        {!attempt ? (
+           <div className="flex-1 flex flex-col items-center justify-center text-muted-foreground space-y-3">
+              <Search className="w-8 h-8 opacity-20" />
+              <span className="font-mono text-xs uppercase tracking-widest opacity-60">Select an attempt to view evidence</span>
+           </div>
+        ) : (
+           <div className="flex-1 overflow-y-auto">
+              <div className="p-5 border-b border-border bg-muted/5">
+                 <div className="flex items-start justify-between">
+                   <div>
+                     <h3 className="font-mono text-lg font-bold tracking-tight text-foreground flex items-center gap-2">
+                       Attempt #{attempt.id}
+                       {attempt.methodVersion && (
+                         <span className="text-xs font-normal text-muted-foreground bg-muted px-1.5 py-0.5 rounded-sm">v{attempt.methodVersion}</span>
+                       )}
+                     </h3>
+                     <p className="text-xs font-mono text-muted-foreground mt-2">
+                       Recorded <span className="text-foreground">{new Date(attempt.createdAt).toLocaleString()}</span>
+                     </p>
+                     <p className="text-xs font-mono text-muted-foreground mt-1">
+                       Target As-Of <span className="text-foreground">{attempt.asOf ? new Date(attempt.asOf).toLocaleString() : "Latest"}</span>
+                     </p>
+                   </div>
+                   <div className={cn("px-3 py-1 font-mono text-xs font-bold uppercase tracking-widest border rounded-sm", attempt.status === "ok" ? "border-emerald-500/30 bg-emerald-500/10 text-emerald-700 dark:text-emerald-400" : "border-red-500/30 bg-red-500/10 text-red-700 dark:text-red-400")}>
+                     {attempt.status === "ok" ? "Success" : "Failed"}
+                   </div>
+                 </div>
+               </div>
+
+              <div className="p-5 space-y-8">
+                {attempt.error && (
+                  <div className="border border-red-500/30 bg-red-500/5 p-4 rounded-sm">
+                    <h4 className="font-mono text-[10px] font-bold uppercase tracking-widest text-red-800 dark:text-red-400 mb-2 flex items-center gap-1.5">
+                      <AlertTriangle className="w-3 h-3" /> Exception
+                    </h4>
+                    <p className="font-mono text-xs text-red-900 dark:text-red-300 whitespace-pre-wrap break-words">{attempt.error}</p>
+                  </div>
+                 )}
+
+                <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+                  {attempt.receivedMarkets && attempt.receivedMarkets.length > 0 && (
+                    <div>
+                      <h4 className="font-mono text-[10px] font-bold uppercase tracking-widest text-muted-foreground mb-3 flex items-center gap-1.5">
+                        <Activity className="w-3 h-3" /> Received Markets
+                      </h4>
+                      <div className="grid grid-cols-1 gap-2">
+                          {attempt.receivedMarkets.map((market: MtmPipelineReceivedMarket) => (
+                             <div key={market.series} className="border border-border/60 p-3 bg-muted/10 rounded-sm flex items-center justify-between">
+                                <div className="text-xs font-mono font-bold truncate pr-3" title={market.series}>{market.series}</div>
+                               <div className="text-[10px] text-muted-foreground font-mono flex items-center gap-3 shrink-0">
+                                  <span><strong className="text-foreground">{market.teams.length}</strong> teams</span>
+                                  <span><strong className="text-foreground">{market.quoteCount}</strong> quotes</span>
+                               </div>
+                            </div>
+                         ))}
+                      </div>
+                    </div>
+                   )}
+
+                  {attempt.failedSources && attempt.failedSources.length > 0 && (
+                    <div>
+                      <h4 className="font-mono text-[10px] font-bold uppercase tracking-widest text-muted-foreground mb-3 flex items-center gap-1.5">
+                        <ServerOff className="w-3 h-3" /> Failed Sources
+                      </h4>
+                      <div className="flex gap-2 flex-wrap">
+                        {attempt.failedSources.map((s: string) => (
+                           <span key={s} className="border border-red-500/20 bg-red-500/5 text-red-700 dark:text-red-400 text-xs px-2.5 py-1 font-mono rounded-sm">{s}</span>
+                        ))}
+                      </div>
+                    </div>
+                  )}
+                 </div>
+
+                <div>
+                    <h4 className="font-mono text-[10px] font-bold uppercase tracking-widest text-muted-foreground mb-3 flex items-center gap-1.5">
+                      <ListFilter className="w-3 h-3" /> Raw Quotes ({attempt.quotes.length})
+                    </h4>
+                    {attempt.quotes.length === 0 ? (
+                      <div className="border border-dashed border-border p-5 text-center font-mono text-xs text-muted-foreground">
+                        No raw Kalshi quotes were received for this attempt.
+                      </div>
+                    ) : (
+                      <div className="border border-border rounded-sm overflow-hidden bg-card">
+                       <div className="overflow-x-auto max-h-[400px]">
+                         <table className="w-full text-left text-xs whitespace-nowrap">
+                            <thead className="bg-muted/50 font-mono text-[10px] uppercase tracking-wider text-muted-foreground sticky top-0 z-10 shadow-[0_1px_0_hsl(var(--border))]">
+                               <tr>
+                                 <th className="px-3 py-2 font-semibold">Series Type</th>
+                                 <th className="px-3 py-2 font-semibold">Team</th>
+                                 <th className="px-3 py-2 font-semibold">Ticker</th>
+                                 <th className="px-3 py-2 font-semibold text-right">Strike</th>
+                                 <th className="px-3 py-2 font-semibold text-right">Bid</th>
+                                 <th className="px-3 py-2 font-semibold text-right">Ask</th>
+                                 <th className="px-3 py-2 font-semibold text-right">Vol</th>
+                                 <th className="px-3 py-2 font-semibold">Fetched (ET)</th>
+                               </tr>
+                            </thead>
+                            <tbody className="divide-y divide-border/60 font-mono text-[11px]">
+                               {attempt.quotes.map((quote: MtmPipelineEvidenceQuote) => {
+                                  const isWinTotal = isWinTotalSeries(quote.series, quote.ticker);
+                                  return (
+                                  <tr key={quote.ticker} className="hover:bg-muted/30 transition-colors">
+                                     <td className="px-3 py-2">
+                                        <span className={cn("px-1.5 py-0.5 text-[9px] font-bold uppercase tracking-widest rounded-sm", isWinTotal ? "text-blue-700 bg-blue-500/10 dark:text-blue-400" : "text-amber-700 bg-amber-500/10 dark:text-amber-400")}>
+                                           {isWinTotal ? "WIN TOTAL" : "ELIM"}
+                                        </span>
+                                     </td>
+                                     <td className="px-3 py-2 font-semibold">{quote.team ?? "—"}</td>
+                                     <td className="px-3 py-2 text-muted-foreground">{quote.ticker}</td>
+                                     <td className="px-3 py-2 text-right">{formatEvidenceQuote(quote.strike)}</td>
+                                     <td className="px-3 py-2 text-right">{formatEvidenceQuote(quote.bid)}</td>
+                                     <td className="px-3 py-2 text-right">{formatEvidenceQuote(quote.ask)}</td>
+                                     <td className="px-3 py-2 text-right text-muted-foreground">{quote.volume ?? "—"}</td>
+                                     <td className="px-3 py-2 text-muted-foreground">
+                                       {new Date(quote.fetchedAt).toLocaleString("en-US", {
+                                         timeZone: "America/New_York",
+                                         month: "short",
+                                         day: "numeric",
+                                         hour: "numeric",
+                                         minute: "2-digit",
+                                       })}
+                                     </td>
+                                  </tr>
+                               )})}
+                            </tbody>
+                         </table>
+                       </div>
+                    </div>
+                    )}
+                  </div>
+
+                {attempt.diagnostics && Object.keys(attempt.diagnostics).length > 0 && (
+                  <div>
+                    <h4 className="font-mono text-[10px] font-bold uppercase tracking-widest text-muted-foreground mb-3 flex items-center gap-1.5">
+                      <Info className="w-3 h-3" /> Diagnostics
+                    </h4>
+                    <div className="border border-border rounded-sm bg-muted/20">
+                      <pre className="p-4 text-[10px] font-mono text-muted-foreground overflow-x-auto whitespace-pre-wrap break-words">
+                         {JSON.stringify(attempt.diagnostics, null, 2)}
+                      </pre>
+                    </div>
+                  </div>
+                )}
+              </div>
+           </div>
+        )}
+      </div>
+    </div>
   );
 }

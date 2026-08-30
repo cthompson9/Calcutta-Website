@@ -1511,6 +1511,75 @@ export type TradeStatusUpdate = {
   reason: string;
 };
 
+export type MtmPipelineAttemptStatus = typeof MtmPipelineAttemptStatus[keyof typeof MtmPipelineAttemptStatus];
+
+
+export const MtmPipelineAttemptStatus = {
+  ok: 'ok',
+  failed: 'failed',
+} as const;
+
+export type MtmPipelineAttemptTrigger = typeof MtmPipelineAttemptTrigger[keyof typeof MtmPipelineAttemptTrigger];
+
+
+export const MtmPipelineAttemptTrigger = {
+  scheduled: 'scheduled',
+  manual: 'manual',
+} as const;
+
+export interface MtmPipelineAttempt {
+  id: number;
+  status: MtmPipelineAttemptStatus;
+  trigger: MtmPipelineAttemptTrigger;
+  asOf: string;
+  createdAt: string;
+  methodVersion: string;
+  /** @nullable */
+  error: string | null;
+  quoteCount: number;
+}
+
+export interface MtmPipelineReceivedMarket {
+  series: string;
+  quoteCount: number;
+  teams: string[];
+}
+
+export interface MtmPipelineEvidenceQuote {
+  source: string;
+  series: string;
+  ticker: string;
+  /** @nullable */
+  team: string | null;
+  /** @nullable */
+  bid: number | null;
+  /** @nullable */
+  ask: number | null;
+  /** @nullable */
+  strike: number | null;
+  /** @nullable */
+  volume: number | null;
+  fetchedAt: string;
+}
+
+/**
+ * @nullable
+ */
+export type MtmPipelineEvidenceDetailDiagnostics = { [key: string]: unknown } | null;
+
+export type MtmPipelineEvidenceDetail = MtmPipelineAttempt & {
+  /** @nullable */
+  diagnostics: MtmPipelineEvidenceDetailDiagnostics;
+  receivedMarkets: MtmPipelineReceivedMarket[];
+  failedSources: string[];
+  quotes: MtmPipelineEvidenceQuote[];
+};
+
+export interface MtmPipelineEvidenceResponse {
+  attempts: MtmPipelineAttempt[];
+  selectedAttempt: MtmPipelineEvidenceDetail | null;
+}
+
 /**
  * @nullable
  */
@@ -2049,6 +2118,15 @@ calcuttaId?: number | null;
  * @nullable
  */
 teamId?: number | null;
+};
+
+export type GetMtmPipelineEvidenceParams = {
+season: number;
+calcuttaId?: number;
+/**
+ * Attempt to inspect. Defaults to the newest attempt in the selected pool.
+ */
+attemptId?: number;
 };
 
 export type GetAuctionSummaryParams = {

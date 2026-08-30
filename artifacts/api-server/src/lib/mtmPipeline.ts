@@ -4,7 +4,7 @@ import { mkdtemp, readFile, rm, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { resolve } from "node:path";
 import { promisify } from "node:util";
-import { and, asc, eq, inArray, isNotNull, ne, sql } from "drizzle-orm";
+import { and, asc, eq, inArray, sql } from "drizzle-orm";
 import {
   calcuttaEntriesTable,
   calcuttasTable,
@@ -85,6 +85,9 @@ function mergeTeamQuoteResults(
     raw.push(...winResult.value.map((market) => ({
       series: series.win_totals, team: teamCode, market,
     })));
+    if (winResult.value.length === 0) {
+      errors.push(`${teamCode} win totals: no markets received`);
+    }
   } else {
     errors.push(`${teamCode} win totals: ${String(winResult.reason)}`);
   }
@@ -92,6 +95,9 @@ function mergeTeamQuoteResults(
     raw.push(...stageResult.value.map((market) => ({
       series: series.stage_of_elimination, team: teamCode, market,
     })));
+    if (stageResult.value.length === 0) {
+      errors.push(`${teamCode} stage of elimination: no markets received`);
+    }
   } else {
     errors.push(`${teamCode} stage of elimination: ${String(stageResult.reason)}`);
   }
@@ -488,6 +494,30 @@ async function resolveMtmPoolId(seasonYear: number, calcuttaId?: number): Promis
   return rows[0]?.poolId ?? null;
 }
 
+function quoteStrike(market: Record<string, unknown>): string | null {
+  const value = market.floor_strike ?? market.floor_strike_fp;
+  return value == null || value === "" ? null : String(value);
+}
+
+function buildMarketQuoteRows(
+  snapshotId: number,
+  rawQuotes: RawMarketQuote[],
+  fetchedAt: Date,
+) {
+  return rawQuotes.map(({ series, team, market }) => ({
+    snapshotId,
+    series,
+    marketTicker: String(market.ticker),
+    team,
+    strike: quoteStrike(market),
+    yesBid: quoteValue(market, "yes_bid") == null ? null : String(quoteValue(market, "yes_bid")),
+    yesAsk: quoteValue(market, "yes_ask") == null ? null : String(quoteValue(market, "yes_ask")),
+    volume: market.volume == null ? null : Math.trunc(asNumber(market.volume)),
+    fetchedAt,
+    rawQuote: market,
+  }));
+}
+
 async function withMtmLock<T>(
   input: { seasonYear: number; calcuttaId?: number },
   run: () => Promise<T>,
@@ -521,98 +551,79 @@ export async function runMtmPipeline(input: { seasonYear: number; calcuttaId?: n
   if (!selected[0]) {
     throw new Error(`Canonical NFL Calcutta for season ${input.seasonYear} was not found.`);
   }
-  const existing = await db.select({ id: mtmSnapshotTable.id, status: mtmSnapshotTable.status })
-    .from(mtmSnapshotTable)
-    .where(and(eq(mtmSnapshotTable.poolId, selected[0].poolId), eq(mtmSnapshotTable.asOfHour, asOfHour)))
-    .limit(1);
-  if (existing[0]?.status === "ok") {
-    const idempotent = await getMtmPipelineStatus(input.seasonYear, input.calcuttaId);
-    if (idempotent) return idempotent;
-  }
   let exported: Awaited<ReturnType<typeof exportState>>;
   try {
     exported = await exportState(input.seasonYear, input.calcuttaId);
   } catch (error) {
     const message = error instanceof Error ? error.message : String(error);
+    const diagnostics = { pipelineError: message };
     const failed = await db.insert(mtmSnapshotTable).values({
       poolId: selected[0].poolId, asOf: now, asOfHour, trigger: input.trigger,
-      status: "failed", methodVersion, error: message,
-    }).onConflictDoUpdate({
-      target: [mtmSnapshotTable.poolId, mtmSnapshotTable.asOfHour],
-      set: { asOf: now, trigger: input.trigger, status: "failed", error: message, methodVersion },
+      status: "failed", methodVersion, error: message, diagnostics,
     }).returning({ id: mtmSnapshotTable.id });
     return {
       id: failed[0]!.id, currentSnapshotId: null, poolId: selected[0].poolId,
       asOf: now.toISOString(), currentAsOf: null, status: "failed", error: message,
-      stale: true, staleReasons: [message], diagnostics: null, valuations: [], projections: {},
+      stale: true, staleReasons: [message], diagnostics, valuations: [], projections: {},
     };
   }
   const { poolId, state, rawQuotes, quoteErrors, quoteTeams } = exported;
   const snapshot = await db.insert(mtmSnapshotTable).values({
     poolId, asOf: now, asOfHour, trigger: input.trigger, status: "failed", methodVersion,
     stateJson: state,
-  }).onConflictDoUpdate({
-    target: [mtmSnapshotTable.poolId, mtmSnapshotTable.asOfHour],
-    set: { asOf: now, trigger: input.trigger, status: "failed", error: null, methodVersion, stateJson: state },
   }).returning({ id: mtmSnapshotTable.id });
   const snapshotId = snapshot[0]!.id;
-  await db.delete(mtmMarketQuoteTable).where(eq(mtmMarketQuoteTable.snapshotId, snapshotId));
   if (rawQuotes.length) {
-    await db.insert(mtmMarketQuoteTable).values(rawQuotes.map(({ series, team, market }) => ({
-      snapshotId, series, marketTicker: String(market.ticker), team,
-      strike: null, yesBid: null, yesAsk: null, volume: null,
-      fetchedAt: now, rawQuote: market,
-    })));
+    await db.insert(mtmMarketQuoteTable).values(buildMarketQuoteRows(snapshotId, rawQuotes, now));
   }
   if (quoteErrors.length > 0) {
     const message = `Kalshi quote collection was incomplete: ${quoteErrors.join("; ")}`;
-    await db.update(mtmSnapshotTable).set({ error: message }).where(eq(mtmSnapshotTable.id, snapshotId));
+    await db.update(mtmSnapshotTable).set({
+      error: message,
+      diagnostics: { quoteErrors },
+    }).where(eq(mtmSnapshotTable.id, snapshotId));
     return {
       id: snapshotId, currentSnapshotId: null, poolId, asOf: now.toISOString(),
       currentAsOf: null, status: "failed", error: message, stale: true,
-      staleReasons: [message], diagnostics: null, valuations: [], projections: {},
+      staleReasons: [message], diagnostics: { quoteErrors }, valuations: [], projections: {},
     };
   }
   try {
     const derivedQuotes = deriveQuoteState(config, quoteTeams, rawQuotes);
     state.win_ladders = derivedQuotes.winLadders;
     state.elimination_quotes = derivedQuotes.elimination;
-    await db.transaction(async (tx) => {
-      await tx.delete(mtmMarketQuoteTable).where(eq(mtmMarketQuoteTable.snapshotId, snapshotId));
-      await tx.insert(mtmMarketQuoteTable).values(rawQuotes.map(({ series, team, market }) => ({
-        snapshotId, series, marketTicker: String(market.ticker), team,
-        strike: market.floor_strike == null ? null : String(market.floor_strike),
-        yesBid: quoteValue(market, "yes_bid") == null ? null : String(quoteValue(market, "yes_bid")),
-        yesAsk: quoteValue(market, "yes_ask") == null ? null : String(quoteValue(market, "yes_ask")),
-        volume: market.volume == null ? null : Math.trunc(asNumber(market.volume)),
-        fetchedAt: now, rawQuote: market,
-      })));
-      await tx.update(mtmSnapshotTable).set({ stateJson: state })
-        .where(eq(mtmSnapshotTable.id, snapshotId));
-    });
+    await db.update(mtmSnapshotTable).set({ stateJson: state })
+      .where(eq(mtmSnapshotTable.id, snapshotId));
   } catch (error) {
     const message = `Kalshi quote transformation failed: ${error instanceof Error ? error.message : String(error)}`;
-    await db.update(mtmSnapshotTable).set({ error: message }).where(eq(mtmSnapshotTable.id, snapshotId));
+    const diagnostics = { quoteErrors: [], transformationError: message };
+    await db.update(mtmSnapshotTable).set({ error: message, diagnostics }).where(eq(mtmSnapshotTable.id, snapshotId));
     return {
       id: snapshotId, currentSnapshotId: null, poolId, asOf: now.toISOString(),
       currentAsOf: null, status: "failed", error: message, stale: true,
-      staleReasons: [message], diagnostics: null, valuations: [], projections: {},
+      staleReasons: [message], diagnostics, valuations: [], projections: {},
     };
   }
   const engine = await runEngine(state);
   const engineValidationError = validateCompleteEngineSnapshot(engine, state);
   if (engineValidationError) {
-    await db.update(mtmSnapshotTable).set({ status: "failed", error: engineValidationError }).where(eq(mtmSnapshotTable.id, snapshotId));
+    const diagnostics = {
+      ...(engine.diagnostics ?? {}),
+      engineError: engineValidationError,
+    };
+    await db.update(mtmSnapshotTable).set({
+      status: "failed",
+      error: engineValidationError,
+      diagnostics,
+    }).where(eq(mtmSnapshotTable.id, snapshotId));
     return {
       id: snapshotId, currentSnapshotId: null, poolId, asOf: now.toISOString(),
       currentAsOf: null, status: "failed", error: engineValidationError, stale: true,
-      staleReasons: [engineValidationError], diagnostics: null, valuations: [], projections: {},
+      staleReasons: [engineValidationError], diagnostics, valuations: [], projections: {},
     };
   }
   try {
     await db.transaction(async (tx) => {
-      await tx.delete(mtmTeamProjectionTable).where(eq(mtmTeamProjectionTable.snapshotId, snapshotId));
-      await tx.delete(mtmEntryValuationTable).where(eq(mtmEntryValuationTable.snapshotId, snapshotId));
       const projections = Object.entries(engine.projections ?? {}).map(([team, projection]) => ({
         snapshotId, team, eWinsTotal: String(asNumber(projection.e_wins_total)), eRemainingWins: String(asNumber(projection.e_remaining_wins)),
         pBerth: String(asNumber((projection.p_stage as any)?.berth)), pDivisional: String(asNumber((projection.p_stage as any)?.divisional)),
@@ -634,12 +645,13 @@ export async function runMtmPipeline(input: { seasonYear: number; calcuttaId?: n
     });
   } catch (error) {
     const message = `MTM persistence failed: ${error instanceof Error ? error.message : String(error)}`;
-    await db.update(mtmSnapshotTable).set({ status: "failed", error: message })
+    const diagnostics = { persistenceError: message };
+    await db.update(mtmSnapshotTable).set({ status: "failed", error: message, diagnostics })
       .where(eq(mtmSnapshotTable.id, snapshotId));
     return {
       id: snapshotId, currentSnapshotId: null, poolId, asOf: now.toISOString(),
       currentAsOf: null, status: "failed", error: message, stale: true,
-      staleReasons: [message], diagnostics: null, valuations: [], projections: {},
+      staleReasons: [message], diagnostics, valuations: [], projections: {},
     };
   }
   return {

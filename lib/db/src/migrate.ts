@@ -22,6 +22,7 @@ import {
   phase1ReleaseSafetyMigration,
   mtmPipelineMigration,
   mtmRatingPrecisionMigration,
+  immutableMtmAttemptsMigration,
 } from "./migrations";
 
 const migrations = [
@@ -46,6 +47,7 @@ const migrations = [
   phase1ReleaseSafetyMigration,
   mtmPipelineMigration,
   mtmRatingPrecisionMigration,
+  immutableMtmAttemptsMigration,
 ] as const;
 
 /**

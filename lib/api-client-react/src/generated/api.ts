@@ -43,6 +43,7 @@ import type {
   GetBiddersParams,
   GetConsortiumLeaderboardV2Params,
   GetGameV2Params,
+  GetMtmPipelineEvidenceParams,
   GetMtmSnapshotsParams,
   GetOwnerPortfolioPerformanceV2Params,
   GetOwnerPortfolioV2Params,
@@ -66,6 +67,7 @@ import type {
   HistoricalPoolTrade,
   InitializeWeekZeroPointsInput,
   MtmData,
+  MtmPipelineEvidenceResponse,
   MtmSnapshot,
   MtmSnapshotInput,
   NflStandingsImportInput,
@@ -193,7 +195,6 @@ export function useHealthCheck<TData = Awaited<ReturnType<typeof healthCheck>>, 
 
   return withQueryKey(query, queryOptions.queryKey);
 }
-
 export const getGetSeasonsUrl = () => {
 
 
@@ -264,9 +265,6 @@ export function useGetSeasons<TData = Awaited<ReturnType<typeof getSeasons>>, TE
 
   return withQueryKey(query, queryOptions.queryKey);
 }
-
-
-
 
 
 
@@ -419,13 +417,6 @@ export function useGetTeams<TData = Awaited<ReturnType<typeof getTeams>>, TError
 
   return withQueryKey(query, queryOptions.queryKey);
 }
-
-
-
-
-
-
-
 export const getCreateTeamUrl = () => {
 
 
@@ -567,13 +558,6 @@ export function useGetTeam<TData = Awaited<ReturnType<typeof getTeam>>, TError =
 
   return withQueryKey(query, queryOptions.queryKey);
 }
-
-
-
-
-
-
-
 export const getUpdateTeamUrl = (id: number,) => {
 
 
@@ -794,13 +778,6 @@ export function useGetBidders<TData = Awaited<ReturnType<typeof getBidders>>, TE
 
   return withQueryKey(query, queryOptions.queryKey);
 }
-
-
-
-
-
-
-
 export const getCreateBidderUrl = () => {
 
 
@@ -3084,6 +3061,90 @@ export const useUpsertMtmSnapshot = <TError = ErrorType<ErrorResponse>,
       > => {
       return useMutation(getUpsertMtmSnapshotMutationOptions(options));
     }
+
+export const getGetMtmPipelineEvidenceUrl = (params: GetMtmPipelineEvidenceParams,) => {
+  const normalizedParams = new URLSearchParams();
+
+  Object.entries(params || {}).forEach(([key, value]) => {
+
+    if (value !== undefined) {
+      normalizedParams.append(key, value === null ? 'null' : String(value))
+    }
+  });
+
+  const stringifiedParams = normalizedParams.toString();
+
+  return stringifiedParams.length > 0 ? `/api/mtm/pipeline/evidence?${stringifiedParams}` : `/api/mtm/pipeline/evidence`
+}
+
+/**
+ * @summary Inspect immutable Kalshi evidence for frozen-engine MTM attempts
+ */
+export const getMtmPipelineEvidence = async (params: GetMtmPipelineEvidenceParams, options?: Parameters<typeof customFetch>[1]): Promise<MtmPipelineEvidenceResponse> => {
+
+  return customFetch<MtmPipelineEvidenceResponse>(getGetMtmPipelineEvidenceUrl(params),
+  {
+    ...options,
+    method: 'GET'
+
+
+  }
+);}
+
+
+
+
+
+export const getGetMtmPipelineEvidenceQueryKey = (params?: GetMtmPipelineEvidenceParams,) => {
+    return [
+    `/api/mtm/pipeline/evidence`, ...(params ? [params] : [])
+    ] as const;
+    }
+
+
+export const getGetMtmPipelineEvidenceQueryOptions = <TData = Awaited<ReturnType<typeof getMtmPipelineEvidence>>, TError = ErrorType<ErrorResponse>>(params: GetMtmPipelineEvidenceParams, options?: { query?:UseQueryOptions<Awaited<ReturnType<typeof getMtmPipelineEvidence>>, TError, TData>, request?: SecondParameter<typeof customFetch>}
+) => {
+
+const {query: queryOptions, request: requestOptions} = options ?? {};
+
+  const queryKey =  queryOptions?.queryKey ?? getGetMtmPipelineEvidenceQueryKey(params);
+
+
+
+    const queryFn: QueryFunction<Awaited<ReturnType<typeof getMtmPipelineEvidence>>> = ({ signal }) => getMtmPipelineEvidence(params, { signal, ...requestOptions });
+
+
+
+
+
+   return  { queryKey, queryFn, ...queryOptions} as UseQueryOptions<Awaited<ReturnType<typeof getMtmPipelineEvidence>>, TError, TData> & { queryKey: QueryKey }
+}
+
+export type GetMtmPipelineEvidenceQueryResult = NonNullable<Awaited<ReturnType<typeof getMtmPipelineEvidence>>>
+export type GetMtmPipelineEvidenceQueryError = ErrorType<ErrorResponse>
+
+
+/**
+ * @summary Inspect immutable Kalshi evidence for frozen-engine MTM attempts
+ */
+
+export function useGetMtmPipelineEvidence<TData = Awaited<ReturnType<typeof getMtmPipelineEvidence>>, TError = ErrorType<ErrorResponse>>(
+ params: GetMtmPipelineEvidenceParams, options?: { query?:UseQueryOptions<Awaited<ReturnType<typeof getMtmPipelineEvidence>>, TError, TData>, request?: SecondParameter<typeof customFetch>}
+
+ ):  UseQueryResult<TData, TError> & { queryKey: QueryKey } {
+
+  const queryOptions = getGetMtmPipelineEvidenceQueryOptions(params,options)
+
+  const query = useQuery(queryOptions) as  UseQueryResult<TData, TError> & { queryKey: QueryKey };
+
+  return withQueryKey(query, queryOptions.queryKey);
+}
+
+
+
+
+
+
 
 export const getCaptureWeekZeroMtmUrl = () => {
 

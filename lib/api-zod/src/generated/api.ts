@@ -14,6 +14,8 @@ import * as zod from 'zod';
 export const HealthCheckResponse = zod.object({
   "status": zod.string()
 })
+
+
 /**
  * @summary List all seasons
  */
@@ -131,6 +133,8 @@ export const GetTeamResponse = zod.object({
   "ownershipShare": zod.number()
 }))
 })
+
+
 /**
  * @summary Update a team entry
  */
@@ -170,6 +174,8 @@ export const UpdateTeamResponse = zod.object({
   "ownershipShare": zod.number()
 }))
 })
+
+
 /**
  * @summary Delete a team entry
  */
@@ -610,6 +616,8 @@ export const PreviewNflStandingsImportResponse = zod.object({
   "changed": zod.boolean()
 }))
 })
+
+
 /**
  * Requires the ADMIN_API_KEY bearer token. The NFL source URL is fixed server-side.
  * @summary Atomically import the current NFL standings
@@ -1310,6 +1318,58 @@ export const UpsertMtmSnapshotResponse = zod.object({
 
 
 /**
+ * @summary Inspect immutable Kalshi evidence for frozen-engine MTM attempts
+ */
+export const GetMtmPipelineEvidenceQueryParams = zod.object({
+  "season": zod.coerce.number(),
+  "calcuttaId": zod.coerce.number().optional(),
+  "attemptId": zod.coerce.number().optional().describe('Attempt to inspect. Defaults to the newest attempt in the selected pool.')
+})
+
+export const GetMtmPipelineEvidenceResponse = zod.object({
+  "attempts": zod.array(zod.object({
+  "id": zod.number(),
+  "status": zod.enum(['ok', 'failed']),
+  "trigger": zod.enum(['scheduled', 'manual']),
+  "asOf": zod.coerce.date(),
+  "createdAt": zod.coerce.date(),
+  "methodVersion": zod.string(),
+  "error": zod.string().nullable(),
+  "quoteCount": zod.number()
+})),
+  "selectedAttempt": zod.union([zod.object({
+  "id": zod.number(),
+  "status": zod.enum(['ok', 'failed']),
+  "trigger": zod.enum(['scheduled', 'manual']),
+  "asOf": zod.coerce.date(),
+  "createdAt": zod.coerce.date(),
+  "methodVersion": zod.string(),
+  "error": zod.string().nullable(),
+  "quoteCount": zod.number()
+}).and(zod.object({
+  "diagnostics": zod.record(zod.string(), zod.unknown()).nullable(),
+  "receivedMarkets": zod.array(zod.object({
+  "series": zod.string(),
+  "quoteCount": zod.number(),
+  "teams": zod.array(zod.string())
+})),
+  "failedSources": zod.array(zod.string()),
+  "quotes": zod.array(zod.object({
+  "source": zod.string(),
+  "series": zod.string(),
+  "ticker": zod.string(),
+  "team": zod.string().nullable(),
+  "bid": zod.number().nullable(),
+  "ask": zod.number().nullable(),
+  "strike": zod.number().nullable(),
+  "volume": zod.number().nullable(),
+  "fetchedAt": zod.coerce.date()
+}))
+})),zod.null()])
+})
+
+
+/**
  * @summary Capture an admin-authorized Week 0 valuation from public Kalshi market data
  */
 export const CaptureWeekZeroMtmBody = zod.object({
@@ -1456,6 +1516,7 @@ export const GetOwnerPortfolioV2Response = zod.object({
   "market_status_reasons": zod.array(zod.string())
 }))
 })
+
 /**
  * @summary Return owner portfolio totals
  */
@@ -1535,8 +1596,7 @@ export const GetOwnerPortfolioPerformanceV2Response = zod.object({
   "market_status_reasons": zod.array(zod.string())
 }))
 })
-
-
+// End of generated schemas.
 /**
  * @summary Return canonical NFL games matching optional filters
  */

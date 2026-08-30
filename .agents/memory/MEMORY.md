@@ -30,3 +30,4 @@
 - [Provider event reconciliation](provider-event-reconciliation.md) — CFB provider updates are scoped, non-destructive upserts unless the source proves snapshot completeness.
 - [Schema push safety](schema-push-safety.md) — never use an auto-generated push that proposes truncation on populated ownership or MTM tables; use guarded migrations instead.
 - [Historical owner identity](historical-owner-identity.md) — cross-pool history uses the approved explicit identity map; unanchored records stay separate and are never fuzzy-merged.
+- [Immutable MTM evidence](immutable-mtm-evidence.md) — every pipeline execution is a distinct audit attempt; same-hour retries never replace its quotes or diagnostics.
