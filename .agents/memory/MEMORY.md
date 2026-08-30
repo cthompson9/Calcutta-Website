@@ -4,6 +4,7 @@
 - [Trade workflow](trade-workflow.md) — trades start pending; only audited approvals affect positions, and approved trades can be reasoned, audited voids.
 - [Mobile admin key handling](mobile-admin-key.md) — never persist the admin bearer key in AsyncStorage; SecureStore on native, memory-only on web.
 - [Week 0 market valuation](week-zero-market-valuation.md) — Kalshi Week 0 marks are audited, quality-gated season snapshots with a fixed first-capture date.
+- [Week 0 initialization concurrency](week-zero-initialization-concurrency.md) — batch baseline writes and coalesce lock waiters so first-load traffic cannot exhaust the DB pool.
 - [Ownership write integrity](ownership-write-integrity.md) — primary split changes and trade lifecycle edits must serialize per season and preserve exact four-decimal ownership totals.
 - [Auction results history](auction-results-history.md) — auction result rows preserve the original winner and nomination order, not post-trade ownership.
 - [Short position semantics](short-position-semantics.md) — approved trades may create signed shorts; only positive stakes are current owners while position reports remain signed.

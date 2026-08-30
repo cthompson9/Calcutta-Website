@@ -864,23 +864,25 @@ export async function ensureCompetitionSportPeriods(
   },
   writer: CalcuttaWriter = db,
 ): Promise<void> {
-  for (const period of adapter.periods) {
-    await writer
-      .insert(sportPeriodsTable)
-      .values({
-        sport: adapter.sport,
-        competition: adapter.competitionFormat,
-        ...period,
-      })
-      .onConflictDoUpdate({
-        target: [
-          sportPeriodsTable.sport,
-          sportPeriodsTable.competition,
-          sportPeriodsTable.sequence,
-        ],
-        set: { label: period.label, isPlayoff: period.isPlayoff },
-      });
-  }
+  if (adapter.periods.length === 0) return;
+  await writer
+    .insert(sportPeriodsTable)
+    .values(adapter.periods.map((period) => ({
+      sport: adapter.sport,
+      competition: adapter.competitionFormat,
+      ...period,
+    })))
+    .onConflictDoUpdate({
+      target: [
+        sportPeriodsTable.sport,
+        sportPeriodsTable.competition,
+        sportPeriodsTable.sequence,
+      ],
+      set: {
+        label: sql`excluded.label`,
+        isPlayoff: sql`excluded.is_playoff`,
+      },
+    });
 }
 
 export async function ensureNflSportPeriods(writer: CalcuttaWriter = db): Promise<void> {
@@ -970,8 +972,6 @@ export async function initializeNflWeekZeroSnapshots(
     .limit(1);
   if (!period[0]) throw new Error("NFL Week 0 period was not seeded.");
 
-  let realizedSnapshotsWritten = 0;
-  let mtmSnapshotsWritten = 0;
   const existingMtmSnapshots = await writer
     .select({ entryId: mtmSnapshotsTable.entryId })
     .from(mtmSnapshotsTable)
@@ -982,73 +982,82 @@ export async function initializeNflWeekZeroSnapshots(
   const entriesWithMtmSnapshots = new Set(
     existingMtmSnapshots.map((snapshot) => snapshot.entryId),
   );
-  for (const entry of auctionEntries) {
-    for (const basis of ["realized", "mtm"] as const) {
-      if (basis === "mtm" && entriesWithMtmSnapshots.has(entry.entryId)) {
-        continue;
-      }
-      const [inserted] = await writer
-        .insert(teamPeriodSnapshotsTable)
-        .values({
-          entryId: entry.entryId,
-          periodId: period[0].id,
-          basis,
-          wins: "0",
-          losses: "0",
-          ties: "0",
-          ptDiff: "0",
-          ordinaryWins: "0",
-          marqueeWins: "0",
-          ordinaryTies: "0",
-          marqueeTies: "0",
-          ordinaryPtDiff: "0",
-          marqueePtDiff: "0",
-          playoffBerth: "0",
-          divRound: "0",
-          confRound: "0",
-          sbBerth: "0",
-          winSuperBowl: "0",
-          playoffStatus: "unknown",
-          capturedAt: new Date(),
-        })
-        .onConflictDoNothing({
-          target: [
-            teamPeriodSnapshotsTable.entryId,
-            teamPeriodSnapshotsTable.periodId,
-            teamPeriodSnapshotsTable.basis,
-          ],
-        })
-        .returning({ id: teamPeriodSnapshotsTable.id });
-      const capturedAt = new Date();
-      for (const metric of weekZeroMetricValues(basis)) {
-        await writer
-          .insert(snapshotMetricsTable)
-          .values({
-            calcuttaId: args.calcuttaId,
-            entryId: entry.entryId,
-            periodId: period[0].id,
-            basis,
-            ...metric,
-            source: "week_zero",
-            sourceData: { playoffStatus: "unknown" },
-            snapshotAt: capturedAt,
-          })
-          .onConflictDoNothing({
-            target: [
-              snapshotMetricsTable.calcuttaId,
-              snapshotMetricsTable.entryId,
-              snapshotMetricsTable.periodId,
-              snapshotMetricsTable.basis,
-              snapshotMetricsTable.metric,
-            ],
-            where: sql`${snapshotMetricsTable.entryId} is not null`,
-          });
-      }
-      if (!inserted) continue;
-      if (basis === "realized") realizedSnapshotsWritten += 1;
-      else mtmSnapshotsWritten += 1;
-    }
+  const capturedAt = new Date();
+  const baselineRows = auctionEntries.flatMap((entry) =>
+    (["realized", "mtm"] as const).flatMap((basis) => {
+      if (basis === "mtm" && entriesWithMtmSnapshots.has(entry.entryId)) return [];
+      return [{
+        entryId: entry.entryId,
+        periodId: period[0].id,
+        basis,
+        wins: "0",
+        losses: "0",
+        ties: "0",
+        ptDiff: "0",
+        ordinaryWins: "0",
+        marqueeWins: "0",
+        ordinaryTies: "0",
+        marqueeTies: "0",
+        ordinaryPtDiff: "0",
+        marqueePtDiff: "0",
+        playoffBerth: "0",
+        divRound: "0",
+        confRound: "0",
+        sbBerth: "0",
+        winSuperBowl: "0",
+        playoffStatus: "unknown",
+        capturedAt,
+      }];
+    }),
+  );
+  const insertedSnapshots = baselineRows.length === 0
+    ? []
+    : await writer
+      .insert(teamPeriodSnapshotsTable)
+      .values(baselineRows)
+      .onConflictDoNothing({
+        target: [
+          teamPeriodSnapshotsTable.entryId,
+          teamPeriodSnapshotsTable.periodId,
+          teamPeriodSnapshotsTable.basis,
+        ],
+      })
+      .returning({ basis: teamPeriodSnapshotsTable.basis });
+
+  const metricRows = baselineRows.flatMap((snapshot) =>
+    weekZeroMetricValues(snapshot.basis as SnapshotBasis).map((metric) => ({
+      calcuttaId: args.calcuttaId,
+      entryId: snapshot.entryId,
+      periodId: snapshot.periodId,
+      basis: snapshot.basis,
+      ...metric,
+      source: "week_zero",
+      sourceData: { playoffStatus: "unknown" },
+      snapshotAt: capturedAt,
+    })),
+  );
+  if (metricRows.length > 0) {
+    await writer
+      .insert(snapshotMetricsTable)
+      .values(metricRows)
+      .onConflictDoNothing({
+        target: [
+          snapshotMetricsTable.calcuttaId,
+          snapshotMetricsTable.entryId,
+          snapshotMetricsTable.periodId,
+          snapshotMetricsTable.basis,
+          snapshotMetricsTable.metric,
+        ],
+        where: sql`${snapshotMetricsTable.entryId} is not null`,
+      });
   }
+
+  const realizedSnapshotsWritten = insertedSnapshots.filter(
+    (snapshot) => snapshot.basis === "realized",
+  ).length;
+  const mtmSnapshotsWritten = insertedSnapshots.filter(
+    (snapshot) => snapshot.basis === "mtm",
+  ).length;
 
   const snapshotsWritten = realizedSnapshotsWritten + mtmSnapshotsWritten;
   return {

@@ -48,6 +48,7 @@ import { calculateOwnerResultEconomics } from "../lib/ownerResultEconomics";
 import { requireAdmin } from "../middlewares/requireAdmin";
 
 const router: IRouter = Router();
+const weekZeroBaselineInFlight = new Map<number, Promise<void>>();
 const UpdateTeamSeedResponse = z.object({
   teamId: z.number(),
   seasonYear: z.number(),
@@ -82,12 +83,25 @@ async function ensureWeekZeroReportingBaseline(
   seasonId: number,
   calcuttaId: number,
 ): Promise<void> {
-  await db.transaction(async (tx) => {
+  const existing = weekZeroBaselineInFlight.get(calcuttaId);
+  if (existing) {
+    await existing;
+    return;
+  }
+  const initialization = db.transaction(async (tx) => {
     await tx.execute(
       sql`select pg_advisory_xact_lock(${OWNERSHIP_SEASON_LOCK_NAMESPACE}, ${seasonId})`,
     );
     await initializeNflWeekZeroSnapshots(tx, { calcuttaId });
   });
+  weekZeroBaselineInFlight.set(calcuttaId, initialization);
+  try {
+    await initialization;
+  } finally {
+    if (weekZeroBaselineInFlight.get(calcuttaId) === initialization) {
+      weekZeroBaselineInFlight.delete(calcuttaId);
+    }
+  }
 }
 
 type ResultDisplay = {

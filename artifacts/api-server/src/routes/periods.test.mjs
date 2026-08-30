@@ -240,10 +240,14 @@ describe("period snapshot reporting", { skip: !DATABASE_URL || !ADMIN_KEY }, () 
   });
 
   test("automatically initializes complete immutable Week 0 baselines and opening returns", async () => {
-    for (const basis of ["realized", "mtm"]) {
-      const availability = await fetch(
-        `${baseUrl}/api/results/availability?season=${seasonYear}&basis=${basis}`,
-      );
+    const availabilityResponses = await Promise.all(
+      Array.from({ length: 12 }, (_, index) =>
+        fetch(
+          `${baseUrl}/api/results/availability?season=${seasonYear}&basis=${index % 2 === 0 ? "realized" : "mtm"}`,
+        )
+      ),
+    );
+    for (const availability of availabilityResponses) {
       assert.equal(availability.status, 200);
       assert.deepEqual(await availability.json(), {
         latestPeriod: 0,
