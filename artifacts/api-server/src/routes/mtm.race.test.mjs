@@ -27,13 +27,13 @@ const ADMIN_KEY = process.env.ADMIN_API_KEY;
 const canRun = Boolean(DATABASE_URL && ADMIN_KEY);
 
 // Deferred imports — must not execute when DATABASE_URL is absent (lib/db throws)
-let db, mtmSnapshotsTable, snapshotMetricsTable, sportPeriodsTable, seasonsTable, teamsTable, teamSeasonAuctionsTable, calcuttasTable, calcuttaEntriesTable, positionsTable, biddersTable;
+let db, mtmSnapshotsTable, mtmSnapshotTable, mtmEntryValuationTable, snapshotMetricsTable, sportPeriodsTable, seasonsTable, teamsTable, teamSeasonAuctionsTable, calcuttasTable, calcuttaEntriesTable, positionsTable, biddersTable;
 let app;
 let WEEK_ZERO_SNAPSHOT_KEY;
 let runCanonicalMtmRefresh;
 
 if (canRun) {
-  ({ db, mtmSnapshotsTable, snapshotMetricsTable, sportPeriodsTable, seasonsTable, teamsTable, teamSeasonAuctionsTable, calcuttasTable, calcuttaEntriesTable, positionsTable, biddersTable } =
+  ({ db, mtmSnapshotsTable, mtmSnapshotTable, mtmEntryValuationTable, snapshotMetricsTable, sportPeriodsTable, seasonsTable, teamsTable, teamSeasonAuctionsTable, calcuttasTable, calcuttaEntriesTable, positionsTable, biddersTable } =
     await import("@workspace/db"));
   ({ default: app } = await import("../app.ts"));
   ({ WEEK_ZERO_SNAPSHOT_KEY } = await import("../lib/weekZeroValuation.ts"));
@@ -328,6 +328,61 @@ describe(
       await db
         .delete(mtmSnapshotsTable)
         .where(inArray(mtmSnapshotsTable.id, ids));
+    }
+
+    async function setLegacyCalculatedMtm(teamId, value) {
+      // A Results request creates the legacy Week 0 rows for this disposable
+      // Calcutta. Change one of those rows so the test can prove that a
+      // pipeline failure does not leak its calculated MTM value.
+      const initial = await fetch(
+        `${baseUrl}/api/results?season=9999&calcuttaId=${testCalcuttaId}`,
+      );
+      assert.equal(initial.status, 200);
+      const entryId = entryIdByTeam.get(teamId);
+      const [metric] = await db
+        .select()
+        .from(snapshotMetricsTable)
+        .where(and(
+          eq(snapshotMetricsTable.calcuttaId, testCalcuttaId),
+          eq(snapshotMetricsTable.entryId, entryId),
+          eq(snapshotMetricsTable.basis, "mtm"),
+          eq(snapshotMetricsTable.metric, "win"),
+        ))
+        .limit(1);
+      assert.ok(metric, "legacy MTM baseline metric must exist");
+      await db
+        .update(snapshotMetricsTable)
+        .set({ value: String(value) })
+        .where(eq(snapshotMetricsTable.id, metric.id));
+      const legacyResponse = await fetch(
+        `${baseUrl}/api/results?season=9999&calcuttaId=${testCalcuttaId}&basis=mtm`,
+      );
+      assert.equal(legacyResponse.status, 200);
+      const legacyResults = await legacyResponse.json();
+      const legacyTeam = legacyResults.find((row) => row.teamId === teamId);
+      assert.ok(
+        legacyTeam?.markToMarket > 0,
+        "the seeded legacy calculated MTM must be nonzero before pipeline adoption",
+      );
+      return metric;
+    }
+
+    async function restoreLegacyCalculatedMtm(metric) {
+      await db
+        .update(snapshotMetricsTable)
+        .set({
+          value: metric.value,
+          source: metric.source,
+          sourceData: metric.sourceData,
+        })
+        .where(eq(snapshotMetricsTable.id, metric.id));
+    }
+
+    async function deletePipelineSnapshotsByIds(ids) {
+      if (ids.length === 0) return;
+      await db
+        .delete(mtmSnapshotTable)
+        .where(inArray(mtmSnapshotTable.id, ids));
     }
 
     async function mtmMetricRowsForEntries(entryIds) {
@@ -828,6 +883,158 @@ describe(
               eq(snapshotMetricsTable.periodId, weekOne.id),
               eq(snapshotMetricsTable.basis, "realized"),
             ),
+          );
+        }
+      },
+    );
+
+    test(
+      "Results fail closed when the latest pipeline attempt fails despite an older successful snapshot",
+      async () => {
+        const teamId = testTeamIds[0];
+        const legacyMetric = await setLegacyCalculatedMtm(teamId, 100);
+        let pipelineSnapshotIds = [];
+        try {
+          const priorAsOf = new Date("2026-08-30T10:00:00.000Z");
+          const latestAsOf = new Date("2026-08-30T11:00:00.000Z");
+          const [prior] = await db
+            .insert(mtmSnapshotTable)
+            .values({
+              poolId: testCalcuttaId,
+              asOf: priorAsOf,
+              asOfHour: priorAsOf,
+              createdAt: priorAsOf,
+              trigger: "scheduled",
+              status: "ok",
+              methodVersion: "test",
+            })
+            .returning({ id: mtmSnapshotTable.id });
+          await db.insert(mtmEntryValuationTable).values(
+            [...entryIdByTeam.values()].map((entryId) => ({
+              snapshotId: prior.id,
+              entryId,
+              expectedPayout: "777",
+            })),
+          );
+          const completeResponse = await fetch(
+            `${baseUrl}/api/results?season=9999&calcuttaId=${testCalcuttaId}&basis=mtm`,
+          );
+          assert.equal(completeResponse.status, 200);
+          const completeResults = await completeResponse.json();
+          const completeTeam = completeResults.find((row) => row.teamId === teamId);
+          assert.equal(
+            completeTeam?.markToMarket,
+            777,
+            "a complete current pipeline snapshot must remain authoritative",
+          );
+          assert.equal(completeTeam?.marketStatus, "live");
+
+          const [latest] = await db
+            .insert(mtmSnapshotTable)
+            .values({
+              poolId: testCalcuttaId,
+              asOf: latestAsOf,
+              asOfHour: latestAsOf,
+              createdAt: latestAsOf,
+              trigger: "scheduled",
+              status: "failed",
+              methodVersion: "test",
+              error: "test capture failed",
+            })
+            .returning({ id: mtmSnapshotTable.id });
+          pipelineSnapshotIds = [prior.id, latest.id];
+
+          const [teamResponse, ownerResponse] = await Promise.all([
+            fetch(`${baseUrl}/api/results?season=9999&calcuttaId=${testCalcuttaId}&basis=mtm`),
+            fetch(`${baseUrl}/api/results/by-owner?season=9999&calcuttaId=${testCalcuttaId}&basis=mtm`),
+          ]);
+          assert.equal(teamResponse.status, 200);
+          assert.equal(ownerResponse.status, 200);
+          const [teamResults, ownerResults] = await Promise.all([
+            teamResponse.json(),
+            ownerResponse.json(),
+          ]);
+          const team = teamResults.find((row) => row.teamId === teamId);
+          const owner = ownerResults.find(
+            (row) => row.bidderName === "MTM integration fixture bidder 9999",
+          );
+          const ownerTeam = owner?.teams.find((row) => row.teamId === teamId);
+          assert.ok(team);
+          assert.ok(owner);
+          assert.ok(ownerTeam);
+          assert.equal(team.markToMarket, 0, "failed current capture must not expose legacy MTM");
+          assert.equal(team.netMtm, -team.cost);
+          assert.equal(team.marketStatus, "stale");
+          assert.ok(team.marketStatusReasons.includes("test capture failed"));
+          assert.equal(ownerTeam.markToMarket, 0);
+          assert.equal(owner.totalMtm, 0);
+          assert.equal(owner.marketStatus, "stale");
+          assert.ok(owner.marketStatusReasons.includes("test capture failed"));
+        } finally {
+          await restoreLegacyCalculatedMtm(legacyMetric);
+          await deletePipelineSnapshotsByIds(pipelineSnapshotIds);
+        }
+      },
+    );
+
+    test(
+      "Results fail closed when the successful pipeline snapshot omits one expected team",
+      async () => {
+        const teamId = testTeamIds[0];
+        const legacyMetric = await setLegacyCalculatedMtm(teamId, 100);
+        let pipelineSnapshotId;
+        try {
+          const asOf = new Date("2026-08-30T12:00:00.000Z");
+          const [snapshot] = await db
+            .insert(mtmSnapshotTable)
+            .values({
+              poolId: testCalcuttaId,
+              asOf,
+              asOfHour: asOf,
+              createdAt: asOf,
+              trigger: "manual",
+              status: "ok",
+              methodVersion: "test",
+            })
+            .returning({ id: mtmSnapshotTable.id });
+          pipelineSnapshotId = snapshot.id;
+          await db.insert(mtmEntryValuationTable).values(
+            [...entryIdByTeam.values()].slice(1).map((entryId) => ({
+              snapshotId: snapshot.id,
+              entryId,
+              expectedPayout: "888",
+            })),
+          );
+
+          const [teamResponse, ownerResponse] = await Promise.all([
+            fetch(`${baseUrl}/api/results?season=9999&calcuttaId=${testCalcuttaId}&basis=mtm`),
+            fetch(`${baseUrl}/api/results/by-owner?season=9999&calcuttaId=${testCalcuttaId}&basis=mtm`),
+          ]);
+          assert.equal(teamResponse.status, 200);
+          assert.equal(ownerResponse.status, 200);
+          const [teamResults, ownerResults] = await Promise.all([
+            teamResponse.json(),
+            ownerResponse.json(),
+          ]);
+          const team = teamResults.find((row) => row.teamId === teamId);
+          const owner = ownerResults.find(
+            (row) => row.bidderName === "MTM integration fixture bidder 9999",
+          );
+          const ownerTeam = owner?.teams.find((row) => row.teamId === teamId);
+          assert.ok(team);
+          assert.ok(owner);
+          assert.ok(ownerTeam);
+          assert.equal(team.markToMarket, 0, "partial current capture must not expose legacy MTM");
+          assert.equal(team.marketStatus, "stale");
+          assert.ok(team.marketStatusReasons.some((reason) => reason.includes("every team")));
+          assert.equal(ownerTeam.markToMarket, 0);
+          assert.equal(owner.totalMtm, 0);
+          assert.equal(owner.marketStatus, "stale");
+          assert.ok(owner.marketStatusReasons.some((reason) => reason.includes("every team")));
+        } finally {
+          await restoreLegacyCalculatedMtm(legacyMetric);
+          await deletePipelineSnapshotsByIds(
+            pipelineSnapshotId == null ? [] : [pipelineSnapshotId],
           );
         }
       },
