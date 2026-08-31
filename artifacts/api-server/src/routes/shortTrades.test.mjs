@@ -201,10 +201,7 @@ describe("short trades and new trade participants", { skip: !canRun }, () => {
   }) {
     const createResponse = await fetch(`${baseUrl}/api/trades`, {
       method: "POST",
-      headers: {
-        "Content-Type": "application/json",
-        Authorization: `Bearer ${ADMIN_KEY}`,
-      },
+      headers: { "Content-Type": "application/json" },
       body: JSON.stringify({
         seasonYear,
         teamId: tradeTeamId,
@@ -312,7 +309,7 @@ describe("short trades and new trade participants", { skip: !canRun }, () => {
     );
   });
 
-  test("allows an authenticated synthetic trade submission but keeps it pending", async () => {
+  test("allows a public synthetic trade submission but keeps it pending", async () => {
     const response = await fetch(`${baseUrl}/api/trades`, {
       method: "POST",
       headers: { "Content-Type": "application/json", Authorization: `Bearer ${ADMIN_KEY}` },

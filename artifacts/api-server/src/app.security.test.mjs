@@ -34,7 +34,7 @@ test("error handler returns a request id without implementation details", async 
   }
 });
 
-test("API applies CORS, security headers, strict limits, and write authentication", async () => {
+test("API applies CORS, security headers, strict limits, and commissioner write authentication", async () => {
   const { server, url } = await serve(app);
   try {
     const health = await fetch(`${url}/api/healthz`, {
@@ -64,7 +64,7 @@ test("API applies CORS, security headers, strict limits, and write authenticatio
     assert.equal(oauthForm.status, 400);
     assert.notEqual((await oauthForm.json()).error, "Internal error");
 
-    for (const path of ["/api/bidders", "/api/seasons", "/api/trades", "/api/trades/1"]) {
+    for (const path of ["/api/bidders", "/api/seasons", "/api/trades/1"]) {
       const response = await fetch(`${url}${path}`, {
         method: path === "/api/trades/1" ? "PATCH" : "POST",
         headers: { "Content-Type": "application/json" },
@@ -72,6 +72,13 @@ test("API applies CORS, security headers, strict limits, and write authenticatio
       });
       assert.equal(response.status, 401, `${path} must reject unauthenticated writes`);
     }
+
+    const tradeProposal = await fetch(`${url}/api/trades`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: "{}",
+    });
+    assert.equal(tradeProposal.status, 400, "trade proposals are public but still validate their body");
 
     const statuses = [];
     for (let attempt = 0; attempt < 6; attempt += 1) {

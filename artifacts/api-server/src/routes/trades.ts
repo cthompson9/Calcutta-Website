@@ -214,7 +214,7 @@ router.get("/trades", async (req, res): Promise<void> => {
 
 // ── POST /trades — anyone can create; always starts as pending ────────────────
 
-router.post("/trades", requireAdmin, async (req, res): Promise<void> => {
+router.post("/trades", async (req, res): Promise<void> => {
   const parsed = CreateTradeBody.safeParse(req.body);
   if (!parsed.success) {
     sendParsedJson(res, ErrorResponse, { error: parsed.error.message }, 400);
