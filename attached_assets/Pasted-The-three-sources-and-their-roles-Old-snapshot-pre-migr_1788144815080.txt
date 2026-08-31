@@ -1,0 +1,35 @@
+The three sources and their roles:
+
+Old snapshot (pre-migration dump) — authoritative for everything through Aug 26 04:01. Old schema: trades keyed by team_id + season_id.
+Current DB — authoritative for everything entered after migration (subsequent accepted trades, the eight re-added). New schema: entry_id.
+Aug 23 export — no longer needed as a source (the old snapshot supersedes it), but it's your cross-check: every trade in the Aug 23 export must appear in the old snapshot. If any doesn't, the loss predates the migration and the story changes — worth the 30-second check.
+
+The reconciliation, done as a script rather than eyeballs — after you have both dumps, restore them into two schemas on dev (old_snap.* and cur.*) and run one comparison keyed on the natural identity of a trade, not on id (the eight re-added trades likely got new ids, so id-matching would double-count them):
+
+sql
+-- old trades resolved to new-schema keys
+with old_resolved as (
+  select t.id as old_id,
+         ce.id as entry_id,
+         t.from_bidder_id, t.to_bidder_id,
+         t.percentage, t.price, t.status, t.trade_date, t.notes
+  from old_snap.trades t
+  join old_snap.calcuttas c   on c.season_id = t.season_id and c.is_canonical
+  join old_snap.calcutta_entries ce on ce.calcutta_id = c.id and ce.team_id = t.team_id
+)
+select o.*
+from old_resolved o
+left join cur.trades n
+  on  n.entry_id       = o.entry_id
+  and n.from_bidder_id = o.from_bidder_id
+  and n.to_bidder_id   = o.to_bidder_id
+  and n.percentage     = o.percentage
+  and n.trade_date     = o.trade_date
+where n.id is null
+order by o.trade_date, o.old_id;
+
+That output is the missing set — the Jax trade should be in it, plus the other pre-Aug-25 deletions. Review it by hand (you'll recognize every trade; it's your pool), then re-enter each through the authenticated API as the agent proposed. API entry matters for approved trades especially: it triggers the position-pair writes and the 100%-net validation, so ownership rebuilds correctly instead of trades reappearing without their position legs.
+
+One subtlety on the match key: if the same parties traded the same percentage of the same team on the same date twice (the registration-probe pattern from your early data), the key over-matches — so also compare counts per key, not just existence. The script should flag any key where old count > current count.
+
+Final verification after re-entry, before declaring victory: the ownership invariant (sum(ownership_share) = 1.0 per entry, zero violations), and spot-check that Sam's and Ed's Jacksonville positions look right in the portfolio endpoint — the trade existing and the positions reflecting it are two different facts, and the second one is the one the pool sees.
