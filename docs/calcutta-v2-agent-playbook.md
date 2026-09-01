@@ -5,6 +5,9 @@ authenticated MCP endpoint at `/api/mcp`. REST and MCP use the same service
 functions, name resolution, ownership ledger, calculated-return loader, and
 schedule records.
 
+The planned Google identity, scoped principal, and two-party trade migration
+is documented in [Google Identity and Scoped MCP Migration](./google-identity-mcp-migration.md).
+
 ## Choosing a tool
 
 | User question | MCP tool | REST endpoint |
