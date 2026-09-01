@@ -345,7 +345,7 @@ describe("MCP OAuth authorization", { skip: !canRun }, () => {
     assert.equal(revokedRequest.status, 401);
   });
 
-  test("registration removes stale inactive clients but preserves clients with active credentials", async () => {
+  test("registration preserves previously registered clients", async () => {
     const old = new Date("2000-01-01T00:00:00.000Z");
     const future = new Date(Date.now() + 60_000);
     const inactiveId = `stale_${Date.now()}`;
@@ -368,11 +368,11 @@ describe("MCP OAuth authorization", { skip: !canRun }, () => {
       body: JSON.stringify({ redirect_uris: ["https://example.test/new"] }),
     });
     assert.equal(response.status, 201);
-    assert.equal((await db.select().from(mcpOauthClientsTable).where(eq(mcpOauthClientsTable.clientId, inactiveId))).length, 0);
+    assert.equal((await db.select().from(mcpOauthClientsTable).where(eq(mcpOauthClientsTable.clientId, inactiveId))).length, 1);
     assert.equal((await db.select().from(mcpOauthClientsTable).where(eq(mcpOauthClientsTable.clientId, activeId))).length, 1);
   });
 
-  test("expired unused registrations are rejected while active authorization codes remain valid", async () => {
+  test("long-lived registrations remain usable while codes and tokens retain expiry semantics", async () => {
     const redirectUri = "https://example.test/callback";
     const register = async (ip) => {
       const response = await fetch(`${baseUrl}/api/mcp/oauth/register`, {
@@ -392,27 +392,27 @@ describe("MCP OAuth authorization", { skip: !canRun }, () => {
       url.searchParams.set("code_challenge_method", "S256");
       return url;
     };
-    const expire = (clientId) => db.update(mcpOauthClientsTable)
-      .set({ createdAt: new Date("2000-01-01T00:00:00.000Z") })
-      .where(eq(mcpOauthClientsTable.clientId, clientId));
-
     const getClient = await register("198.51.100.92");
-    await expire(getClient);
-    assert.equal((await fetch(authorizationUrl(getClient, createPkcePair().challenge))).status, 400);
+    await db.update(mcpOauthClientsTable)
+      .set({ createdAt: new Date("2000-01-01T00:00:00.000Z") })
+      .where(eq(mcpOauthClientsTable.clientId, getClient));
+    const delayedPage = await fetch(authorizationUrl(getClient, createPkcePair().challenge));
+    assert.equal(delayedPage.status, 200);
 
     const approvalClient = await register("198.51.100.93");
     const approvalPkce = createPkcePair();
     const approvalPage = await fetch(authorizationUrl(approvalClient, approvalPkce.challenge));
     const approvalCookie = firstCookie(approvalPage);
-    await expire(approvalClient);
+    await db.update(mcpOauthClientsTable)
+      .set({ createdAt: new Date("2000-01-01T00:00:00.000Z") })
+      .where(eq(mcpOauthClientsTable.clientId, approvalClient));
     const approval = await fetch(`${baseUrl}/api/mcp/oauth/authorize`, {
       method: "POST",
       redirect: "manual",
       headers: { "Content-Type": "application/x-www-form-urlencoded", Cookie: approvalCookie },
       body: new URLSearchParams({ decision: "approve", mcpApiKey: MCP_KEY }),
     });
-    assert.equal(approval.status, 400);
-    assert.equal((await approval.json()).error, "invalid_client");
+    assert.equal(approval.status, 302);
 
     const tokenClient = await register("198.51.100.94");
     const tokenPkce = createPkcePair();
@@ -424,7 +424,9 @@ describe("MCP OAuth authorization", { skip: !canRun }, () => {
       body: new URLSearchParams({ decision: "approve", mcpApiKey: MCP_KEY }),
     });
     const code = new URL(tokenApproval.headers.get("location")).searchParams.get("code");
-    await expire(tokenClient);
+    await db.update(mcpOauthClientsTable)
+      .set({ createdAt: new Date("2000-01-01T00:00:00.000Z") })
+      .where(eq(mcpOauthClientsTable.clientId, tokenClient));
     const token = await fetch(`${baseUrl}/api/mcp/oauth/token`, {
       method: "POST",
       headers: {

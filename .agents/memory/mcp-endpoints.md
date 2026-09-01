@@ -18,17 +18,16 @@ commissioner credential there unnecessarily exposes a reusable secret.
 **How to apply:** Keep mutation tools behind MCP transport authentication and
 authorize from server-side identity/context only.
 
-Dynamic OAuth registrations expire after 24 hours only while unused. A valid,
-unrevoked authorization code or token keeps the client active through that
-credential's own lifetime.
+Dynamic OAuth registrations remain stable so MCP clients can cache a client ID
+across delayed reconnects. Authorization codes and access/refresh tokens still
+expire independently, and registration is rate-limited.
 
-**Why:** Applying registration age unconditionally would invalidate advertised
-30-day refresh tokens and force established MCP integrations to reauthorize
-daily.
+**Why:** Expiring an unused registration after 24 hours caused cached clients
+to receive `invalid_client` before they could resume authorization.
 
-**How to apply:** Cleanup and client-resolution checks must use the same
-"expired and no active credentials" rule; refresh tokens still enforce their
-own expiry and one-time rotation.
+**How to apply:** Never use registration age as an authorization check. Validate
+the registered redirect URI and keep code/token expiry and PKCE enforcement
+unchanged.
 
 MCP OAuth tokens and the general MCP transport key are read-only principals.
 Commissioner mutations require the distinct admin key as the transport bearer;
