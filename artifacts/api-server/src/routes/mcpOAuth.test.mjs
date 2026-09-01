@@ -250,7 +250,9 @@ describe("MCP OAuth authorization", { skip: !canRun }, () => {
       headers: { "X-Forwarded-For": "198.51.100.1" },
     });
     assert.equal(authorizationPage.status, 200);
-    assert.match(await authorizationPage.text(), /MCP API key/);
+    const authorizationHtml = await authorizationPage.text();
+    assert.match(authorizationHtml, /MCP API key/);
+    assert.match(authorizationHtml, /<form method="post" action="" autocomplete="off">/);
     const cookie = firstCookie(authorizationPage);
 
     const adminApproval = await fetch(`${baseUrl}/api/mcp/oauth/authorize`, {

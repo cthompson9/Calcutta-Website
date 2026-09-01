@@ -224,7 +224,7 @@ function renderAuthorizationPage(
       <p><strong>${htmlEscape(clientName)}</strong> is requesting access to the Calcutta MCP tools.</p>
       <p class="notice">Enter the <strong>MCP API key</strong> only. The commissioner admin key is never requested for this connection.</p>
       ${error ? `<p class="notice error">${htmlEscape(error)}</p>` : ""}
-      <form method="post" action="/api/mcp/oauth/authorize" autocomplete="off">
+      <form method="post" action="" autocomplete="off">
         <label for="mcpApiKey">MCP API key</label>
         <input id="mcpApiKey" name="mcpApiKey" type="password" required autofocus autocomplete="off">
         <div class="buttons">
