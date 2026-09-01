@@ -42,12 +42,13 @@ access control, while tool arguments expose reusable secrets to model context.
 every mutating handler before database or network side effects. Add each new
 mutation to the exhaustive ordinary-principal denial regression.
 
-OAuth approval pages must submit back to the current document and explicitly
-allow the deployed Calcutta origin in the CSP form-action directive.
+OAuth approval pages must submit back to the current document without a CSP
+header on that one response; normal API and discovery responses retain CSP.
 
 **Why:** Claude renders OAuth approval in a sandboxed browser context where
-`'self'` may be an opaque origin, blocking the approval POST even when its
-visible target is the same Calcutta host.
+`'self'` may be an opaque origin. Both relative form actions and explicit
+origin allowlists were still blocked despite the visible target matching.
 
-**How to apply:** Keep the form action empty (or omit it) and allow only the
-exact deployed authorization origin alongside `'self'`; do not use wildcards.
+**How to apply:** Remove only `Content-Security-Policy` from GET/POST responses
+at the approval route. Keep all other Helmet headers there and full CSP on
+every other endpoint; keep the page script-free and escape rendered text.

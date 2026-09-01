@@ -47,7 +47,7 @@ test("API applies CORS, security headers, strict limits, and commissioner write 
     assert.equal(health.headers.get("x-content-type-options"), "nosniff");
     assert.match(
       health.headers.get("content-security-policy") ?? "",
-      /form-action 'self' https:\/\/nfl-calcutta\.replit\.app/,
+      /form-action 'self'/,
     );
 
     const blockedOrigin = await fetch(`${url}/api/healthz`, {

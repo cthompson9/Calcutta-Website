@@ -250,6 +250,7 @@ describe("MCP OAuth authorization", { skip: !canRun }, () => {
       headers: { "X-Forwarded-For": "198.51.100.1" },
     });
     assert.equal(authorizationPage.status, 200);
+    assert.equal(authorizationPage.headers.get("content-security-policy"), null);
     const authorizationHtml = await authorizationPage.text();
     assert.match(authorizationHtml, /MCP API key/);
     assert.match(authorizationHtml, /<form method="post" action="" autocomplete="off">/);

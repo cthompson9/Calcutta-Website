@@ -63,15 +63,17 @@ app.use(
     },
   }),
 );
-app.use(helmet({
-  contentSecurityPolicy: {
-    directives: {
-      // Claude renders the approval page in a sandboxed browser context, so
-      // the deployed authorization origin must be explicit for the form POST.
-      formAction: ["'self'", "https://nfl-calcutta.replit.app"],
-    },
-  },
-}));
+app.use(helmet());
+app.use((req, res, next) => {
+  // Claude renders this minimal, script-free approval document in a sandboxed
+  // browser context whose opaque origin makes every form target fail
+  // `form-action 'self'`. Remove CSP only for this page; all other Helmet
+  // headers and the global CSP remain enabled everywhere else.
+  if (req.path === "/api/mcp/oauth/authorize") {
+    res.removeHeader("Content-Security-Policy");
+  }
+  next();
+});
 app.use(globalLimiter);
 const apiCors = cors({
   credentials: true,
