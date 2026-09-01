@@ -20,7 +20,7 @@ GRANT SELECT ON ALL TABLES IN SCHEMA public TO calcutta_backup;
 -- Replace <owner_role> with the actual role that owns tables in the public schema.
 -- If this is wrong, tables created later will be invisible to backups until the
 -- exporter's schema-drift guard fails.
-\set owner_role 'REPLACE_WITH_PUBLIC_SCHEMA_TABLE_OWNER'
+\set owner_role 'neondb_owner'
 ALTER DEFAULT PRIVILEGES FOR ROLE :"owner_role" IN SCHEMA public
   GRANT SELECT ON TABLES TO calcutta_backup;
 
