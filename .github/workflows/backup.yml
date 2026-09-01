@@ -251,7 +251,6 @@ jobs:
             exit 1
           fi
 
-
       - name: Commit logical snapshot and schema
         id: commit
         env:
@@ -289,6 +288,152 @@ jobs:
           git push origin HEAD:main
           echo "committed=true" >> "$GITHUB_OUTPUT"
 
+      - name: Detect append-only row decreases
+        id: row_drop
+        continue-on-error: true
+        env:
+          BACKUP_DATE: ${{ steps.artifacts.outputs.backup_date }}
+          CURRENT_SNAPSHOT_PATH: ${{ steps.artifacts.outputs.snapshot_path }}
+          GH_TOKEN: ${{ secrets.BACKUP_REPO_TOKEN }}
+        working-directory: backup-repository
+        run: |
+          previous_snapshot="$(
+            git log \
+              --all \
+              --diff-filter=A \
+              --format= \
+              --name-only \
+              -- 'snapshots/snapshot-*.json' |
+              awk -v today="$BACKUP_DATE" '
+                /^snapshots\/snapshot-[0-9]{4}-[0-9]{2}-[0-9]{2}\.json$/ {
+                  snapshot_date = substr($0, 20, 10)
+                  if (snapshot_date < today) {
+                    print $0
+                  }
+                }
+              ' |
+              sort --reverse |
+              head -n 1
+          )"
+
+          if [ -z "$previous_snapshot" ]; then
+            echo "No committed snapshot predates $BACKUP_DATE; skipping row-drop detection."
+            exit 0
+          fi
+
+          previous_commit="$(git log --all -1 --format=%H -- "$previous_snapshot")"
+          previous_snapshot_path="$RUNNER_TEMP/previous-snapshot.json"
+          comparison_path="$RUNNER_TEMP/snapshot-comparison.json"
+          git show "$previous_commit:$previous_snapshot" > "$previous_snapshot_path"
+
+          pnpm --dir .. --filter @workspace/db run compare-snapshots -- \
+            "$previous_snapshot_path" \
+            "$CURRENT_SNAPSHOT_PATH" \
+            "$comparison_path"
+
+          decrease_count="$(jq '.decreases | length' "$comparison_path")"
+          if [ "$decrease_count" -eq 0 ]; then
+            echo "No protected table lost rows."
+            exit 0
+          fi
+
+          if ! gh label create backup-alert \
+            --repo "$BACKUP_REPOSITORY" \
+            --color "B60205" \
+            --description "Backup integrity warning" \
+            --force >/dev/null 2>&1; then
+            echo "::warning::Could not ensure the backup-alert label exists"
+          fi
+
+          snapshot_commit="$(git rev-parse HEAD)"
+          snapshot_commit_url="https://github.com/$BACKUP_REPOSITORY/commit/$snapshot_commit"
+          issue_body="$(
+            jq -r \
+              --arg previous "$previous_snapshot" \
+              --arg current "snapshots/snapshot-$BACKUP_DATE.json" \
+              --arg commit_url "$snapshot_commit_url" \
+              '
+                [
+                  "Append-only row counts decreased between `" + $previous + "` and `" + $current + "`.",
+                  "",
+                  "Snapshot commit: " + $commit_url,
+                  "",
+                  "Affected tables:",
+                  (
+                    .decreases[]
+                    | "- `" + .table + "`: " + (.previousCount | tostring) + " -> " + (.currentCount | tostring)
+                      + "\n  Removed natural keys (up to 10):\n```json\n"
+                      + (.removedNaturalKeys | tojson)
+                      + "\n```"
+                  )
+                ]
+                | join("\n")
+              ' \
+              "$comparison_path"
+          )"
+
+          while IFS=$'\t' read -r table previous_count current_count; do
+            issue_title="Row count decrease: $table $previous_count -> $current_count"
+            issue_prefix="Row count decrease: $table "
+            open_issue="$(
+              gh issue list \
+                --repo "$BACKUP_REPOSITORY" \
+                --state open \
+                --limit 100 \
+                --json number,title \
+                --jq ".[] | select(.title | startswith(\"$issue_prefix\")) | .number" |
+                head -n 1 ||
+                true
+            )"
+            if [ -n "$open_issue" ]; then
+              if ! gh issue comment "$open_issue" \
+                --repo "$BACKUP_REPOSITORY" \
+                --body "$issue_body"; then
+                echo "::warning::Could not comment on row-drop issue #$open_issue"
+              fi
+            elif ! gh issue create \
+              --repo "$BACKUP_REPOSITORY" \
+              --title "$issue_title" \
+              --label backup-alert \
+              --body "$issue_body"; then
+              echo "::warning::Could not create row-drop issue for $table"
+            fi
+          done < <(
+            jq -r '.decreases[] | [.table, .previousCount, .currentCount] | @tsv' \
+              "$comparison_path"
+          )
+
+          while IFS= read -r table; do
+            issue_title="TRUNCATION: $table is now empty"
+            existing_issue="$(
+              gh issue list \
+                --repo "$BACKUP_REPOSITORY" \
+                --state open \
+                --limit 100 \
+                --search "$issue_title in:title" \
+                --json number,title \
+                --jq ".[] | select(.title == \"$issue_title\") | .number" |
+                head -n 1 ||
+                true
+            )"
+            if [ -n "$existing_issue" ]; then
+              if ! gh issue comment "$existing_issue" \
+                --repo "$BACKUP_REPOSITORY" \
+                --body "$issue_body"; then
+                echo "::warning::Could not comment on truncation issue #$existing_issue"
+              fi
+            elif ! gh issue create \
+              --repo "$BACKUP_REPOSITORY" \
+              --title "$issue_title" \
+              --label backup-alert \
+              --body "$issue_body"; then
+              echo "::warning::Could not create truncation issue for $table"
+            fi
+          done < <(jq -r '.truncations[].table' "$comparison_path")
+
+          echo "::error::$decrease_count protected table(s) lost rows; see backup-alert issues."
+          exit 1
+
       - name: Publish compressed dump release
         env:
           BACKUP_DATE: ${{ steps.artifacts.outputs.backup_date }}
@@ -311,3 +456,9 @@ jobs:
               --notes "$release_notes"
             echo "Created release $release_tag."
           fi
+
+      - name: Fail when append-only rows decreased
+        if: steps.row_drop.outcome == 'failure'
+        run: |
+          echo "Append-only row-drop detection failed; review the backup-alert issue and detector logs." >&2
+          exit 1

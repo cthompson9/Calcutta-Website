@@ -16,6 +16,7 @@
     "load-historical-consortium-rosters": "pnpm --filter @workspace/api-server exec tsx ../../lib/db/src/scripts/loadHistoricalConsortiumRosters.ts",
     "audit-owner-identity": "pnpm --filter @workspace/api-server exec tsx ../../lib/db/src/scripts/auditOwnerIdentity.ts",
     "export-snapshot": "pnpm --filter @workspace/api-server exec tsx ../../lib/db/src/scripts/exportSnapshot.ts",
+    "compare-snapshots": "pnpm --filter @workspace/api-server exec tsx ../../lib/db/src/scripts/compareSnapshots.ts",
     "test": "pnpm --filter @workspace/api-server exec node --import tsx/esm --test ../../lib/db/src/**/*.test.mjs ../../lib/db/src/**/*.test.ts"
   },
   "dependencies": {

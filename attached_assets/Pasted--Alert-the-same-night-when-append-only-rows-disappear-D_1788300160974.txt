@@ -1,0 +1,68 @@
+# Alert the same night when append-only rows disappear
+
+Depends on tasks `01`, `01b` and `02`. No new secrets: alerting reuses the GitHub Issue
+mechanism established in `01b`, delivered by email via watch notifications on the backup repo.
+
+This is the highest-value item in the stage relative to its size. Prior data loss was discovered
+long after the fact. This closes that gap to one night.
+
+Paste the block below to Replit as one task. Verify before moving on.
+
+```
+Add a drop-detection step to .github/workflows/backup.yml, running after the snapshot is
+committed and before the job ends.
+
+LOGIC.
+
+1. In the checked-out Calcutta-Backups repository, retrieve the previous night's committed
+   snapshot from git history. Use the most recent snapshot file preceding today's, not a fixed
+   HEAD~1 offset — a day with no changes produces no commit, so a fixed offset will compare the
+   wrong pair.
+
+2. Run the comparison function from lib/db/src/scripts/compareSnapshots.ts against the previous
+   and current snapshots.
+
+3. Treat a decrease in row count as a failure condition for these append-only tables
+   specifically:
+     trades
+     mtm_snapshots
+     ownership_adjustments
+     snapshot_metrics
+     import_runs
+     team_results
+   Rows in these tables are corrections and audit records; they are never legitimately deleted in
+   normal operation. Read .agents/memory/ownership-write-integrity.md and
+   .agents/memory/immutable-mtm-evidence.md before finalizing this list, and extend it if those
+   notes imply another table belongs.
+
+4. On any decrease: open a GitHub Issue in Calcutta-Backups using BACKUP_REPO_TOKEN, following
+   the same pattern and "backup-alert" label as the staleness check added in 01b. Title it
+   "Row count decrease: <table> <previous> -> <current>". Body carries every affected table with
+   its counts, the natural keys of up to 10 removed rows per table, and a link to the snapshot
+   commit. Then fail the job so it also surfaces as a red check. Deduplicate against an open
+   issue with the same title prefix by commenting rather than opening a second one.
+
+5. Separately, open an issue titled "TRUNCATION: <table> is now empty" (do not fail the job) when
+   any of those tables has zero rows while the previous snapshot had more than zero. That is the
+   truncation signature and deserves its own distinct title so it is unmistakable in the issue
+   list.
+
+6. When nothing decreased, open nothing. A silent success is the desired normal state; a daily
+   green notification trains people to ignore the channel.
+
+7. Handle the first-run case: no previous snapshot means skip the comparison and log that, not
+   fail.
+
+ACCEPTANCE.
+- Construct two snapshot fixtures under lib/db/src/scripts/__fixtures__ where the second has one
+  fewer trade, and add a unit test asserting the detector flags it with that trade's natural key.
+- Add a second fixture pair where a non-append-only table shrinks, and assert the detector does
+  not flag it.
+- Trigger the workflow manually and confirm no Slack message is posted when nothing dropped.
+```
+
+## Verify before moving on
+
+Post a deliberate test message to the webhook by hand first so you know the channel and the
+formatting are right. You do not want to discover a misconfigured webhook on the night it fires
+for real.
