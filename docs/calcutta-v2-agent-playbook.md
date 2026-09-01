@@ -41,7 +41,12 @@ portfolio endpoint, which performs the ownership and trade joins internally.
   current mark-to-market value, or `basis=realized` for payouts earned from
   completed results. The tools reject an omitted basis rather than guessing.
 - The static MCP key is accepted as `Authorization: Bearer <MCP_API_KEY>` or
-  `X-API-Key: <MCP_API_KEY>`. OAuth access tokens remain Bearer tokens.
+  `X-API-Key: <MCP_API_KEY>`. OAuth access tokens are ordinary Bearer
+  principals; they do not grant commissioner access.
+- For a trusted non-OAuth MCP client, use
+  `Authorization: Bearer <ADMIN_API_KEY>` to access commissioner-only tools.
+  The admin key is never entered into the OAuth approval page and must not be
+  placed in tool arguments.
 - `value_source` identifies whether a team value came from normalized calculated
   metrics, the legacy compatibility projection, or is unavailable.
 - `calculation_status` summarizes the source coverage for the entire portfolio.

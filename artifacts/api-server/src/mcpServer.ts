@@ -2,8 +2,9 @@
  * Proper MCP server using the official @modelcontextprotocol/sdk.
  * Mounted at POST /mcp and GET /mcp (streamable HTTP transport, stateless).
  *
- * Auth: Bearer token — set MCP_API_KEY environment secret.
- * If MCP_API_KEY is not set, all requests are rejected with 503.
+ * Auth: OAuth access tokens and MCP_API_KEY are ordinary principals.
+ * ADMIN_API_KEY is accepted only as a distinct static bearer for commissioner
+ * tools. If MCP_API_KEY is not set, all requests are rejected with 503.
  */
 import { McpServer } from "@modelcontextprotocol/sdk/server/mcp.js";
 import { StreamableHTTPServerTransport } from "@modelcontextprotocol/sdk/server/streamableHttp.js";
