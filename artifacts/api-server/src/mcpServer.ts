@@ -1614,16 +1614,23 @@ async function checkAuth(req: Request, res: Response): Promise<McpPrincipal | nu
     return null;
   }
   const auth = req.headers["authorization"];
-  const token = typeof auth === "string" && auth.startsWith("Bearer ")
+  const bearerToken = typeof auth === "string" && auth.startsWith("Bearer ")
     ? auth.slice("Bearer ".length)
     : "";
-  if (token && matchesAdminApiKey(token)) {
-    return { isAdmin: true, source: "admin_api_key" };
+  const customApiKey = req.headers["x-api-key"];
+  const staticTokens = [
+    bearerToken,
+    typeof customApiKey === "string" ? customApiKey : "",
+  ].filter(Boolean);
+  for (const token of staticTokens) {
+    if (matchesAdminApiKey(token)) {
+      return { isAdmin: true, source: "admin_api_key" };
+    }
+    if (matchesMcpApiKey(token)) {
+      return { isAdmin: false, source: "mcp_api_key" };
+    }
   }
-  if (token && matchesMcpApiKey(token)) {
-    return { isAdmin: false, source: "mcp_api_key" };
-  }
-  const oauthPrincipal = token ? await verifyMcpOAuthAccessToken(token) : null;
+  const oauthPrincipal = bearerToken ? await verifyMcpOAuthAccessToken(bearerToken) : null;
   if (!oauthPrincipal) {
     res.set(
       "WWW-Authenticate",

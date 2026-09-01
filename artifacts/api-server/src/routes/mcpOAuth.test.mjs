@@ -79,6 +79,23 @@ async function requestMcp(baseUrl, token) {
   });
 }
 
+async function requestMcpWithApiKeyHeader(baseUrl) {
+  return fetch(`${baseUrl}/api/mcp`, {
+    method: "POST",
+    headers: {
+      "Content-Type": "application/json",
+      Accept: "application/json, text/event-stream",
+      "X-API-Key": MCP_KEY,
+    },
+    body: JSON.stringify({
+      jsonrpc: "2.0",
+      id: 1,
+      method: "tools/list",
+      params: {},
+    }),
+  });
+}
+
 async function callMcpTool(baseUrl, token, name, args) {
   const response = await fetch(`${baseUrl}/api/mcp`, {
     method: "POST",
@@ -175,6 +192,8 @@ describe("MCP OAuth authorization", { skip: !canRun }, () => {
 
     const staticKeyRequest = await requestMcp(baseUrl, MCP_KEY);
     assert.equal(staticKeyRequest.status, 200);
+    const staticHeaderRequest = await requestMcpWithApiKeyHeader(baseUrl);
+    assert.equal(staticHeaderRequest.status, 200);
 
     const adminKeyRequest = await requestMcp(baseUrl, ADMIN_KEY);
     assert.equal(adminKeyRequest.status, 200);

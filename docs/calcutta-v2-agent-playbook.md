@@ -37,8 +37,11 @@ portfolio endpoint, which performs the ownership and trade joins internally.
   portfolio.
 - Ownership and return calculations are signed, so a short position is
   represented with a negative ownership percentage and signed economics.
-- `basis=realized` is the default. Use `basis=mtm` only when the question is
-  explicitly about current mark-to-market value.
+- Mixed-value MCP tools require an explicit `basis`: use `basis=mtm` for
+  current mark-to-market value, or `basis=realized` for payouts earned from
+  completed results. The tools reject an omitted basis rather than guessing.
+- The static MCP key is accepted as `Authorization: Bearer <MCP_API_KEY>` or
+  `X-API-Key: <MCP_API_KEY>`. OAuth access tokens remain Bearer tokens.
 - `value_source` identifies whether a team value came from normalized calculated
   metrics, the legacy compatibility projection, or is unavailable.
 - `calculation_status` summarizes the source coverage for the entire portfolio.
