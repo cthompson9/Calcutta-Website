@@ -39,8 +39,9 @@ competition writes. Collapsing both keys into one principal creates broken
 access control, while tool arguments expose reusable secrets to model context.
 
 **How to apply:** Derive immutable authorization once per MCP request and gate
-every mutating handler before database or network side effects. Add each new
-mutation to the exhaustive ordinary-principal denial regression.
+every commissioner mutation before database or network side effects. The
+authenticated `create_trade` proposal is the intentional ordinary-principal
+write exception; add every new privileged mutation to the denial regression.
 
 OAuth approval pages must submit back to the current document without a CSP
 header on that one response; normal API and discovery responses retain CSP.

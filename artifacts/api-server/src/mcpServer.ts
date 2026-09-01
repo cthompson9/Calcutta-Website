@@ -971,7 +971,7 @@ function buildMcpServer(isAdmin: boolean) {
 
   server.tool(
     "create_trade",
-    "Submit a trade between existing owners for an existing, unambiguously identified team. Sales may create a short position. Requires commissioner transport authorization. Every trade starts PENDING and requires admin approval before it affects standings.",
+    "Submit a trade proposal between existing bidders for an existing, unambiguously identified team. Sales may create a short position. Any authenticated MCP client may submit a proposal. Every trade starts PENDING and requires commissioner approval before it affects standings.",
     {
       team:        z.string().describe("Full or partial team name, e.g. 'Seattle Seahawks'"),
       fromOwner:   z.string().describe("Name of the existing owner selling the stake."),
@@ -984,7 +984,6 @@ function buildMcpServer(isAdmin: boolean) {
       notes:       z.string().optional().describe("Optional notes about the trade"),
     },
     async ({ team, fromOwner, toOwner, percentage = 100, price, tradeDate, season, calcuttaId, notes }) => {
-      if (!isAdmin) return commissionerAuthorizationRequired();
       const teamResult = await resolveExistingTeam(team);
       if ("error" in teamResult) return text(`Error: ${teamResult.error}`);
       const fromResult = await resolveExistingBidder(fromOwner);

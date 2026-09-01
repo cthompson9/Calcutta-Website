@@ -48,6 +48,15 @@ portfolio endpoint, which performs the ownership and trade joins internally.
 - A missing calculated value or an invalid ROI denominator is returned as
   `null`; it is never guessed.
 
+## Trade proposals and commissioner actions
+
+- Any authenticated MCP client may call `create_trade` to submit a proposal.
+- Every proposal starts `PENDING` and has no effect on ownership, standings, or
+  returns until a commissioner approves it with `set_trade_status`.
+- Commissioner-only MCP mutations include approvals/rejections, ownership
+  corrections, payout rules, period snapshots, seeds, MTM snapshots, bidder
+  consortium assignments, and standings imports.
+
 ## Schedule, market, and projections
 
 - Pool-facing dates and kickoff timestamps use `America/New_York`.

@@ -127,11 +127,6 @@ const PRIVILEGED_MCP_CALLS = [
     team: "Missing team",
     owners: [{ owner: "Missing owner", share: 1 }],
   }],
-  ["create_trade", {
-    team: "Missing team",
-    fromOwner: "Missing seller",
-    toOwner: "Missing buyer",
-  }],
   ["set_trade_status", { tradeId: 2_147_483_647, status: "rejected", confirmed: true }],
   ["set_team_period_snapshot", {
     team: "Missing team",
@@ -145,6 +140,14 @@ const PRIVILEGED_MCP_CALLS = [
   }],
   ["set_team_seed", { team: "Missing team", seed: null }],
   ["set_team_mtm", { team: "Missing team", mtmValue: 1 }],
+];
+
+const PUBLIC_MCP_PROPOSALS = [
+  ["create_trade", {
+    team: "Missing team",
+    fromOwner: "Missing seller",
+    toOwner: "Missing buyer",
+  }],
 ];
 
 describe("MCP OAuth authorization", { skip: !canRun }, () => {
@@ -209,6 +212,12 @@ describe("MCP OAuth authorization", { skip: !canRun }, () => {
       season: 2099,
     });
     assert.notEqual(readable.result?.isError, true);
+
+    for (const [name, args] of PUBLIC_MCP_PROPOSALS) {
+      const proposal = await callMcpTool(baseUrl, MCP_KEY, name, args);
+      assert.notEqual(proposal.result?.isError, true, name);
+      assert.doesNotMatch(proposal.result?.content?.[0]?.text ?? "", /Commissioner authorization is required/, name);
+    }
 
     const adminMutation = await callMcpTool(baseUrl, ADMIN_KEY, "set_team_seed", {
       team: "Missing team",
@@ -319,6 +328,11 @@ describe("MCP OAuth authorization", { skip: !canRun }, () => {
         /Commissioner authorization is required/,
         name,
       );
+    }
+    for (const [name, args] of PUBLIC_MCP_PROPOSALS) {
+      const proposal = await callMcpTool(baseUrl, tokens.access_token, name, args);
+      assert.notEqual(proposal.result?.isError, true, name);
+      assert.doesNotMatch(proposal.result?.content?.[0]?.text ?? "", /Commissioner authorization is required/, name);
     }
 
     await db
