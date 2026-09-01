@@ -63,7 +63,15 @@ app.use(
     },
   }),
 );
-app.use(helmet());
+app.use(helmet({
+  contentSecurityPolicy: {
+    directives: {
+      // Claude renders the approval page in a sandboxed browser context, so
+      // the deployed authorization origin must be explicit for the form POST.
+      formAction: ["'self'", "https://nfl-calcutta.replit.app"],
+    },
+  },
+}));
 app.use(globalLimiter);
 const apiCors = cors({
   credentials: true,

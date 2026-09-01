@@ -45,6 +45,10 @@ test("API applies CORS, security headers, strict limits, and commissioner write 
     assert.equal(health.headers.get("access-control-allow-credentials"), "true");
     assert.equal(health.headers.get("x-powered-by"), null);
     assert.equal(health.headers.get("x-content-type-options"), "nosniff");
+    assert.match(
+      health.headers.get("content-security-policy") ?? "",
+      /form-action 'self' https:\/\/nfl-calcutta\.replit\.app/,
+    );
 
     const blockedOrigin = await fetch(`${url}/api/healthz`, {
       headers: { Origin: "https://not-allowed.example" },
