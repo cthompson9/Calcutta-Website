@@ -17,9 +17,11 @@ GRANT USAGE ON SCHEMA public TO calcutta_backup;
 REVOKE ALL PRIVILEGES ON ALL TABLES IN SCHEMA public FROM calcutta_backup;
 GRANT SELECT ON ALL TABLES IN SCHEMA public TO calcutta_backup;
 
--- This script must be run as the role that creates application tables.
-SELECT current_user AS table_owner \gset
-ALTER DEFAULT PRIVILEGES FOR ROLE :"table_owner" IN SCHEMA public
+-- Replace <owner_role> with the actual role that owns tables in the public schema.
+-- If this is wrong, tables created later will be invisible to backups until the
+-- exporter's schema-drift guard fails.
+\set owner_role 'REPLACE_WITH_PUBLIC_SCHEMA_TABLE_OWNER'
+ALTER DEFAULT PRIVILEGES FOR ROLE :"owner_role" IN SCHEMA public
   GRANT SELECT ON TABLES TO calcutta_backup;
 
 DO $$
@@ -30,3 +32,8 @@ BEGIN
   END IF;
 END
 $$;
+
+-- Verification query, run after connecting as calcutta_backup (expected success):
+-- SELECT 1 FROM public.teams LIMIT 1;
+-- Verification query, run after connecting as calcutta_backup (expected failure):
+-- INSERT INTO public.teams DEFAULT VALUES;

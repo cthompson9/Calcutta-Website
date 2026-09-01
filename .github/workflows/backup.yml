@@ -40,6 +40,40 @@ jobs:
           node-version: 22
           cache: pnpm
 
+      - name: Validate production backup connection
+        env:
+          BACKUP_DATABASE_URL: ${{ secrets.BACKUP_DATABASE_URL }}
+        run: |
+          test -n "$BACKUP_DATABASE_URL" || {
+            echo "BACKUP_DATABASE_URL is required and must point to the production read-only role" >&2
+            exit 1
+          }
+          BACKUP_DATABASE_URL="$BACKUP_DATABASE_URL" node <<'NODE'
+          const raw = process.env.BACKUP_DATABASE_URL;
+          let parsed;
+          try {
+            parsed = new URL(raw);
+          } catch {
+            console.error("BACKUP_DATABASE_URL is not a valid PostgreSQL connection URL");
+            process.exit(1);
+          }
+
+          const host = parsed.hostname.toLowerCase();
+          if (host.includes("pooler")) {
+            console.error(
+              "Refusing to run through a connection pooler: pg_dump requires a session-level snapshot",
+            );
+            process.exit(1);
+          }
+
+          if (parsed.searchParams.get("sslmode")?.toLowerCase() !== "require") {
+            console.error(
+              "Refusing to run without sslmode=require in BACKUP_DATABASE_URL",
+            );
+            process.exit(1);
+          }
+          NODE
+
       - name: Install dependencies
         run: |
           corepack enable
@@ -75,10 +109,85 @@ jobs:
           path: backup-repository
           persist-credentials: true
 
-      - name: Create backup artifacts
-        id: artifacts
+      - name: Check for stale backup
+        continue-on-error: true
         env:
           GH_TOKEN: ${{ secrets.BACKUP_REPO_TOKEN }}
+          RUN_URL: ${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}
+        run: |
+          if [ ! -d backup-repository/snapshots ]; then
+            echo "No snapshots directory exists yet; skipping staleness check."
+            exit 0
+          fi
+
+          latest_snapshot="$(
+            find backup-repository/snapshots \
+              -maxdepth 1 \
+              -type f \
+              -name 'snapshot-????-??-??.json' \
+              -printf '%f\n' |
+              sort |
+              tail -n 1
+          )"
+          if [ -z "$latest_snapshot" ]; then
+            echo "No snapshots exist yet; skipping staleness check."
+            exit 0
+          fi
+
+          snapshot_date="${latest_snapshot#snapshot-}"
+          snapshot_date="${snapshot_date%.json}"
+          snapshot_epoch="$(date -u -d "$snapshot_date" +%s)"
+          now_epoch="$(date -u +%s)"
+          age_seconds=$((now_epoch - snapshot_epoch))
+          if [ "$age_seconds" -le $((48 * 60 * 60)) ]; then
+            exit 0
+          fi
+
+          age_days=$((age_seconds / 86400))
+          issue_title="Backup stale: newest snapshot is $age_days days old"
+          issue_prefix="Backup stale: newest snapshot is "
+          issue_body="$(printf 'The newest snapshot is `%s`. This scheduled run detected it is more than 48 hours old.\n\nWorkflow run: %s' "$latest_snapshot" "$RUN_URL")"
+
+          if ! gh label create backup-alert \
+            --repo "$BACKUP_REPOSITORY" \
+            --color "B60205" \
+            --description "Backup freshness warning" \
+            --force >/dev/null 2>&1; then
+            echo "::warning::Could not ensure the backup-alert label exists"
+          fi
+
+          if ! open_issues="$(
+            gh issue list \
+              --repo "$BACKUP_REPOSITORY" \
+              --state open \
+              --limit 100 \
+              --json number,title
+          )"; then
+            echo "::warning::Could not search for an existing stale-backup issue"
+            exit 0
+          fi
+          existing_issue="$(
+            printf '%s\n' "$open_issues" |
+              jq -r --arg prefix "$issue_prefix" \
+                '.[] | select(.title | startswith($prefix)) | .number' |
+              head -n 1
+          )"
+          if [ -n "$existing_issue" ]; then
+            if ! gh issue comment "$existing_issue" \
+              --repo "$BACKUP_REPOSITORY" \
+              --body "$issue_body"; then
+              echo "::warning::Could not comment on existing backup-alert issue #$existing_issue"
+            fi
+          elif ! gh issue create \
+            --repo "$BACKUP_REPOSITORY" \
+            --title "$issue_title" \
+            --label backup-alert \
+            --body "$issue_body"; then
+            echo "::warning::Could not create stale-backup issue"
+          fi
+
+      - name: Create backup artifacts
+        id: artifacts
         run: |
           test -n "$BACKUP_DATABASE_URL" || {
             echo "BACKUP_DATABASE_URL is required and must point to the production read-only role" >&2
