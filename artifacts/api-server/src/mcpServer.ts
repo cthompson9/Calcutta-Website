@@ -352,7 +352,7 @@ function buildMcpServer(isAdmin: boolean) {
   const server = new McpServer({
     name: "nfl-auction",
     version: "1.0.0",
-    description: "NFL Calcutta Pool auction data: team ownership, costs, results, and mark-to-market valuations.",
+    description: "NFL Calcutta Pool auction data: team ownership, costs, realized payouts, and mark-to-market valuations. Realized means earned payout from completed results; MTM means current market-implied gross value. Mixed-value tools require an explicit basis and must never substitute one for the other.",
   });
 
   // Shared input schema fragments
@@ -364,8 +364,8 @@ function buildMcpServer(isAdmin: boolean) {
   // ── V2.1 agent tools ──────────────────────────────────────────────────────
 
   const basisInput = {
-    basis: z.enum(["realized", "mtm"]).optional()
-      .describe("Value basis. Defaults to realized."),
+    basis: z.enum(["realized", "mtm"])
+      .describe("Required value basis: 'mtm' means current market-implied value; 'realized' means payout earned from completed results. Never use realized as a substitute when the user asks for MTM."),
     period: z.number().int().min(0).max(22).optional()
       .describe("Optional reporting period sequence. Omit for the latest complete normalized period."),
   };
@@ -382,7 +382,7 @@ function buildMcpServer(isAdmin: boolean) {
 
   server.tool(
     "get_owner_portfolio",
-    "Returns every signed economic position for one owner in one NFL Calcutta, including split ownership, approved-trade cost basis, current MTM, realized return, record, and playoff status. Owner names support exact or unambiguous partial matching.",
+    "Returns every signed economic position for one owner in one NFL Calcutta. Set basis='mtm' for a current mark-to-market request and use current_mtm/net_mtm; set basis='realized' only for earned-payout requests and use realized_return/net_return. The response includes both named fields for comparison, but total_return and ROI always follow the required basis.",
     { ...ownerInput, ...requiredSeason, ...calcuttaInput, ...basisInput },
     async ({ owner, season, calcuttaId, basis, period }) =>
       jsonText(await getOwnerPortfolio({ owner, season, calcuttaId, basis, period })),
@@ -390,7 +390,7 @@ function buildMcpServer(isAdmin: boolean) {
 
   server.tool(
     "get_owner_summary",
-    "Returns an owner's Calcutta portfolio totals: team count, signed cost basis, current MTM, realized return, selected-basis total return, and ROI. Null is returned for unavailable calculated values or non-positive ROI denominators.",
+    "Returns an owner's Calcutta portfolio totals. For an MTM question, set basis='mtm': current_mtm is gross current market value and total_return/ROI use MTM. For an earned-payout question, set basis='realized': realized_return and total_return/ROI use completed results. Never report realized_return as MTM.",
     { ...ownerInput, ...requiredSeason, ...calcuttaInput, ...basisInput },
     async ({ owner, season, calcuttaId, basis, period }) =>
       jsonText(await getOwnerSummary({ owner, season, calcuttaId, basis, period })),
@@ -398,7 +398,7 @@ function buildMcpServer(isAdmin: boolean) {
 
   server.tool(
     "get_owner_portfolio_performance",
-    "Returns the team-by-team performance breakdown behind an owner's portfolio summary, using the same season, Calcutta, trade, short-position, and normalized-metric rules.",
+    "Returns the team-by-team breakdown behind an owner's portfolio summary. basis is required: use 'mtm' for current market value and 'realized' for payouts earned from completed results. Never substitute realized values for requested MTM.",
     { ...ownerInput, ...requiredSeason, ...calcuttaInput, ...basisInput },
     async ({ owner, season, calcuttaId, basis, period }) =>
       jsonText(await getOwnerPortfolioPerformance({ owner, season, calcuttaId, basis, period })),
@@ -430,7 +430,7 @@ function buildMcpServer(isAdmin: boolean) {
 
   server.tool(
     "get_team_schedule",
-    "Returns one NFL team's canonical schedule plus opponent/home-away context, Calcutta ownership, current selected-basis value, and nullable market/projection data.",
+    "Returns one NFL team's canonical schedule plus ownership and selected-basis value. basis is required: 'mtm' makes current_calcutta_value the current market-implied gross value; 'realized' makes it the earned payout from completed results.",
     {
       ...requiredSeason,
       ...calcuttaInput,
@@ -457,7 +457,7 @@ function buildMcpServer(isAdmin: boolean) {
 
   server.tool(
     "get_game",
-    "Returns one canonical NFL game's identity, teams, kickoff, score/status, marquee multiplier, latest market snapshot, latest model projection, and selected-Calcutta relevance. Accepts the stable source-prefixed game ID, source ID, or database ID.",
+    "Returns one canonical NFL game and selected-Calcutta team values. basis is required: 'mtm' returns current market-implied values; 'realized' returns earned payouts from completed results. Accepts the stable source-prefixed game ID, source ID, or database ID.",
     {
       gameId: z.string().describe("Game ID returned by get_schedule."),
       ...requiredSeason,
@@ -484,7 +484,7 @@ function buildMcpServer(isAdmin: boolean) {
 
   server.tool(
     "get_consortium_leaderboard",
-    "Returns a Calcutta-scoped consortium leaderboard using signed positions and each pool's historical roster by default. Current consortium membership is an explicit opt-in.",
+    "Returns a Calcutta-scoped consortium leaderboard. basis is required: for MTM requests use 'mtm' and report current_mtm/net_mtm; for completed-payout requests use 'realized' and report realized_return/net_return. Never label realized values as MTM.",
     {
       ...requiredSeason,
       ...calcuttaInput,
@@ -609,7 +609,7 @@ function buildMcpServer(isAdmin: boolean) {
 
   server.tool(
     "get_team_return",
-    "Returns the realized dollar return (payouts received) for a team in a given season.",
+    "Returns only the realized dollar return earned from completed results. This is not MTM; use get_team_mtm or an explicit basis='mtm' tool for current market value.",
     { ...teamInput, ...seasonInput, ...calcuttaInput },
     async ({ team, season, calcuttaId }) => {
       const t = await findTeam(team);
@@ -626,7 +626,7 @@ function buildMcpServer(isAdmin: boolean) {
 
   server.tool(
     "get_team_mtm",
-    "Returns net MTM (mark-to-market gross value minus the auction price) for a team in a given season.",
+    "Returns only net MTM: current market-implied gross value minus the auction price. This is not realized payout.",
     { ...teamInput, ...seasonInput, ...calcuttaInput },
     async ({ team, season, calcuttaId }) => {
       const t = await findTeam(team);
@@ -677,7 +677,7 @@ function buildMcpServer(isAdmin: boolean) {
 
   server.tool(
     "get_owner_return",
-    "Returns the total realized return (payouts received) for an owner in a given season.",
+    "Returns only total realized return earned from completed results. This is not MTM; use get_owner_mtm or an explicit basis='mtm' tool for current market value.",
     { ...ownerInput, ...seasonInput, ...calcuttaInput },
     async ({ owner, season, calcuttaId }) => {
       const b = await findBidder(owner);
@@ -692,7 +692,7 @@ function buildMcpServer(isAdmin: boolean) {
 
   server.tool(
     "get_owner_mtm",
-    "Returns total net MTM for an owner in a given season (gross market value minus signed cost basis).",
+    "Returns only total net MTM for an owner: current market-implied gross value minus signed cost basis. This is not realized payout.",
     { ...ownerInput, ...seasonInput, ...calcuttaInput },
     async ({ owner, season, calcuttaId }) => {
       const b = await findBidder(owner);
@@ -1174,11 +1174,11 @@ function buildMcpServer(isAdmin: boolean) {
 
   server.tool(
     "compare_calcutta_returns",
-    "Compares signed bidder or consortium returns across two to six selected NFL Calcuttas. Historical consortium membership is resolved at each Calcutta's as-of date by default, and cells flag missing selected snapshots.",
+    "Compares signed bidder or consortium values across two to six selected NFL Calcuttas. basis is required: use 'mtm' for current market-implied values and 'realized' for payouts earned from completed results. Never substitute realized values for requested MTM.",
     {
       seasons: z.array(z.number().int()).min(2).max(6).describe("Two to six season years to compare"),
       groupBy: z.enum(["bidder", "consortium"]).default("bidder"),
-      basis: z.enum(["realized", "mtm"]).default("realized"),
+      basis: z.enum(["realized", "mtm"]).describe("Required: 'mtm' for current market-implied value, or 'realized' for earned payout from completed results."),
       period: z.number().int().min(0).max(22).optional(),
       membershipView: z.enum(["historical", "current"]).default("historical"),
     },
@@ -1219,10 +1219,10 @@ function buildMcpServer(isAdmin: boolean) {
 
   server.tool(
     "get_team_period_return",
-    "Returns the calculated cumulative realized or mark-to-market return through an NFL period. The Calcutta must have payout rules configured.",
+    "Returns a team's calculated cumulative value through an NFL period. basis is required: 'mtm' is current market-implied gross value; 'realized' is payout earned from completed results. Never substitute realized for requested MTM.",
     {
       team: z.string().describe("Full or partial team name"),
-      basis: z.enum(["realized", "mtm"]).default("realized"),
+      basis: z.enum(["realized", "mtm"]).describe("Required: 'mtm' for current market-implied value, or 'realized' for earned payout from completed results."),
       period: z.number().int().min(0).max(22).optional(),
       season: z.number().optional().describe("Season year, defaulting to the active season"),
       ...calcuttaInput,

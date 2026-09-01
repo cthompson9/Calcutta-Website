@@ -437,6 +437,25 @@ describe("V2.1 agent read API", { skip: !DATABASE_URL }, () => {
       "get_points_rubric",
       "get_consortium_leaderboard",
     ]) assert.ok(names.has(name), name);
+    for (const name of [
+      "get_owner_portfolio",
+      "get_owner_summary",
+      "get_owner_portfolio_performance",
+      "get_team_schedule",
+      "get_game",
+      "get_consortium_leaderboard",
+    ]) {
+      const tool = list.result.tools.find((candidate) => candidate.name === name);
+      assert.ok(tool.inputSchema.required.includes("basis"), `${name} must require basis`);
+    }
+    const ownerSummaryTool = list.result.tools.find((tool) => tool.name === "get_owner_summary");
+    assert.match(ownerSummaryTool.description, /Never report realized_return as MTM/);
+    const missingBasis = await mcpRequest(baseUrl, 10, "tools/call", {
+      name: "get_owner_summary",
+      arguments: { owner: owner.name, season: season.year },
+    });
+    assert.equal(missingBasis.result.isError, true);
+    assert.match(mcpText(missingBasis), /basis/i);
 
     const snapshotAt = new Date();
     await db.insert(eventMarketSnapshotsTable).values({
@@ -473,6 +492,7 @@ describe("V2.1 agent read API", { skip: !DATABASE_URL }, () => {
       arguments: {
         season: season.year,
         team: teamA.name,
+        basis: "mtm",
         includeMarket: true,
         includeProjection: true,
       },
@@ -483,7 +503,7 @@ describe("V2.1 agent read API", { skip: !DATABASE_URL }, () => {
 
     const call = await mcpRequest(baseUrl, 3, "tools/call", {
       name: "get_game",
-      arguments: { season: season.year, gameId: `espn:${event.sourceEventId}` },
+      arguments: { season: season.year, gameId: `espn:${event.sourceEventId}`, basis: "mtm" },
     });
     const payload = JSON.parse(mcpText(call));
     assert.equal(payload.game.game_id, `espn:${event.sourceEventId}`);

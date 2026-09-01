@@ -461,7 +461,7 @@ describe("cross-Calcutta return comparison", { skip: !DATABASE_URL }, () => {
     try {
       const rejected = await mcpRequest(baseUrl, 3, "tools/call", {
         name: "compare_calcutta_returns",
-        arguments: { seasons: [years[0], absentYear] },
+        arguments: { seasons: [years[0], absentYear], basis: "realized" },
       });
       assert.match(mcpText(rejected), /No canonical NFL Calcutta/);
     } finally {

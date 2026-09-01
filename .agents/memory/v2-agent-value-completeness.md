@@ -23,3 +23,14 @@ consortium rollups across REST and MCP. Keep discrepancy reporting separate
 from calculation, and preserve explicit availability/coverage indicators where
 a legacy numeric response cannot represent null. Never mix pipeline values with
 legacy calculated values inside one current response.
+
+Mixed-value MCP tools require an explicit `realized` or `mtm` basis. They must
+not default an omitted basis to realized.
+
+**Why:** A model can otherwise answer an MTM request with a plausible realized
+`total_return`, even when the response also contains a separately named MTM
+field.
+
+**How to apply:** Describe both bases in the MCP server and tool schemas, reject
+ambiguous calls without a basis, and keep dedicated realized-only and MTM-only
+tools labeled as such.
