@@ -20,3 +20,4 @@ export { phase1ReleaseSafetyMigration } from "./0024Phase1ReleaseSafety";
 export { mtmPipelineMigration } from "./0025MtmPipeline";
 export { mtmRatingPrecisionMigration } from "./0026MtmRatingPrecision";
 export { immutableMtmAttemptsMigration } from "./0027ImmutableMtmAttempts";
+export { consortiumTypoCorrectionMigration } from "./0028ConsortiumTypoCorrection";
