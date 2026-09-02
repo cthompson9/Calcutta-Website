@@ -66,7 +66,9 @@ const registeredNaturalKeys: Readonly<Record<string, readonly string[]>> = {
     "from_bidder_id",
     "to_bidder_id",
     "percentage",
+    "price",
     "trade_date",
+    "status",
   ],
 };
 
@@ -314,6 +316,7 @@ async function readCatalog(client: pg.PoolClient): Promise<Catalog> {
      AND attribute.attnum = key_column.attnum
     WHERE table_namespace.nspname = 'public'
       AND index_definition.indisunique
+      AND index_definition.indpred IS NULL
       AND index_definition.indexprs IS NULL
       AND key_column.ordinality <= index_definition.indnkeyatts
       AND key_column.attnum > 0
@@ -462,7 +465,7 @@ function chooseNaturalKey(
     )
     .sort(
       (left, right) =>
-        right.columns.length - left.columns.length ||
+        left.columns.length - right.columns.length ||
         left.indexName.localeCompare(right.indexName),
     );
   if (uniqueCandidates[0]) {
@@ -547,15 +550,15 @@ function printNaturalKeyAudit(tables: TableInfo[]): void {
   console.log("Natural key audit:");
   console.log("");
   console.log(
-    `${"TABLE".padEnd(42)}${"NATURAL KEY".padEnd(64)}${"SOURCE".padEnd(24)}INDEX`,
+    `${"TABLE".padEnd(42)}${"NATURAL KEY".padEnd(88)}${"SOURCE".padEnd(24)}INDEX`,
   );
-  console.log("-".repeat(170));
+  console.log("-".repeat(194));
   for (const table of tables) {
     const key = table.naturalKeyResolvable
       ? table.naturalKey.join(", ")
       : "NONE";
     console.log(
-      `${table.name.padEnd(42)}${key.padEnd(64)}${table.naturalKeySource.padEnd(24)}${table.naturalKeyIndex ?? "NONE"}`,
+      `${table.name.padEnd(42)}${key.padEnd(88)}${table.naturalKeySource.padEnd(24)}${table.naturalKeyIndex ?? "NONE"}`,
     );
   }
   console.log("");
