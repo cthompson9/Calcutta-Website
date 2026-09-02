@@ -26,6 +26,7 @@ type CatalogForeignKey = {
 
 type CatalogUniqueKey = {
   table: string;
+  indexName: string;
   columns: string[];
 };
 
@@ -36,6 +37,7 @@ type TableInfo = ExportedTable & {
   naturalKey: string[];
   naturalKeyResolvable: boolean;
   naturalKeySource: "declared unique key" | "registered key" | "none";
+  naturalKeyIndex: string | null;
   rows: RawRow[];
 };
 
@@ -291,10 +293,12 @@ async function readCatalog(client: pg.PoolClient): Promise<Catalog> {
 
   const indexesResult = await client.query<{
     table: string;
+    index_name: string;
     columns: unknown;
   }>(`
     SELECT
       table_class.relname AS table,
+      index_class.relname AS index_name,
       array_agg(attribute.attname ORDER BY key_column.ordinality) AS columns
     FROM pg_index AS index_definition
     JOIN pg_class AS index_class
@@ -310,12 +314,11 @@ async function readCatalog(client: pg.PoolClient): Promise<Catalog> {
      AND attribute.attnum = key_column.attnum
     WHERE table_namespace.nspname = 'public'
       AND index_definition.indisunique
-      AND index_definition.indpred IS NULL
       AND index_definition.indexprs IS NULL
       AND key_column.ordinality <= index_definition.indnkeyatts
       AND key_column.attnum > 0
-    GROUP BY index_definition.indexrelid, table_class.relname
-    ORDER BY table_class.relname, index_definition.indexrelid
+    GROUP BY index_definition.indexrelid, table_class.relname, index_class.relname
+    ORDER BY table_class.relname, index_class.relname
   `);
 
   const foreignKeysResult = await client.query<{
@@ -387,6 +390,7 @@ async function readCatalog(client: pg.PoolClient): Promise<Catalog> {
   const uniqueKeys = indexesResult.rows
     .map((key) => ({
       table: key.table,
+      indexName: key.index_name,
       columns: parseCatalogArray(key.columns, `${key.table} unique key`),
     }))
     .filter((key) => key.columns.length > 0);
@@ -424,6 +428,7 @@ function chooseNaturalKey(
   columns: string[];
   resolvable: boolean;
   source: TableInfo["naturalKeySource"];
+  indexName: string | null;
 } {
   const has = (columns: string[]) => hasColumns(table, columns);
   const containsSurrogate = (columns: readonly string[]) =>
@@ -442,19 +447,30 @@ function chooseNaturalKey(
         `Registered natural key for ${table.name} includes a surrogate column`,
       );
     }
-    return { columns, resolvable: true, source: "registered key" };
+    return {
+      columns,
+      resolvable: true,
+      source: "registered key",
+      indexName: `registered:${table.name}`,
+    };
   }
 
   const uniqueCandidates = catalog.uniqueKeys
     .filter((key) => key.table === table.name)
-    .map((key) => key.columns)
-    .filter((key) => has(key) && !containsSurrogate(key))
-    .sort((left, right) => left.length - right.length || left.join().localeCompare(right.join()));
+    .filter(
+      (key) => has(key.columns) && !containsSurrogate(key.columns),
+    )
+    .sort(
+      (left, right) =>
+        right.columns.length - left.columns.length ||
+        left.indexName.localeCompare(right.indexName),
+    );
   if (uniqueCandidates[0]) {
     return {
-      columns: uniqueCandidates[0],
+      columns: uniqueCandidates[0].columns,
       resolvable: true,
       source: "declared unique key",
+      indexName: uniqueCandidates[0].indexName,
     };
   }
 
@@ -462,7 +478,12 @@ function chooseNaturalKey(
     (column) => !table.surrogatePrimaryKey.has(column) && column !== "updated_at",
   );
   if (sortableColumns.length > 0) {
-    return { columns: sortableColumns, resolvable: false, source: "none" };
+    return {
+      columns: sortableColumns,
+      resolvable: false,
+      source: "none",
+      indexName: null,
+    };
   }
 
   throw new Error(`Cannot derive a natural key for table ${table.name}`);
@@ -508,12 +529,14 @@ function buildTableInfos(exported: Map<string, ExportedTable>, catalog: Catalog)
       naturalKey: [],
       naturalKeyResolvable: false,
       naturalKeySource: "none",
+      naturalKeyIndex: null,
       rows: [],
     };
     const naturalKey = chooseNaturalKey(table, catalog);
     table.naturalKey = naturalKey.columns;
     table.naturalKeyResolvable = naturalKey.resolvable;
     table.naturalKeySource = naturalKey.source;
+    table.naturalKeyIndex = naturalKey.indexName;
     return table;
   });
 
@@ -523,14 +546,16 @@ function buildTableInfos(exported: Map<string, ExportedTable>, catalog: Catalog)
 function printNaturalKeyAudit(tables: TableInfo[]): void {
   console.log("Natural key audit:");
   console.log("");
-  console.log(`${"TABLE".padEnd(42)}${"NATURAL KEY".padEnd(64)}SOURCE`);
-  console.log("-".repeat(126));
+  console.log(
+    `${"TABLE".padEnd(42)}${"NATURAL KEY".padEnd(64)}${"SOURCE".padEnd(24)}INDEX`,
+  );
+  console.log("-".repeat(170));
   for (const table of tables) {
     const key = table.naturalKeyResolvable
       ? table.naturalKey.join(", ")
       : "NONE";
     console.log(
-      `${table.name.padEnd(42)}${key.padEnd(64)}${table.naturalKeySource}`,
+      `${table.name.padEnd(42)}${key.padEnd(64)}${table.naturalKeySource.padEnd(24)}${table.naturalKeyIndex ?? "NONE"}`,
     );
   }
   console.log("");
@@ -763,11 +788,13 @@ async function exportSnapshot(
   const serializedByteSizes: Record<string, number> = {};
   const rowCounts: Record<string, number> = {};
   const naturalKeys: Record<string, string[] | null> = {};
+  const naturalKeyIndexes: Record<string, string | null> = {};
   for (const table of tables) {
     rowCounts[table.name] = data[table.name].length;
     naturalKeys[table.name] = table.naturalKeyResolvable
       ? table.naturalKey
       : null;
+    naturalKeyIndexes[table.name] = table.naturalKeyIndex;
     serializedByteSizes[table.name] = Buffer.byteLength(
       serializeRows(data[table.name], 4),
       "utf8",
@@ -799,6 +826,7 @@ async function exportSnapshot(
     data,
     meta: {
       generatedAt,
+      naturalKeyIndexes,
       naturalKeys,
       rowCounts,
       serializedByteSizes,
