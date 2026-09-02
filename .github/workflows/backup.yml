@@ -76,7 +76,6 @@ jobs:
 
       - name: Install dependencies
         run: |
-          corepack enable
           pnpm install --frozen-lockfile
 
       - name: Install PostgreSQL 16 client
