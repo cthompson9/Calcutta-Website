@@ -212,6 +212,7 @@ jobs:
 
           pg_dump \
             --dbname="$BACKUP_DATABASE_URL" \
+            --schema=public \
             --schema-only \
             --no-owner \
             --no-privileges \
@@ -219,7 +220,8 @@ jobs:
           test -s "$schema_path"
 
           pg_dump \
-            --dbname="$BACKUP_DATABASE_URL" |
+            --dbname="$BACKUP_DATABASE_URL" \
+            --schema=public |
             gzip --stdout > "$dump_path"
           test -s "$dump_path"
 
