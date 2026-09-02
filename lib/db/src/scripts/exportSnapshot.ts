@@ -4,6 +4,7 @@ import { dirname, resolve } from "node:path";
 import pg from "pg";
 import { getTableColumns, getTableName, isTable } from "drizzle-orm";
 import * as schema from "../schema/index";
+import { assertForeignKeyTargetsHaveNaturalKeys } from "./snapshotNaturalKeys";
 
 const { Pool } = pg;
 
@@ -34,6 +35,7 @@ type TableInfo = ExportedTable & {
   uniqueKeys: string[][];
   naturalKey: string[];
   naturalKeyResolvable: boolean;
+  naturalKeySource: "declared unique key" | "registered key" | "none";
   rows: RawRow[];
 };
 
@@ -48,6 +50,23 @@ type Catalog = {
 };
 
 const identifierPattern = /^[a-z_][a-z0-9_]*$/;
+
+const registeredNaturalKeys: Readonly<Record<string, readonly string[]>> = {
+  // Backed by the case-insensitive consortia_name_lower_unique index.
+  consortia: ["name"],
+  // Pipeline attempts are immutable and created_at distinguishes retries.
+  // Runtime uniqueness validation below keeps this fail-loud.
+  mtm_snapshot: ["pool_id", "as_of", "created_at"],
+  // This business identity is validated against all exported rows before any
+  // position FK is emitted.
+  trades: [
+    "entry_id",
+    "from_bidder_id",
+    "to_bidder_id",
+    "percentage",
+    "trade_date",
+  ],
+};
 
 function quoteIdentifier(identifier: string): string {
   if (!identifierPattern.test(identifier)) {
@@ -252,37 +271,22 @@ async function readCatalog(client: pg.PoolClient): Promise<Catalog> {
     ordinal_position: number;
   }>(`
     SELECT
-      table_name,
-      column_name,
-      ordinal_position
-    FROM information_schema.key_column_usage
-    WHERE table_schema = 'public'
-      AND constraint_name IN (
-        SELECT constraint_name
-        FROM information_schema.table_constraints
-        WHERE table_schema = 'public'
-          AND constraint_type = 'PRIMARY KEY'
-      )
-    ORDER BY table_name, ordinal_position
-  `);
-
-  const uniqueKeysResult = await client.query<{
-    table: string;
-    columns: unknown;
-  }>(`
-    SELECT
-      table_name AS table,
-      array_agg(column_name ORDER BY ordinal_position) AS columns
-    FROM information_schema.key_column_usage
-    WHERE table_schema = 'public'
-      AND constraint_name IN (
-        SELECT constraint_name
-        FROM information_schema.table_constraints
-        WHERE table_schema = 'public'
-          AND constraint_type IN ('PRIMARY KEY', 'UNIQUE')
-      )
-    GROUP BY table_name, constraint_name
-    ORDER BY table_name, constraint_name
+      table_class.relname AS table_name,
+      attribute.attname AS column_name,
+      key_column.ordinality::integer AS ordinal_position
+    FROM pg_constraint AS constraint_definition
+    JOIN pg_class AS table_class
+      ON table_class.oid = constraint_definition.conrelid
+    JOIN pg_namespace AS table_namespace
+      ON table_namespace.oid = table_class.relnamespace
+    CROSS JOIN LATERAL unnest(constraint_definition.conkey)
+      WITH ORDINALITY AS key_column(attnum, ordinality)
+    JOIN pg_attribute AS attribute
+      ON attribute.attrelid = table_class.oid
+     AND attribute.attnum = key_column.attnum
+    WHERE constraint_definition.contype = 'p'
+      AND table_namespace.nspname = 'public'
+    ORDER BY table_class.relname, key_column.ordinality
   `);
 
   const indexesResult = await client.query<{
@@ -307,6 +311,8 @@ async function readCatalog(client: pg.PoolClient): Promise<Catalog> {
     WHERE table_namespace.nspname = 'public'
       AND index_definition.indisunique
       AND index_definition.indpred IS NULL
+      AND index_definition.indexprs IS NULL
+      AND key_column.ordinality <= index_definition.indnkeyatts
       AND key_column.attnum > 0
     GROUP BY index_definition.indexrelid, table_class.relname
     ORDER BY table_class.relname, index_definition.indexrelid
@@ -330,6 +336,8 @@ async function readCatalog(client: pg.PoolClient): Promise<Catalog> {
       ON source_namespace.oid = source_class.relnamespace
     JOIN pg_class AS target_class
       ON target_class.oid = constraint_definition.confrelid
+    JOIN pg_namespace AS target_namespace
+      ON target_namespace.oid = target_class.relnamespace
     CROSS JOIN LATERAL unnest(constraint_definition.conkey)
       WITH ORDINALITY AS source_key(attnum, ordinality)
     JOIN pg_attribute AS source_attribute
@@ -343,6 +351,7 @@ async function readCatalog(client: pg.PoolClient): Promise<Catalog> {
      AND target_key.ordinality = source_key.ordinality
     WHERE constraint_definition.contype = 'f'
       AND source_namespace.nspname = 'public'
+      AND target_namespace.nspname = 'public'
     GROUP BY constraint_definition.oid, source_class.relname, target_class.relname
     ORDER BY source_class.relname, constraint_definition.oid
   `);
@@ -375,7 +384,7 @@ async function readCatalog(client: pg.PoolClient): Promise<Catalog> {
     primaryKeys.set(row.table_name, key);
   }
 
-  const uniqueKeys = [...uniqueKeysResult.rows, ...indexesResult.rows]
+  const uniqueKeys = indexesResult.rows
     .map((key) => ({
       table: key.table,
       columns: parseCatalogArray(key.columns, `${key.table} unique key`),
@@ -411,48 +420,49 @@ function hasColumns(table: TableInfo, columns: string[]): boolean {
 function chooseNaturalKey(
   table: TableInfo,
   catalog: Catalog,
-): { columns: string[]; resolvable: boolean } {
+): {
+  columns: string[];
+  resolvable: boolean;
+  source: TableInfo["naturalKeySource"];
+} {
   const has = (columns: string[]) => hasColumns(table, columns);
-  const isSurrogateOnly = (columns: string[]) =>
-    columns.length > 0 && columns.every((column) => table.surrogatePrimaryKey.has(column));
+  const containsSurrogate = (columns: readonly string[]) =>
+    columns.some((column) => table.surrogatePrimaryKey.has(column));
 
-  const semanticCandidates: string[][] = [
-    ["name"],
-    ["display_name"],
-    ["year"],
-    ["sport", "sequence"],
-    ["calcutta_id", "team_id"],
-    ["season_id", "week", "away_team_id", "home_team_id"],
-    ["entry_id", "from_bidder_id", "to_bidder_id", "percentage", "trade_date"],
-    ["pool_id", "as_of", "as_of_hour", "trigger", "method_version"],
-  ];
-  for (const candidate of semanticCandidates) {
-    if (has(candidate) && !isSurrogateOnly(candidate)) {
-      return { columns: candidate, resolvable: true };
+  const registered = registeredNaturalKeys[table.name];
+  if (registered) {
+    const columns = [...registered];
+    if (!has(columns)) {
+      throw new Error(
+        `Registered natural key for ${table.name} references missing columns: ${columns.join(", ")}`,
+      );
     }
+    if (containsSurrogate(columns)) {
+      throw new Error(
+        `Registered natural key for ${table.name} includes a surrogate column`,
+      );
+    }
+    return { columns, resolvable: true, source: "registered key" };
   }
 
   const uniqueCandidates = catalog.uniqueKeys
     .filter((key) => key.table === table.name)
     .map((key) => key.columns)
-    .filter((key) => has(key) && !isSurrogateOnly(key))
+    .filter((key) => has(key) && !containsSurrogate(key))
     .sort((left, right) => left.length - right.length || left.join().localeCompare(right.join()));
   if (uniqueCandidates[0]) {
-    return { columns: uniqueCandidates[0], resolvable: true };
-  }
-
-  if (
-    table.primaryKey.length > 0 &&
-    !table.primaryKey.some((column) => table.surrogatePrimaryKey.has(column))
-  ) {
-    return { columns: table.primaryKey, resolvable: true };
+    return {
+      columns: uniqueCandidates[0],
+      resolvable: true,
+      source: "declared unique key",
+    };
   }
 
   const sortableColumns = table.columns.filter(
     (column) => !table.surrogatePrimaryKey.has(column) && column !== "updated_at",
   );
   if (sortableColumns.length > 0) {
-    return { columns: sortableColumns, resolvable: false };
+    return { columns: sortableColumns, resolvable: false, source: "none" };
   }
 
   throw new Error(`Cannot derive a natural key for table ${table.name}`);
@@ -497,15 +507,33 @@ function buildTableInfos(exported: Map<string, ExportedTable>, catalog: Catalog)
         .map((key) => key.columns),
       naturalKey: [],
       naturalKeyResolvable: false,
+      naturalKeySource: "none",
       rows: [],
     };
     const naturalKey = chooseNaturalKey(table, catalog);
     table.naturalKey = naturalKey.columns;
     table.naturalKeyResolvable = naturalKey.resolvable;
+    table.naturalKeySource = naturalKey.source;
     return table;
   });
 
   return tables;
+}
+
+function printNaturalKeyAudit(tables: TableInfo[]): void {
+  console.log("Natural key audit:");
+  console.log("");
+  console.log(`${"TABLE".padEnd(42)}${"NATURAL KEY".padEnd(64)}SOURCE`);
+  console.log("-".repeat(126));
+  for (const table of tables) {
+    const key = table.naturalKeyResolvable
+      ? table.naturalKey.join(", ")
+      : "NONE";
+    console.log(
+      `${table.name.padEnd(42)}${key.padEnd(64)}${table.naturalKeySource}`,
+    );
+  }
+  console.log("");
 }
 
 function buildForeignKeyMaps(catalog: Catalog): {
@@ -550,24 +578,58 @@ async function exportSnapshot(
 
   const tableByName = new Map(tables.map((table) => [table.name, table]));
   const { simple, composite } = buildForeignKeyMaps(catalog);
-  const primaryKeyRows = new Map<string, Map<string, RawRow>>();
+  assertForeignKeyTargetsHaveNaturalKeys(
+    new Map(
+      tables
+        .filter((table) => table.naturalKeyResolvable)
+        .map((table) => [table.name, table.naturalKey]),
+    ),
+    catalog.foreignKeys,
+  );
+
   for (const table of tables) {
-    if (table.primaryKey.length === 0) {
+    if (!table.naturalKeyResolvable) {
       continue;
     }
-    const rows = new Map<string, RawRow>();
+    const seen = new Set<string>();
     for (const row of table.rows) {
-      const key = rawKey(row, table.primaryKey);
+      const key = rawKey(row, table.naturalKey);
+      if (seen.has(key)) {
+        throw new Error(
+          `Registered natural key for ${table.name} is not unique: ${table.naturalKey.join(", ")}`,
+        );
+      }
+      seen.add(key);
+    }
+  }
+
+  const foreignTargetRows = new Map<string, Map<string, RawRow>>();
+  for (const foreignKey of catalog.foreignKeys) {
+    const lookupIdentity = `${foreignKey.targetTable}:${foreignKey.targetColumns.join(",")}`;
+    if (foreignTargetRows.has(lookupIdentity)) {
+      continue;
+    }
+    const target = tableByName.get(foreignKey.targetTable);
+    if (!target) {
+      throw new Error(
+        `Foreign key points to an unexported table ${foreignKey.targetTable}`,
+      );
+    }
+    const rows = new Map<string, RawRow>();
+    for (const row of target.rows) {
+      const key = rawKey(row, foreignKey.targetColumns);
       if (rows.has(key)) {
-        throw new Error(`Duplicate primary key found while exporting ${table.name}: ${key}`);
+        throw new Error(
+          `Declared foreign key target ${foreignKey.targetTable}.${foreignKey.targetColumns.join(",")} is not unique`,
+        );
       }
       rows.set(key, row);
     }
-    primaryKeyRows.set(table.name, rows);
+    foreignTargetRows.set(lookupIdentity, rows);
   }
 
-  const resolving = new Set<string>();
-  const naturalKeyCache = new Map<string, unknown>();
+  const resolving = new WeakSet<RawRow>();
+  const naturalKeyCache = new WeakMap<RawRow, unknown>();
 
   const resolveNaturalKey = (tableName: string, row: RawRow): unknown => {
     const table = tableByName.get(tableName);
@@ -579,21 +641,20 @@ async function exportSnapshot(
         `Cannot resolve a foreign key to a natural key for table ${tableName}; no stable natural key is defined`,
       );
     }
-    const identity = `${tableName}:${rawKey(row, table.primaryKey)}`;
-    const cached = naturalKeyCache.get(identity);
+    const cached = naturalKeyCache.get(row);
     if (cached !== undefined) {
       return cached;
     }
-    if (resolving.has(identity)) {
-      throw new Error(`Circular natural-key resolution involving ${identity}`);
+    if (resolving.has(row)) {
+      throw new Error(`Circular natural-key resolution involving ${tableName}`);
     }
-    resolving.add(identity);
+    resolving.add(row);
     const parts = table.naturalKey.map((column) =>
       resolveColumnValue(table, row, column),
     );
-    resolving.delete(identity);
+    resolving.delete(row);
     const naturalKey = parts.length === 1 ? parts[0] : parts;
-    naturalKeyCache.set(identity, naturalKey);
+    naturalKeyCache.set(row, naturalKey);
     return naturalKey;
   };
 
@@ -604,16 +665,19 @@ async function exportSnapshot(
         `Foreign key ${foreignKey.sourceTable}.${foreignKey.sourceColumns.join(",")} references unexported table ${foreignKey.targetTable}`,
       );
     }
-    const targetRows = primaryKeyRows.get(target.name);
-    if (!targetRows || target.primaryKey.length === 0) {
-      throw new Error(`Cannot resolve foreign key target ${target.name} without a primary key`);
+    if (!target.naturalKeyResolvable) {
+      throw new Error(
+        `Cannot resolve foreign key target ${target.name} without a registered natural key`,
+      );
     }
-    const targetLookupKey: RawRow = {};
-    for (let index = 0; index < foreignKey.targetColumns.length; index += 1) {
-      targetLookupKey[foreignKey.targetColumns[index]] =
-        row[foreignKey.sourceColumns[index]];
+    const lookupIdentity = `${foreignKey.targetTable}:${foreignKey.targetColumns.join(",")}`;
+    const targetRows = foreignTargetRows.get(lookupIdentity);
+    if (!targetRows) {
+      throw new Error(
+        `Missing declared foreign-key lookup for ${foreignKey.targetTable}.${foreignKey.targetColumns.join(",")}`,
+      );
     }
-    const targetRow = targetRows.get(rawKey(targetLookupKey, target.primaryKey));
+    const targetRow = targetRows.get(rawKey(row, foreignKey.sourceColumns));
     if (!targetRow) {
       throw new Error(
         `Cannot resolve ${foreignKey.sourceTable}.${foreignKey.sourceColumns.join(",")} value to ${foreignKey.targetTable}.${foreignKey.targetColumns.join(",")}`,
@@ -698,8 +762,12 @@ async function exportSnapshot(
 
   const serializedByteSizes: Record<string, number> = {};
   const rowCounts: Record<string, number> = {};
+  const naturalKeys: Record<string, string[] | null> = {};
   for (const table of tables) {
     rowCounts[table.name] = data[table.name].length;
+    naturalKeys[table.name] = table.naturalKeyResolvable
+      ? table.naturalKey
+      : null;
     serializedByteSizes[table.name] = Buffer.byteLength(
       serializeRows(data[table.name], 4),
       "utf8",
@@ -731,6 +799,7 @@ async function exportSnapshot(
     data,
     meta: {
       generatedAt,
+      naturalKeys,
       rowCounts,
       serializedByteSizes,
       sha256,
@@ -768,6 +837,7 @@ async function main(): Promise<void> {
       try {
         const catalog = await readCatalog(client);
         const tables = buildTableInfos(getExportedTables(), catalog);
+        printNaturalKeyAudit(tables);
         snapshot = await exportSnapshot(client, tables, catalog);
         await client.query("COMMIT");
       } catch (error) {
