@@ -1,0 +1,38 @@
+The restore drill found four defects. The third is severe and changes how the artifact must be
+validated.
+
+1. Sequences were not readable by calcutta_backup; pg_dump failed on bidders_id_seq. Already
+   fixed in production via GRANT SELECT ON ALL SEQUENCES and matching ALTER DEFAULT PRIVILEGES.
+   Add both statements to reference/backup-role.sql, and replace the owner placeholder with
+   neondb_owner.
+
+2. The dump cannot restore into a freshly created empty database: it fails with "schema public
+   already exists" because pg_dump on PostgreSQL 15+ emits CREATE SCHEMA public. Add
+   --clean --if-exists to the full data dump in .github/workflows/backup.yml. Do not add --clean
+   to the --schema-only dump.
+
+3. SEVERE. The dump omits CREATE EXTENSION btree_gist, which consortium_memberships_no_overlap
+   (migration 0012) requires. The restore aborts at that constraint with "data type integer has
+   no default operator class for access method gist" — and because pg_dump emits constraints in
+   dependency order, EVERY constraint after that point is silently skipped. The restored database
+   had all 15,000+ rows loaded correctly but only 3 of 44 natural keys intact: no primary keys,
+   no unique constraints, no foreign keys beyond the first eight ALTER TABLEs.
+
+   The extension cannot be pre-installed on the target as a workaround, because the restore
+   procedure requires DROP SCHEMA public CASCADE, which drops the extension with it.
+
+   Make the artifact self-sufficient: emit the required CREATE EXTENSION statements as part of
+   the dump, or commit a companion prelude file alongside it that the documented restore
+   procedure applies first. Enumerate every extension production depends on and confirm each is
+   covered.
+
+4. Row counts are not a sufficient restore validation. Add a post-restore verification step to
+   the documented procedure that counts constraints and indexes, not just rows — for example
+   comparing counts from pg_constraint and pg_index against the committed schema-only dump. The
+   drill produced a restore that looked correct by every row count while having lost nearly all
+   integrity constraints.
+
+Record all of this in docs/database-maintenance.md under Recovery drill: date, release tag used,
+exact commands, all four findings, and the resolution of each. State that psql -v
+ON_ERROR_STOP=1 is mandatory during restore — without it psql logs the error, continues, and
+exits zero, producing exactly the silent partial restore described in item 3.

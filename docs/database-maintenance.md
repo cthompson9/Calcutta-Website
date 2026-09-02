@@ -142,11 +142,105 @@ Replit-managed production databases provide point-in-time recovery. At least
 once per quarter, perform a documented, non-destructive restore drill using a
 staging or disposable target:
 
-1. Record the intended recovery timestamp and affected scenario.
-2. Restore a copy using the managed recovery workflow.
-3. Verify the restored season, auction ownership, approved-trade audit history,
-   results, and MTM snapshots.
-4. Record recovery duration and any verification gaps, then update this
-   checklist.
+### Restore procedure
+
+Use a disposable database, never the live production database. The nightly
+backup workflow publishes:
+
+- `snapshots/snapshot-YYYY-MM-DD.json` — deterministic logical snapshot
+- `schema/schema-YYYY-MM-DD.sql` — schema-only reference dump
+- GitHub release `backup-YYYY-MM-DD` — compressed full SQL dump
+
+The full dump is generated with `--clean --if-exists` so it can restore over an
+empty database whose `public` schema already exists. The workflow injects
+`reference/restore-prelude.sql` immediately after the dump recreates `public`.
+The prelude covers every extension in the production inventory:
+
+- `plpgsql` 1.0
+- `btree_gist` 1.7, required by
+  `consortium_memberships_no_overlap` from migration `0012`
+
+Download the release artifact and restore it with `ON_ERROR_STOP` enabled:
+
+```sh
+export BACKUP_REPOSITORY='cthompson9/Calcutta-Backups'
+export BACKUP_DATE='YYYY-MM-DD'             # exact drill artifact date
+export TARGET_DATABASE_URL='postgresql://...' # disposable target only
+mkdir -p "/tmp/calcutta-restore-$BACKUP_DATE"
+gh release download "backup-$BACKUP_DATE" \
+  --repo "$BACKUP_REPOSITORY" \
+  --pattern "dump-$BACKUP_DATE.sql.gz" \
+  --dir "/tmp/calcutta-restore-$BACKUP_DATE"
+
+gzip --decompress --stdout \
+  "/tmp/calcutta-restore-$BACKUP_DATE/dump-$BACKUP_DATE.sql.gz" |
+  psql -X -v ON_ERROR_STOP=1 --dbname="$TARGET_DATABASE_URL"
+```
+
+`psql -v ON_ERROR_STOP=1` is mandatory. Without it, `psql` logs a restore
+error, continues, and exits zero, producing a silently partial restore in
+which later constraints are skipped.
+
+### Post-restore verification
+
+Record the intended recovery timestamp, affected scenario, exact release tag,
+restore duration, and the commands used. Verify both data and database
+integrity; row counts alone are insufficient:
+
+```sh
+psql -X -v ON_ERROR_STOP=1 --dbname="$TARGET_DATABASE_URL" <<'SQL'
+SELECT 'rows' AS check_group, 'calcutta_entries' AS object_name, count(*) AS count
+FROM public.calcutta_entries
+UNION ALL
+SELECT 'rows', 'trades', count(*) FROM public.trades
+UNION ALL
+SELECT 'rows', 'mtm_snapshots', count(*) FROM public.mtm_snapshots
+UNION ALL
+SELECT 'constraints', 'public', count(*)
+FROM pg_constraint c
+JOIN pg_class r ON r.oid = c.conrelid
+JOIN pg_namespace n ON n.oid = r.relnamespace
+WHERE n.nspname = 'public'
+UNION ALL
+SELECT 'indexes', 'public', count(*)
+FROM pg_index i
+JOIN pg_class r ON r.oid = i.indrelid
+JOIN pg_namespace n ON n.oid = r.relnamespace
+WHERE n.nspname = 'public';
+SQL
+```
+
+Compare the constraint and index counts against the corresponding DDL in the
+committed schema-only dump. For a stronger check, run the schema-only dump on
+a second disposable database using the same prelude, query the same
+`pg_constraint` and `pg_index` counts there, and require the restored target
+to match before declaring the drill successful. Also verify the restored
+season, auction ownership, approved-trade audit history, results, and MTM
+snapshots against the logical snapshot.
+
+### Restore drill record — 2026-09-02
+
+The supplied drill report did not identify the release tag used, so the exact
+tag remains **not recorded** and must be filled from the drill run before this
+record is treated as complete.
+
+Findings and resolutions:
+
+1. **Sequence permissions.** `calcutta_backup` could not read
+   `bidders_id_seq`, causing `pg_dump` to fail. Production was corrected with
+   `GRANT SELECT ON ALL SEQUENCES`, and `reference/backup-role.sql` now also
+   grants matching default privileges for `neondb_owner`.
+2. **Existing `public` schema.** A fresh restore failed because PostgreSQL 15+
+   emitted `CREATE SCHEMA public`. The full dump now uses
+   `--clean --if-exists`; the schema-only dump deliberately does not.
+3. **Missing `btree_gist` extension — severe.** The restore reached
+   `consortium_memberships_no_overlap`, failed because the GiST operator class
+   was unavailable, and silently skipped later constraints when `psql` did not
+   use `ON_ERROR_STOP`. The full dump now contains the self-sufficient restore
+   prelude, including both production extensions, before table constraints.
+4. **Row counts masked integrity loss.** The drill restored more than 15,000
+   rows but only 3 of 44 natural keys. The documented verification now checks
+   `pg_constraint` and `pg_index` counts in addition to representative data
+   counts and logical-snapshot reconciliation.
 
 Never test recovery by overwriting the live production database.

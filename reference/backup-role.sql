@@ -21,8 +21,11 @@ GRANT SELECT ON ALL TABLES IN SCHEMA public TO calcutta_backup;
 -- If this is wrong, tables created later will be invisible to backups until the
 -- exporter's schema-drift guard fails.
 \set owner_role 'neondb_owner'
+GRANT SELECT ON ALL SEQUENCES IN SCHEMA public TO calcutta_backup;
 ALTER DEFAULT PRIVILEGES FOR ROLE :"owner_role" IN SCHEMA public
   GRANT SELECT ON TABLES TO calcutta_backup;
+ALTER DEFAULT PRIVILEGES FOR ROLE :"owner_role" IN SCHEMA public
+  GRANT SELECT ON SEQUENCES TO calcutta_backup;
 
 DO $$
 BEGIN
