@@ -231,6 +231,48 @@ describe("normalized historical read endpoints", { skip: !DATABASE_URL }, () => 
     }
   });
 
+  test("matches every historical Calcutta option to a normalized historical pool", async (context) => {
+    if (!historyLoaded) {
+      context.skip("the eleven historical source files are not loaded in this database");
+      return;
+    }
+
+    const [calcuttas, pools] = await Promise.all([
+      getJson(baseUrl, "/api/calcuttas"),
+      getJson(baseUrl, "/api/v2/pools"),
+    ]);
+    const historicalOptions = calcuttas.filter(
+      (calcutta) =>
+        !(calcutta.sport.toUpperCase() === "NFL" && calcutta.year >= 2025),
+    );
+    const poolKeys = new Set(
+      pools.map(
+        (pool) =>
+          `${pool.name}\u0000${pool.sport.toUpperCase()}\u0000${pool.seasonYear}`,
+      ),
+    );
+    const unmatched = historicalOptions.filter(
+      (calcutta) =>
+        !poolKeys.has(
+          `${calcutta.name}\u0000${calcutta.sport.toUpperCase()}\u0000${calcutta.year}`,
+        ),
+    );
+
+    assert.ok(
+      historicalOptions.some((calcutta) => calcutta.sport.toUpperCase() === "NFL"),
+      "historical Calcutta options must include an NFL pool",
+    );
+    assert.ok(
+      historicalOptions.some((calcutta) => calcutta.sport.toUpperCase() !== "NFL"),
+      "historical Calcutta options must include a non-NFL pool",
+    );
+    assert.deepEqual(
+      unmatched.map(({ name, sport, year }) => ({ name, sport, year })),
+      [],
+      "every historical Calcutta option must exactly match a normalized pool by name, sport, and year",
+    );
+  });
+
   test("keeps known source and booked-trade variances visible", async (context) => {
     if (!historyLoaded) {
       context.skip("the eleven historical source files are not loaded in this database");
