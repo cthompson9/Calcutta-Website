@@ -42,3 +42,157 @@ mtime_ms = 1788468767659
 storage_uri = "gcs://replit-rams-assets-picard/rams/assets/repl:20ced4e6-12f6-4285-a30b-9d56cdf8826c/2a877d86-5471-46db-8606-c57b6d0ffeed/a40832ce-ba19-4076-871d-7fb4a895858f"
 storage_version_token = "1788468839638001"
 content_type = "text/markdown"
+
+[[outputs]]
+id = "Pdw-WkTj_PoG3BPfirc_Z"
+uri = "file://data/calcutta-01.json"
+type = "unspecified"
+title = "Calcutta 01 Source JSON"
+description = "Normalized historical source document for Calcutta 01, for comparison during Google Sheet trade extraction."
+logical_id = "b82b564c-7bb4-4696-9bb2-6e1d7fc809c9"
+content_hash = "sha256:92a6782c86b7a74b2c3a90c4eef4f5252532ac500351fa5b2d17ef353f176cc1"
+size = 50310
+mtime_ms = 1787882415000
+storage_uri = "gcs://replit-rams-assets-picard/rams/assets/repl:20ced4e6-12f6-4285-a30b-9d56cdf8826c/b82b564c-7bb4-4696-9bb2-6e1d7fc809c9/2e1db42f-2911-430a-8081-4e7c0424c2b7"
+storage_version_token = "1788468913765648"
+content_type = "application/octet-stream"
+
+[[outputs]]
+id = "1jLq1V03j-5qdd8Gjg_v_"
+uri = "file://data/calcutta-02.json"
+type = "unspecified"
+title = "Calcutta 02 Source JSON"
+description = "Normalized historical source document for Calcutta 02, for comparison during Google Sheet trade extraction."
+logical_id = "8db706bb-65ff-461f-92df-27fa73a4ff02"
+content_hash = "sha256:adda4d9c853d8b1c1fe60e263e11a74cfbaba6774ae3d92fc76ce1c7c739275e"
+size = 51620
+mtime_ms = 1787882415000
+storage_uri = "gcs://replit-rams-assets-picard/rams/assets/repl:20ced4e6-12f6-4285-a30b-9d56cdf8826c/8db706bb-65ff-461f-92df-27fa73a4ff02/55b2037f-4837-48b6-8c0a-f1a0df10e0e4"
+storage_version_token = "1788468914529515"
+content_type = "application/octet-stream"
+
+[[outputs]]
+id = "ppbggLCqsKib-jI2rAtWY"
+uri = "file://data/calcutta-03.json"
+type = "unspecified"
+title = "Calcutta 03 Source JSON"
+description = "Normalized historical source document for Calcutta 03, for comparison during Google Sheet trade extraction."
+logical_id = "90bc92a3-301e-46a1-bbfd-3fe524db991e"
+content_hash = "sha256:2a34ea266528c9f625a45c7de8ded8b54dea58708882f484351a4d5ba2f4e68f"
+size = 43505
+mtime_ms = 1787882415000
+storage_uri = "gcs://replit-rams-assets-picard/rams/assets/repl:20ced4e6-12f6-4285-a30b-9d56cdf8826c/90bc92a3-301e-46a1-bbfd-3fe524db991e/4ebb94a0-a97b-4ac9-ae25-ad6965934e60"
+storage_version_token = "1788468915179719"
+content_type = "application/octet-stream"
+
+[[outputs]]
+id = "EVvte_b_uyeYPuTVL7G6h"
+uri = "file://data/calcutta-04.json"
+type = "unspecified"
+title = "Calcutta 04 Source JSON"
+description = "Normalized historical source document for Calcutta 04, for comparison during Google Sheet trade extraction."
+logical_id = "5e68db0e-20ce-449d-b04e-44e209280062"
+content_hash = "sha256:d3779977a2b65be7818af2cdf5bf2a50f646bfe4fadca7f004961b6d324c3779"
+size = 49456
+mtime_ms = 1787882415000
+storage_uri = "gcs://replit-rams-assets-picard/rams/assets/repl:20ced4e6-12f6-4285-a30b-9d56cdf8826c/5e68db0e-20ce-449d-b04e-44e209280062/df8f3b44-b958-491a-95c6-acbe55693c29"
+storage_version_token = "1788468915728394"
+content_type = "application/octet-stream"
+
+[[outputs]]
+id = "YjWBRyJfQ133PiXTuybQJ"
+uri = "file://data/calcutta-05.json"
+type = "unspecified"
+title = "Calcutta 05 Source JSON"
+description = "Normalized historical source document for Calcutta 05, for comparison during Google Sheet trade extraction."
+logical_id = "afe2293c-82f9-47a5-93cf-3ffc5b36118a"
+content_hash = "sha256:df2df188424c6667a30f78866ac4fc3cbbc7799942ffb71b7f0f6a9994ccec15"
+size = 47187
+mtime_ms = 1787882415000
+storage_uri = "gcs://replit-rams-assets-picard/rams/assets/repl:20ced4e6-12f6-4285-a30b-9d56cdf8826c/afe2293c-82f9-47a5-93cf-3ffc5b36118a/a1909085-6cac-44f6-aba1-d37e5533ccd9"
+storage_version_token = "1788468916394010"
+content_type = "application/octet-stream"
+
+[[outputs]]
+id = "y1Ew6f7QUZEMwvlwXFvKC"
+uri = "file://data/calcutta-06.json"
+type = "unspecified"
+title = "Calcutta 06 Source JSON"
+description = "Normalized historical source document for Calcutta 06, for comparison during Google Sheet trade extraction."
+logical_id = "2fab1c9a-6e61-4e65-a0d0-cf4dd5ac58e7"
+content_hash = "sha256:e8b83126709a28b2df652e8b5e4b8e774e9c82ecff8314cca0ce21cdc1ac911b"
+size = 52911
+mtime_ms = 1787882415000
+storage_uri = "gcs://replit-rams-assets-picard/rams/assets/repl:20ced4e6-12f6-4285-a30b-9d56cdf8826c/2fab1c9a-6e61-4e65-a0d0-cf4dd5ac58e7/41702baa-9c54-424d-a2d9-837dabe51c32"
+storage_version_token = "1788468916948147"
+content_type = "application/octet-stream"
+
+[[outputs]]
+id = "fiHqf6lmu517yrEc1ph20"
+uri = "file://data/calcutta-07.json"
+type = "unspecified"
+title = "Calcutta 07 Source JSON"
+description = "Normalized historical source document for Calcutta 07, for comparison during Google Sheet trade extraction."
+logical_id = "f8a8ebef-d7e0-474a-8213-6c46a9410c39"
+content_hash = "sha256:d7320fa11a4c8c94adc7c4250fa09c06ee1629f033a6047703fe7654f08df70e"
+size = 25511
+mtime_ms = 1787882415000
+storage_uri = "gcs://replit-rams-assets-picard/rams/assets/repl:20ced4e6-12f6-4285-a30b-9d56cdf8826c/f8a8ebef-d7e0-474a-8213-6c46a9410c39/49103d50-c159-4d90-a47c-e2120a8a0c53"
+storage_version_token = "1788468917489816"
+content_type = "application/octet-stream"
+
+[[outputs]]
+id = "CfD9wSXf24Hl0ibLFvzmK"
+uri = "file://data/calcutta-08.json"
+type = "unspecified"
+title = "Calcutta 08 Source JSON"
+description = "Normalized historical source document for Calcutta 08, for comparison during Google Sheet trade extraction."
+logical_id = "4f1437af-ae7d-49ba-bed4-98070f542701"
+content_hash = "sha256:326076b73092eec26395f8e806196027f54c2d2877dc4fb27edad6ea17c5d04a"
+size = 65891
+mtime_ms = 1787882415000
+storage_uri = "gcs://replit-rams-assets-picard/rams/assets/repl:20ced4e6-12f6-4285-a30b-9d56cdf8826c/4f1437af-ae7d-49ba-bed4-98070f542701/2ae641bb-990f-49c3-b876-3d63a805d1ee"
+storage_version_token = "1788468918060299"
+content_type = "application/octet-stream"
+
+[[outputs]]
+id = "IKGb1FM6vj-l65vUYBDRu"
+uri = "file://data/calcutta-09.json"
+type = "unspecified"
+title = "Calcutta 09 Source JSON"
+description = "Normalized historical source document for Calcutta 09, for comparison during Google Sheet trade extraction."
+logical_id = "b1b3fa8d-a207-42f1-bfd7-00251cf5ed6e"
+content_hash = "sha256:0491a26f2101ea8f1941429ff263a07f515d26c240677aaef4406c913ca6a63d"
+size = 49126
+mtime_ms = 1787882415000
+storage_uri = "gcs://replit-rams-assets-picard/rams/assets/repl:20ced4e6-12f6-4285-a30b-9d56cdf8826c/b1b3fa8d-a207-42f1-bfd7-00251cf5ed6e/72096f16-0b28-4a27-bf8b-efdce0ee44f7"
+storage_version_token = "1788468918590950"
+content_type = "application/octet-stream"
+
+[[outputs]]
+id = "9J1KAnDnTA_N9Phnq4u7h"
+uri = "file://data/calcutta-10.json"
+type = "unspecified"
+title = "Calcutta 10 Source JSON"
+description = "Normalized historical source document for Calcutta 10, for comparison during Google Sheet trade extraction."
+logical_id = "dff3846a-b08f-40bb-934f-db25e21ec838"
+content_hash = "sha256:16395333605d15cf9c6f885557f3683942ccf7a32d116d00df096f5a53d0da1a"
+size = 31950
+mtime_ms = 1787882415000
+storage_uri = "gcs://replit-rams-assets-picard/rams/assets/repl:20ced4e6-12f6-4285-a30b-9d56cdf8826c/dff3846a-b08f-40bb-934f-db25e21ec838/1d7fdb88-2e36-440a-8ce8-b074db08a330"
+storage_version_token = "1788468919155555"
+content_type = "application/octet-stream"
+
+[[outputs]]
+id = "gnkZmw_3ccJeVRUC5BGHj"
+uri = "file://data/calcutta-11.json"
+type = "unspecified"
+title = "Calcutta 11 Source JSON"
+description = "Normalized historical source document for Calcutta 11, for comparison during Google Sheet trade extraction."
+logical_id = "10bc9cdf-16ba-496c-9b69-b3cfb4285939"
+content_hash = "sha256:04ee1b63845f3f27c1be94492f6c7af83d97f49688d843421080d75bcbf86aca"
+size = 65470
+mtime_ms = 1787882415000
+storage_uri = "gcs://replit-rams-assets-picard/rams/assets/repl:20ced4e6-12f6-4285-a30b-9d56cdf8826c/10bc9cdf-16ba-496c-9b69-b3cfb4285939/c2075684-9515-4f0f-bfef-aadd05d049b9"
+storage_version_token = "1788468919702537"
+content_type = "application/octet-stream"
