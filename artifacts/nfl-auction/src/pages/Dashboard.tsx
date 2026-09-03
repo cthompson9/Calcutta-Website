@@ -258,8 +258,8 @@ export default function Dashboard() {
       <div className="grid md:grid-cols-3 gap-8 items-start">
          {/* Auction results */}
         <div className="md:col-span-2 space-y-4">
-          <div className="border border-border bg-card overflow-hidden">
-             <div className="hidden md:grid grid-cols-12 bg-muted text-muted-foreground text-xs font-mono font-bold uppercase tracking-widest px-4 py-3 border-b border-border">
+           <div className="table-scroll border border-border bg-card">
+              <div className="sticky-table-header hidden md:grid grid-cols-12 bg-muted text-muted-foreground text-xs font-mono font-bold uppercase tracking-widest px-4 py-3 border-b border-border">
                <div className="col-span-2 text-center">Order</div>
                <div className="col-span-4">Team</div>
                <div className="col-span-3">Winner</div>

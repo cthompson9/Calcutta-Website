@@ -451,7 +451,7 @@ function PipelineMarkPanel({
           <div className="table-scroll">
           <table className="w-full min-w-[940px] text-sm">
             <caption className="sr-only">Sortable latest MTM values by team</caption>
-            <thead className="border-b border-border bg-muted/40 font-mono text-[10px] uppercase tracking-wider text-muted-foreground">
+            <thead className="sticky-table-header border-b border-border bg-muted/40 font-mono text-[10px] uppercase tracking-wider text-muted-foreground">
               <tr>
                 <th className="px-4 py-2 text-left"><SortButton label="Team" value="team" /></th>
                 <th className="px-3 py-2 text-left"><SortButton label="Consortium" value="owner" /></th>
