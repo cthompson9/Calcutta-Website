@@ -9,6 +9,7 @@ import {
   timestamp,
   index,
   check,
+  foreignKey,
 } from "drizzle-orm/pg-core";
 import { teamsTable } from "./teams";
 import { seasonsTable } from "./seasons";
@@ -36,9 +37,7 @@ export const tradesTable = pgTable(
      * Phase 1 compatibility: a database trigger derives this value when legacy
      * season/team writes omit it, until write paths move to entry-first inputs.
      */
-    entryId: integer("entry_id")
-      .notNull()
-      .references(() => calcuttaEntriesTable.id, { onDelete: "restrict" }),
+    entryId: integer("entry_id").notNull(),
     fromBidderId: integer("from_bidder_id")
       .notNull()
       .references(() => biddersTable.id),
@@ -62,6 +61,11 @@ export const tradesTable = pgTable(
     notes: text("notes"),
   },
   (t) => [
+    foreignKey({
+      columns: [t.entryId],
+      foreignColumns: [calcuttaEntriesTable.id],
+      name: "trades_entry_id_fkey",
+    }).onDelete("restrict"),
     // Trade price must be non-negative (zero-cost transfers are permitted)
     check("trades_price_nonneg", sql`${t.price} >= 0`),
     // Percentage must be a meaningful fraction of ownership (1–100)

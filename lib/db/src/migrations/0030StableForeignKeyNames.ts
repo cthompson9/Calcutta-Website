@@ -46,6 +46,12 @@ export const stableForeignKeyNamesMigration = {
               'owner_id',
               'normalized_owners',
               'normalized_expected_owner_results_owner_fk'
+            ),
+            (
+              'trades',
+              'entry_id',
+              'calcutta_entries',
+              'trades_entry_id_fkey'
             )
         ) as targets(source_table, source_column, target_table, new_name)
       loop

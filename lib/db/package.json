@@ -10,6 +10,7 @@
   "scripts": {
     "push": "drizzle-kit push --config ./drizzle.config.ts",
     "push-force": "drizzle-kit push --force --config ./drizzle.config.ts",
+    "check:schema-drift": "pnpm --filter @workspace/api-server exec tsx ../../lib/db/src/scripts/checkSchemaDrift.ts",
     "backfill-period-snapshots": "pnpm --filter @workspace/api-server exec tsx ../../lib/db/src/backfillPeriodSnapshots.ts",
     "backfill-owner-positions": "pnpm --filter @workspace/api-server exec tsx ../../lib/db/src/backfillOwnerPositions.ts",
     "load-historical-calcuttas": "pnpm --filter @workspace/api-server exec tsx ../../lib/db/src/scripts/loadHistoricalCalcuttas.ts",

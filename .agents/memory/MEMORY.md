@@ -33,3 +33,4 @@
 - [Immutable MTM evidence](immutable-mtm-evidence.md) — every pipeline execution is a distinct audit attempt; same-hour retries never replace its quotes or diagnostics.
 - [Trade recovery authority](trade-recovery-authority.md) — reconcile remapped trades by natural-key multiplicity and never promote historical workbook evidence into a live-pool trade.
 - [Backup catalog visibility](backup-catalog-visibility.md) — SELECT-only backup roles may not see key metadata in information_schema; use pg_catalog for snapshot identity discovery.
+- [PostgreSQL constraint names](postgres-constraint-names.md) — give long Drizzle foreign keys explicit short names; PostgreSQL truncation otherwise causes endless drop/recreate drift.

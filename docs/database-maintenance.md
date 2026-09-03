@@ -30,6 +30,14 @@ migration-only categories above.
    Stop without accepting the push if it proposes dropping or truncating any
    populated relation or integrity object. Run it a second time and require
    another empty diff.
+   Pull requests and pushes to `main` repeat this check against a disposable
+   local PostgreSQL service. The CI job builds the immutable pre-change
+   Drizzle schema, exercises the candidate's ordered migration runner with
+   guarded fixture data, requires two non-interactive empty candidate pushes,
+   and confirms migration-owned triggers, the ownership exclusion constraint,
+   and compatibility/reporting views remain intact. Its command rejects
+   non-local or incorrectly named database targets before making any schema
+   change.
 3. Verify the relevant API and UI flows against the development database.
 4. Publish the app to apply the reviewed development-to-production schema diff.
 
