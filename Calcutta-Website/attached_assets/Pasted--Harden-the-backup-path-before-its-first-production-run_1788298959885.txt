@@ -1,0 +1,82 @@
+# Harden the backup path before its first production run
+
+Run immediately after task `01`, before task `02`. Requires no new secrets: alerting goes through
+GitHub Issues in the backup repository, which reach you by email via watch notifications.
+
+Four problems with the path as built: the workflow may reference the owner credential where it
+only needs the read-only one, `pg_dump` will silently misbehave against a connection pooler, the
+role SQL's default-privilege grant is probably scoped to the wrong role, and a failed or
+never-firing backup produces total silence.
+
+Paste the block below to Replit as one task.
+
+```
+Four changes to the backup path created in task 01. Do not change the artifact contract or the
+exporter.
+
+1. Use only the read-only credential. Audit .github/workflows/backup.yml and confirm every step
+   that touches the database reads BACKUP_DATABASE_URL. Remove any reference to DATABASE_URL from
+   this workflow entirely. A read-only role can produce all three artifacts: SELECT on every table
+   plus USAGE on the schema covers the logical export and the data dump, and --schema-only reads
+   only system catalogs, which are readable by any role. The owner credential must not exist as a
+   secret in this repository.
+
+2. Refuse to run against a connection pooler. Add a step near the top of the job that parses the
+   host out of BACKUP_DATABASE_URL and fails with an explicit message if the host contains
+   "pooler". pg_dump depends on a session-level snapshot that a transaction-mode pooler will not
+   hold, so it either errors or produces an inconsistent dump. The failure mode is quiet and
+   partial, which is exactly what this whole system exists to prevent. Also fail if the connection
+   string lacks sslmode=require.
+
+3. Fix the default-privilege grant in reference/backup-role.sql. The ALTER DEFAULT PRIVILEGES
+   statement only affects tables created by the role it names, and an unqualified form silently
+   binds to whichever role happens to execute the file. Rewrite it to name the table-owning role
+   explicitly:
+
+     ALTER DEFAULT PRIVILEGES FOR ROLE <owner_role> IN SCHEMA public
+       GRANT SELECT ON TABLES TO calcutta_backup;
+
+   Leave <owner_role> as a clearly-marked placeholder with a comment stating it must be replaced
+   with the actual owner of the public schema's tables, and that getting this wrong means tables
+   created later are invisible to backups until someone notices the exporter's drift guard
+   failing. Append two commented verification queries: one confirming SELECT succeeds as
+   calcutta_backup, one confirming INSERT is rejected.
+
+4. Make backup absence audible. Alerting is by GitHub Issue in the Calcutta-Backups repository,
+   created with BACKUP_REPO_TOKEN — no SMTP credential and no webhook. GitHub's own watch
+   notifications deliver the email, and the issue is a durable record rather than a message that
+   scrolls away.
+
+   Add a step early in the job that reads the newest snapshot filename from the checked-out
+   Calcutta-Backups repository and, if it is more than 48 hours old, opens an issue there titled
+   "Backup stale: newest snapshot is <n> days old" with the run URL in the body. Label it
+   "backup-alert". Warn only — do not fail the job. Skip the check when the repository has no
+   snapshots yet.
+
+   Before opening an issue, search Calcutta-Backups for an open issue with the same title prefix
+   and comment on it instead of opening a duplicate. A daily new issue for an ongoing problem is
+   as ignorable as a daily green message.
+
+   This staleness check covers the case a failure hook cannot: a schedule that silently stops
+   firing never fails, so it never alerts. Workflow failures themselves are covered by GitHub's
+   built-in Actions failure email, so do not add a failure notification step.
+
+   Post nothing on a normal successful run.
+
+ACCEPTANCE.
+- grep the workflow for DATABASE_URL and confirm zero matches outside of BACKUP_DATABASE_URL.
+- Temporarily point BACKUP_DATABASE_URL at a host string containing "pooler" and confirm the job
+  fails at the guard step with the explanatory message. Revert.
+- Fake a stale state (point the check at a hardcoded old date) and confirm an issue is opened in
+  Calcutta-Backups with the "backup-alert" label. Run again and confirm it comments on the
+  existing issue rather than opening a second one. Then revert and close the issue.
+- Confirm a normal successful run opens no issue.
+```
+
+## What this changes in the rest of the stage
+
+Task `03` no longer needs the staleness check, and it should use the same GitHub Issue mechanism
+rather than a Slack webhook. When you get to `03`, substitute "open a GitHub Issue in
+Calcutta-Backups labeled backup-alert, deduplicating against an existing open issue with the same
+title prefix" everywhere it says "post to SLACK_BACKUP_WEBHOOK", and drop its staleness
+requirement. `SLACK_BACKUP_WEBHOOK` is no longer needed anywhere in this stage.

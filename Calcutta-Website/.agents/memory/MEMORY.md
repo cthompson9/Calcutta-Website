@@ -1,0 +1,36 @@
+- [Schema design](schema-design.md) — ownership costs, trades, returns, and MTM are Calcutta-entry scoped; season rows are legacy compatibility only.
+- [Seed approach](seed-approach.md) — 2025 season results seeded via lib/db/src/seed2025.ts using `node --import tsx/esm/index.mjs`; 2025=id1, 2026=id2.
+- [MCP endpoints](mcp-endpoints.md) — 18 tools total at POST /api/mcp (streamable HTTP, stateless); MCP_API_KEY gates all access; ADMIN_API_KEY gates set_trade_status tool parameter.
+- [Trade workflow](trade-workflow.md) — trades start pending; only audited approvals affect positions, and approved trades can be reasoned, audited voids.
+- [Mobile admin key handling](mobile-admin-key.md) — never persist the admin bearer key in AsyncStorage; SecureStore on native, memory-only on web.
+- [Week 0 market valuation](week-zero-market-valuation.md) — Kalshi Week 0 marks are audited, quality-gated season snapshots with a fixed first-capture date.
+- [Week 0 initialization concurrency](week-zero-initialization-concurrency.md) — batch baseline writes and coalesce lock waiters so first-load traffic cannot exhaust the DB pool.
+- [Ownership write integrity](ownership-write-integrity.md) — primary split changes and trade lifecycle edits must serialize per season and preserve exact four-decimal ownership totals.
+- [Auction results history](auction-results-history.md) — auction result rows preserve the original winner and nomination order, not post-trade ownership.
+- [Short position semantics](short-position-semantics.md) — approved trades may create signed shorts; only positive stakes are current owners while position reports remain signed.
+- [New York timezone](new-york-timezone.md) — pool calendar defaults and visible timestamps use America/New_York, never UTC or a viewer’s local timezone.
+- [Consortium identity](consortium-identity.md) — consortium names are shared global identities; capitalization and repeated spaces never create a different group.
+- [Consortium bridge rollout](consortium-bridge-rollout.md) — retain legacy links through an additive publish, then copy and validate memberships explicitly.
+- [Trade test isolation](trade-test-isolation.md) — approved fixtures affect season-wide owner totals; isolate their bidders or seasons.
+- [Period return model](period-return-model.md) — pay snapshot deltas once; apply configurable multipliers to playoff-period changes only.
+- [Dated consortium reporting](dated-consortium-reporting.md) — historical reports use each Calcutta’s fixed as-of roster; current roster is always an explicit alternate view.
+- [Cross-Calcutta snapshot coverage](cross-calcutta-snapshot-coverage.md) — comparison cells must report selected-basis coverage so partial period data is never shown as complete.
+- [Atomic season backloads](atomic-season-backloads.md) — derive and validate every auctioned team inside one transaction; pool-scoped staging tables must drop at commit.
+- [Deep-link query parsing](deep-link-query-parsing.md) — Wouter location state may omit the query string; destination targeting must read the browser URL.
+- [Expo Web font loading](expo-web-font-loading.md) — do not block Expo Web’s root on font assets behind the preview proxy; render with system fallbacks.
+- [Expo Web source navigation](expo-web-source-navigation.md) — long-list source links use DOM row reveal on web; nested RN layout offsets are not ScrollView content offsets.
+- [OpenAPI numeric fields](openapi-numeric-fields.md) — this workspace’s generated Zod client requires `number`, not OpenAPI `integer`, for new response fields.
+- [Cross-sport Calcutta catalog](cross-sport-calcutta-catalog.md) — selector lists every sport; non-NFL selections deliberately show an NFL-only report state.
+- [NFL standings source adapter](nfl-standings-source-adapter.md) — nfl.com may embed playoff markers inside club-name markup; remove marker tags before name matching.
+- [External refresh scheduling](deployment-scheduling.md) — GitHub Actions triggers a guarded refresh endpoint so the Autoscale website stays as the only Replit deployment.
+- [GitHub sync authorization](github-sync-authorization.md) — use Replit’s Git pane for normal pushes when the GitHub connector cannot update refs or merge branches.
+- [Sticky table scrolling](sticky-table-scrolling.md) — long, horizontally responsive reports use bounded native table scrollers so header rows stay locked across browsers.
+- [Legacy trade entry derivation](legacy-trade-entry-derivation.md) — pre-Phase-2 season/team trade writes resolve only through one canonical NFL Calcutta, never generic Calcutta membership.
+- [Calculated value authority](v2-agent-value-completeness.md) — stored entry economics are audit observations only; incomplete normalized returns stay unavailable.
+- [Provider event reconciliation](provider-event-reconciliation.md) — CFB provider updates are scoped, non-destructive upserts unless the source proves snapshot completeness.
+- [Schema push safety](schema-push-safety.md) — never use an auto-generated push that proposes truncation on populated ownership or MTM tables; use guarded migrations instead.
+- [Historical owner identity](historical-owner-identity.md) — cross-pool history uses the approved explicit identity map; unanchored records stay separate and are never fuzzy-merged.
+- [Immutable MTM evidence](immutable-mtm-evidence.md) — every pipeline execution is a distinct audit attempt; same-hour retries never replace its quotes or diagnostics.
+- [Trade recovery authority](trade-recovery-authority.md) — reconcile remapped trades by natural-key multiplicity and never promote historical workbook evidence into a live-pool trade.
+- [Backup catalog visibility](backup-catalog-visibility.md) — SELECT-only backup roles may not see key metadata in information_schema; use pg_catalog for snapshot identity discovery.
+- [PostgreSQL constraint names](postgres-constraint-names.md) — give long Drizzle foreign keys explicit short names; PostgreSQL truncation otherwise causes endless drop/recreate drift.

@@ -1,0 +1,85 @@
+Calcutta	Edition	Sport	Part of Cannon	Player
+Calcutta I	2022 March Madness	NCAAM	Yes	Henry A.
+Calcutta I	2022 March Madness	NCAAM	Yes	Cameron H.
+Calcutta I	2022 March Madness	NCAAM	Yes	Todd C.
+Calcutta I	2022 March Madness	NCAAM	Yes	Chris H.
+Calcutta I	2022 March Madness	NCAAM	Yes	Zack M. / Ezra P.
+Calcutta I	2022 March Madness	NCAAM	Yes	Craig T.
+Calcutta I	2022 March Madness	NCAAM	Yes	Ed Z.
+Calcutta I	2022 March Madness	NCAAM	Yes	Sam R.
+Calcutta II	2023 March Madness	NCAAM	Yes	Chris H.
+Calcutta II	2023 March Madness	NCAAM	Yes	Craig T.
+Calcutta II	2023 March Madness	NCAAM	Yes	Ed Z.
+Calcutta II	2023 March Madness	NCAAM	Yes	Henry A.
+Calcutta II	2023 March Madness	NCAAM	Yes	Matt M.
+Calcutta II	2023 March Madness	NCAAM	Yes	Sam R.
+Calcutta II	2023 March Madness	NCAAM	Yes	Zach L.
+Calcutta II	2023 March Madness	NCAAM	Yes	Zack M. / Ezra P.
+Calcutta III	2023 NFL	NFL	Yes	Anthony C.
+Calcutta III	2023 NFL	NFL	Yes	Craig T.
+Calcutta III	2023 NFL	NFL	Yes	Ed Z.
+Calcutta III	2023 NFL	NFL	Yes	Sam R.
+Calcutta III	2023 NFL	NFL	Yes	Zach L.
+Calcutta III	2023 NFL	NFL	Yes	Zack M. / Ezra P.
+Calcutta IV	2024 March Madness	NCAAM	Yes	Anthony C.
+Calcutta IV	2024 March Madness	NCAAM	Yes	Chris H.
+Calcutta IV	2024 March Madness	NCAAM	Yes	Craig T.
+Calcutta IV	2024 March Madness	NCAAM	Yes	Ed Z.
+Calcutta IV	2024 March Madness	NCAAM	Yes	Greg K.
+Calcutta IV	2024 March Madness	NCAAM	Yes	Kurt D. / Joey A.
+Calcutta IV	2024 March Madness	NCAAM	Yes	Matt M.
+Calcutta IV	2024 March Madness	NCAAM	Yes	Sam R.
+Calcutta IV	2024 March Madness	NCAAM	Yes	Zach L.
+Calcutta IV	2024 March Madness	NCAAM	Yes	Zack M. / Ezra P.
+Calcutta V	2024 NFL	NFL	Yes	Anthony C.
+Calcutta V	2024 NFL	NFL	Yes	Craig T.
+Calcutta V	2024 NFL	NFL	Yes	Ed Z.
+Calcutta V	2024 NFL	NFL	Yes	Greg K.
+Calcutta V	2024 NFL	NFL	Yes	Kurt D. / Joey A.
+Calcutta V	2024 NFL	NFL	Yes	Ian C.
+Calcutta V	2024 NFL	NFL	Yes	Sam R.
+Calcutta V	2024 NFL	NFL	Yes	Zach L.
+Calcutta VI	2025 March Madness	NCAAM	Yes	Chris H.
+Calcutta VI	2025 March Madness	NCAAM	Yes	Craig T.
+Calcutta VI	2025 March Madness	NCAAM	Yes	Ed Z.
+Calcutta VI	2025 March Madness	NCAAM	Yes	Greg K.
+Calcutta VI	2025 March Madness	NCAAM	Yes	Kurt D. / Joey A.
+Calcutta VI	2025 March Madness	NCAAM	Yes	Matt K.
+Calcutta VI	2025 March Madness	NCAAM	Yes	Sam R.
+Calcutta VI	2025 March Madness	NCAAM	Yes	Zach L.
+Calcutta VI	2025 March Madness	NCAAM	Yes	Zack M. / Ezra P.
+Calcutta VI	2025 March Madness	NCAAM	Yes	Colton W.
+Calcutta VI	2025 March Madness	NCAAM	Yes	Shaun M.
+Calcutta VII	2025 NBA Playoffs	NBA	No	Ed Z.
+Calcutta VII	2025 NBA Playoffs	NBA	No	Kurt D. / Joey A.
+Calcutta VII	2025 NBA Playoffs	NBA	No	Sam R.
+Calcutta VII	2025 NBA Playoffs	NBA	No	Zach L.
+Calcutta VIII	2025 NFL	NFL	Yes	Kurt D. / Joey A.
+Calcutta VIII	2025 NFL	NFL	Yes	Josh M.
+Calcutta VIII	2025 NFL	NFL	Yes	Sam R.
+Calcutta VIII	2025 NFL	NFL	Yes	Zack M. / Ezra P.
+Calcutta VIII	2025 NFL	NFL	Yes	Ed Z.
+Calcutta VIII	2025 NFL	NFL	Yes	Zach L.
+Calcutta VIII	2025 NFL	NFL	Yes	Craig T.
+Calcutta VIII	2025 NFL	NFL	Yes	Ian C.
+Calcutta VIII	2025 NFL	NFL	Yes	Shaun M.
+Calcutta IX	2026 March Madness	NCAAM	Yes	Chris H.
+Calcutta IX	2026 March Madness	NCAAM	Yes	Craig T.
+Calcutta IX	2026 March Madness	NCAAM	Yes	Ed Z.
+Calcutta IX	2026 March Madness	NCAAM	Yes	Zack M. / Ezra P.
+Calcutta IX	2026 March Madness	NCAAM	Yes	Greg K.
+Calcutta IX	2026 March Madness	NCAAM	Yes	Kurt D. / Joey A.
+Calcutta IX	2026 March Madness	NCAAM	Yes	Sam R.
+Calcutta IX	2026 March Madness	NCAAM	Yes	Zach L.
+Calcutta IX	2026 March Madness	NCAAM	Yes	Josh M.
+Calcutta X	2026 NBA Playoffs	NBA	No	Sam R.
+Calcutta X	2026 NBA Playoffs	NBA	No	Zach L.
+Calcutta X	2026 NBA Playoffs	NBA	No	Kurt D. / Joey A.
+Calcutta X	2026 NBA Playoffs	NBA	No	Greg K.
+Calcutta X	2026 NBA Playoffs	NBA	No	Ed Z.
+Calcutta XI	2026 World Cup	Soccer	Yes	Zack M. / Ezra P.
+Calcutta XI	2026 World Cup	Soccer	Yes	Craig T.
+Calcutta XI	2026 World Cup	Soccer	Yes	Ed Z.
+Calcutta XI	2026 World Cup	Soccer	Yes	Zach L.
+Calcutta XI	2026 World Cup	Soccer	Yes	Kurt D. / Joey A.
+Calcutta XI	2026 World Cup	Soccer	Yes	Sam R.

@@ -1,0 +1,2455 @@
+{
+ "edition": 6,
+ "name": "Calcutta VI",
+ "sport": "NCAAM",
+ "format_key": "NCAA_MM_64",
+ "season_year": 2025,
+ "pot_size": 73630.0,
+ "as_of_date": "2025-03-18",
+ "normalization": {
+  "mode": "direct"
+ },
+ "periods": [
+  {
+   "key": "R64",
+   "seq": 1,
+   "label": "Round of 64",
+   "kind": "knockout",
+   "weight": 1,
+   "is_scored": false
+  },
+  {
+   "key": "R32",
+   "seq": 2,
+   "label": "Round of 32",
+   "kind": "knockout",
+   "weight": 1,
+   "is_scored": true
+  },
+  {
+   "key": "S16",
+   "seq": 3,
+   "label": "Sweet Sixteen",
+   "kind": "knockout",
+   "weight": 1,
+   "is_scored": true
+  },
+  {
+   "key": "E8",
+   "seq": 4,
+   "label": "Elite Eight",
+   "kind": "knockout",
+   "weight": 1,
+   "is_scored": true
+  },
+  {
+   "key": "F4",
+   "seq": 5,
+   "label": "Final Four",
+   "kind": "knockout",
+   "weight": 1,
+   "is_scored": true
+  },
+  {
+   "key": "CHAMP",
+   "seq": 6,
+   "label": "Championship Game",
+   "kind": "knockout",
+   "weight": 1,
+   "is_scored": true
+  },
+  {
+   "key": "TITLE",
+   "seq": 7,
+   "label": "Champion",
+   "kind": "knockout",
+   "weight": 1,
+   "is_scored": true
+  }
+ ],
+ "rules": [
+  {
+   "kind": "direct_share",
+   "metric": "advance",
+   "period_key": "R32",
+   "rate": 0.005
+  },
+  {
+   "kind": "direct_share",
+   "metric": "advance",
+   "period_key": "S16",
+   "rate": 0.01
+  },
+  {
+   "kind": "direct_share",
+   "metric": "advance",
+   "period_key": "E8",
+   "rate": 0.02
+  },
+  {
+   "kind": "direct_share",
+   "metric": "advance",
+   "period_key": "F4",
+   "rate": 0.04
+  },
+  {
+   "kind": "direct_share",
+   "metric": "advance",
+   "period_key": "CHAMP",
+   "rate": 0.08
+  },
+  {
+   "kind": "direct_share",
+   "metric": "advance",
+   "period_key": "TITLE",
+   "rate": 0.1
+  },
+  {
+   "kind": "split_pool",
+   "metric": "upset_3plus",
+   "rate": 0.05
+  },
+  {
+   "kind": "split_pool",
+   "metric": "upset_8plus",
+   "rate": 0.05
+  }
+ ],
+ "owners": [
+  {
+   "label": "Chris",
+   "name": "Chris",
+   "email": "austin_pfundheller@alumni.brown.edu"
+  },
+  {
+   "label": "Craig",
+   "name": "Craig",
+   "email": "benabellifichter@gmail.com"
+  },
+  {
+   "label": "Ed",
+   "name": "Ed",
+   "email": "cholter09@gmail.com"
+  },
+  {
+   "label": "Greg",
+   "name": "Greg",
+   "email": "samuel.a.rosen@gmail.com"
+  },
+  {
+   "label": "Joey",
+   "name": "Joey",
+   "email": "jcollins602@gmail.com"
+  },
+  {
+   "label": "Matt",
+   "name": "Matt",
+   "email": "dhatheway37@gmail.com"
+  },
+  {
+   "label": "Sam",
+   "name": "Sam",
+   "email": "michael.whited56@gmail.com"
+  },
+  {
+   "label": "Zach",
+   "name": "Zach",
+   "email": "nathaniel.finan@gmail.com"
+  },
+  {
+   "label": "Zack",
+   "name": "Zack",
+   "email": "rmccarthy1856@gmail.com"
+  },
+  {
+   "label": "Colton",
+   "name": "Colton",
+   "email": null
+  },
+  {
+   "label": "Shaun",
+   "name": "Shaun",
+   "email": null
+  }
+ ],
+ "entries": [
+  {
+   "label": "Auburn",
+   "lot_order": 54,
+   "price": 5480.0,
+   "kind": "single",
+   "attributes": {
+    "seed": 1,
+    "region": "South"
+   },
+   "teams": [
+    {
+     "name": "Auburn",
+     "seed": 1,
+     "resolved": true
+    }
+   ],
+   "owners": [
+    {
+     "label": "Zack",
+     "share": 1.0
+    }
+   ],
+   "events": [
+    {
+     "period_key": "R32",
+     "metric": "advance",
+     "units": 1
+    },
+    {
+     "period_key": "S16",
+     "metric": "advance",
+     "units": 1
+    },
+    {
+     "period_key": "E8",
+     "metric": "advance",
+     "units": 1
+    },
+    {
+     "period_key": "F4",
+     "metric": "advance",
+     "units": 1
+    }
+   ],
+   "expected": {
+    "points": null,
+    "realized_return": 5522.25
+   }
+  },
+  {
+   "label": "Michigan State",
+   "lot_order": 31,
+   "price": 2600.0,
+   "kind": "single",
+   "attributes": {
+    "seed": 2,
+    "region": "South"
+   },
+   "teams": [
+    {
+     "name": "Michigan State",
+     "seed": 2,
+     "resolved": true
+    }
+   ],
+   "owners": [
+    {
+     "label": "Ed",
+     "share": 1.0
+    }
+   ],
+   "events": [
+    {
+     "period_key": "R32",
+     "metric": "advance",
+     "units": 1
+    },
+    {
+     "period_key": "S16",
+     "metric": "advance",
+     "units": 1
+    },
+    {
+     "period_key": "E8",
+     "metric": "advance",
+     "units": 1
+    }
+   ],
+   "expected": {
+    "points": null,
+    "realized_return": 2577.05
+   }
+  },
+  {
+   "label": "Iowa State",
+   "lot_order": 47,
+   "price": 1850.0,
+   "kind": "single",
+   "attributes": {
+    "seed": 3,
+    "region": "South"
+   },
+   "teams": [
+    {
+     "name": "Iowa State",
+     "seed": 3,
+     "resolved": true
+    }
+   ],
+   "owners": [
+    {
+     "label": "Zack",
+     "share": 1.0
+    }
+   ],
+   "events": [
+    {
+     "period_key": "R32",
+     "metric": "advance",
+     "units": 1
+    }
+   ],
+   "expected": {
+    "points": null,
+    "realized_return": 368.15
+   }
+  },
+  {
+   "label": "Texas A&M",
+   "lot_order": 49,
+   "price": 1130.0,
+   "kind": "single",
+   "attributes": {
+    "seed": 4,
+    "region": "South"
+   },
+   "teams": [
+    {
+     "name": "Texas A&M",
+     "seed": 4,
+     "resolved": true
+    }
+   ],
+   "owners": [
+    {
+     "label": "Zack",
+     "share": 1.0
+    }
+   ],
+   "events": [
+    {
+     "period_key": "R32",
+     "metric": "advance",
+     "units": 1
+    }
+   ],
+   "expected": {
+    "points": null,
+    "realized_return": 368.15
+   }
+  },
+  {
+   "label": "Michigan",
+   "lot_order": 51,
+   "price": 860.0,
+   "kind": "single",
+   "attributes": {
+    "seed": 5,
+    "region": "South"
+   },
+   "teams": [
+    {
+     "name": "Michigan",
+     "seed": 5,
+     "resolved": true
+    }
+   ],
+   "owners": [
+    {
+     "label": "Sam",
+     "share": 1.0
+    }
+   ],
+   "events": [
+    {
+     "period_key": "R32",
+     "metric": "advance",
+     "units": 1
+    },
+    {
+     "period_key": "S16",
+     "metric": "advance",
+     "units": 1
+    }
+   ],
+   "expected": {
+    "points": null,
+    "realized_return": 1104.45
+   }
+  },
+  {
+   "label": "Ole Miss",
+   "lot_order": 25,
+   "price": 800.0,
+   "kind": "single",
+   "attributes": {
+    "seed": 6,
+    "region": "South"
+   },
+   "teams": [
+    {
+     "name": "Ole Miss",
+     "seed": 6,
+     "resolved": true
+    }
+   ],
+   "owners": [
+    {
+     "label": "Colton",
+     "share": 1.0
+    }
+   ],
+   "events": [
+    {
+     "period_key": "R32",
+     "metric": "advance",
+     "units": 1
+    },
+    {
+     "period_key": "S16",
+     "metric": "advance",
+     "units": 1
+    },
+    {
+     "period_key": null,
+     "metric": "upset_3plus",
+     "units": 1
+    }
+   ],
+   "expected": {
+    "points": null,
+    "realized_return": 1564.6375
+   }
+  },
+  {
+   "label": "Marquette",
+   "lot_order": 43,
+   "price": 830.0,
+   "kind": "single",
+   "attributes": {
+    "seed": 7,
+    "region": "South"
+   },
+   "teams": [
+    {
+     "name": "Marquette",
+     "seed": 7,
+     "resolved": true
+    }
+   ],
+   "owners": [
+    {
+     "label": "Zack",
+     "share": 1.0
+    }
+   ],
+   "events": [],
+   "expected": {
+    "points": null,
+    "realized_return": 0.0
+   }
+  },
+  {
+   "label": "Louisville",
+   "lot_order": 14,
+   "price": 720.0,
+   "kind": "single",
+   "attributes": {
+    "seed": 8,
+    "region": "South"
+   },
+   "teams": [
+    {
+     "name": "Louisville",
+     "seed": 8,
+     "resolved": true
+    }
+   ],
+   "owners": [
+    {
+     "label": "Sam",
+     "share": 0.5
+    },
+    {
+     "label": "Zach",
+     "share": 0.5
+    }
+   ],
+   "events": [],
+   "expected": {
+    "points": null,
+    "realized_return": 0.0
+   }
+  },
+  {
+   "label": "Creighton",
+   "lot_order": 12,
+   "price": 560.0,
+   "kind": "single",
+   "attributes": {
+    "seed": 9,
+    "region": "South"
+   },
+   "teams": [
+    {
+     "name": "Creighton",
+     "seed": 9,
+     "resolved": true
+    }
+   ],
+   "owners": [
+    {
+     "label": "Zach",
+     "share": 0.5
+    },
+    {
+     "label": "Craig",
+     "share": 0.5
+    }
+   ],
+   "events": [
+    {
+     "period_key": "R32",
+     "metric": "advance",
+     "units": 1
+    }
+   ],
+   "expected": {
+    "points": null,
+    "realized_return": 368.15
+   }
+  },
+  {
+   "label": "New Mexico",
+   "lot_order": 11,
+   "price": 560.0,
+   "kind": "single",
+   "attributes": {
+    "seed": 10,
+    "region": "South"
+   },
+   "teams": [
+    {
+     "name": "New Mexico",
+     "seed": 10,
+     "resolved": true
+    }
+   ],
+   "owners": [
+    {
+     "label": "Zack",
+     "share": 1.0
+    }
+   ],
+   "events": [
+    {
+     "period_key": "R32",
+     "metric": "advance",
+     "units": 1
+    },
+    {
+     "period_key": null,
+     "metric": "upset_3plus",
+     "units": 1
+    }
+   ],
+   "expected": {
+    "points": null,
+    "realized_return": 828.3375
+   }
+  },
+  {
+   "label": "North Carolina",
+   "lot_order": 10,
+   "price": 1250.0,
+   "kind": "single",
+   "attributes": {
+    "seed": 11,
+    "region": "South"
+   },
+   "teams": [
+    {
+     "name": "North Carolina",
+     "seed": 11,
+     "resolved": true
+    }
+   ],
+   "owners": [
+    {
+     "label": "Sam",
+     "share": 0.5
+    },
+    {
+     "label": "Zach",
+     "share": 0.5
+    }
+   ],
+   "events": [],
+   "expected": {
+    "points": null,
+    "realized_return": 0.0
+   }
+  },
+  {
+   "label": "UC San Diego",
+   "lot_order": 6,
+   "price": 730.0,
+   "kind": "single",
+   "attributes": {
+    "seed": 12,
+    "region": "South"
+   },
+   "teams": [
+    {
+     "name": "UC San Diego",
+     "seed": 12,
+     "resolved": true
+    }
+   ],
+   "owners": [
+    {
+     "label": "Sam",
+     "share": 1.0
+    }
+   ],
+   "events": [],
+   "expected": {
+    "points": null,
+    "realized_return": 0.0
+   }
+  },
+  {
+   "label": "Yale",
+   "lot_order": 19,
+   "price": 580.0,
+   "kind": "single",
+   "attributes": {
+    "seed": 13,
+    "region": "South"
+   },
+   "teams": [
+    {
+     "name": "Yale",
+     "seed": 13,
+     "resolved": true
+    }
+   ],
+   "owners": [
+    {
+     "label": "Chris",
+     "share": 1.0
+    }
+   ],
+   "events": [],
+   "expected": {
+    "points": null,
+    "realized_return": 0.0
+   }
+  },
+  {
+   "label": "Lipscomb / Bryant / Alabama St",
+   "lot_order": 42,
+   "price": 450.0,
+   "kind": "bundle",
+   "attributes": {
+    "seed": null,
+    "seed_label": "14-16",
+    "region": "South"
+   },
+   "teams": [
+    {
+     "name": "Lipscomb",
+     "seed": 14,
+     "resolved": true
+    },
+    {
+     "name": "Bryant",
+     "seed": 15,
+     "resolved": true
+    },
+    {
+     "name": "Alabama St",
+     "seed": 16,
+     "resolved": true
+    }
+   ],
+   "owners": [
+    {
+     "label": "Craig",
+     "share": 1.0
+    }
+   ],
+   "events": [],
+   "expected": {
+    "points": null,
+    "realized_return": 0.0
+   }
+  },
+  {
+   "label": "Duke",
+   "lot_order": 18,
+   "price": 7250.0,
+   "kind": "single",
+   "attributes": {
+    "seed": 1,
+    "region": "East"
+   },
+   "teams": [
+    {
+     "name": "Duke",
+     "seed": 1,
+     "resolved": true
+    }
+   ],
+   "owners": [
+    {
+     "label": "Zach",
+     "share": 0.5
+    },
+    {
+     "label": "Ed",
+     "share": 0.5
+    }
+   ],
+   "events": [
+    {
+     "period_key": "R32",
+     "metric": "advance",
+     "units": 1
+    },
+    {
+     "period_key": "S16",
+     "metric": "advance",
+     "units": 1
+    },
+    {
+     "period_key": "E8",
+     "metric": "advance",
+     "units": 1
+    },
+    {
+     "period_key": "F4",
+     "metric": "advance",
+     "units": 1
+    }
+   ],
+   "expected": {
+    "points": null,
+    "realized_return": 5522.25
+   }
+  },
+  {
+   "label": "Alabama",
+   "lot_order": 28,
+   "price": 2800.0,
+   "kind": "single",
+   "attributes": {
+    "seed": 2,
+    "region": "East"
+   },
+   "teams": [
+    {
+     "name": "Alabama",
+     "seed": 2,
+     "resolved": true
+    }
+   ],
+   "owners": [
+    {
+     "label": "Sam",
+     "share": 1.0
+    }
+   ],
+   "events": [
+    {
+     "period_key": "R32",
+     "metric": "advance",
+     "units": 1
+    },
+    {
+     "period_key": "S16",
+     "metric": "advance",
+     "units": 1
+    },
+    {
+     "period_key": "E8",
+     "metric": "advance",
+     "units": 1
+    }
+   ],
+   "expected": {
+    "points": null,
+    "realized_return": 2577.05
+   }
+  },
+  {
+   "label": "Wisconsin",
+   "lot_order": 13,
+   "price": 1610.0,
+   "kind": "single",
+   "attributes": {
+    "seed": 3,
+    "region": "East"
+   },
+   "teams": [
+    {
+     "name": "Wisconsin",
+     "seed": 3,
+     "resolved": true
+    }
+   ],
+   "owners": [
+    {
+     "label": "Joey",
+     "share": 0.5
+    },
+    {
+     "label": "Ed",
+     "share": 0.5
+    }
+   ],
+   "events": [
+    {
+     "period_key": "R32",
+     "metric": "advance",
+     "units": 1
+    }
+   ],
+   "expected": {
+    "points": null,
+    "realized_return": 368.15
+   }
+  },
+  {
+   "label": "Arizona",
+   "lot_order": 38,
+   "price": 1570.0,
+   "kind": "single",
+   "attributes": {
+    "seed": 4,
+    "region": "East"
+   },
+   "teams": [
+    {
+     "name": "Arizona",
+     "seed": 4,
+     "resolved": true
+    }
+   ],
+   "owners": [
+    {
+     "label": "Zach",
+     "share": 1.0
+    }
+   ],
+   "events": [
+    {
+     "period_key": "R32",
+     "metric": "advance",
+     "units": 1
+    },
+    {
+     "period_key": "S16",
+     "metric": "advance",
+     "units": 1
+    }
+   ],
+   "expected": {
+    "points": null,
+    "realized_return": 1104.45
+   }
+  },
+  {
+   "label": "Oregon",
+   "lot_order": 9,
+   "price": 740.0,
+   "kind": "single",
+   "attributes": {
+    "seed": 5,
+    "region": "East"
+   },
+   "teams": [
+    {
+     "name": "Oregon",
+     "seed": 5,
+     "resolved": true
+    }
+   ],
+   "owners": [
+    {
+     "label": "Sam",
+     "share": 1.0
+    }
+   ],
+   "events": [
+    {
+     "period_key": "R32",
+     "metric": "advance",
+     "units": 1
+    }
+   ],
+   "expected": {
+    "points": null,
+    "realized_return": 368.15
+   }
+  },
+  {
+   "label": "BYU",
+   "lot_order": 4,
+   "price": 910.0,
+   "kind": "single",
+   "attributes": {
+    "seed": 6,
+    "region": "East"
+   },
+   "teams": [
+    {
+     "name": "BYU",
+     "seed": 6,
+     "resolved": true
+    }
+   ],
+   "owners": [
+    {
+     "label": "Matt",
+     "share": 1.0
+    }
+   ],
+   "events": [
+    {
+     "period_key": "R32",
+     "metric": "advance",
+     "units": 1
+    },
+    {
+     "period_key": "S16",
+     "metric": "advance",
+     "units": 1
+    },
+    {
+     "period_key": null,
+     "metric": "upset_3plus",
+     "units": 1
+    }
+   ],
+   "expected": {
+    "points": null,
+    "realized_return": 1564.6375
+   }
+  },
+  {
+   "label": "Saint Mary's",
+   "lot_order": 34,
+   "price": 800.0,
+   "kind": "single",
+   "attributes": {
+    "seed": 7,
+    "region": "East"
+   },
+   "teams": [
+    {
+     "name": "Saint Mary's",
+     "seed": 7,
+     "resolved": true
+    }
+   ],
+   "owners": [
+    {
+     "label": "Sam",
+     "share": 1.0
+    }
+   ],
+   "events": [
+    {
+     "period_key": "R32",
+     "metric": "advance",
+     "units": 1
+    }
+   ],
+   "expected": {
+    "points": null,
+    "realized_return": 368.15
+   }
+  },
+  {
+   "label": "Mississippi State",
+   "lot_order": 17,
+   "price": 410.0,
+   "kind": "single",
+   "attributes": {
+    "seed": 8,
+    "region": "East"
+   },
+   "teams": [
+    {
+     "name": "Mississippi State",
+     "seed": 8,
+     "resolved": true
+    }
+   ],
+   "owners": [
+    {
+     "label": "Shaun",
+     "share": 1.0
+    }
+   ],
+   "events": [],
+   "expected": {
+    "points": null,
+    "realized_return": 0.0
+   }
+  },
+  {
+   "label": "Baylor",
+   "lot_order": 15,
+   "price": 500.0,
+   "kind": "single",
+   "attributes": {
+    "seed": 9,
+    "region": "East"
+   },
+   "teams": [
+    {
+     "name": "Baylor",
+     "seed": 9,
+     "resolved": true
+    }
+   ],
+   "owners": [
+    {
+     "label": "Zach",
+     "share": 1.0
+    }
+   ],
+   "events": [
+    {
+     "period_key": "R32",
+     "metric": "advance",
+     "units": 1
+    }
+   ],
+   "expected": {
+    "points": null,
+    "realized_return": 368.15
+   }
+  },
+  {
+   "label": "Vanderbilt",
+   "lot_order": 27,
+   "price": 450.0,
+   "kind": "single",
+   "attributes": {
+    "seed": 10,
+    "region": "East"
+   },
+   "teams": [
+    {
+     "name": "Vanderbilt",
+     "seed": 10,
+     "resolved": true
+    }
+   ],
+   "owners": [
+    {
+     "label": "Zach",
+     "share": 0.5
+    },
+    {
+     "label": "Colton",
+     "share": 0.5
+    }
+   ],
+   "events": [],
+   "expected": {
+    "points": null,
+    "realized_return": 0.0
+   }
+  },
+  {
+   "label": "VCU",
+   "lot_order": 2,
+   "price": 950.0,
+   "kind": "single",
+   "attributes": {
+    "seed": 11,
+    "region": "East"
+   },
+   "teams": [
+    {
+     "name": "VCU",
+     "seed": 11,
+     "resolved": true
+    }
+   ],
+   "owners": [
+    {
+     "label": "Greg",
+     "share": 1.0
+    }
+   ],
+   "events": [],
+   "expected": {
+    "points": null,
+    "realized_return": 0.0
+   }
+  },
+  {
+   "label": "Liberty",
+   "lot_order": 46,
+   "price": 350.0,
+   "kind": "single",
+   "attributes": {
+    "seed": 12,
+    "region": "East"
+   },
+   "teams": [
+    {
+     "name": "Liberty",
+     "seed": 12,
+     "resolved": true
+    }
+   ],
+   "owners": [
+    {
+     "label": "Craig",
+     "share": 1.0
+    }
+   ],
+   "events": [],
+   "expected": {
+    "points": null,
+    "realized_return": 0.0
+   }
+  },
+  {
+   "label": "Akron",
+   "lot_order": 53,
+   "price": 270.0,
+   "kind": "single",
+   "attributes": {
+    "seed": 13,
+    "region": "East"
+   },
+   "teams": [
+    {
+     "name": "Akron",
+     "seed": 13,
+     "resolved": true
+    }
+   ],
+   "owners": [
+    {
+     "label": "Craig",
+     "share": 1.0
+    }
+   ],
+   "events": [],
+   "expected": {
+    "points": null,
+    "realized_return": 0.0
+   }
+  },
+  {
+   "label": "Montana / Robert Morris / Mt St Mary's",
+   "lot_order": 30,
+   "price": 390.0,
+   "kind": "bundle",
+   "attributes": {
+    "seed": null,
+    "seed_label": "14-16",
+    "region": "East"
+   },
+   "teams": [
+    {
+     "name": "Montana",
+     "seed": 14,
+     "resolved": true
+    },
+    {
+     "name": "Robert Morris",
+     "seed": 15,
+     "resolved": true
+    },
+    {
+     "name": "Mt St Mary's",
+     "seed": 16,
+     "resolved": true
+    }
+   ],
+   "owners": [
+    {
+     "label": "Ed",
+     "share": 0.333333
+    },
+    {
+     "label": "Shaun",
+     "share": 0.333333
+    },
+    {
+     "label": "Colton",
+     "share": 0.333334
+    }
+   ],
+   "events": [],
+   "expected": {
+    "points": null,
+    "realized_return": 0.0
+   }
+  },
+  {
+   "label": "Houston",
+   "lot_order": 36,
+   "price": 4900.0,
+   "kind": "single",
+   "attributes": {
+    "seed": 1,
+    "region": "Midwest"
+   },
+   "teams": [
+    {
+     "name": "Houston",
+     "seed": 1,
+     "resolved": true
+    }
+   ],
+   "owners": [
+    {
+     "label": "Sam",
+     "share": 1.0
+    }
+   ],
+   "events": [
+    {
+     "period_key": "R32",
+     "metric": "advance",
+     "units": 1
+    },
+    {
+     "period_key": "S16",
+     "metric": "advance",
+     "units": 1
+    },
+    {
+     "period_key": "E8",
+     "metric": "advance",
+     "units": 1
+    },
+    {
+     "period_key": "F4",
+     "metric": "advance",
+     "units": 1
+    },
+    {
+     "period_key": "CHAMP",
+     "metric": "advance",
+     "units": 1
+    }
+   ],
+   "expected": {
+    "points": null,
+    "realized_return": 11412.65
+   }
+  },
+  {
+   "label": "Tennessee",
+   "lot_order": 8,
+   "price": 3170.0,
+   "kind": "single",
+   "attributes": {
+    "seed": 2,
+    "region": "Midwest"
+   },
+   "teams": [
+    {
+     "name": "Tennessee",
+     "seed": 2,
+     "resolved": true
+    }
+   ],
+   "owners": [
+    {
+     "label": "Zack",
+     "share": 1.0
+    }
+   ],
+   "events": [
+    {
+     "period_key": "R32",
+     "metric": "advance",
+     "units": 1
+    },
+    {
+     "period_key": "S16",
+     "metric": "advance",
+     "units": 1
+    },
+    {
+     "period_key": "E8",
+     "metric": "advance",
+     "units": 1
+    }
+   ],
+   "expected": {
+    "points": null,
+    "realized_return": 2577.05
+   }
+  },
+  {
+   "label": "Kentucky",
+   "lot_order": 41,
+   "price": 1340.0,
+   "kind": "single",
+   "attributes": {
+    "seed": 3,
+    "region": "Midwest"
+   },
+   "teams": [
+    {
+     "name": "Kentucky",
+     "seed": 3,
+     "resolved": true
+    }
+   ],
+   "owners": [
+    {
+     "label": "Zack",
+     "share": 1.0
+    }
+   ],
+   "events": [
+    {
+     "period_key": "R32",
+     "metric": "advance",
+     "units": 1
+    },
+    {
+     "period_key": "S16",
+     "metric": "advance",
+     "units": 1
+    }
+   ],
+   "expected": {
+    "points": null,
+    "realized_return": 1104.45
+   }
+  },
+  {
+   "label": "Purdue",
+   "lot_order": 7,
+   "price": 1050.0,
+   "kind": "single",
+   "attributes": {
+    "seed": 4,
+    "region": "Midwest"
+   },
+   "teams": [
+    {
+     "name": "Purdue",
+     "seed": 4,
+     "resolved": true
+    }
+   ],
+   "owners": [
+    {
+     "label": "Zach",
+     "share": 1.0
+    }
+   ],
+   "events": [
+    {
+     "period_key": "R32",
+     "metric": "advance",
+     "units": 1
+    },
+    {
+     "period_key": "S16",
+     "metric": "advance",
+     "units": 1
+    }
+   ],
+   "expected": {
+    "points": null,
+    "realized_return": 1104.45
+   }
+  },
+  {
+   "label": "Clemson",
+   "lot_order": 48,
+   "price": 1200.0,
+   "kind": "single",
+   "attributes": {
+    "seed": 5,
+    "region": "Midwest"
+   },
+   "teams": [
+    {
+     "name": "Clemson",
+     "seed": 5,
+     "resolved": true
+    }
+   ],
+   "owners": [
+    {
+     "label": "Sam",
+     "share": 0.5
+    },
+    {
+     "label": "Ed",
+     "share": 0.5
+    }
+   ],
+   "events": [],
+   "expected": {
+    "points": null,
+    "realized_return": 0.0
+   }
+  },
+  {
+   "label": "Illinois",
+   "lot_order": 44,
+   "price": 1100.0,
+   "kind": "single",
+   "attributes": {
+    "seed": 6,
+    "region": "Midwest"
+   },
+   "teams": [
+    {
+     "name": "Illinois",
+     "seed": 6,
+     "resolved": true
+    }
+   ],
+   "owners": [
+    {
+     "label": "Sam",
+     "share": 1.0
+    }
+   ],
+   "events": [
+    {
+     "period_key": "R32",
+     "metric": "advance",
+     "units": 1
+    }
+   ],
+   "expected": {
+    "points": null,
+    "realized_return": 368.15
+   }
+  },
+  {
+   "label": "UCLA",
+   "lot_order": 45,
+   "price": 740.0,
+   "kind": "single",
+   "attributes": {
+    "seed": 7,
+    "region": "Midwest"
+   },
+   "teams": [
+    {
+     "name": "UCLA",
+     "seed": 7,
+     "resolved": true
+    }
+   ],
+   "owners": [
+    {
+     "label": "Zach",
+     "share": 1.0
+    }
+   ],
+   "events": [
+    {
+     "period_key": "R32",
+     "metric": "advance",
+     "units": 1
+    }
+   ],
+   "expected": {
+    "points": null,
+    "realized_return": 368.15
+   }
+  },
+  {
+   "label": "Gonzaga",
+   "lot_order": 29,
+   "price": 1250.0,
+   "kind": "single",
+   "attributes": {
+    "seed": 8,
+    "region": "Midwest"
+   },
+   "teams": [
+    {
+     "name": "Gonzaga",
+     "seed": 8,
+     "resolved": true
+    }
+   ],
+   "owners": [
+    {
+     "label": "Zach",
+     "share": 0.5
+    },
+    {
+     "label": "Craig",
+     "share": 0.5
+    }
+   ],
+   "events": [
+    {
+     "period_key": "R32",
+     "metric": "advance",
+     "units": 1
+    }
+   ],
+   "expected": {
+    "points": null,
+    "realized_return": 368.15
+   }
+  },
+  {
+   "label": "Georgia",
+   "lot_order": 52,
+   "price": 400.0,
+   "kind": "single",
+   "attributes": {
+    "seed": 9,
+    "region": "Midwest"
+   },
+   "teams": [
+    {
+     "name": "Georgia",
+     "seed": 9,
+     "resolved": true
+    }
+   ],
+   "owners": [
+    {
+     "label": "Chris",
+     "share": 0.5
+    },
+    {
+     "label": "Zach",
+     "share": 0.5
+    }
+   ],
+   "events": [],
+   "expected": {
+    "points": null,
+    "realized_return": 0.0
+   }
+  },
+  {
+   "label": "Utah State",
+   "lot_order": 26,
+   "price": 460.0,
+   "kind": "single",
+   "attributes": {
+    "seed": 10,
+    "region": "Midwest"
+   },
+   "teams": [
+    {
+     "name": "Utah State",
+     "seed": 10,
+     "resolved": true
+    }
+   ],
+   "owners": [
+    {
+     "label": "Craig",
+     "share": 0.5
+    },
+    {
+     "label": "Zach",
+     "share": 0.5
+    }
+   ],
+   "events": [],
+   "expected": {
+    "points": null,
+    "realized_return": 0.0
+   }
+  },
+  {
+   "label": "Xavier",
+   "lot_order": 33,
+   "price": 870.0,
+   "kind": "single",
+   "attributes": {
+    "seed": 11,
+    "region": "Midwest"
+   },
+   "teams": [
+    {
+     "name": "Xavier",
+     "seed": 11,
+     "resolved": true
+    }
+   ],
+   "owners": [
+    {
+     "label": "Sam",
+     "share": 0.5
+    },
+    {
+     "label": "Zach",
+     "share": 0.5
+    }
+   ],
+   "events": [],
+   "expected": {
+    "points": null,
+    "realized_return": 0.0
+   }
+  },
+  {
+   "label": "McNeese",
+   "lot_order": 55,
+   "price": 400.0,
+   "kind": "single",
+   "attributes": {
+    "seed": 12,
+    "region": "Midwest"
+   },
+   "teams": [
+    {
+     "name": "McNeese",
+     "seed": 12,
+     "resolved": true
+    }
+   ],
+   "owners": [
+    {
+     "label": "Ed",
+     "share": 0.5
+    },
+    {
+     "label": "Craig",
+     "share": 0.5
+    }
+   ],
+   "events": [
+    {
+     "period_key": "R32",
+     "metric": "advance",
+     "units": 1
+    },
+    {
+     "period_key": null,
+     "metric": "upset_3plus",
+     "units": 1
+    }
+   ],
+   "expected": {
+    "points": null,
+    "realized_return": 828.3375
+   }
+  },
+  {
+   "label": "High Point",
+   "lot_order": 3,
+   "price": 510.0,
+   "kind": "single",
+   "attributes": {
+    "seed": 13,
+    "region": "Midwest"
+   },
+   "teams": [
+    {
+     "name": "High Point",
+     "seed": 13,
+     "resolved": true
+    }
+   ],
+   "owners": [
+    {
+     "label": "Sam",
+     "share": 1.0
+    }
+   ],
+   "events": [],
+   "expected": {
+    "points": null,
+    "realized_return": 0.0
+   }
+  },
+  {
+   "label": "Troy / Wofford / SIU Edwardsville",
+   "lot_order": 37,
+   "price": 480.0,
+   "kind": "bundle",
+   "attributes": {
+    "seed": null,
+    "seed_label": "14-16",
+    "region": "Midwest"
+   },
+   "teams": [
+    {
+     "name": "Troy",
+     "seed": 14,
+     "resolved": true
+    },
+    {
+     "name": "Wofford",
+     "seed": 15,
+     "resolved": true
+    },
+    {
+     "name": "SIU Edwardsville",
+     "seed": 16,
+     "resolved": true
+    }
+   ],
+   "owners": [
+    {
+     "label": "Sam",
+     "share": 1.0
+    }
+   ],
+   "events": [],
+   "expected": {
+    "points": null,
+    "realized_return": 0.0
+   }
+  },
+  {
+   "label": "Florida",
+   "lot_order": 21,
+   "price": 6100.0,
+   "kind": "single",
+   "attributes": {
+    "seed": 1,
+    "region": "West"
+   },
+   "teams": [
+    {
+     "name": "Florida",
+     "seed": 1,
+     "resolved": true
+    }
+   ],
+   "owners": [
+    {
+     "label": "Zach",
+     "share": 1.0
+    }
+   ],
+   "events": [
+    {
+     "period_key": "R32",
+     "metric": "advance",
+     "units": 1
+    },
+    {
+     "period_key": "S16",
+     "metric": "advance",
+     "units": 1
+    },
+    {
+     "period_key": "E8",
+     "metric": "advance",
+     "units": 1
+    },
+    {
+     "period_key": "F4",
+     "metric": "advance",
+     "units": 1
+    },
+    {
+     "period_key": "CHAMP",
+     "metric": "advance",
+     "units": 1
+    },
+    {
+     "period_key": "TITLE",
+     "metric": "advance",
+     "units": 1
+    }
+   ],
+   "expected": {
+    "points": null,
+    "realized_return": 18775.65
+   }
+  },
+  {
+   "label": "St. John's",
+   "lot_order": 39,
+   "price": 2270.0,
+   "kind": "single",
+   "attributes": {
+    "seed": 2,
+    "region": "West"
+   },
+   "teams": [
+    {
+     "name": "St. John's",
+     "seed": 2,
+     "resolved": true
+    }
+   ],
+   "owners": [
+    {
+     "label": "Ed",
+     "share": 0.333333
+    },
+    {
+     "label": "Sam",
+     "share": 0.333333
+    },
+    {
+     "label": "Zach",
+     "share": 0.333334
+    }
+   ],
+   "events": [
+    {
+     "period_key": "R32",
+     "metric": "advance",
+     "units": 1
+    }
+   ],
+   "expected": {
+    "points": null,
+    "realized_return": 368.15
+   }
+  },
+  {
+   "label": "Texas Tech",
+   "lot_order": 50,
+   "price": 2330.0,
+   "kind": "single",
+   "attributes": {
+    "seed": 3,
+    "region": "West"
+   },
+   "teams": [
+    {
+     "name": "Texas Tech",
+     "seed": 3,
+     "resolved": true
+    }
+   ],
+   "owners": [
+    {
+     "label": "Ed",
+     "share": 1.0
+    }
+   ],
+   "events": [
+    {
+     "period_key": "R32",
+     "metric": "advance",
+     "units": 1
+    },
+    {
+     "period_key": "S16",
+     "metric": "advance",
+     "units": 1
+    },
+    {
+     "period_key": "E8",
+     "metric": "advance",
+     "units": 1
+    }
+   ],
+   "expected": {
+    "points": null,
+    "realized_return": 2577.05
+   }
+  },
+  {
+   "label": "Maryland",
+   "lot_order": 1,
+   "price": 1630.0,
+   "kind": "single",
+   "attributes": {
+    "seed": 4,
+    "region": "West"
+   },
+   "teams": [
+    {
+     "name": "Maryland",
+     "seed": 4,
+     "resolved": true
+    }
+   ],
+   "owners": [
+    {
+     "label": "Sam",
+     "share": 1.0
+    }
+   ],
+   "events": [
+    {
+     "period_key": "R32",
+     "metric": "advance",
+     "units": 1
+    },
+    {
+     "period_key": "S16",
+     "metric": "advance",
+     "units": 1
+    }
+   ],
+   "expected": {
+    "points": null,
+    "realized_return": 1104.45
+   }
+  },
+  {
+   "label": "Memphis",
+   "lot_order": 32,
+   "price": 400.0,
+   "kind": "single",
+   "attributes": {
+    "seed": 5,
+    "region": "West"
+   },
+   "teams": [
+    {
+     "name": "Memphis",
+     "seed": 5,
+     "resolved": true
+    }
+   ],
+   "owners": [
+    {
+     "label": "Sam",
+     "share": 1.0
+    }
+   ],
+   "events": [],
+   "expected": {
+    "points": null,
+    "realized_return": 0.0
+   }
+  },
+  {
+   "label": "Missouri",
+   "lot_order": 5,
+   "price": 980.0,
+   "kind": "single",
+   "attributes": {
+    "seed": 6,
+    "region": "West"
+   },
+   "teams": [
+    {
+     "name": "Missouri",
+     "seed": 6,
+     "resolved": true
+    }
+   ],
+   "owners": [
+    {
+     "label": "Zack",
+     "share": 1.0
+    }
+   ],
+   "events": [],
+   "expected": {
+    "points": null,
+    "realized_return": 0.0
+   }
+  },
+  {
+   "label": "Kansas",
+   "lot_order": 23,
+   "price": 920.0,
+   "kind": "single",
+   "attributes": {
+    "seed": 7,
+    "region": "West"
+   },
+   "teams": [
+    {
+     "name": "Kansas",
+     "seed": 7,
+     "resolved": true
+    }
+   ],
+   "owners": [
+    {
+     "label": "Sam",
+     "share": 0.5
+    },
+    {
+     "label": "Zach",
+     "share": 0.5
+    }
+   ],
+   "events": [],
+   "expected": {
+    "points": null,
+    "realized_return": 0.0
+   }
+  },
+  {
+   "label": "UConn",
+   "lot_order": 24,
+   "price": 670.0,
+   "kind": "single",
+   "attributes": {
+    "seed": 8,
+    "region": "West"
+   },
+   "teams": [
+    {
+     "name": "UConn",
+     "seed": 8,
+     "resolved": true
+    }
+   ],
+   "owners": [
+    {
+     "label": "Sam",
+     "share": 0.5
+    },
+    {
+     "label": "Zach",
+     "share": 0.5
+    }
+   ],
+   "events": [
+    {
+     "period_key": "R32",
+     "metric": "advance",
+     "units": 1
+    }
+   ],
+   "expected": {
+    "points": null,
+    "realized_return": 368.15
+   }
+  },
+  {
+   "label": "Oklahoma",
+   "lot_order": 35,
+   "price": 370.0,
+   "kind": "single",
+   "attributes": {
+    "seed": 9,
+    "region": "West"
+   },
+   "teams": [
+    {
+     "name": "Oklahoma",
+     "seed": 9,
+     "resolved": true
+    }
+   ],
+   "owners": [
+    {
+     "label": "Zach",
+     "share": 1.0
+    }
+   ],
+   "events": [],
+   "expected": {
+    "points": null,
+    "realized_return": 0.0
+   }
+  },
+  {
+   "label": "Arkansas",
+   "lot_order": 22,
+   "price": 570.0,
+   "kind": "single",
+   "attributes": {
+    "seed": 10,
+    "region": "West"
+   },
+   "teams": [
+    {
+     "name": "Arkansas",
+     "seed": 10,
+     "resolved": true
+    }
+   ],
+   "owners": [
+    {
+     "label": "Zack",
+     "share": 1.0
+    }
+   ],
+   "events": [
+    {
+     "period_key": "R32",
+     "metric": "advance",
+     "units": 1
+    },
+    {
+     "period_key": "S16",
+     "metric": "advance",
+     "units": 1
+    },
+    {
+     "period_key": null,
+     "metric": "upset_3plus",
+     "units": 2
+    },
+    {
+     "period_key": null,
+     "metric": "upset_8plus",
+     "units": 1
+    }
+   ],
+   "expected": {
+    "points": null,
+    "realized_return": 5706.325
+   }
+  },
+  {
+   "label": "Drake",
+   "lot_order": 16,
+   "price": 500.0,
+   "kind": "single",
+   "attributes": {
+    "seed": 11,
+    "region": "West"
+   },
+   "teams": [
+    {
+     "name": "Drake",
+     "seed": 11,
+     "resolved": true
+    }
+   ],
+   "owners": [
+    {
+     "label": "Sam",
+     "share": 1.0
+    }
+   ],
+   "events": [
+    {
+     "period_key": "R32",
+     "metric": "advance",
+     "units": 1
+    },
+    {
+     "period_key": null,
+     "metric": "upset_3plus",
+     "units": 1
+    }
+   ],
+   "expected": {
+    "points": null,
+    "realized_return": 828.3375
+   }
+  },
+  {
+   "label": "Colorado State",
+   "lot_order": 40,
+   "price": 940.0,
+   "kind": "single",
+   "attributes": {
+    "seed": 12,
+    "region": "West"
+   },
+   "teams": [
+    {
+     "name": "Colorado State",
+     "seed": 12,
+     "resolved": true
+    }
+   ],
+   "owners": [
+    {
+     "label": "Joey",
+     "share": 1.0
+    }
+   ],
+   "events": [
+    {
+     "period_key": "R32",
+     "metric": "advance",
+     "units": 1
+    },
+    {
+     "period_key": null,
+     "metric": "upset_3plus",
+     "units": 1
+    }
+   ],
+   "expected": {
+    "points": null,
+    "realized_return": 828.3375
+   }
+  },
+  {
+   "label": "Grand Canyon",
+   "lot_order": 56,
+   "price": 320.0,
+   "kind": "single",
+   "attributes": {
+    "seed": 13,
+    "region": "West"
+   },
+   "teams": [
+    {
+     "name": "Grand Canyon",
+     "seed": 13,
+     "resolved": true
+    }
+   ],
+   "owners": [
+    {
+     "label": "Sam",
+     "share": 0.5
+    },
+    {
+     "label": "Zach",
+     "share": 0.5
+    }
+   ],
+   "events": [],
+   "expected": {
+    "points": null,
+    "realized_return": 0.0
+   }
+  },
+  {
+   "label": "UNC Wilmington / Omaha / Norfolk State",
+   "lot_order": 20,
+   "price": 360.0,
+   "kind": "bundle",
+   "attributes": {
+    "seed": null,
+    "seed_label": "14-16",
+    "region": "West"
+   },
+   "teams": [
+    {
+     "name": "UNC Wilmington",
+     "seed": 14,
+     "resolved": true
+    },
+    {
+     "name": "Omaha",
+     "seed": 15,
+     "resolved": true
+    },
+    {
+     "name": "Norfolk State",
+     "seed": 16,
+     "resolved": true
+    }
+   ],
+   "owners": [
+    {
+     "label": "Sam",
+     "share": 1.0
+    }
+   ],
+   "events": [],
+   "expected": {
+    "points": null,
+    "realized_return": 0.0
+   }
+  }
+ ],
+ "trades": [
+  {
+   "sheet_ref": "1",
+   "date": null,
+   "detail": "'Sam / Zach 0.5x Lion King XBook' / 'Zach / Sam 0.5x Lion King XBook', 50% of asset. Sam leg: Value of Traded Asset -$2,581.15625, Net Trade Value -$3,079.00625, New Owner Sam. Zach leg: Value of Traded Asset $497.85, Net Trade Value $3,079.00625, New Owner Zach. A 0.5x cross-book swap with an outside book named 'Lion King'; no entry-level detail and no stated direction.",
+   "scope": "synthetic_book",
+   "entry_label": null,
+   "from": "Zach",
+   "to": "Sam",
+   "pct": 0.5,
+   "cash": -3079.00625
+  },
+  {
+   "sheet_ref": "2",
+   "date": null,
+   "detail": "'Ed buys 50% of Florida @ $6,200' (Value of Traded Asset $9,387.825 = 50% of Florida's $18,775.65 realized, Net Trade Value $6,287.825) / 'Zach sells 50% of Florida @ $6,200' (Value of Traded Asset $3,100.00 = 50% of the $6,200 mark, Net Trade Value -$6,287.825). Florida won the title, so this is the single most valuable trade in the pool.",
+   "scope": "entry",
+   "entry_label": "Florida",
+   "from": "Zach",
+   "to": "Ed",
+   "pct": 0.5,
+   "cash": 6287.825
+  },
+  {
+   "sheet_ref": "3",
+   "date": null,
+   "detail": "'Ed buys 50% of West 14-16 bundle' (Value of Traded Asset $0.00, Net Trade Value -$180.00) / 'Sam sells 50% of West 14-16 bundle' (Value of Traded Asset $180.00 = 50% of the $360 cost, Net Trade Value $180.00). The bundle realized $0.",
+   "scope": "entry",
+   "entry_label": "UNC Wilmington / Omaha / Norfolk State",
+   "from": "Sam",
+   "to": "Ed",
+   "pct": 0.5,
+   "cash": -180.0
+  },
+  {
+   "sheet_ref": "4",
+   "date": null,
+   "detail": "'Shaun buys 50% of Texas Tech' (Value of Traded Asset $1,288.525 = 50% of $2,577.05 realized, Net Trade Value $123.525) / 'Ed sells 50% of Texas Tech' (Value of Traded Asset $1,165.00 = 50% of the $2,330 cost, Net Trade Value -$123.525).",
+   "scope": "entry",
+   "entry_label": "Texas Tech",
+   "from": "Ed",
+   "to": "Shaun",
+   "pct": 0.5,
+   "cash": 123.525
+  },
+  {
+   "sheet_ref": "5",
+   "date": null,
+   "detail": "'Shaun buys 40% of Michigan St' (Value of Traded Asset $1,030.82 = 40% of $2,577.05 realized, Net Trade Value -$9.18) / 'Ed sells 40% of Michigan St' (Value of Traded Asset $1,040.00 = 40% of the $2,600 cost, Net Trade Value $9.18). The lot is written 'Michigan State' on the payout tab and 'Michigan St' in the trade row.",
+   "scope": "entry",
+   "entry_label": "Michigan State",
+   "from": "Ed",
+   "to": "Shaun",
+   "pct": 0.4,
+   "cash": -9.18
+  },
+  {
+   "sheet_ref": "6",
+   "date": null,
+   "detail": "'Zack buys 100% of Maryland for $1,740' (Value of Traded Asset $1,104.45 = Maryland's full realized return, Net Trade Value -$635.55) / 'Sam sells 100% of Maryland for $1,740' (Value of Traded Asset $1,740.00, Net Trade Value $635.55). A whole-lot sale at $1,740 against a $1,630 auction price.",
+   "scope": "entry",
+   "entry_label": "Maryland",
+   "from": "Sam",
+   "to": "Zack",
+   "pct": 1.0,
+   "cash": -635.55
+  },
+  {
+   "sheet_ref": "7",
+   "date": null,
+   "detail": "'Joey buys 50% of Oregon' (Value of Traded Asset $184.075 = 50% of $368.15 realized, Net Trade Value -$185.925) / 'Sam sells 50% of Oregon' (Value of Traded Asset $370.00 = 50% of the $740 cost, Net Trade Value $185.925).",
+   "scope": "entry",
+   "entry_label": "Oregon",
+   "from": "Sam",
+   "to": "Joey",
+   "pct": 0.5,
+   "cash": -185.925
+  },
+  {
+   "sheet_ref": "8",
+   "date": null,
+   "detail": "'Joey buys 50% of Michigan' (Value of Traded Asset $552.225 = 50% of $1,104.45 realized, Net Trade Value $122.225) / 'Sam sells 50% of Michigan' (Value of Traded Asset $430.00 = 50% of the $860 cost, Net Trade Value -$122.225).",
+   "scope": "entry",
+   "entry_label": "Michigan",
+   "from": "Sam",
+   "to": "Joey",
+   "pct": 0.5,
+   "cash": 122.225
+  },
+  {
+   "sheet_ref": "9",
+   "date": null,
+   "detail": "'Ed buys 25% of Houston' (Value of Traded Asset $2,853.1625 = 25% of $11,412.65 realized, Net Trade Value $1,628.1625) / 'Sam sells 25% of Houston' (Value of Traded Asset $1,225.00 = 25% of the $4,900 cost, Net Trade Value -$1,628.1625). Houston reached the championship game.",
+   "scope": "entry",
+   "entry_label": "Houston",
+   "from": "Sam",
+   "to": "Ed",
+   "pct": 0.25,
+   "cash": 1628.1625
+  },
+  {
+   "sheet_ref": "10",
+   "date": null,
+   "detail": "'Zach buys 25% of Alabama' (Value of Traded Asset $644.2625 = 25% of $2,577.05 realized, Net Trade Value -$55.7375) / 'Sam sells 25% of Alabama' (Value of Traded Asset $700.00 = 25% of the $2,800 cost, Net Trade Value $55.7375).",
+   "scope": "entry",
+   "entry_label": "Alabama",
+   "from": "Sam",
+   "to": "Zach",
+   "pct": 0.25,
+   "cash": -55.7375
+  }
+ ],
+ "expected_owners": [
+  {
+   "label": "Chris",
+   "cost": 780.0,
+   "realized": 0.0
+  },
+  {
+   "label": "Craig",
+   "cost": 2405.0,
+   "realized": 782.31875
+  },
+  {
+   "label": "Ed",
+   "cost": 11046.66667,
+   "realized": 8636.185417
+  },
+  {
+   "label": "Greg",
+   "cost": 950.0,
+   "realized": 0.0
+  },
+  {
+   "label": "Joey",
+   "cost": 1745.0,
+   "realized": 1012.4125
+  },
+  {
+   "label": "Matt",
+   "cost": 910.0,
+   "realized": 1564.6375
+  },
+  {
+   "label": "Sam",
+   "cost": 19541.66667,
+   "realized": 18438.17917
+  },
+  {
+   "label": "Zach",
+   "cost": 18646.66667,
+   "realized": 25156.91667
+  },
+  {
+   "label": "Zack",
+   "cost": 15910.0,
+   "realized": 16474.7125
+  },
+  {
+   "label": "Colton",
+   "cost": 1155.0,
+   "realized": 1564.6375
+  },
+  {
+   "label": "Shaun",
+   "cost": 540.0,
+   "realized": 0.0
+  }
+ ],
+ "validation": {
+  "check_1_sum_price_equals_pot": "PASS - sum of the 56 entry prices = $73,630.00 = stated pot_size $73,630.00 (delta $0.00). The bracket tab's Pot Summary agrees on the pot. Auction-tab bids and payout-tab '$ Cost' agree on all 56 lots.",
+  "check_2_shares_sum_to_one": "PASS - all 56 entries sum to exactly 1.0. 34 single-owner lots, 20 two-owner lots at 0.5/0.5, and two three-way lots (the East 14-16 bundle 'Ed / Shaun / Colton' and St. John's 'Ed / Sam / Zach') encoded 0.333333 / 0.333333 / 0.333334.",
+  "check_3_payout_recompute": "PASS EXACTLY - all 56 rows recomputed from events + rules match the payout tab's Realized Return to better than 1e-6 (exact cell values were read from the workbook, not the rounded display). All 11 owner-level Entry and Realized Return figures also reproduce, with a maximum deviation of $0.0015 caused solely by the contract-mandated 0.333334 third (the workbook itself uses exact thirds). Independent confirmation: the 56 Realized Return values sum to exactly $73,630.00 = the pot, and so do the 11 owner figures.",
+  "check_4_owner_labels_resolve": "PASS - all 11 owner labels used by entries (Chris, Colton, Craig, Ed, Greg, Joey, Matt, Sam, Shaun, Zach, Zack) exist in owners[]; all 10 trades' from/to labels resolve too.",
+  "check_5_period_keys_exist": "PASS - only R32/S16/E8/F4/CHAMP/TITLE appear on events; all present in periods[]. R64 declared, is_scored=false.",
+  "check_6_ownership_units": "PASS - ownership fractions sum to exactly 56.000000 and per owner match the Players table's '# Teams (Before Trades)' column exactly (Chris 1.50, Colton 1.83, Craig 5.00, Ed 4.67, Greg 1.00, Joey 1.50, Matt 1.00, Sam 16.83, Shaun 1.33, Zach 12.33, Zack 9.00).",
+  "check_7_upset_split_counts": "PASS - transcribed events total exactly 8 3+ upset units and 1 8+ upset unit, matching this workbook's own '# of splits' row (8 and 1). Derived per-unit awards 5% x 73,630 / 8 = $460.1875 and 5% x 73,630 / 1 = $3,681.50 match the workbook cells exactly. NOTE the 8+ pool has a single winner (Arkansas) who therefore takes the entire 5% pool.",
+  "check_8_trades_reconcile": "PASS - all 10 secondary trades are individually zero-sum, and summing each owner's Net Trade Value legs reproduces the Players table's 'Impact of Trades' column exactly: Chris 0, Colton 0, Craig 0, Ed +$7,621.6425, Greg 0, Joey -$63.70, Matt 0, Sam -$3,772.18125, Shaun +$114.345, Zach -$3,264.55625, Zack -$635.55. The 11 impacts sum to $0.00.",
+  "check_9_funds_flow_zero_sum": "PASS - the 11 Net Return / Funds Flow figures sum to exactly $0.00, and every named leg reconciles. Ed's row says 'Sweeps from column AA' and the hidden 'Ed's Receipts' column AA lists $125.36 (Chris) + $2,572.68 (Craig) + $796.29 (Joey) + $1,629.98 (Sam) + $70.84 (Zack) + $16.02 (Shaun) = $5,211.17, matching Ed's Receives of $5,211.16125 to a rounding cent. Craig collects $950 from Greg and pays $2,572.68 to Ed, netting -$1,622.68 = his Net Return. Zach collects $3,245.69 from Sam; Matt collects $654.64 from Chris; Colton collects $409.64 (Shaun pays him $410.64 - see notes on that $1.00 gap)."
+ },
+ "notes": [
+  "RUBRIC PERCENTAGES MATCH 2026 EXACTLY; ONLY THE SPLIT COUNTS DIFFER - derived independently from this workbook's own header rows. The payout tab's '% of Pot' row reads 0.50% / 1.00% / 2.00% / 4.00% / 8.00% / 10.00% over '1st Round Win' / 'Make Sweet 16' / 'Make Elite 8' / 'Make Final 4' / 'Make Championship' / 'Win Championship' (2026 names the last column 'Champion'), plus two 5.00% split pools '3+ Upset' and '8+ Upset'. The '# of splits' row reads 1/1/1/1/1/1 and 8 / 1. normalization = direct. No points system, no group bonuses, same 14-16 bundling as 2026.",
+  "Rubric arithmetic verified against pot $73,630: 0.5% = $368.15, 1% = $736.30, 2% = $1,472.60, 4% = $2,945.20, 8% = $5,890.40, 10% = $7,363.00; 3+ pool 5% x 73,630 / 8 = $460.1875, 8+ pool 5% x 73,630 / 1 = $3,681.50. All match the workbook cells exactly. Payouts accumulate per round.",
+  "TIE-OUT ARITHMETIC (hand-recomputed representative rows). (1) Florida (West 1, Zach, champion): 368.15 + 736.30 + 1,472.60 + 2,945.20 + 5,890.40 + 7,363.00 = $18,775.65 = workbook $18,775.65. (2) Arkansas (West 10, Zack, Sweet 16, 2 x 3+ upsets, 1 x 8+): 368.15 + 736.30 = 1,104.45; + 2 x 460.1875 = 920.375; + 3,681.50 = $5,706.325 = workbook $5,706.325. (3) Houston (Midwest 1, Sam, runner-up): 368.15 + 736.30 + 1,472.60 + 2,945.20 + 5,890.40 = $11,412.65 = workbook $11,412.65. (4) McNeese (Midwest 12, Ed/Craig, 1 win, 1 x 3+): 368.15 + 460.1875 = $828.3375 = workbook $828.3375. (5) Ole Miss (South 6, Colton, Sweet 16, 1 x 3+): 1,104.45 + 460.1875 = $1,564.6375 = workbook $1,564.6375. All 56 rows machine-rechecked with zero deviation beyond 1e-6.",
+  "THE 8+ UPSET POOL HAS EXACTLY ONE WINNER. Arkansas (a 10 seed that beat 2-seed St. John's) is the only 8+ upset in the pool, so it collects the entire 5% pool as a single $3,681.50 payment. Compare 2026 (2 splits at $3,462.25) and 2024 (3 splits at $756.25). This is the sharpest rubric-behaviour difference across the three pools and is a good stress case for a split_pool engine: denominator 1.",
+  "THE 2025 BRACKET TAB WAS NEVER FILLED IN. Its cells carry only the auction assignments (winning bidder / value paid per region-seed slot); no game results, no advancing teams, and the 'Champion' cell is an empty label. All results therefore come from the payout tab's per-round columns and its '# Upsets' counts, which are the only record. I cross-checked them against the actual 2025 tournament and every event reconciles (Florida champion; Houston runner-up; Auburn and Duke in the Final Four; Arkansas 10 over Kansas 7 = 3+ and 10 over St. John's 2 = 3+ and 8+; Drake 11 over Missouri 6; Colorado State 12 over Memphis 5; McNeese 12 over Clemson 5; New Mexico 10 over Marquette 7; BYU 6 over Wisconsin 3; Ole Miss 6 over Iowa State 3). Totals 8 and 1 match the '# of splits' row.",
+  "CROSS-BOOK TRADE: secondary trade 1 is 'Sam / Zach 0.5x Lion King XBook' / 'Zach / Sam 0.5x Lion King XBook' - a 0.5x exchange involving an outside book called 'Lion King', the same counterparty structure as Calcutta IX's trade 1 (which is 0.25x). The contract's model cannot express it beyond scope='synthetic_book': no entry_label, no identifiable underlying lot, and the legs' 'Value of Traded Asset' figures (-$2,581.15625 for Sam, +$497.85 for Zach) do not correspond to anything computable from this workbook. Only the Net Trade Value (-$3,079.00625 Sam / +$3,079.00625 Zach) is reconcilable. Direction is recorded as Zach -> Sam, which is a guess: the workbook does not say who is long which side.",
+  "NO SHORT SALE in this pool - all 10 trades are long transfers of a percentage of a lot the seller actually held (except trade 1, the cross-book swap). Contrast Calcutta IX (Sam short sells Troy) and Calcutta IV (Craig shorts 20% of UConn).",
+  "TRADES ARE NOT REFLECTED IN entries[].owners. The payout tab's Owner column and the Players table's '# Teams (Before Trades)' / Entry / Realized Return columns are all PRE-trade, and the trade P&L is applied separately in the 'Impact of Trades' column. Sam is the dominant seller: he sold out of Houston (25%), Alabama (25%), Maryland (100%), Oregon (50%), Michigan (50%) and the West 14-16 bundle (50%), for a net trade impact of -$3,772.18 - he sold Houston's run to Ed and it cost him $1,628.16. Zach sold 50% of Florida to Ed for $6,200 before Florida won the title, costing him $6,287.83.",
+  "OWNER LABEL COLLISION - CRITICAL: 'Zach' and 'Zack' are two DIFFERENT people, as in Calcutta IV, with separate Bidder_IDs (Zach = nathaniel.finan@gmail.com, $18,647, 12.33 teams; Zack = rmccarthy1856@gmail.com, $15,910, 9 teams) and separate Funds Flow rows. Both labels are preserved exactly. Zach is the same person as Calcutta IX's and Calcutta IV's 'Zach'; Zack appears in IV and VI but not in IX.",
+  "OWNER ROSTER: 11 owners (Chris, Colton, Craig, Ed, Greg, Joey, Matt, Sam, Shaun, Zach, Zack). Colton and Shaun appear only in this edition of the three; they have no Bidder_ID (owners[].email is null for both), and the workbook gives first names only, so owners[].name repeats the label everywhere. Ezra and Josh (Calcutta IX) and Anthony (Calcutta IV) do not appear here. No owner appears under a different label than in the other pools.",
+  "BIDDER_ID EMAILS ARE NOT A RELIABLE IDENTITY MAP. This workbook agrees with Calcutta IV on every shared name (Chris = austin_pfundheller, Craig = benabellifichter, Ed = cholter09, Greg = samuel.a.rosen, Joey = jcollins602, Matt = dhatheway37, Sam = michael.whited56, Zach = nathaniel.finan, Zack = rmccarthy1856) but CONFLICTS with Calcutta IX, where samuel.a.rosen is Ezra, dhatheway37 is Joey and jcollins602 is Greg. So IV and VI are mutually consistent and IX is the outlier. Transcribed verbatim; do not treat as identity.",
+  "CASH SETTLEMENT / FUNDS FLOW (Players table 'Funds Flow', 'Pays', 'Receives', 'Status' columns plus a hidden 'Ed's Receipts' column AA; the contract has no field for these). Chris: -$780.00, 'Pays $655.64 to Matt and $125.36 to Ed', PENDING. Craig: -$1,622.68, 'Pays $2,572.68 to Ed', PENDING. Ed: +$5,211.16, 'Sweeps from column AA', PENDING. Greg: -$950.00, 'Pays $950 to Craig', SETTLED (the only settled row). Joey: -$796.29, 'Pays $796.29 to Ed', PENDING. Matt: +$654.64, 'Collects from Chris', PENDING. Sam: -$4,875.67, 'Pays $3,245.69 to Zach and $1,629.98 to Ed', PENDING. Zach: +$3,245.69, 'Collects from Sam', PENDING. Zack: -$70.84, 'Pays 70.84 to Ed', PENDING. Colton: +$409.64, 'Collect from Colton', PENDING. Shaun: -$425.66, 'Pays $410.64 to Colton and $16.02 to Ed', PENDING. Column AA (Ed's Receipts) lists 125.36, 2572.68, 796.29, 1629.98, 70.84, 16.02.",
+  "TWO SETTLEMENT-TEXT DEFECTS (amounts only, no effect on any payout). (a) Colton's Funds Flow reads 'Collect from Colton' - self-referential; from Shaun's row it should be 'Collect from Shaun'. (b) Shaun is told to pay Colton $410.64 while Colton's Receives is $409.64, a $1.00 gap; Colton's $409.64 is the figure consistent with the zero-sum Net Return column, so the $410.64 in Shaun's text is the error. Shaun's own row total (-$425.655 = 410.64 + 16.02 rounded down to 426.66... ) also does not decompose cleanly: $410.64 + $16.02 = $426.66 vs a stated Funds Flow of -$425.655.",
+  "DISPLAY-ROUNDING ARTEFACT IN THE POT SUMMARY: the bracket tab's 'Total Paid' column shows Chris $780, Craig $2,405, Ed $11,047, Greg $950, Joey $1,745, Matt $910, Sam $19,542, Zach $18,647, Zack $15,910, Colton $1,155, Shaun $540, which sums to $73,631 - one dollar over the pot. The cause is the three-way St. John's split ($2,270 / 3 = $756.6667 each), which rounds up for Ed, Sam and Zach. The unrounded Entry cells sum to exactly $73,630.00. expected_owners[].cost carries the unrounded values.",
+  "The Pot Summary also reports '# Teams Auctioned 64' while there are only 56 lots (64 teams). Calcutta IX's Pot Summary makes the same statement; Calcutta IV's live bracket says 56. Purely a label question, no effect on any figure. Avg. Bid / Team is quoted as $1,150 = 73,630 / 64 rounded.",
+  "STALE 'LIVE' STATE: Florida's Status cell is 'Live' and Zach's '# Teams Remaining' is 1, even though Florida has already been credited the 'Win Championship' column and the Pot Summary says '# Teams Remaining 0'. Same one-step-behind live counter as Calcutta IV and IX. LAST UPDATED: 3/27/25 - the sheet's own timestamp predates the 2025 final (April 7), yet the championship columns are filled, so the timestamp is stale too.",
+  "TRAILING / DOUBLE WHITESPACE IN TEAM NAMES: almost every label on the payout and auction tabs carries a trailing space ('Auburn ', 'Louisville ', \"Saint Mary's \") and the bundle labels carry double spaces before the slashes (\"Montana  / Robert Morris  / Mt St Mary's \"). entries[].label and teams[].name are whitespace-normalized (single internal spaces, trimmed ends); nothing else about the labels was changed. Note also 'Michigan State' on the payout tab is written 'Michigan St' in trade 5's detail text, and 'Michigan' (South 5) and 'Michigan State' (South 2) are different lots - trades 5 and 8 touch different teams despite similar wording.",
+  "FIRST FOUR / PLAY-IN slots are recorded as their winners, not as placeholders. The 'ChatGPT | Teams List' tab (a per-region seed list, the 2025 counterpart of 2024's Aleph Explore block) writes four slots as pairs: South 11 'SDSU / UNC', South 16 'Alabama St / St Francis', East 16 'American / Mt St Mary's', Midwest 11 'Texas / Xavier'. The auction and payout tabs name only the advancing team (North Carolina at South 11, Xavier at Midwest 11, Alabama St inside the South bundle, Mt St Mary's inside the East bundle), so every lot is kind 'single' or 'bundle' - no kind 'placeholder' is used. Recorded because a placeholder-aware loader might expect otherwise.",
+  "Bundling identical to 2026 and 2024: each region's 14/15/16 seeds are one lot (4 bundles x 3 teams = 12 teams), giving 64 teams in 56 lots. The bracket tab writes 'See 14 seed' for the 15/16 rows. attributes.seed is null on bundles, with seed_label '14-16'. All four bundles realized $0.",
+  "The two upset pools are not mutually exclusive: Arkansas registers 2 units in the 3+ pool and 1 unit in the 8+ pool, and its 8+ win is one of those two 3+ units. Consistent with 2024 and 2026.",
+  "Workbook tabs: 'Live Draft' (the auction log with Auction Order 1-56 and winning bids), 'Draft Tracker' (the bracket + Pot Summary, results never entered), 'Calcutta Returns' (the payout tab, authoritative), 'ChatGPT | Teams List' (seed list). No leftover templates from another sport. lot_order is taken from the Live Draft tab's 'Auction Order' column."
+ ]
+}

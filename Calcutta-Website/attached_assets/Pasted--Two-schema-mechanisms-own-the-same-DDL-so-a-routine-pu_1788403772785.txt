@@ -1,0 +1,72 @@
+# Two schema mechanisms own the same DDL, so a routine push never converges
+
+First task in this stage that deploys. Do not start it until tasks `00` through `03` are green
+and a nightly snapshot exists.
+
+`lib/db/src/schema/*` (consumed by `drizzle-kit push`) and `lib/db/src/migrations/*` (replayed at
+API startup by `lib/db/src/migrate.ts`) both own the same DDL. Two statements are re-emitted on
+every push run, which means the Publish diff is never empty, which means it stops being read.
+
+Paste the block below to Replit as one task. Verify before moving on.
+
+```
+Make the drizzle-kit push diff converge to empty. Four changes, in this order.
+
+1. URGENT — restore a guarantee that push currently drops. The partial unique index
+   positions_primary_entry_bidder_idx exists only in migration 0013's raw SQL. Because 0013 is
+   already recorded in app_schema_migrations as applied, the startup runner will never recreate
+   it, and drizzle-kit push emits DROP INDEX for it with no prompt. It is the guarantee that a
+   bidder holds exactly one primary auction position per entry.
+
+   Declare it in lib/db/src/schema/positions.ts as:
+     uniqueIndex("positions_primary_entry_bidder_idx")
+       .on(entryId, bidderId)
+       .where(sql`source = 'primary'`)
+
+   Then audit every other object created only in migration SQL and classify each one as either
+   (a) expressible in the Drizzle schema, in which case declare it there, or (b) invisible to
+   drizzle-kit, in which case leave it in the migration and add a comment in the schema file
+   naming it and saying why it lives there. The two positions triggers and
+   consortium_memberships_no_overlap fall in category (b) — drizzle-kit ignores triggers and
+   exclusion constraints, which is the only reason they have survived. Produce the full list in
+   your summary.
+
+2. Remove the contradictory column default. lib/db/src/schema/trades.ts declares entryId as
+   .notNull().default(sql`null`). A not-null column with a null default is incoherent, and push
+   re-emits ALTER TABLE trades ALTER COLUMN entry_id SET DEFAULT null on every single run. Drop
+   the .default(sql`null`) and keep .notNull(). The database trigger populate_trade_entry_id
+   already derives the value on insert, so nothing depends on the default; leave the existing
+   comment about Phase 1 compatibility in place but update it to stop referencing a default.
+
+3. Give the over-long foreign key an explicit short name. Drizzle's generated constraint name for
+   mcp_oauth_authorization_codes.client_id exceeds Postgres's 63-character identifier limit, so
+   the generated name and the actual name can never match and push re-emits the constraint
+   forever. Declare it with an explicit name of at most 40 characters in
+   lib/db/src/schema/mcpOauth.ts, and add a matching forward migration that renames the existing
+   production constraint to that name so the two agree. The migration must be a rename, not a
+   drop and recreate — mcp_oauth_clients holds live MCP client registrations and dropping the
+   constraint would cascade.
+
+4. Reconcile the contradictory documentation. docs/database-maintenance.md says not to run
+   startup migrations. .agents/memory/schema-push-safety.md says to use the guarded startup
+   migration runner. artifacts/api-server/src/index.ts calls runDatabaseMigrations() on boot, so
+   the memory note describes reality and the doc does not. Rewrite the doc's "Safe schema
+   changes" section to describe what the code actually does, and state plainly which mechanism
+   owns which category of DDL per the classification from step 1.
+
+DO NOT collapse the migration chain into a baseline in this task. That is a larger change and is
+scheduled for the offseason. This task only makes the diff converge.
+
+ACCEPTANCE.
+- Run drizzle-kit push against the development database. It must emit no DDL statements. If it
+  wants to drop anything, stop and report what — do not accept the drop.
+- Run it a second time and confirm the diff is still empty.
+- Confirm positions_primary_entry_bidder_idx exists in the development database after the push,
+  and that inserting a second primary position for the same (entry, bidder) is rejected.
+- pnpm run typecheck and the existing test suite both green.
+```
+
+## Verify before moving on
+
+The second consecutive empty push is the real test. One empty diff can be luck; two in a row
+means the two mechanisms finally agree.

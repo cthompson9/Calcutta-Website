@@ -1,0 +1,699 @@
+-- Recovery from production export 2026-08-23T03:38:00.532Z
+-- Trades and positions as of that moment; anything after needs manual re-entry.
+-- Run inside ONE transaction. Review the pre-checks; commit only if counts make sense.
+
+BEGIN;
+
+-- Pre-check: see what survives before inserting (expect gaps)
+-- select count(*) from trades; select count(*) from positions;
+
+-- ============ TRADES (53 rows, entry_id resolved via calcutta_entries) ============
+INSERT INTO trades (id, entry_id, team_id, season_id, from_bidder_id, to_bidder_id, percentage, price, status, trade_date, notes, decision_at, decision_source)
+VALUES (2, 6, 6, 1, 5, 6, 20, 388.38, 'approved', '2025-08-13', 'Source trade #4: Zach buys 20% of Ravens from Ed @ $3,050', NULL, NULL)
+ON CONFLICT (id) DO NOTHING;
+INSERT INTO trades (id, entry_id, team_id, season_id, from_bidder_id, to_bidder_id, percentage, price, status, trade_date, notes, decision_at, decision_source)
+VALUES (3, 20, 20, 1, 5, 2, 20, 348.32, 'approved', '2025-08-14', 'Source trade #8: Josh buys 20% of Commanders from Ed', NULL, NULL)
+ON CONFLICT (id) DO NOTHING;
+INSERT INTO trades (id, entry_id, team_id, season_id, from_bidder_id, to_bidder_id, percentage, price, status, trade_date, notes, decision_at, decision_source)
+VALUES (4, 13, 13, 1, 2, 5, 10, 166.19, 'approved', '2025-08-14', 'Source trade #9: Ed buys 10% of Chiefs from Josh', NULL, NULL)
+ON CONFLICT (id) DO NOTHING;
+INSERT INTO trades (id, entry_id, team_id, season_id, from_bidder_id, to_bidder_id, percentage, price, status, trade_date, notes, decision_at, decision_source)
+VALUES (5, 12, 12, 1, 2, 5, 12, 78.65, 'approved', '2025-08-14', 'Source trade #10: Ed buys 12% of Texans from Josh (source sheet sign convention inverted vs other rows)', NULL, NULL)
+ON CONFLICT (id) DO NOTHING;
+INSERT INTO trades (id, entry_id, team_id, season_id, from_bidder_id, to_bidder_id, percentage, price, status, trade_date, notes, decision_at, decision_source)
+VALUES (6, 4, 4, 1, 3, 6, 100, 4048.32, 'approved', '2025-08-13', 'Source trade #2 SYNTHETIC: Zach synthetic long Pats @ $1,230 (100%) / Sam synthetic short', NULL, NULL)
+ON CONFLICT (id) DO NOTHING;
+INSERT INTO trades (id, entry_id, team_id, season_id, from_bidder_id, to_bidder_id, percentage, price, status, trade_date, notes, decision_at, decision_source)
+VALUES (7, 3, 3, 1, 4, 6, 100, 627.45, 'approved', '2025-08-13', 'Source trade #7 SYNTHETIC: Zach synthetic long Dolphins @ $1,080 (100%) / Ezra synthetic short', NULL, NULL)
+ON CONFLICT (id) DO NOTHING;
+INSERT INTO trades (id, entry_id, team_id, season_id, from_bidder_id, to_bidder_id, percentage, price, status, trade_date, notes, decision_at, decision_source)
+VALUES (8, 16, 16, 1, 3, 2, 40, 409.05, 'approved', '2025-08-14', 'Source trade #14 SYNTHETIC: Josh synthetic long Raiders @ $845 (40%) / Sam synthetic short', NULL, NULL)
+ON CONFLICT (id) DO NOTHING;
+INSERT INTO trades (id, entry_id, team_id, season_id, from_bidder_id, to_bidder_id, percentage, price, status, trade_date, notes, decision_at, decision_source)
+VALUES (9, 12, 12, 1, 6, 3, 50, 350.21, 'approved', '2025-08-14', 'Source trade #15 SYNTHETIC: Sam synthetic long Texans @ $1,575 (50%) / Zach synthetic short', NULL, NULL)
+ON CONFLICT (id) DO NOTHING;
+INSERT INTO trades (id, entry_id, team_id, season_id, from_bidder_id, to_bidder_id, percentage, price, status, trade_date, notes, decision_at, decision_source)
+VALUES (10, 52, 2, 2, 5, 2, 100, 1000, 'rejected', '2026-08-22', 'SYNTHETIC: Josh synthetic long Jets @ $1,000 (100%) / Ed synthetic short (short sell).', NULL, NULL)
+ON CONFLICT (id) DO NOTHING;
+INSERT INTO trades (id, entry_id, team_id, season_id, from_bidder_id, to_bidder_id, percentage, price, status, trade_date, notes, decision_at, decision_source)
+VALUES (11, 64, 18, 2, 7, 8, 10, 200, 'rejected', '2026-08-21', 'Test: unregistered owner as trade counterparty.', NULL, NULL)
+ON CONFLICT (id) DO NOTHING;
+INSERT INTO trades (id, entry_id, team_id, season_id, from_bidder_id, to_bidder_id, percentage, price, status, trade_date, notes, decision_at, decision_source)
+VALUES (12, 64, 18, 2, 7, 9, 5, 100, 'rejected', '2026-08-21', 'probe: unregistered owner in 2026', NULL, NULL)
+ON CONFLICT (id) DO NOTHING;
+INSERT INTO trades (id, entry_id, team_id, season_id, from_bidder_id, to_bidder_id, percentage, price, status, trade_date, notes, decision_at, decision_source)
+VALUES (13, 64, 18, 2, 7, 10, 1, 20, 'rejected', '2026-08-21', 'REGISTRATION PROBE ONLY - reject after use. Creates owner record for Clifford Cohn (informal: Cliff Cohn).', NULL, NULL)
+ON CONFLICT (id) DO NOTHING;
+INSERT INTO trades (id, entry_id, team_id, season_id, from_bidder_id, to_bidder_id, percentage, price, status, trade_date, notes, decision_at, decision_source)
+VALUES (14, 64, 18, 2, 7, 11, 1, 20, 'rejected', '2026-08-21', 'REGISTRATION PROBE ONLY - reject after use. Creates owner record for GDawg Collin (informal: Greg Collins).', NULL, NULL)
+ON CONFLICT (id) DO NOTHING;
+INSERT INTO trades (id, entry_id, team_id, season_id, from_bidder_id, to_bidder_id, percentage, price, status, trade_date, notes, decision_at, decision_source)
+VALUES (15, 64, 18, 2, 7, 12, 1, 20, 'rejected', '2026-08-21', 'REGISTRATION PROBE ONLY - reject after use. Creates owner record for Shaun McGuire.', NULL, NULL)
+ON CONFLICT (id) DO NOTHING;
+INSERT INTO trades (id, entry_id, team_id, season_id, from_bidder_id, to_bidder_id, percentage, price, status, trade_date, notes, decision_at, decision_source)
+VALUES (16, 64, 18, 2, 7, 13, 1, 20, 'rejected', '2026-08-21', 'REGISTRATION PROBE ONLY - reject after use. Creates bidder record for Kurt Dehut.', NULL, NULL)
+ON CONFLICT (id) DO NOTHING;
+INSERT INTO trades (id, entry_id, team_id, season_id, from_bidder_id, to_bidder_id, percentage, price, status, trade_date, notes, decision_at, decision_source)
+VALUES (17, 64, 18, 2, 7, 14, 1, 20, 'rejected', '2026-08-21', 'REGISTRATION PROBE ONLY - reject after use. Creates bidder record for Zach Miller.', NULL, NULL)
+ON CONFLICT (id) DO NOTHING;
+INSERT INTO trades (id, entry_id, team_id, season_id, from_bidder_id, to_bidder_id, percentage, price, status, trade_date, notes, decision_at, decision_source)
+VALUES (18, 64, 18, 2, 7, 15, 1, 20, 'rejected', '2026-08-21', 'REGISTRATION PROBE ONLY - reject after use. Creates bidder record for Zack Miller (correct spelling).', NULL, NULL)
+ON CONFLICT (id) DO NOTHING;
+INSERT INTO trades (id, entry_id, team_id, season_id, from_bidder_id, to_bidder_id, percentage, price, status, trade_date, notes, decision_at, decision_source)
+VALUES (19, 52, 2, 2, 3, 6, 100, 900, 'approved', '2026-08-21', 'SYNTHETIC: Zach synthetic long Jets @ $900 (100%) / Sam short.', NULL, NULL)
+ON CONFLICT (id) DO NOTHING;
+INSERT INTO trades (id, entry_id, team_id, season_id, from_bidder_id, to_bidder_id, percentage, price, status, trade_date, notes, decision_at, decision_source)
+VALUES (20, 34, 16, 2, 3, 6, 100, 1275, 'approved', '2026-08-21', 'SYNTHETIC: Zach synthetic long Raiders @ $1,275 (100%) / Sam short.', NULL, NULL)
+ON CONFLICT (id) DO NOTHING;
+INSERT INTO trades (id, entry_id, team_id, season_id, from_bidder_id, to_bidder_id, percentage, price, status, trade_date, notes, decision_at, decision_source)
+VALUES (21, 57, 29, 2, 6, 3, 100, 3950, 'approved', '2026-08-21', 'SYNTHETIC: Sam synthetic long 49ers (100%) / Zach short. No strike specified; price defaulted to auction cost.', NULL, NULL)
+ON CONFLICT (id) DO NOTHING;
+INSERT INTO trades (id, entry_id, team_id, season_id, from_bidder_id, to_bidder_id, percentage, price, status, trade_date, notes, decision_at, decision_source)
+VALUES (22, 38, 31, 2, 6, 3, 100, 6325, 'approved', '2026-08-21', 'SYNTHETIC: Sam synthetic long Rams (100%) / Zach short. No strike specified; price defaulted to auction cost.', NULL, NULL)
+ON CONFLICT (id) DO NOTHING;
+INSERT INTO trades (id, entry_id, team_id, season_id, from_bidder_id, to_bidder_id, percentage, price, status, trade_date, notes, decision_at, decision_source)
+VALUES (23, 43, 30, 2, 6, 3, 100, 4850, 'approved', '2026-08-21', 'SYNTHETIC: Sam synthetic long Seahawks (100%) / Zach short. No strike specified; price defaulted to auction cost.', NULL, NULL)
+ON CONFLICT (id) DO NOTHING;
+INSERT INTO trades (id, entry_id, team_id, season_id, from_bidder_id, to_bidder_id, percentage, price, status, trade_date, notes, decision_at, decision_source)
+VALUES (24, 53, 6, 2, 3, 10, 20, 1055, 'approved', '2026-08-21', 'Cliff buys 20% of Ravens from Sam. Price defaulted to pro-rata auction cost.', NULL, NULL)
+ON CONFLICT (id) DO NOTHING;
+INSERT INTO trades (id, entry_id, team_id, season_id, from_bidder_id, to_bidder_id, percentage, price, status, trade_date, notes, decision_at, decision_source)
+VALUES (25, 64, 18, 2, 5, 11, 10, 375, 'approved', '2026-08-21', 'Leg 1 of 2: Ed trades 10% Cowboys for 20% Colts with Greg.', NULL, NULL)
+ON CONFLICT (id) DO NOTHING;
+INSERT INTO trades (id, entry_id, team_id, season_id, from_bidder_id, to_bidder_id, percentage, price, status, trade_date, notes, decision_at, decision_source)
+VALUES (26, 41, 11, 2, 11, 5, 20, 430, 'approved', '2026-08-21', 'Leg 2 of 2: Ed trades 10% Cowboys for 20% Colts with Greg.', NULL, NULL)
+ON CONFLICT (id) DO NOTHING;
+INSERT INTO trades (id, entry_id, team_id, season_id, from_bidder_id, to_bidder_id, percentage, price, status, trade_date, notes, decision_at, decision_source)
+VALUES (28, 64, 18, 2, 5, 15, 20, 740, 'approved', '2026-08-21', NULL, NULL, NULL)
+ON CONFLICT (id) DO NOTHING;
+INSERT INTO trades (id, entry_id, team_id, season_id, from_bidder_id, to_bidder_id, percentage, price, status, trade_date, notes, decision_at, decision_source)
+VALUES (29, 53, 6, 2, 3, 9, 6.67, 351.67, 'approved', '2026-08-21', 'Sam trades 1/15th of drafted auction portfolio (excl trades) to Ian for 25% of Patriots. Leg 1/7.', NULL, NULL)
+ON CONFLICT (id) DO NOTHING;
+INSERT INTO trades (id, entry_id, team_id, season_id, from_bidder_id, to_bidder_id, percentage, price, status, trade_date, notes, decision_at, decision_source)
+VALUES (30, 59, 23, 2, 3, 9, 6.67, 248.33, 'approved', '2026-08-21', 'Sam trades 1/15th of drafted auction portfolio (excl trades) to Ian for 25% of Patriots. Leg 2/7.', NULL, NULL)
+ON CONFLICT (id) DO NOTHING;
+INSERT INTO trades (id, entry_id, team_id, season_id, from_bidder_id, to_bidder_id, percentage, price, status, trade_date, notes, decision_at, decision_source)
+VALUES (31, 62, 13, 2, 3, 9, 3.33, 142.5, 'approved', '2026-08-21', 'Sam trades 1/15th of drafted auction portfolio (excl trades) to Ian for 25% of Patriots. Leg 3/7.', NULL, NULL)
+ON CONFLICT (id) DO NOTHING;
+INSERT INTO trades (id, entry_id, team_id, season_id, from_bidder_id, to_bidder_id, percentage, price, status, trade_date, notes, decision_at, decision_source)
+VALUES (32, 40, 14, 2, 3, 9, 2.22, 83.33, 'approved', '2026-08-21', 'Sam trades 1/15th of drafted auction portfolio (excl trades) to Ian for 25% of Patriots. Leg 4/7.', NULL, NULL)
+ON CONFLICT (id) DO NOTHING;
+INSERT INTO trades (id, entry_id, team_id, season_id, from_bidder_id, to_bidder_id, percentage, price, status, trade_date, notes, decision_at, decision_source)
+VALUES (33, 45, 28, 2, 3, 9, 3.33, 85, 'approved', '2026-08-21', 'Sam trades 1/15th of drafted auction portfolio (excl trades) to Ian for 25% of Patriots. Leg 5/7.', NULL, NULL)
+ON CONFLICT (id) DO NOTHING;
+INSERT INTO trades (id, entry_id, team_id, season_id, from_bidder_id, to_bidder_id, percentage, price, status, trade_date, notes, decision_at, decision_source)
+VALUES (34, 57, 29, 2, 3, 9, 2.22, 87.77, 'approved', '2026-08-21', 'Sam trades 1/15th of drafted auction portfolio (excl trades) to Ian for 25% of Patriots. Leg 6/7.', NULL, NULL)
+ON CONFLICT (id) DO NOTHING;
+INSERT INTO trades (id, entry_id, team_id, season_id, from_bidder_id, to_bidder_id, percentage, price, status, trade_date, notes, decision_at, decision_source)
+VALUES (35, 33, 4, 2, 9, 3, 25, 850, 'approved', '2026-08-21', 'Sam trades 1/15th of drafted auction portfolio (excl trades) to Ian for 25% of Patriots. Leg 7/7 - consideration.', NULL, NULL)
+ON CONFLICT (id) DO NOTHING;
+INSERT INTO trades (id, entry_id, team_id, season_id, from_bidder_id, to_bidder_id, percentage, price, status, trade_date, notes, decision_at, decision_source)
+VALUES (36, 56, 21, 2, 6, 5, 25, 1125, 'approved', '2026-08-21', 'SYNTHETIC: Ed synthetic long Lions @ $4,500 full-team strike (25% size) / Zachary Long synthetic short (short sell - does not own Lions). Stake price = 25% x $4,500 = $1,125.', NULL, NULL)
+ON CONFLICT (id) DO NOTHING;
+INSERT INTO trades (id, entry_id, team_id, season_id, from_bidder_id, to_bidder_id, percentage, price, status, trade_date, notes, decision_at, decision_source)
+VALUES (37, 49, 19, 2, 11, 5, 25, 481.25, 'approved', '2026-08-21', NULL, NULL, NULL)
+ON CONFLICT (id) DO NOTHING;
+INSERT INTO trades (id, entry_id, team_id, season_id, from_bidder_id, to_bidder_id, percentage, price, status, trade_date, notes, decision_at, decision_source)
+VALUES (38, 52, 2, 2, 7, 5, 10, 97.5, 'approved', '2026-08-21', 'Craig sells 10% of Jets to Ed. No price specified; defaulted to pro-rata auction cost.', NULL, NULL)
+ON CONFLICT (id) DO NOTHING;
+INSERT INTO trades (id, entry_id, team_id, season_id, from_bidder_id, to_bidder_id, percentage, price, status, trade_date, notes, decision_at, decision_source)
+VALUES (40, 44, 25, 2, 3, 11, 33.33, 700, 'approved', '2026-08-21', 'SYNTHETIC: Sam short sells 1/3 of Saints to Greg (GDawg Collin). Sam does not own Saints - naked short. No strike specified; price defaulted to pro-rata auction cost.', NULL, NULL)
+ON CONFLICT (id) DO NOTHING;
+INSERT INTO trades (id, entry_id, team_id, season_id, from_bidder_id, to_bidder_id, percentage, price, status, trade_date, notes, decision_at, decision_source)
+VALUES (41, 55, 8, 2, 9, 3, 25, 637.5, 'approved', '2026-08-22', NULL, NULL, NULL)
+ON CONFLICT (id) DO NOTHING;
+INSERT INTO trades (id, entry_id, team_id, season_id, from_bidder_id, to_bidder_id, percentage, price, status, trade_date, notes, decision_at, decision_source)
+VALUES (42, 42, 27, 2, 3, 6, 100, 1600, 'approved', '2026-08-22', 'LION KING CROSSBOOK LEG (Zach/Sam, 2026) - not an ordinary trade. Sam shorts 100% of Panthers (Zach primary).', NULL, NULL)
+ON CONFLICT (id) DO NOTHING;
+INSERT INTO trades (id, entry_id, team_id, season_id, from_bidder_id, to_bidder_id, percentage, price, status, trade_date, notes, decision_at, decision_source)
+VALUES (43, 50, 24, 2, 3, 6, 100, 3275, 'approved', '2026-08-22', 'LION KING CROSSBOOK LEG (Zach/Sam, 2026) - not an ordinary trade. Sam shorts 100% of Bears (Zach primary).', NULL, NULL)
+ON CONFLICT (id) DO NOTHING;
+INSERT INTO trades (id, entry_id, team_id, season_id, from_bidder_id, to_bidder_id, percentage, price, status, trade_date, notes, decision_at, decision_source)
+VALUES (44, 58, 7, 2, 3, 6, 100, 1125, 'approved', '2026-08-22', 'LION KING CROSSBOOK LEG (Zach/Sam, 2026) - not an ordinary trade. Sam shorts 100% of Browns (Zach primary).', NULL, NULL)
+ON CONFLICT (id) DO NOTHING;
+INSERT INTO trades (id, entry_id, team_id, season_id, from_bidder_id, to_bidder_id, percentage, price, status, trade_date, notes, decision_at, decision_source)
+VALUES (45, 48, 12, 2, 3, 6, 100, 3925, 'approved', '2026-08-22', 'LION KING CROSSBOOK LEG (Zach/Sam, 2026) - not an ordinary trade. Sam shorts 100% of Texans (Zach primary).', NULL, NULL)
+ON CONFLICT (id) DO NOTHING;
+INSERT INTO trades (id, entry_id, team_id, season_id, from_bidder_id, to_bidder_id, percentage, price, status, trade_date, notes, decision_at, decision_source)
+VALUES (46, 34, 16, 2, 3, 6, 100, 1275, 'approved', '2026-08-22', 'LION KING CROSSBOOK LEG (Zach/Sam, 2026) - not an ordinary trade. Sam shorts 100% of Raiders (Zach primary).', NULL, NULL)
+ON CONFLICT (id) DO NOTHING;
+INSERT INTO trades (id, entry_id, team_id, season_id, from_bidder_id, to_bidder_id, percentage, price, status, trade_date, notes, decision_at, decision_source)
+VALUES (47, 40, 14, 2, 3, 6, 100, 3750, 'approved', '2026-08-22', 'LION KING CROSSBOOK LEG (Zach/Sam, 2026) - not an ordinary trade. Sam shorts 100% of Chargers (Zach primary).', NULL, NULL)
+ON CONFLICT (id) DO NOTHING;
+INSERT INTO trades (id, entry_id, team_id, season_id, from_bidder_id, to_bidder_id, percentage, price, status, trade_date, notes, decision_at, decision_source)
+VALUES (48, 54, 3, 2, 3, 6, 100, 650, 'approved', '2026-08-22', 'LION KING CROSSBOOK LEG (Zach/Sam, 2026) - not an ordinary trade. Sam shorts 100% of Dolphins (Zach primary).', NULL, NULL)
+ON CONFLICT (id) DO NOTHING;
+INSERT INTO trades (id, entry_id, team_id, season_id, from_bidder_id, to_bidder_id, percentage, price, status, trade_date, notes, decision_at, decision_source)
+VALUES (49, 52, 2, 2, 3, 6, 100, 975, 'approved', '2026-08-22', 'LION KING CROSSBOOK LEG (Zach/Sam, 2026) - not an ordinary trade. Sam shorts 100% of Jets (Zach primary).', NULL, NULL)
+ON CONFLICT (id) DO NOTHING;
+INSERT INTO trades (id, entry_id, team_id, season_id, from_bidder_id, to_bidder_id, percentage, price, status, trade_date, notes, decision_at, decision_source)
+VALUES (50, 53, 6, 2, 6, 3, 100, 5275, 'approved', '2026-08-22', 'LION KING CROSSBOOK LEG (Zach/Sam, 2026) - not an ordinary trade. Zach shorts 100% of Ravens (Sam primary).', NULL, NULL)
+ON CONFLICT (id) DO NOTHING;
+INSERT INTO trades (id, entry_id, team_id, season_id, from_bidder_id, to_bidder_id, percentage, price, status, trade_date, notes, decision_at, decision_source)
+VALUES (51, 59, 23, 2, 6, 3, 100, 3725, 'approved', '2026-08-22', 'LION KING CROSSBOOK LEG (Zach/Sam, 2026) - not an ordinary trade. Zach shorts 100% of Packers (Sam primary).', NULL, NULL)
+ON CONFLICT (id) DO NOTHING;
+INSERT INTO trades (id, entry_id, team_id, season_id, from_bidder_id, to_bidder_id, percentage, price, status, trade_date, notes, decision_at, decision_source)
+VALUES (52, 62, 13, 2, 6, 3, 100, 4275, 'approved', '2026-08-22', 'LION KING CROSSBOOK LEG (Zach/Sam, 2026) - not an ordinary trade. Zach shorts 100% of Chiefs (Sam primary).', NULL, NULL)
+ON CONFLICT (id) DO NOTHING;
+INSERT INTO trades (id, entry_id, team_id, season_id, from_bidder_id, to_bidder_id, percentage, price, status, trade_date, notes, decision_at, decision_source)
+VALUES (53, 40, 14, 2, 6, 3, 100, 3750, 'approved', '2026-08-22', 'LION KING CROSSBOOK LEG (Zach/Sam, 2026) - not an ordinary trade. Zach shorts 100% of Chargers (Sam primary).', NULL, NULL)
+ON CONFLICT (id) DO NOTHING;
+INSERT INTO trades (id, entry_id, team_id, season_id, from_bidder_id, to_bidder_id, percentage, price, status, trade_date, notes, decision_at, decision_source)
+VALUES (54, 45, 28, 2, 6, 3, 100, 2550, 'approved', '2026-08-22', 'LION KING CROSSBOOK LEG (Zach/Sam, 2026) - not an ordinary trade. Zach shorts 100% of Buccaneers (Sam primary).', NULL, NULL)
+ON CONFLICT (id) DO NOTHING;
+INSERT INTO trades (id, entry_id, team_id, season_id, from_bidder_id, to_bidder_id, percentage, price, status, trade_date, notes, decision_at, decision_source)
+VALUES (55, 57, 29, 2, 6, 3, 100, 3950, 'approved', '2026-08-22', 'LION KING CROSSBOOK LEG (Zach/Sam, 2026) - not an ordinary trade. Zach shorts 100% of 49ers (Sam primary).', NULL, NULL)
+ON CONFLICT (id) DO NOTHING;
+INSERT INTO trades (id, entry_id, team_id, season_id, from_bidder_id, to_bidder_id, percentage, price, status, trade_date, notes, decision_at, decision_source)
+VALUES (56, 50, 24, 2, 6, 9, 10, 327.5, 'approved', '2026-08-22', 'Zack agreed over text ', NULL, NULL)
+ON CONFLICT (id) DO NOTHING;
+
+-- ============ POSITIONS (172 rows) ============
+INSERT INTO positions (id, entry_id, bidder_id, source, trade_id, ownership_share, cost_basis)
+VALUES (173, 1, 1, 'primary', NULL, 1, 3230)
+ON CONFLICT (id) DO NOTHING;
+INSERT INTO positions (id, entry_id, bidder_id, source, trade_id, ownership_share, cost_basis)
+VALUES (174, 5, 1, 'primary', NULL, 1, 2020)
+ON CONFLICT (id) DO NOTHING;
+INSERT INTO positions (id, entry_id, bidder_id, source, trade_id, ownership_share, cost_basis)
+VALUES (175, 17, 1, 'primary', NULL, 1, 2990)
+ON CONFLICT (id) DO NOTHING;
+INSERT INTO positions (id, entry_id, bidder_id, source, trade_id, ownership_share, cost_basis)
+VALUES (176, 2, 2, 'primary', NULL, 1, 690)
+ON CONFLICT (id) DO NOTHING;
+INSERT INTO positions (id, entry_id, bidder_id, source, trade_id, ownership_share, cost_basis)
+VALUES (177, 13, 2, 'primary', NULL, 1, 2770)
+ON CONFLICT (id) DO NOTHING;
+INSERT INTO positions (id, entry_id, bidder_id, source, trade_id, ownership_share, cost_basis)
+VALUES (178, 16, 2, 'primary', NULL, 1, 910)
+ON CONFLICT (id) DO NOTHING;
+INSERT INTO positions (id, entry_id, bidder_id, source, trade_id, ownership_share, cost_basis)
+VALUES (179, 19, 2, 'primary', NULL, 1, 720)
+ON CONFLICT (id) DO NOTHING;
+INSERT INTO positions (id, entry_id, bidder_id, source, trade_id, ownership_share, cost_basis)
+VALUES (180, 23, 2, 'primary', NULL, 1, 1840)
+ON CONFLICT (id) DO NOTHING;
+INSERT INTO positions (id, entry_id, bidder_id, source, trade_id, ownership_share, cost_basis)
+VALUES (181, 27, 2, 'primary', NULL, 1, 870)
+ON CONFLICT (id) DO NOTHING;
+INSERT INTO positions (id, entry_id, bidder_id, source, trade_id, ownership_share, cost_basis)
+VALUES (182, 3, 3, 'primary', NULL, 1, 1110)
+ON CONFLICT (id) DO NOTHING;
+INSERT INTO positions (id, entry_id, bidder_id, source, trade_id, ownership_share, cost_basis)
+VALUES (183, 7, 3, 'primary', NULL, 1, 440)
+ON CONFLICT (id) DO NOTHING;
+INSERT INTO positions (id, entry_id, bidder_id, source, trade_id, ownership_share, cost_basis)
+VALUES (184, 8, 3, 'primary', NULL, 1, 1170)
+ON CONFLICT (id) DO NOTHING;
+INSERT INTO positions (id, entry_id, bidder_id, source, trade_id, ownership_share, cost_basis)
+VALUES (185, 11, 3, 'primary', NULL, 1, 1010)
+ON CONFLICT (id) DO NOTHING;
+INSERT INTO positions (id, entry_id, bidder_id, source, trade_id, ownership_share, cost_basis)
+VALUES (186, 24, 3, 'primary', NULL, 1, 1180)
+ON CONFLICT (id) DO NOTHING;
+INSERT INTO positions (id, entry_id, bidder_id, source, trade_id, ownership_share, cost_basis)
+VALUES (187, 4, 4, 'primary', NULL, 1, 930)
+ON CONFLICT (id) DO NOTHING;
+INSERT INTO positions (id, entry_id, bidder_id, source, trade_id, ownership_share, cost_basis)
+VALUES (188, 9, 4, 'primary', NULL, 1, 1160)
+ON CONFLICT (id) DO NOTHING;
+INSERT INTO positions (id, entry_id, bidder_id, source, trade_id, ownership_share, cost_basis)
+VALUES (189, 18, 4, 'primary', NULL, 1, 1010)
+ON CONFLICT (id) DO NOTHING;
+INSERT INTO positions (id, entry_id, bidder_id, source, trade_id, ownership_share, cost_basis)
+VALUES (190, 26, 4, 'primary', NULL, 1, 1010)
+ON CONFLICT (id) DO NOTHING;
+INSERT INTO positions (id, entry_id, bidder_id, source, trade_id, ownership_share, cost_basis)
+VALUES (191, 29, 4, 'primary', NULL, 1, 2000)
+ON CONFLICT (id) DO NOTHING;
+INSERT INTO positions (id, entry_id, bidder_id, source, trade_id, ownership_share, cost_basis)
+VALUES (192, 6, 5, 'primary', NULL, 1, 2980)
+ON CONFLICT (id) DO NOTHING;
+INSERT INTO positions (id, entry_id, bidder_id, source, trade_id, ownership_share, cost_basis)
+VALUES (193, 14, 5, 'primary', NULL, 1, 1730)
+ON CONFLICT (id) DO NOTHING;
+INSERT INTO positions (id, entry_id, bidder_id, source, trade_id, ownership_share, cost_basis)
+VALUES (194, 20, 5, 'primary', NULL, 1, 1860)
+ON CONFLICT (id) DO NOTHING;
+INSERT INTO positions (id, entry_id, bidder_id, source, trade_id, ownership_share, cost_basis)
+VALUES (195, 21, 5, 'primary', NULL, 1, 2740)
+ON CONFLICT (id) DO NOTHING;
+INSERT INTO positions (id, entry_id, bidder_id, source, trade_id, ownership_share, cost_basis)
+VALUES (196, 10, 6, 'primary', NULL, 1, 660)
+ON CONFLICT (id) DO NOTHING;
+INSERT INTO positions (id, entry_id, bidder_id, source, trade_id, ownership_share, cost_basis)
+VALUES (197, 15, 6, 'primary', NULL, 1, 1690)
+ON CONFLICT (id) DO NOTHING;
+INSERT INTO positions (id, entry_id, bidder_id, source, trade_id, ownership_share, cost_basis)
+VALUES (198, 30, 6, 'primary', NULL, 1, 1040)
+ON CONFLICT (id) DO NOTHING;
+INSERT INTO positions (id, entry_id, bidder_id, source, trade_id, ownership_share, cost_basis)
+VALUES (199, 22, 7, 'primary', NULL, 1, 1610)
+ON CONFLICT (id) DO NOTHING;
+INSERT INTO positions (id, entry_id, bidder_id, source, trade_id, ownership_share, cost_basis)
+VALUES (200, 32, 7, 'primary', NULL, 1, 1300)
+ON CONFLICT (id) DO NOTHING;
+INSERT INTO positions (id, entry_id, bidder_id, source, trade_id, ownership_share, cost_basis)
+VALUES (201, 12, 2, 'primary', NULL, 0.5, 810)
+ON CONFLICT (id) DO NOTHING;
+INSERT INTO positions (id, entry_id, bidder_id, source, trade_id, ownership_share, cost_basis)
+VALUES (202, 12, 3, 'primary', NULL, 0.5, 810)
+ON CONFLICT (id) DO NOTHING;
+INSERT INTO positions (id, entry_id, bidder_id, source, trade_id, ownership_share, cost_basis)
+VALUES (203, 25, 3, 'primary', NULL, 0.5, 235)
+ON CONFLICT (id) DO NOTHING;
+INSERT INTO positions (id, entry_id, bidder_id, source, trade_id, ownership_share, cost_basis)
+VALUES (204, 25, 6, 'primary', NULL, 0.5, 235)
+ON CONFLICT (id) DO NOTHING;
+INSERT INTO positions (id, entry_id, bidder_id, source, trade_id, ownership_share, cost_basis)
+VALUES (205, 28, 2, 'primary', NULL, 0.5, 920)
+ON CONFLICT (id) DO NOTHING;
+INSERT INTO positions (id, entry_id, bidder_id, source, trade_id, ownership_share, cost_basis)
+VALUES (206, 28, 5, 'primary', NULL, 0.5, 920)
+ON CONFLICT (id) DO NOTHING;
+INSERT INTO positions (id, entry_id, bidder_id, source, trade_id, ownership_share, cost_basis)
+VALUES (207, 31, 3, 'primary', NULL, 0.5, 850)
+ON CONFLICT (id) DO NOTHING;
+INSERT INTO positions (id, entry_id, bidder_id, source, trade_id, ownership_share, cost_basis)
+VALUES (208, 31, 6, 'primary', NULL, 0.5, 850)
+ON CONFLICT (id) DO NOTHING;
+INSERT INTO positions (id, entry_id, bidder_id, source, trade_id, ownership_share, cost_basis)
+VALUES (209, 6, 5, 'trade', 2, -0.2, -388.38)
+ON CONFLICT (id) DO NOTHING;
+INSERT INTO positions (id, entry_id, bidder_id, source, trade_id, ownership_share, cost_basis)
+VALUES (210, 6, 6, 'trade', 2, 0.2, 388.38)
+ON CONFLICT (id) DO NOTHING;
+INSERT INTO positions (id, entry_id, bidder_id, source, trade_id, ownership_share, cost_basis)
+VALUES (211, 20, 5, 'trade', 3, -0.2, -348.32)
+ON CONFLICT (id) DO NOTHING;
+INSERT INTO positions (id, entry_id, bidder_id, source, trade_id, ownership_share, cost_basis)
+VALUES (212, 20, 2, 'trade', 3, 0.2, 348.32)
+ON CONFLICT (id) DO NOTHING;
+INSERT INTO positions (id, entry_id, bidder_id, source, trade_id, ownership_share, cost_basis)
+VALUES (213, 13, 2, 'trade', 4, -0.1, -166.19)
+ON CONFLICT (id) DO NOTHING;
+INSERT INTO positions (id, entry_id, bidder_id, source, trade_id, ownership_share, cost_basis)
+VALUES (214, 13, 5, 'trade', 4, 0.1, 166.19)
+ON CONFLICT (id) DO NOTHING;
+INSERT INTO positions (id, entry_id, bidder_id, source, trade_id, ownership_share, cost_basis)
+VALUES (215, 12, 2, 'trade', 5, -0.12, -78.65)
+ON CONFLICT (id) DO NOTHING;
+INSERT INTO positions (id, entry_id, bidder_id, source, trade_id, ownership_share, cost_basis)
+VALUES (216, 12, 5, 'trade', 5, 0.12, 78.65)
+ON CONFLICT (id) DO NOTHING;
+INSERT INTO positions (id, entry_id, bidder_id, source, trade_id, ownership_share, cost_basis)
+VALUES (217, 3, 4, 'trade', 7, -1, -627.45)
+ON CONFLICT (id) DO NOTHING;
+INSERT INTO positions (id, entry_id, bidder_id, source, trade_id, ownership_share, cost_basis)
+VALUES (218, 3, 6, 'trade', 7, 1, 627.45)
+ON CONFLICT (id) DO NOTHING;
+INSERT INTO positions (id, entry_id, bidder_id, source, trade_id, ownership_share, cost_basis)
+VALUES (219, 4, 3, 'trade', 6, -1, -4048.32)
+ON CONFLICT (id) DO NOTHING;
+INSERT INTO positions (id, entry_id, bidder_id, source, trade_id, ownership_share, cost_basis)
+VALUES (220, 4, 6, 'trade', 6, 1, 4048.32)
+ON CONFLICT (id) DO NOTHING;
+INSERT INTO positions (id, entry_id, bidder_id, source, trade_id, ownership_share, cost_basis)
+VALUES (221, 12, 6, 'trade', 9, -0.5, -350.21)
+ON CONFLICT (id) DO NOTHING;
+INSERT INTO positions (id, entry_id, bidder_id, source, trade_id, ownership_share, cost_basis)
+VALUES (222, 12, 3, 'trade', 9, 0.5, 350.21)
+ON CONFLICT (id) DO NOTHING;
+INSERT INTO positions (id, entry_id, bidder_id, source, trade_id, ownership_share, cost_basis)
+VALUES (223, 16, 3, 'trade', 8, -0.4, -409.05)
+ON CONFLICT (id) DO NOTHING;
+INSERT INTO positions (id, entry_id, bidder_id, source, trade_id, ownership_share, cost_basis)
+VALUES (224, 16, 2, 'trade', 8, 0.4, 409.05)
+ON CONFLICT (id) DO NOTHING;
+INSERT INTO positions (id, entry_id, bidder_id, source, trade_id, ownership_share, cost_basis)
+VALUES (225, 35, 13, 'primary', NULL, 1, 5725)
+ON CONFLICT (id) DO NOTHING;
+INSERT INTO positions (id, entry_id, bidder_id, source, trade_id, ownership_share, cost_basis)
+VALUES (226, 36, 8, 'primary', NULL, 1, 1925)
+ON CONFLICT (id) DO NOTHING;
+INSERT INTO positions (id, entry_id, bidder_id, source, trade_id, ownership_share, cost_basis)
+VALUES (227, 37, 11, 'primary', NULL, 1, 2000)
+ON CONFLICT (id) DO NOTHING;
+INSERT INTO positions (id, entry_id, bidder_id, source, trade_id, ownership_share, cost_basis)
+VALUES (228, 38, 13, 'primary', NULL, 1, 6325)
+ON CONFLICT (id) DO NOTHING;
+INSERT INTO positions (id, entry_id, bidder_id, source, trade_id, ownership_share, cost_basis)
+VALUES (229, 39, 13, 'primary', NULL, 1, 3100)
+ON CONFLICT (id) DO NOTHING;
+INSERT INTO positions (id, entry_id, bidder_id, source, trade_id, ownership_share, cost_basis)
+VALUES (230, 41, 11, 'primary', NULL, 1, 2150)
+ON CONFLICT (id) DO NOTHING;
+INSERT INTO positions (id, entry_id, bidder_id, source, trade_id, ownership_share, cost_basis)
+VALUES (231, 43, 15, 'primary', NULL, 1, 4850)
+ON CONFLICT (id) DO NOTHING;
+INSERT INTO positions (id, entry_id, bidder_id, source, trade_id, ownership_share, cost_basis)
+VALUES (232, 47, 15, 'primary', NULL, 1, 1400)
+ON CONFLICT (id) DO NOTHING;
+INSERT INTO positions (id, entry_id, bidder_id, source, trade_id, ownership_share, cost_basis)
+VALUES (233, 49, 11, 'primary', NULL, 1, 1925)
+ON CONFLICT (id) DO NOTHING;
+INSERT INTO positions (id, entry_id, bidder_id, source, trade_id, ownership_share, cost_basis)
+VALUES (234, 51, 2, 'primary', NULL, 1, 525)
+ON CONFLICT (id) DO NOTHING;
+INSERT INTO positions (id, entry_id, bidder_id, source, trade_id, ownership_share, cost_basis)
+VALUES (235, 53, 3, 'primary', NULL, 1, 5275)
+ON CONFLICT (id) DO NOTHING;
+INSERT INTO positions (id, entry_id, bidder_id, source, trade_id, ownership_share, cost_basis)
+VALUES (236, 55, 9, 'primary', NULL, 1, 2550)
+ON CONFLICT (id) DO NOTHING;
+INSERT INTO positions (id, entry_id, bidder_id, source, trade_id, ownership_share, cost_basis)
+VALUES (237, 56, 15, 'primary', NULL, 1, 4550)
+ON CONFLICT (id) DO NOTHING;
+INSERT INTO positions (id, entry_id, bidder_id, source, trade_id, ownership_share, cost_basis)
+VALUES (238, 58, 6, 'primary', NULL, 1, 1125)
+ON CONFLICT (id) DO NOTHING;
+INSERT INTO positions (id, entry_id, bidder_id, source, trade_id, ownership_share, cost_basis)
+VALUES (239, 59, 3, 'primary', NULL, 1, 3725)
+ON CONFLICT (id) DO NOTHING;
+INSERT INTO positions (id, entry_id, bidder_id, source, trade_id, ownership_share, cost_basis)
+VALUES (240, 60, 11, 'primary', NULL, 1, 4100)
+ON CONFLICT (id) DO NOTHING;
+INSERT INTO positions (id, entry_id, bidder_id, source, trade_id, ownership_share, cost_basis)
+VALUES (241, 61, 13, 'primary', NULL, 1, 3975)
+ON CONFLICT (id) DO NOTHING;
+INSERT INTO positions (id, entry_id, bidder_id, source, trade_id, ownership_share, cost_basis)
+VALUES (242, 64, 5, 'primary', NULL, 1, 3750)
+ON CONFLICT (id) DO NOTHING;
+INSERT INTO positions (id, entry_id, bidder_id, source, trade_id, ownership_share, cost_basis)
+VALUES (243, 33, 9, 'primary', NULL, 1, 3400)
+ON CONFLICT (id) DO NOTHING;
+INSERT INTO positions (id, entry_id, bidder_id, source, trade_id, ownership_share, cost_basis)
+VALUES (244, 40, 6, 'primary', NULL, 0.3334, 1250.25)
+ON CONFLICT (id) DO NOTHING;
+INSERT INTO positions (id, entry_id, bidder_id, source, trade_id, ownership_share, cost_basis)
+VALUES (245, 40, 3, 'primary', NULL, 0.3333, 1249.88)
+ON CONFLICT (id) DO NOTHING;
+INSERT INTO positions (id, entry_id, bidder_id, source, trade_id, ownership_share, cost_basis)
+VALUES (246, 40, 7, 'primary', NULL, 0.3333, 1249.88)
+ON CONFLICT (id) DO NOTHING;
+INSERT INTO positions (id, entry_id, bidder_id, source, trade_id, ownership_share, cost_basis)
+VALUES (247, 42, 10, 'primary', NULL, 0.5, 800)
+ON CONFLICT (id) DO NOTHING;
+INSERT INTO positions (id, entry_id, bidder_id, source, trade_id, ownership_share, cost_basis)
+VALUES (248, 42, 6, 'primary', NULL, 0.5, 800)
+ON CONFLICT (id) DO NOTHING;
+INSERT INTO positions (id, entry_id, bidder_id, source, trade_id, ownership_share, cost_basis)
+VALUES (249, 44, 5, 'primary', NULL, 0.5, 1050)
+ON CONFLICT (id) DO NOTHING;
+INSERT INTO positions (id, entry_id, bidder_id, source, trade_id, ownership_share, cost_basis)
+VALUES (250, 44, 9, 'primary', NULL, 0.5, 1050)
+ON CONFLICT (id) DO NOTHING;
+INSERT INTO positions (id, entry_id, bidder_id, source, trade_id, ownership_share, cost_basis)
+VALUES (251, 45, 3, 'primary', NULL, 0.5, 1275)
+ON CONFLICT (id) DO NOTHING;
+INSERT INTO positions (id, entry_id, bidder_id, source, trade_id, ownership_share, cost_basis)
+VALUES (252, 45, 10, 'primary', NULL, 0.5, 1275)
+ON CONFLICT (id) DO NOTHING;
+INSERT INTO positions (id, entry_id, bidder_id, source, trade_id, ownership_share, cost_basis)
+VALUES (253, 46, 9, 'primary', NULL, 0.5, 1362.5)
+ON CONFLICT (id) DO NOTHING;
+INSERT INTO positions (id, entry_id, bidder_id, source, trade_id, ownership_share, cost_basis)
+VALUES (254, 46, 5, 'primary', NULL, 0.5, 1362.5)
+ON CONFLICT (id) DO NOTHING;
+INSERT INTO positions (id, entry_id, bidder_id, source, trade_id, ownership_share, cost_basis)
+VALUES (255, 48, 6, 'primary', NULL, 0.5, 1962.5)
+ON CONFLICT (id) DO NOTHING;
+INSERT INTO positions (id, entry_id, bidder_id, source, trade_id, ownership_share, cost_basis)
+VALUES (256, 48, 7, 'primary', NULL, 0.5, 1962.5)
+ON CONFLICT (id) DO NOTHING;
+INSERT INTO positions (id, entry_id, bidder_id, source, trade_id, ownership_share, cost_basis)
+VALUES (257, 50, 10, 'primary', NULL, 0.5, 1637.5)
+ON CONFLICT (id) DO NOTHING;
+INSERT INTO positions (id, entry_id, bidder_id, source, trade_id, ownership_share, cost_basis)
+VALUES (258, 50, 6, 'primary', NULL, 0.5, 1637.5)
+ON CONFLICT (id) DO NOTHING;
+INSERT INTO positions (id, entry_id, bidder_id, source, trade_id, ownership_share, cost_basis)
+VALUES (259, 52, 6, 'primary', NULL, 0.5, 487.5)
+ON CONFLICT (id) DO NOTHING;
+INSERT INTO positions (id, entry_id, bidder_id, source, trade_id, ownership_share, cost_basis)
+VALUES (260, 52, 7, 'primary', NULL, 0.5, 487.5)
+ON CONFLICT (id) DO NOTHING;
+INSERT INTO positions (id, entry_id, bidder_id, source, trade_id, ownership_share, cost_basis)
+VALUES (261, 54, 6, 'primary', NULL, 0.5, 325)
+ON CONFLICT (id) DO NOTHING;
+INSERT INTO positions (id, entry_id, bidder_id, source, trade_id, ownership_share, cost_basis)
+VALUES (262, 54, 9, 'primary', NULL, 0.5, 325)
+ON CONFLICT (id) DO NOTHING;
+INSERT INTO positions (id, entry_id, bidder_id, source, trade_id, ownership_share, cost_basis)
+VALUES (263, 57, 10, 'primary', NULL, 0.3334, 1316.93)
+ON CONFLICT (id) DO NOTHING;
+INSERT INTO positions (id, entry_id, bidder_id, source, trade_id, ownership_share, cost_basis)
+VALUES (264, 57, 3, 'primary', NULL, 0.3333, 1316.53)
+ON CONFLICT (id) DO NOTHING;
+INSERT INTO positions (id, entry_id, bidder_id, source, trade_id, ownership_share, cost_basis)
+VALUES (265, 57, 7, 'primary', NULL, 0.3333, 1316.53)
+ON CONFLICT (id) DO NOTHING;
+INSERT INTO positions (id, entry_id, bidder_id, source, trade_id, ownership_share, cost_basis)
+VALUES (266, 34, 6, 'primary', NULL, 0.3334, 425.08)
+ON CONFLICT (id) DO NOTHING;
+INSERT INTO positions (id, entry_id, bidder_id, source, trade_id, ownership_share, cost_basis)
+VALUES (267, 34, 8, 'primary', NULL, 0.3333, 424.96)
+ON CONFLICT (id) DO NOTHING;
+INSERT INTO positions (id, entry_id, bidder_id, source, trade_id, ownership_share, cost_basis)
+VALUES (268, 34, 11, 'primary', NULL, 0.3333, 424.96)
+ON CONFLICT (id) DO NOTHING;
+INSERT INTO positions (id, entry_id, bidder_id, source, trade_id, ownership_share, cost_basis)
+VALUES (269, 62, 5, 'primary', NULL, 0.5, 2137.5)
+ON CONFLICT (id) DO NOTHING;
+INSERT INTO positions (id, entry_id, bidder_id, source, trade_id, ownership_share, cost_basis)
+VALUES (270, 62, 3, 'primary', NULL, 0.5, 2137.5)
+ON CONFLICT (id) DO NOTHING;
+INSERT INTO positions (id, entry_id, bidder_id, source, trade_id, ownership_share, cost_basis)
+VALUES (271, 63, 5, 'primary', NULL, 0.5, 2100)
+ON CONFLICT (id) DO NOTHING;
+INSERT INTO positions (id, entry_id, bidder_id, source, trade_id, ownership_share, cost_basis)
+VALUES (272, 63, 10, 'primary', NULL, 0.5, 2100)
+ON CONFLICT (id) DO NOTHING;
+INSERT INTO positions (id, entry_id, bidder_id, source, trade_id, ownership_share, cost_basis)
+VALUES (273, 38, 6, 'trade', 22, -1, -6325)
+ON CONFLICT (id) DO NOTHING;
+INSERT INTO positions (id, entry_id, bidder_id, source, trade_id, ownership_share, cost_basis)
+VALUES (274, 38, 3, 'trade', 22, 1, 6325)
+ON CONFLICT (id) DO NOTHING;
+INSERT INTO positions (id, entry_id, bidder_id, source, trade_id, ownership_share, cost_basis)
+VALUES (275, 52, 3, 'trade', 19, -1, -900)
+ON CONFLICT (id) DO NOTHING;
+INSERT INTO positions (id, entry_id, bidder_id, source, trade_id, ownership_share, cost_basis)
+VALUES (276, 52, 6, 'trade', 19, 1, 900)
+ON CONFLICT (id) DO NOTHING;
+INSERT INTO positions (id, entry_id, bidder_id, source, trade_id, ownership_share, cost_basis)
+VALUES (277, 53, 3, 'trade', 24, -0.2, -1055)
+ON CONFLICT (id) DO NOTHING;
+INSERT INTO positions (id, entry_id, bidder_id, source, trade_id, ownership_share, cost_basis)
+VALUES (278, 53, 10, 'trade', 24, 0.2, 1055)
+ON CONFLICT (id) DO NOTHING;
+INSERT INTO positions (id, entry_id, bidder_id, source, trade_id, ownership_share, cost_basis)
+VALUES (279, 41, 11, 'trade', 26, -0.2, -430)
+ON CONFLICT (id) DO NOTHING;
+INSERT INTO positions (id, entry_id, bidder_id, source, trade_id, ownership_share, cost_basis)
+VALUES (280, 41, 5, 'trade', 26, 0.2, 430)
+ON CONFLICT (id) DO NOTHING;
+INSERT INTO positions (id, entry_id, bidder_id, source, trade_id, ownership_share, cost_basis)
+VALUES (281, 34, 3, 'trade', 20, -1, -1275)
+ON CONFLICT (id) DO NOTHING;
+INSERT INTO positions (id, entry_id, bidder_id, source, trade_id, ownership_share, cost_basis)
+VALUES (282, 34, 6, 'trade', 20, 1, 1275)
+ON CONFLICT (id) DO NOTHING;
+INSERT INTO positions (id, entry_id, bidder_id, source, trade_id, ownership_share, cost_basis)
+VALUES (283, 64, 5, 'trade', 28, -0.2, -740)
+ON CONFLICT (id) DO NOTHING;
+INSERT INTO positions (id, entry_id, bidder_id, source, trade_id, ownership_share, cost_basis)
+VALUES (284, 64, 15, 'trade', 28, 0.2, 740)
+ON CONFLICT (id) DO NOTHING;
+INSERT INTO positions (id, entry_id, bidder_id, source, trade_id, ownership_share, cost_basis)
+VALUES (285, 64, 5, 'trade', 25, -0.1, -375)
+ON CONFLICT (id) DO NOTHING;
+INSERT INTO positions (id, entry_id, bidder_id, source, trade_id, ownership_share, cost_basis)
+VALUES (286, 64, 11, 'trade', 25, 0.1, 375)
+ON CONFLICT (id) DO NOTHING;
+INSERT INTO positions (id, entry_id, bidder_id, source, trade_id, ownership_share, cost_basis)
+VALUES (287, 57, 6, 'trade', 21, -1, -3950)
+ON CONFLICT (id) DO NOTHING;
+INSERT INTO positions (id, entry_id, bidder_id, source, trade_id, ownership_share, cost_basis)
+VALUES (288, 57, 3, 'trade', 21, 1, 3950)
+ON CONFLICT (id) DO NOTHING;
+INSERT INTO positions (id, entry_id, bidder_id, source, trade_id, ownership_share, cost_basis)
+VALUES (289, 43, 6, 'trade', 23, -1, -4850)
+ON CONFLICT (id) DO NOTHING;
+INSERT INTO positions (id, entry_id, bidder_id, source, trade_id, ownership_share, cost_basis)
+VALUES (290, 43, 3, 'trade', 23, 1, 4850)
+ON CONFLICT (id) DO NOTHING;
+INSERT INTO positions (id, entry_id, bidder_id, source, trade_id, ownership_share, cost_basis)
+VALUES (291, 33, 9, 'trade', 35, -0.25, -850)
+ON CONFLICT (id) DO NOTHING;
+INSERT INTO positions (id, entry_id, bidder_id, source, trade_id, ownership_share, cost_basis)
+VALUES (292, 33, 3, 'trade', 35, 0.25, 850)
+ON CONFLICT (id) DO NOTHING;
+INSERT INTO positions (id, entry_id, bidder_id, source, trade_id, ownership_share, cost_basis)
+VALUES (293, 53, 3, 'trade', 29, -0.0667, -351.67)
+ON CONFLICT (id) DO NOTHING;
+INSERT INTO positions (id, entry_id, bidder_id, source, trade_id, ownership_share, cost_basis)
+VALUES (294, 53, 9, 'trade', 29, 0.0667, 351.67)
+ON CONFLICT (id) DO NOTHING;
+INSERT INTO positions (id, entry_id, bidder_id, source, trade_id, ownership_share, cost_basis)
+VALUES (295, 59, 3, 'trade', 30, -0.0667, -248.33)
+ON CONFLICT (id) DO NOTHING;
+INSERT INTO positions (id, entry_id, bidder_id, source, trade_id, ownership_share, cost_basis)
+VALUES (296, 59, 9, 'trade', 30, 0.0667, 248.33)
+ON CONFLICT (id) DO NOTHING;
+INSERT INTO positions (id, entry_id, bidder_id, source, trade_id, ownership_share, cost_basis)
+VALUES (297, 62, 3, 'trade', 31, -0.0333, -142.5)
+ON CONFLICT (id) DO NOTHING;
+INSERT INTO positions (id, entry_id, bidder_id, source, trade_id, ownership_share, cost_basis)
+VALUES (298, 62, 9, 'trade', 31, 0.0333, 142.5)
+ON CONFLICT (id) DO NOTHING;
+INSERT INTO positions (id, entry_id, bidder_id, source, trade_id, ownership_share, cost_basis)
+VALUES (299, 40, 3, 'trade', 32, -0.0222, -83.33)
+ON CONFLICT (id) DO NOTHING;
+INSERT INTO positions (id, entry_id, bidder_id, source, trade_id, ownership_share, cost_basis)
+VALUES (300, 40, 9, 'trade', 32, 0.0222, 83.33)
+ON CONFLICT (id) DO NOTHING;
+INSERT INTO positions (id, entry_id, bidder_id, source, trade_id, ownership_share, cost_basis)
+VALUES (301, 45, 3, 'trade', 33, -0.0333, -85)
+ON CONFLICT (id) DO NOTHING;
+INSERT INTO positions (id, entry_id, bidder_id, source, trade_id, ownership_share, cost_basis)
+VALUES (302, 45, 9, 'trade', 33, 0.0333, 85)
+ON CONFLICT (id) DO NOTHING;
+INSERT INTO positions (id, entry_id, bidder_id, source, trade_id, ownership_share, cost_basis)
+VALUES (303, 57, 3, 'trade', 34, -0.0222, -87.77)
+ON CONFLICT (id) DO NOTHING;
+INSERT INTO positions (id, entry_id, bidder_id, source, trade_id, ownership_share, cost_basis)
+VALUES (304, 57, 9, 'trade', 34, 0.0222, 87.77)
+ON CONFLICT (id) DO NOTHING;
+INSERT INTO positions (id, entry_id, bidder_id, source, trade_id, ownership_share, cost_basis)
+VALUES (305, 56, 6, 'trade', 36, -0.25, -1125)
+ON CONFLICT (id) DO NOTHING;
+INSERT INTO positions (id, entry_id, bidder_id, source, trade_id, ownership_share, cost_basis)
+VALUES (306, 56, 5, 'trade', 36, 0.25, 1125)
+ON CONFLICT (id) DO NOTHING;
+INSERT INTO positions (id, entry_id, bidder_id, source, trade_id, ownership_share, cost_basis)
+VALUES (307, 52, 7, 'trade', 38, -0.1, -97.5)
+ON CONFLICT (id) DO NOTHING;
+INSERT INTO positions (id, entry_id, bidder_id, source, trade_id, ownership_share, cost_basis)
+VALUES (308, 52, 5, 'trade', 38, 0.1, 97.5)
+ON CONFLICT (id) DO NOTHING;
+INSERT INTO positions (id, entry_id, bidder_id, source, trade_id, ownership_share, cost_basis)
+VALUES (309, 49, 11, 'trade', 37, -0.25, -481.25)
+ON CONFLICT (id) DO NOTHING;
+INSERT INTO positions (id, entry_id, bidder_id, source, trade_id, ownership_share, cost_basis)
+VALUES (310, 49, 5, 'trade', 37, 0.25, 481.25)
+ON CONFLICT (id) DO NOTHING;
+INSERT INTO positions (id, entry_id, bidder_id, source, trade_id, ownership_share, cost_basis)
+VALUES (311, 44, 3, 'trade', 40, -0.3333, -700)
+ON CONFLICT (id) DO NOTHING;
+INSERT INTO positions (id, entry_id, bidder_id, source, trade_id, ownership_share, cost_basis)
+VALUES (312, 44, 11, 'trade', 40, 0.3333, 700)
+ON CONFLICT (id) DO NOTHING;
+INSERT INTO positions (id, entry_id, bidder_id, source, trade_id, ownership_share, cost_basis)
+VALUES (313, 55, 9, 'trade', 41, -0.25, -637.5)
+ON CONFLICT (id) DO NOTHING;
+INSERT INTO positions (id, entry_id, bidder_id, source, trade_id, ownership_share, cost_basis)
+VALUES (314, 55, 3, 'trade', 41, 0.25, 637.5)
+ON CONFLICT (id) DO NOTHING;
+INSERT INTO positions (id, entry_id, bidder_id, source, trade_id, ownership_share, cost_basis)
+VALUES (315, 42, 3, 'trade', 42, -1, -1600)
+ON CONFLICT (id) DO NOTHING;
+INSERT INTO positions (id, entry_id, bidder_id, source, trade_id, ownership_share, cost_basis)
+VALUES (316, 42, 6, 'trade', 42, 1, 1600)
+ON CONFLICT (id) DO NOTHING;
+INSERT INTO positions (id, entry_id, bidder_id, source, trade_id, ownership_share, cost_basis)
+VALUES (317, 50, 3, 'trade', 43, -1, -3275)
+ON CONFLICT (id) DO NOTHING;
+INSERT INTO positions (id, entry_id, bidder_id, source, trade_id, ownership_share, cost_basis)
+VALUES (318, 50, 6, 'trade', 43, 1, 3275)
+ON CONFLICT (id) DO NOTHING;
+INSERT INTO positions (id, entry_id, bidder_id, source, trade_id, ownership_share, cost_basis)
+VALUES (319, 58, 3, 'trade', 44, -1, -1125)
+ON CONFLICT (id) DO NOTHING;
+INSERT INTO positions (id, entry_id, bidder_id, source, trade_id, ownership_share, cost_basis)
+VALUES (320, 58, 6, 'trade', 44, 1, 1125)
+ON CONFLICT (id) DO NOTHING;
+INSERT INTO positions (id, entry_id, bidder_id, source, trade_id, ownership_share, cost_basis)
+VALUES (321, 48, 3, 'trade', 45, -1, -3925)
+ON CONFLICT (id) DO NOTHING;
+INSERT INTO positions (id, entry_id, bidder_id, source, trade_id, ownership_share, cost_basis)
+VALUES (322, 48, 6, 'trade', 45, 1, 3925)
+ON CONFLICT (id) DO NOTHING;
+INSERT INTO positions (id, entry_id, bidder_id, source, trade_id, ownership_share, cost_basis)
+VALUES (323, 34, 3, 'trade', 46, -1, -1275)
+ON CONFLICT (id) DO NOTHING;
+INSERT INTO positions (id, entry_id, bidder_id, source, trade_id, ownership_share, cost_basis)
+VALUES (324, 34, 6, 'trade', 46, 1, 1275)
+ON CONFLICT (id) DO NOTHING;
+INSERT INTO positions (id, entry_id, bidder_id, source, trade_id, ownership_share, cost_basis)
+VALUES (325, 52, 3, 'trade', 49, -1, -975)
+ON CONFLICT (id) DO NOTHING;
+INSERT INTO positions (id, entry_id, bidder_id, source, trade_id, ownership_share, cost_basis)
+VALUES (326, 52, 6, 'trade', 49, 1, 975)
+ON CONFLICT (id) DO NOTHING;
+INSERT INTO positions (id, entry_id, bidder_id, source, trade_id, ownership_share, cost_basis)
+VALUES (327, 53, 6, 'trade', 50, -1, -5275)
+ON CONFLICT (id) DO NOTHING;
+INSERT INTO positions (id, entry_id, bidder_id, source, trade_id, ownership_share, cost_basis)
+VALUES (328, 53, 3, 'trade', 50, 1, 5275)
+ON CONFLICT (id) DO NOTHING;
+INSERT INTO positions (id, entry_id, bidder_id, source, trade_id, ownership_share, cost_basis)
+VALUES (329, 59, 6, 'trade', 51, -1, -3725)
+ON CONFLICT (id) DO NOTHING;
+INSERT INTO positions (id, entry_id, bidder_id, source, trade_id, ownership_share, cost_basis)
+VALUES (330, 59, 3, 'trade', 51, 1, 3725)
+ON CONFLICT (id) DO NOTHING;
+INSERT INTO positions (id, entry_id, bidder_id, source, trade_id, ownership_share, cost_basis)
+VALUES (331, 62, 6, 'trade', 52, -1, -4275)
+ON CONFLICT (id) DO NOTHING;
+INSERT INTO positions (id, entry_id, bidder_id, source, trade_id, ownership_share, cost_basis)
+VALUES (332, 62, 3, 'trade', 52, 1, 4275)
+ON CONFLICT (id) DO NOTHING;
+INSERT INTO positions (id, entry_id, bidder_id, source, trade_id, ownership_share, cost_basis)
+VALUES (333, 40, 6, 'trade', 53, -1, -3750)
+ON CONFLICT (id) DO NOTHING;
+INSERT INTO positions (id, entry_id, bidder_id, source, trade_id, ownership_share, cost_basis)
+VALUES (334, 40, 3, 'trade', 53, 1, 3750)
+ON CONFLICT (id) DO NOTHING;
+INSERT INTO positions (id, entry_id, bidder_id, source, trade_id, ownership_share, cost_basis)
+VALUES (335, 45, 6, 'trade', 54, -1, -2550)
+ON CONFLICT (id) DO NOTHING;
+INSERT INTO positions (id, entry_id, bidder_id, source, trade_id, ownership_share, cost_basis)
+VALUES (336, 45, 3, 'trade', 54, 1, 2550)
+ON CONFLICT (id) DO NOTHING;
+INSERT INTO positions (id, entry_id, bidder_id, source, trade_id, ownership_share, cost_basis)
+VALUES (337, 57, 6, 'trade', 55, -1, -3950)
+ON CONFLICT (id) DO NOTHING;
+INSERT INTO positions (id, entry_id, bidder_id, source, trade_id, ownership_share, cost_basis)
+VALUES (338, 57, 3, 'trade', 55, 1, 3950)
+ON CONFLICT (id) DO NOTHING;
+INSERT INTO positions (id, entry_id, bidder_id, source, trade_id, ownership_share, cost_basis)
+VALUES (339, 40, 3, 'trade', 47, -1, -3750)
+ON CONFLICT (id) DO NOTHING;
+INSERT INTO positions (id, entry_id, bidder_id, source, trade_id, ownership_share, cost_basis)
+VALUES (340, 40, 6, 'trade', 47, 1, 3750)
+ON CONFLICT (id) DO NOTHING;
+INSERT INTO positions (id, entry_id, bidder_id, source, trade_id, ownership_share, cost_basis)
+VALUES (341, 54, 3, 'trade', 48, -1, -650)
+ON CONFLICT (id) DO NOTHING;
+INSERT INTO positions (id, entry_id, bidder_id, source, trade_id, ownership_share, cost_basis)
+VALUES (342, 54, 6, 'trade', 48, 1, 650)
+ON CONFLICT (id) DO NOTHING;
+INSERT INTO positions (id, entry_id, bidder_id, source, trade_id, ownership_share, cost_basis)
+VALUES (343, 50, 6, 'trade', 56, -0.1, -327.5)
+ON CONFLICT (id) DO NOTHING;
+INSERT INTO positions (id, entry_id, bidder_id, source, trade_id, ownership_share, cost_basis)
+VALUES (344, 50, 9, 'trade', 56, 0.1, 327.5)
+ON CONFLICT (id) DO NOTHING;
+
+-- Fix sequences past restored ids
+SELECT setval(pg_get_serial_sequence('trades','id'), (SELECT max(id) FROM trades));
+SELECT setval(pg_get_serial_sequence('positions','id'), (SELECT max(id) FROM positions));
+
+-- ============ POST-CHECKS: run before COMMIT ============
+-- 1) counts: trades should be 53 (+any post-Aug-23 trades already present)
+-- select count(*) from trades; select count(*) from positions;
+-- 2) THE invariant: every entry with positions nets to exactly 100%
+-- select entry_id, sum(ownership_share) s from positions group by 1 having sum(ownership_share) <> 1.0;
+--    (expect zero rows)
+COMMIT;

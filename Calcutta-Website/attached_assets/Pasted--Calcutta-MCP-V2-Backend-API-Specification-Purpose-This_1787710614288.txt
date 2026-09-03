@@ -1,0 +1,1933 @@
+# Calcutta MCP V2 — Backend/API Specification
+
+## Purpose
+
+This document defines the V2 agent-facing API for the NFL Calcutta application.
+
+The goal is to allow an AI agent to answer questions such as:
+
+* "What teams do I own?"
+* "What's my Calcutta portfolio cost?"
+* "How is my portfolio doing?"
+* "What games matter most to me this week?"
+* "What's the EV swing of the Jets/Lions game?"
+* "How much would a Jets win be worth to me?"
+* "Which of my teams has the best current value?"
+* "What am I rooting for this weekend?"
+* "What's my expected payout?"
+* "Which games are most important to the Calcutta?"
+* "What's the biggest Marquee game?"
+* "How much does the 2x point-differential multiplier matter?"
+* "What is the current points rubric?"
+
+The API should be designed so that the AI does NOT need to reconstruct relationships by making dozens of individual team queries.
+
+The backend/database should perform joins, aggregation, and calculations whenever possible.
+
+---
+
+# 1. Core Design Principle
+
+## Do not make the AI act as a database join engine.
+
+Bad:
+
+```text
+get_team_owner1(team 1)
+get_team_owner1(team 2)
+...
+get_team_owner1(team 32)
+
+get_team_owner2(team 1)
+...
+```
+
+Good:
+
+```text
+get_owner_portfolio(owner="Craig Thompson", season=2026)
+```
+
+The server should perform the database joins and return the complete portfolio.
+
+This is both:
+
+1. Faster
+2. More accurate
+
+The San Francisco 49ers omission in the previous portfolio lookup is exactly the type of error this architecture is intended to prevent.
+
+---
+
+# 2. Data Layers
+
+V2 should conceptually contain five layers:
+
+1. Calcutta ownership / financial data
+2. NFL schedule
+3. NFL game market data
+4. Calcutta rules / points rubric
+5. Projection / EV calculations
+
+Some of these fields do not currently exist in the database.
+
+That is acceptable.
+
+Implement missing fields as nullable database fields or placeholder values rather than blocking the API design.
+
+The API contract should be established now so the database can be upgraded incrementally.
+
+---
+
+# 3. Existing Data vs New Data
+
+## Existing / likely available
+
+The current database already contains concepts including:
+
+* teams
+* owners
+* auction costs
+* ownership splits
+* trades
+* returns
+* MTM values
+* wins
+* point differential
+* playoff seeds
+* period snapshots
+* payout calculations
+
+Use the existing data wherever available.
+
+## New data required
+
+The following concepts may not currently exist and should be added as nullable fields/tables:
+
+### Schedule
+
+* game_id
+* season
+* week
+* game_date
+* kickoff_at
+* timezone
+* home_team
+* away_team
+* venue
+* network
+* game_status
+* is_marquee
+* point_diff_multiplier
+
+### Betting market
+
+* game_id
+* timestamp
+* source
+* spread
+* home_moneyline
+* away_moneyline
+* home_implied_probability
+* away_implied_probability
+
+### Projection
+
+* game_id
+* timestamp
+* model_name
+* home_win_probability
+* away_win_probability
+* projected_home_score
+* projected_away_score
+* projected_point_differential
+
+### Calcutta rules
+
+* season
+* rule_name
+* rule_type
+* value
+* multiplier
+* description
+
+---
+
+# 4. Schedule Data
+
+The 2026 NFL schedule should initially be represented in the application context / Markdown and/or a schedule table.
+
+The official NFL schedule is the authoritative source.
+
+Official source:
+
+https://www.nfl.com/schedules/2026
+
+The NFL has published the complete 2026 schedule, although certain late-season kickoff times remain TBD and are determined later. Therefore `kickoff_at` MUST be nullable.
+
+The backend should never invent a kickoff time.
+
+---
+
+# 5. Schedule Schema
+
+Recommended table:
+
+```sql
+games
+```
+
+Suggested fields:
+
+```sql
+id
+season
+week
+game_date
+kickoff_at
+timezone
+home_team_id
+away_team_id
+venue
+network
+status
+source
+source_url
+is_marquee
+point_diff_multiplier
+created_at
+updated_at
+```
+
+Recommended types:
+
+```text
+id                  UUID / integer
+season              integer
+week                integer
+game_date           date
+kickoff_at          timestamp nullable
+timezone            string
+home_team_id        foreign key
+away_team_id        foreign key
+venue               string nullable
+network             string nullable
+status              enum/string
+source              string
+source_url          string
+is_marquee          boolean nullable
+point_diff_multiplier decimal
+```
+
+---
+
+# 6. Marquee Game Logic
+
+This is a critical Calcutta-specific rule.
+
+A game is a Marquee Game when it kicks off outside the normal Sunday 1:00 PM–7:00 PM ET window.
+
+The Calcutta awards a 2x multiplier on point differential for Marquee Games.
+
+The calculation must be based on the scheduled kickoff time in Eastern Time.
+
+## Definition
+
+```text
+Normal Sunday window:
+
+Sunday
+1:00 PM ET <= kickoff < 7:00 PM ET
+```
+
+Anything outside that window is Marquee.
+
+Therefore:
+
+```text
+if kickoff_day != Sunday:
+    is_marquee = true
+
+else if kickoff_time < 13:00 ET:
+    is_marquee = true
+
+else if kickoff_time >= 19:00 ET:
+    is_marquee = true
+
+else:
+    is_marquee = false
+```
+
+Then:
+
+```text
+is_marquee == true
+    => point_diff_multiplier = 2.0
+
+is_marquee == false
+    => point_diff_multiplier = 1.0
+```
+
+IMPORTANT:
+
+Do not determine Marquee status based on:
+
+* TV network
+* "primetime" label
+* national broadcast
+* game importance
+* betting line
+* team popularity
+
+It is purely a function of scheduled kickoff date/time.
+
+---
+
+# 7. TBD Kickoff Logic
+
+If kickoff time has not yet been announced:
+
+```text
+kickoff_at = null
+is_marquee = null
+point_diff_multiplier = null
+```
+
+Do NOT assume TBD games are Marquee.
+
+When the NFL announces the time, update the game and recalculate:
+
+```text
+is_marquee
+point_diff_multiplier
+```
+
+This is particularly important for Weeks 16–18.
+
+---
+
+# 8. Schedule Endpoint
+
+## get_schedule
+
+Purpose:
+
+Return games matching optional filters.
+
+Input:
+
+```json
+{
+  "season": 2026,
+  "team": "NYJ",
+  "week": 3,
+  "date_from": null,
+  "date_to": null,
+  "include_market": false,
+  "include_projection": false
+}
+```
+
+All filters optional except season.
+
+Output:
+
+```json
+{
+  "season": 2026,
+  "games": [
+    {
+      "game_id": "...",
+      "week": 3,
+      "date": "2026-09-27",
+      "kickoff_at": "2026-09-27T13:00:00-04:00",
+      "timezone": "America/New_York",
+      "away_team": "New York Jets",
+      "away_abbreviation": "NYJ",
+      "home_team": "Detroit Lions",
+      "home_abbreviation": "DET",
+      "is_marquee": false,
+      "point_diff_multiplier": 1.0
+    }
+  ]
+}
+```
+
+---
+
+# 9. Game Endpoint
+
+## get_game
+
+Purpose:
+
+Return the complete information known about one game.
+
+Input:
+
+```json
+{
+  "game_id": "...",
+  "season": 2026
+}
+```
+
+Output should combine:
+
+* schedule
+* current market
+* projection
+* Calcutta relevance
+* ownership
+* current team values
+
+Example:
+
+```json
+{
+  "game": {
+    "game_id": "...",
+    "week": 3,
+    "away_team": "New York Jets",
+    "home_team": "Detroit Lions",
+    "kickoff_at": "...",
+    "is_marquee": false,
+    "point_diff_multiplier": 1.0
+  },
+
+  "market": {
+    "spread": -6.5,
+    "home_moneyline": -280,
+    "away_moneyline": 230,
+    "home_implied_probability": 0.737,
+    "away_implied_probability": 0.303
+  },
+
+  "projection": {
+    "home_win_probability": null,
+    "away_win_probability": null
+  }
+}
+```
+
+Nulls are acceptable.
+
+---
+
+# 10. Team Schedule Endpoint
+
+## get_team_schedule
+
+Purpose:
+
+Convenience endpoint for questions about one team's remaining/current schedule.
+
+Input:
+
+```json
+{
+  "team": "NYJ",
+  "season": 2026,
+  "include_market": true,
+  "include_projection": true
+}
+```
+
+Return:
+
+* completed games
+* upcoming games
+* opponent
+* home/away
+* kickoff
+* Marquee status
+* spread
+* ML
+* win probability
+* current Calcutta value
+* projected EV impact where available
+
+---
+
+# 11. Betting Market Data
+
+Market data should be stored separately from the schedule.
+
+Recommended table:
+
+```sql
+game_market_snapshots
+```
+
+Fields:
+
+```sql
+id
+game_id
+timestamp
+source
+spread
+home_moneyline
+away_moneyline
+home_implied_probability
+away_implied_probability
+total
+created_at
+```
+
+The system should support multiple snapshots over time.
+
+Do NOT overwrite historical market data.
+
+---
+
+# 12. Market Endpoint
+
+## get_game_market
+
+Input:
+
+```json
+{
+  "game_id": "...",
+  "latest": true,
+  "source": null
+}
+```
+
+Output:
+
+```json
+{
+  "game_id": "...",
+  "timestamp": "...",
+  "source": "placeholder",
+  "spread": null,
+  "home_moneyline": null,
+  "away_moneyline": null,
+  "home_implied_probability": null,
+  "away_implied_probability": null
+}
+```
+
+Initially these can be null.
+
+---
+
+# 13. Market Scraping
+
+A separate ingestion process should eventually scrape sportsbook market information.
+
+The exact source can be changed without changing the MCP interface.
+
+Recommended architecture:
+
+```text
+external sportsbook / odds source
+        ↓
+odds ingestion job
+        ↓
+game_market_snapshots
+        ↓
+get_game_market
+        ↓
+projection / EV engine
+```
+
+Do not make the MCP itself responsible for scraping on every user request.
+
+Scrape periodically and store snapshots.
+
+---
+
+# 14. Moneyline → Implied Probability
+
+For American odds:
+
+Positive:
+
+```text
+implied_probability = 100 / (moneyline + 100)
+```
+
+Negative:
+
+```text
+implied_probability = abs(moneyline) / (abs(moneyline) + 100)
+```
+
+Raw implied probabilities contain sportsbook vig.
+
+If useful, calculate no-vig probabilities:
+
+```text
+raw_home_prob = ...
+raw_away_prob = ...
+
+total = raw_home_prob + raw_away_prob
+
+no_vig_home_prob = raw_home_prob / total
+no_vig_away_prob = raw_away_prob / total
+```
+
+Store both if possible.
+
+---
+
+# 15. Win Probability
+
+Do NOT equate sportsbook implied probability with the application's projection.
+
+There should be two concepts:
+
+```text
+market_implied_probability
+model_win_probability
+```
+
+For example:
+
+```text
+market:
+DET 73.7%
+
+model:
+DET 69.0%
+```
+
+The model probability should come from a projection model.
+
+Initially:
+
+```text
+model_win_probability = null
+```
+
+is acceptable.
+
+Do not invent probabilities.
+
+---
+
+# 16. Projection Table
+
+Recommended:
+
+```sql
+game_projections
+```
+
+Fields:
+
+```sql
+id
+game_id
+timestamp
+model_name
+home_win_probability
+away_win_probability
+projected_home_score
+projected_away_score
+projected_point_differential
+source
+```
+
+This allows the model to evolve.
+
+For example:
+
+```text
+model_name = "placeholder_v1"
+model_name = "elo_v2"
+model_name = "market_adjusted_v3"
+```
+
+---
+
+# 17. Projection Endpoint
+
+## get_game_projection
+
+Input:
+
+```json
+{
+  "game_id": "...",
+  "latest": true
+}
+```
+
+Output:
+
+```json
+{
+  "game_id": "...",
+  "model_name": "placeholder",
+  "home_win_probability": null,
+  "away_win_probability": null,
+  "projected_home_score": null,
+  "projected_away_score": null,
+  "projected_point_differential": null
+}
+```
+
+---
+
+# 18. Portfolio Endpoint
+
+## get_owner_portfolio
+
+This is one of the most important V2 endpoints.
+
+Input:
+
+```json
+{
+  "owner": "Craig Thompson",
+  "season": 2026
+}
+```
+
+The backend should perform the entire ownership join internally.
+
+Return every current position.
+
+Example:
+
+```json
+{
+  "owner": "Craig Thompson",
+  "season": 2026,
+  "total_cost": 4918.91,
+  "teams": [
+    {
+      "team": "San Francisco 49ers",
+      "abbreviation": "SF",
+      "ownership_percentage": 50.0,
+      "cost_basis": null,
+      "current_mtm": null,
+      "realized_return": null,
+      "net_mtm": null
+    }
+  ]
+}
+```
+
+The endpoint MUST include all teams.
+
+It must account for:
+
+* original auction ownership
+* ownership splits
+* approved trades
+* current ownership
+* partial ownership
+
+Pending trades should not affect current portfolio ownership unless the existing application explicitly defines otherwise.
+
+---
+
+# 19. Owner Summary
+
+## get_owner_summary
+
+Input:
+
+```json
+{
+  "owner": "Craig Thompson",
+  "season": 2026
+}
+```
+
+Return:
+
+```json
+{
+  "owner": "Craig Thompson",
+  "season": 2026,
+  "team_count": 4,
+  "total_cost": 4918.91,
+  "current_mtm": null,
+  "realized_return": null,
+  "total_return": null,
+  "roi": null
+}
+```
+
+Use existing authoritative calculations where available.
+
+Do not recalculate auction cost in the agent.
+
+---
+
+# 20. Owner Portfolio Performance
+
+## get_owner_portfolio_performance
+
+Return team-by-team performance.
+
+```json
+{
+  "owner": "Craig Thompson",
+  "teams": [
+    {
+      "team": "San Francisco 49ers",
+      "ownership_percentage": 50,
+      "cost_basis": null,
+      "mtm": null,
+      "realized_return": null,
+      "wins": null,
+      "losses": null,
+      "point_differential": null,
+      "playoff_seed": null
+    }
+  ]
+}
+```
+
+---
+
+# 21. Compare Owners
+
+## compare_owners
+
+Input:
+
+```json
+{
+  "owners": [
+    "Craig Thompson",
+    "Zachary Long"
+  ],
+  "season": 2026
+}
+```
+
+Return:
+
+* total cost
+* current MTM
+* realized return
+* ROI
+* team count
+* portfolio value
+* team-by-team differences
+
+---
+
+# 22. Leaderboard
+
+## get_leaderboard
+
+Input:
+
+```json
+{
+  "season": 2026,
+  "metric": "mtm"
+}
+```
+
+Supported metrics:
+
+```text
+cost
+mtm
+realized_return
+roi
+projected_payout
+projected_profit
+```
+
+If a metric is not available yet, return null rather than approximating.
+
+---
+
+# 23. Calcutta Points Rubric
+
+## get_points_rubric
+
+This is a required V2 endpoint.
+
+Input:
+
+```json
+{
+  "season": 2026
+}
+```
+
+Return the authoritative Calcutta scoring rules.
+
+Example:
+
+```json
+{
+  "season": 2026,
+  "rules": [
+    {
+      "rule_name": "regular_season_win",
+      "value": null,
+      "unit": "points",
+      "description": "Points awarded for a regular-season win."
+    },
+    {
+      "rule_name": "point_differential",
+      "value": null,
+      "unit": "points_per_point",
+      "description": "Points awarded based on point differential."
+    },
+    {
+      "rule_name": "marquee_point_differential_multiplier",
+      "value": 2.0,
+      "unit": "multiplier",
+      "description": "Point differential receives a 2x multiplier for Marquee Games."
+    },
+    {
+      "rule_name": "playoff_berth",
+      "value": null,
+      "unit": "points",
+      "description": "Points awarded for qualifying for the playoffs."
+    }
+  ]
+}
+```
+
+IMPORTANT:
+
+Do not invent missing values.
+
+If the actual points rubric is not yet available to the backend, return:
+
+```json
+"value": null
+```
+
+and clearly identify it as a missing configuration.
+
+---
+
+# 24. Store Rules as Data
+
+Recommended table:
+
+```sql
+calcutta_rules
+```
+
+Fields:
+
+```sql
+id
+season
+rule_name
+rule_type
+value
+multiplier
+description
+active
+created_at
+updated_at
+```
+
+This is preferable to hard-coding the rubric into application logic.
+
+---
+
+# 25. Game EV
+
+## get_game_ev
+
+This is a core V2 analytical endpoint.
+
+Input:
+
+```json
+{
+  "game_id": "...",
+  "owner": "Craig Thompson"
+}
+```
+
+The endpoint should combine:
+
+1. schedule
+2. ownership
+3. current team value/cost basis
+4. betting market
+5. win probability
+6. points rubric
+7. Marquee multiplier
+8. playoff implications where available
+
+Output:
+
+```json
+{
+  "game_id": "...",
+  "owner": "Craig Thompson",
+
+  "game": {
+    "away_team": "New York Jets",
+    "home_team": "Detroit Lions",
+    "kickoff_at": "...",
+    "is_marquee": false,
+    "point_diff_multiplier": 1.0
+  },
+
+  "projection": {
+    "away_win_probability": null,
+    "home_win_probability": null
+  },
+
+  "portfolio": {
+    "away_ownership": null,
+    "home_ownership": null
+  },
+
+  "ev": {
+    "away_win_portfolio_impact": null,
+    "home_win_portfolio_impact": null,
+    "expected_value": null,
+    "ev_swing": null
+  }
+}
+```
+
+---
+
+# 26. EV Definition
+
+The backend should distinguish:
+
+## Outcome value
+
+Value of the portfolio if Team A wins.
+
+## Expected value
+
+Probability-weighted value across outcomes.
+
+For a simple two-outcome game:
+
+```text
+EV =
+    P(A wins) * portfolio_value_if_A_wins
+  + P(B wins) * portfolio_value_if_B_wins
+```
+
+For incremental EV relative to the current state:
+
+```text
+EV_change =
+    P(A wins) * change_if_A_wins
+  + P(B wins) * change_if_B_wins
+```
+
+## EV swing
+
+Define:
+
+```text
+EV_swing =
+    change_if_A_wins - change_if_B_wins
+```
+
+This is useful for answering:
+
+> "How much does the Jets/Lions game swing my portfolio?"
+
+---
+
+# 27. IMPORTANT: Do Not Double Count
+
+The EV engine must not simultaneously count the same value through:
+
+* current MTM
+* points
+* payout
+* projected payout
+
+unless those quantities are explicitly defined as separate stages.
+
+The backend should document whether MTM represents:
+
+```text
+current estimated liquidation value
+```
+
+or:
+
+```text
+projected payout
+```
+
+before using it in EV calculations.
+
+---
+
+# 28. Marquee Game EV
+
+The Marquee multiplier must be applied specifically to point differential.
+
+Conceptually:
+
+```text
+regular_point_diff_value =
+    point_differential * point_diff_value
+
+marquee_point_diff_value =
+    point_differential
+    * point_diff_value
+    * 2
+```
+
+Do NOT multiply:
+
+* win points
+* playoff points
+* Super Bowl points
+* all game EV
+
+by 2.
+
+The multiplier applies only to the point-differential component.
+
+---
+
+# 29. Owner Game Leverage
+
+## get_owner_game_leverage
+
+Input:
+
+```json
+{
+  "owner": "Craig Thompson",
+  "season": 2026,
+  "week": 3,
+  "limit": 10
+}
+```
+
+Return all games involving the owner's teams, ranked by expected dollar impact.
+
+Example:
+
+```json
+{
+  "owner": "Craig Thompson",
+  "week": 3,
+  "games": [
+    {
+      "game_id": "...",
+      "team": "San Francisco 49ers",
+      "opponent": "...",
+      "is_marquee": true,
+      "ev_swing": null,
+      "importance_rank": 1
+    }
+  ]
+}
+```
+
+Ranking should eventually consider:
+
+```text
+absolute EV swing
+```
+
+not merely win probability.
+
+---
+
+# 30. Owner Projected Payout
+
+## get_owner_projected_payout
+
+Input:
+
+```json
+{
+  "owner": "Craig Thompson",
+  "season": 2026
+}
+```
+
+Return:
+
+```json
+{
+  "owner": "Craig Thompson",
+  "season": 2026,
+  "current_cost": 4918.91,
+  "expected_payout": null,
+  "expected_profit": null,
+  "expected_roi": null,
+  "confidence_interval": null
+}
+```
+
+Initially these can be null.
+
+---
+
+# 31. Projection Engine
+
+The projection engine should eventually simulate the remaining schedule.
+
+Conceptual flow:
+
+```text
+Current standings
+        +
+Remaining schedule
+        +
+Game win probabilities
+        +
+Points rubric
+        +
+Marquee multipliers
+        +
+Playoff rules
+        ↓
+Monte Carlo / analytical simulation
+        ↓
+Expected Calcutta points
+        ↓
+Expected payout
+```
+
+---
+
+# 32. Simulation Endpoints
+
+These can initially return placeholders.
+
+## simulate_game
+
+```json
+{
+  "game_id": "...",
+  "simulations": 10000
+}
+```
+
+## simulate_week
+
+```json
+{
+  "season": 2026,
+  "week": 3,
+  "simulations": 10000
+}
+```
+
+## simulate_season
+
+```json
+{
+  "season": 2026,
+  "simulations": 10000
+}
+```
+
+These should eventually provide probability distributions rather than only point estimates.
+
+---
+
+# 33. Recommended Future Projection Outputs
+
+For each team:
+
+```text
+win_probability
+expected_wins
+playoff_probability
+division_win_probability
+conference_championship_probability
+super_bowl_probability
+expected_calcutta_points
+expected_payout
+expected_profit
+```
+
+For each owner:
+
+```text
+expected_portfolio_payout
+expected_portfolio_profit
+expected_portfolio_roi
+probability_of_profit
+probability_of_positive_roi
+```
+
+---
+
+# 34. Schedule Data in CALCUTTA_V2.md
+
+The Markdown context should include the 2026 schedule as structured data.
+
+Use this format:
+
+```markdown
+## 2026 NFL Schedule
+
+| Week | Date | Away | Home | Kickoff ET | Marquee |
+|---|---|---|---|---|---|
+| 1 | 2026-09-13 | ... | ... | 1:00 PM | No |
+| 1 | 2026-09-13 | ... | ... | 4:05 PM | No |
+| 1 | 2026-09-13 | ... | ... | 8:20 PM | Yes |
+```
+
+For TBD games:
+
+```text
+Kickoff ET = TBD
+Marquee = TBD
+```
+
+The schedule should be updated when the NFL announces the kickoff time.
+
+The official 2026 schedule should be treated as authoritative.
+
+---
+
+# 35. Schedule Source
+
+Primary source:
+
+https://www.nfl.com/schedules/2026
+
+NFL schedule data may also be retrieved from the official NFL team/week schedule pages.
+
+The NFL currently lists the 2026 season schedule through Week 18, with some later games still having TBD dates/times.
+
+---
+
+# 36. Agent Playbook
+
+The following rules should be included in the MCP documentation so the AI knows which endpoint to use.
+
+## Ownership
+
+Question:
+
+"What do I own?"
+
+Use:
+
+```text
+get_owner_portfolio
+```
+
+Do NOT enumerate all 32 teams.
+
+---
+
+Question:
+
+"What's my portfolio cost?"
+
+Use:
+
+```text
+get_owner_summary
+```
+
+or:
+
+```text
+get_owner_portfolio
+```
+
+---
+
+Question:
+
+"How am I doing?"
+
+Use:
+
+```text
+get_owner_summary
+```
+
+---
+
+Question:
+
+"Which of my teams is performing best?"
+
+Use:
+
+```text
+get_owner_portfolio_performance
+```
+
+---
+
+## Schedule
+
+Question:
+
+"When do the Jets play?"
+
+Use:
+
+```text
+get_team_schedule
+```
+
+---
+
+Question:
+
+"Who do the Jets play next?"
+
+Use:
+
+```text
+get_team_schedule
+```
+
+---
+
+Question:
+
+"Is Jets/Lions a Marquee game?"
+
+Use:
+
+```text
+get_game
+```
+
+Check:
+
+```text
+is_marquee
+```
+
+---
+
+## Betting
+
+Question:
+
+"What is the spread on Jets/Lions?"
+
+Use:
+
+```text
+get_game_market
+```
+
+---
+
+Question:
+
+"What is the Jets/Lions win probability?"
+
+Use:
+
+```text
+get_game_projection
+```
+
+If model probability is unavailable, clearly state that it is unavailable.
+
+Do NOT substitute sportsbook implied probability without explaining that it is a market-implied probability.
+
+---
+
+## Calcutta EV
+
+Question:
+
+"What is the EV swing of Jets/Lions?"
+
+Use:
+
+```text
+get_game_ev
+```
+
+---
+
+Question:
+
+"What games matter most to me?"
+
+Use:
+
+```text
+get_owner_game_leverage
+```
+
+---
+
+Question:
+
+"What am I rooting for this Sunday?"
+
+Use:
+
+```text
+get_owner_game_leverage
+```
+
+and explain the highest-EV outcomes.
+
+---
+
+Question:
+
+"What is my expected payout?"
+
+Use:
+
+```text
+get_owner_projected_payout
+```
+
+---
+
+Question:
+
+"What is the points rubric?"
+
+Use:
+
+```text
+get_points_rubric
+```
+
+---
+
+# 37. Endpoint Priority
+
+Implement in this order.
+
+## Phase 1 — Immediate
+
+1. `get_owner_portfolio`
+2. `get_owner_summary`
+3. `get_owner_portfolio_performance`
+4. `get_schedule`
+5. `get_team_schedule`
+6. `get_game`
+7. `get_points_rubric`
+
+These should work even before betting/projection data exists.
+
+---
+
+## Phase 2 — Market Data
+
+8. `get_game_market`
+9. Market ingestion job
+10. Historical market snapshots
+
+---
+
+## Phase 3 — Projection
+
+11. `get_game_projection`
+12. Projection ingestion/calculation
+13. `get_game_ev`
+
+---
+
+## Phase 4 — Portfolio Analytics
+
+14. `get_owner_game_leverage`
+15. `get_owner_projected_payout`
+16. `compare_owners`
+17. `get_leaderboard`
+
+---
+
+## Phase 5 — Simulation
+
+18. `simulate_game`
+19. `simulate_week`
+20. `simulate_season`
+
+---
+
+# 38. Placeholder Policy
+
+A field that does not yet exist should be represented explicitly.
+
+Good:
+
+```json
+{
+  "home_win_probability": null
+}
+```
+
+Bad:
+
+```json
+{
+  "home_win_probability": 0.65
+}
+```
+
+unless an actual model has generated that value.
+
+Likewise:
+
+```json
+{
+  "spread": null
+}
+```
+
+is preferable to inventing a spread.
+
+The API contract should be implemented before all data sources are available.
+
+---
+
+# 39. Data Freshness
+
+Every dynamic data object should expose:
+
+```text
+updated_at
+source
+```
+
+For market/projection data also expose:
+
+```text
+snapshot_at
+```
+
+This allows the agent to say:
+
+> "The current line is..."
+
+versus:
+
+> "The line was..."
+
+and prevents stale data from being treated as current.
+
+---
+
+# 40. Source Precedence
+
+Recommended precedence:
+
+### Schedule
+
+1. NFL official schedule
+2. manually verified schedule data
+3. cached application schedule
+
+### Betting market
+
+1. configured sportsbook/odds provider
+2. secondary configured provider
+3. cached market snapshot
+
+### Calcutta ownership
+
+1. current approved ownership state
+2. original auction ownership
+3. pending trades should not override approved state
+
+### Calcutta rules
+
+1. database rules table
+2. authoritative Calcutta configuration
+3. Markdown documentation as explanatory fallback
+
+The Markdown should explain the rules but should not silently override authoritative database configuration.
+
+---
+
+# 41. Database Migration Strategy
+
+Do not require a complete database rewrite.
+
+Add new tables incrementally:
+
+```sql
+games
+game_market_snapshots
+game_projections
+calcutta_rules
+```
+
+Existing team/owner tables can remain unchanged.
+
+Use foreign keys to existing team records.
+
+---
+
+# 42. Minimum Viable Placeholder Schema
+
+If implementing immediately, the following is enough:
+
+```sql
+CREATE TABLE games (
+    id SERIAL PRIMARY KEY,
+    season INTEGER NOT NULL,
+    week INTEGER NOT NULL,
+    game_date DATE NOT NULL,
+    kickoff_at TIMESTAMP NULL,
+    timezone VARCHAR(64) DEFAULT 'America/New_York',
+    away_team_id INTEGER NOT NULL,
+    home_team_id INTEGER NOT NULL,
+    venue VARCHAR(255),
+    network VARCHAR(100),
+    status VARCHAR(50),
+    source VARCHAR(255),
+    is_marquee BOOLEAN NULL,
+    point_diff_multiplier DECIMAL(4,2) NULL,
+    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+    updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+);
+```
+
+```sql
+CREATE TABLE game_market_snapshots (
+    id SERIAL PRIMARY KEY,
+    game_id INTEGER NOT NULL,
+    snapshot_at TIMESTAMP NOT NULL,
+    source VARCHAR(100),
+    spread DECIMAL(5,2) NULL,
+    home_moneyline INTEGER NULL,
+    away_moneyline INTEGER NULL,
+    home_implied_probability DECIMAL(8,6) NULL,
+    away_implied_probability DECIMAL(8,6) NULL,
+    total DECIMAL(6,2) NULL,
+    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+);
+```
+
+```sql
+CREATE TABLE game_projections (
+    id SERIAL PRIMARY KEY,
+    game_id INTEGER NOT NULL,
+    snapshot_at TIMESTAMP NOT NULL,
+    model_name VARCHAR(100),
+    home_win_probability DECIMAL(8,6) NULL,
+    away_win_probability DECIMAL(8,6) NULL,
+    projected_home_score DECIMAL(6,2) NULL,
+    projected_away_score DECIMAL(6,2) NULL,
+    projected_point_differential DECIMAL(6,2) NULL,
+    source VARCHAR(255),
+    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+);
+```
+
+```sql
+CREATE TABLE calcutta_rules (
+    id SERIAL PRIMARY KEY,
+    season INTEGER NOT NULL,
+    rule_name VARCHAR(100) NOT NULL,
+    rule_type VARCHAR(50),
+    value DECIMAL(12,4) NULL,
+    multiplier DECIMAL(12,4) NULL,
+    description TEXT,
+    active BOOLEAN DEFAULT TRUE,
+    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+    updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+);
+```
+
+---
+
+# 43. Required Validation
+
+The backend should validate:
+
+### Games
+
+* home team != away team
+* valid NFL team
+* valid season
+* valid week
+* one game cannot have duplicate home/away pairing for the same week
+
+### Probabilities
+
+```text
+0 <= probability <= 1
+```
+
+and:
+
+```text
+home_probability + away_probability = 1
+```
+
+within a small numerical tolerance.
+
+### Marquee
+
+If:
+
+```text
+kickoff_at == null
+```
+
+then:
+
+```text
+is_marquee == null
+point_diff_multiplier == null
+```
+
+Otherwise calculate deterministically.
+
+---
+
+# 44. Important Agent Behavior
+
+The AI should never:
+
+1. Guess missing data.
+2. Enumerate all NFL teams to determine ownership when `get_owner_portfolio` exists.
+3. Treat market-implied probability as model probability.
+4. Treat TBD kickoff times as Marquee.
+5. Apply the Marquee multiplier to anything other than point differential.
+6. Use pending trades as current ownership unless explicitly instructed.
+7. Assume MTM equals projected payout.
+8. Present placeholder values as actual values.
+
+---
+
+# 45. Desired End State
+
+The ultimate user experience should allow questions such as:
+
+> "What's my portfolio worth?"
+
+→ `get_owner_summary`
+
+> "What do I own?"
+
+→ `get_owner_portfolio`
+
+> "What's my biggest position?"
+
+→ `get_owner_portfolio`
+
+> "What games matter most to me this week?"
+
+→ `get_owner_game_leverage`
+
+> "What's the EV swing of Jets/Lions?"
+
+→ `get_game_ev`
+
+> "Why is Jets/Lions important?"
+
+→ schedule + ownership + market + projection + points rubric + EV
+
+> "What's my expected payout?"
+
+→ `get_owner_projected_payout`
+
+> "Who should I root for Sunday?"
+
+→ `get_owner_game_leverage`
+
+> "How much does the Jets/Lions point differential matter?"
+
+→ `get_game_ev` + `get_points_rubric`
+
+---
+
+# 46. Key Architectural Principle
+
+The MCP should expose **agent-level concepts**, not merely database columns.
+
+The AI should be able to ask:
+
+```text
+get_owner_portfolio
+get_game_ev
+get_owner_game_leverage
+get_owner_projected_payout
+```
+
+rather than having to understand the database schema and manually join:
+
+```text
+owners
+teams
+trades
+games
+markets
+projections
+rules
+period_snapshots
+payouts
+```
+
+The backend should do those joins.
+
+The AI should do the reasoning and communicate the result.
+
+---
+
+# 47. 2026 Schedule Reference
+
+The official NFL 2026 schedule should be imported from:
+
+https://www.nfl.com/schedules/2026
+
+As of the current schedule publication, the NFL has released the complete 2026 slate, but some late-season games have TBD kickoff times.
+
+Example:
+
+```text
+Week 3
+NYJ @ DET
+September 27, 2026
+1:00 PM ET
+Marquee: NO
+Point differential multiplier: 1x
+```
+
+The NFL confirms Jets at Lions for Week 3 at 1:00 PM ET.
+
+Do not hard-code Marquee status from the game label; calculate it from kickoff time.
+
+---
+
+# 48. Future Enhancements
+
+Potential V3 functionality:
+
+* injury-adjusted projections
+* weather
+* rest days
+* travel distance
+* quarterback status
+* betting line movement
+* consensus sportsbook probability
+* playoff simulations
+* division/conference simulations
+* Monte Carlo Calcutta payout simulation
+* portfolio hedging analysis
+* "what outcome should I root for?" optimization
+* scenario analysis:
+
+  * "What happens if the Jets win?"
+  * "What happens if the Jets lose?"
+  * "What if my three teams all win?"
+* portfolio correlation analysis
+* live game EV
+* live Calcutta MTM updates
+
+These should build on the V2 interfaces rather than replacing them.

@@ -1,0 +1,18 @@
+Do not apply this. Cancel the push. This diff would destroy the production ownership ledger. The fatal chain:
+
+truncate table "trades" cascade — TRUNCATE CASCADE doesn't just empty trades (all ~57 rows); it truncates every table with an FK into it — which includes positions (via trade_id). Positions is emptied.
+DROP TABLE "team_bidders" CASCADE — the old source of truth is deleted in the same run and replaced with a view over positions… which was just truncated.
+Net result: team_bidders gone, positions empty, trades empty. Every auction split, every trade, every short — all ownership in production — erased in one apply. The view would return zero rows and the app would look "fine" with an empty pool.
+Also truncate table "mtm_snapshots" cascade — deletes the Week 0 opening marks, which are historical prices and cannot be recaptured (Kalshi has moved).
+
+This is drizzle-kit push doing what it does with "add NOT NULL column, no default, table has rows": it can't write a backfill, so it offers truncation. This exact failure mode is why every handoff's guardrail said schema changes go through the startup-migration runner, never push — the runner is where "add nullable → backfill from (team_id, season_id) via calcutta_entries → set NOT NULL" gets written by hand. Tell the agent to abandon the push flow entirely and produce migrations 000N that do, in order: add entry_id nullable to trades and mtm_snapshots → UPDATE ... FROM calcutta_entries backfill → verify zero nulls → SET NOT NULL. Same data, zero loss.
+
+While the diff is stopped, three spec violations to fix in the same rewrite:
+
+calcutta_entries gains realized_return, realized_multiple, net_return, net_pct_return, mark_to_market — this is V2 §12, the stored-returns anti-pattern, explicitly rejected in V2.1 §5 and killed twice already. Strike all five columns. Returns are computed, never stored on entries.
+snapshot_metrics lost its pool-level capability: spec had calcutta_id + nullable entry_id so pool-level rows (total_upsets_3plus, the March Madness denominators) can exist with entry_id NULL. This version has entry_id NOT NULL and no calcutta_id — shared-pool payouts become unrepresentable. Restore both.
+calcutta_rules is missing condition and calculation — condition carries the marquee rule, seed_diff>=3, conference-only, and the 8+→7+ fallback; calculation is the join key into the metric vocabulary. Without them the engine can't express MM or NBA. (Additive, so lower stakes, but add them now while the table is empty.)
+
+The genuinely good parts to keep: provider_team_identities (smart — solves ESPN/Kalshi name-mapping before Phase 4 needs it), the probability-bounds checks, the sport/competition scoping on events, no marquee columns on events ✓, and the team_bidders view definition itself is exactly right.
+
+Last thing, and it matters most: the banner says production. Nothing in Phases 1–2 should be touching prod except via the Publish flow after dev gates pass. If someone's pointing push at the prod DATABASE_URL, that's the process failure to fix before any SQL — because next time the wrong guess gets auto-confirmed.

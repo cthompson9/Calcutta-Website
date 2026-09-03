@@ -1,0 +1,554 @@
+import { Router, type IRouter, type Request } from "express";
+import { requireAdmin } from "../middlewares/requireAdmin";
+import { createHash } from "node:crypto";
+import { and, eq, inArray, sql } from "drizzle-orm";
+import {
+  db,
+  biddersTable,
+  calcuttasTable,
+  ownershipAdjustmentsTable,
+  seasonsTable,
+  teamResultsTable,
+  teamSeasonAuctionsTable,
+  teamsTable,
+  tradesTable,
+  importRunsTable,
+  positionsTable,
+} from "@workspace/db";
+import {
+  ImportAuctionDataBody,
+  ImportAuctionDataResponse,
+  ImportDraftOrderResponse,
+} from "@workspace/api-zod";
+import {
+  AuctionProImportError,
+  fetchAuctionProPayload,
+  type AuctionProTeam,
+} from "../lib/auctionProImport";
+import {
+  DraftOrderImportError,
+  fetchDraftOrderPayload,
+  teamNameFromAbbrev,
+} from "../lib/draftOrderImport";
+import {
+  OWNERSHIP_SEASON_LOCK_NAMESPACE,
+  validatePrimaryOwnership,
+} from "../lib/ownershipShares";
+import { getOrCreateCalcuttaEntry, resolveCalcuttaId } from "../lib/calcuttaContext";
+import { ErrorResponse, sendParsedJson } from "../lib/sendParsedJson";
+
+const router: IRouter = Router();
+const COMPLETE_NFL_TEAM_COUNT = 32;
+
+function normalized(value: string): string {
+  return value.trim().toLocaleLowerCase("en-US");
+}
+
+function resolveUniqueByName<T extends { id: number; name: string }>(
+  rows: T[],
+  requestedName: string,
+  label: string,
+): T | { error: string } {
+  const exact = rows.filter((row) => normalized(row.name) === normalized(requestedName));
+  if (exact.length === 1) return exact[0];
+  if (exact.length > 1) return { error: `${label} "${requestedName}" is ambiguous.` };
+
+  const partial = rows.filter((row) =>
+    normalized(row.name).includes(normalized(requestedName)) ||
+    normalized(requestedName).includes(normalized(row.name)),
+  );
+  if (partial.length === 1) return partial[0];
+  if (partial.length === 0) return { error: `${label} "${requestedName}" was not found.` };
+  return { error: `${label} "${requestedName}" is ambiguous. Use the full registered name.` };
+}
+
+type ResolvedImportTeam = {
+  teamId: number;
+  teamName: string;
+  bidAmount: number;
+  owners: Array<{ bidderId: number; bidderName: string; share: number }>;
+};
+
+class ApprovedTradeConflictError extends Error {
+  constructor() {
+    super("The selected Calcutta has approved trades. Import would replace its primary auction ownership and is blocked to preserve trade history.");
+    this.name = "ApprovedTradeConflictError";
+  }
+}
+
+function sourceFingerprint(payload: unknown): string {
+  return createHash("sha256").update(JSON.stringify(payload)).digest("hex");
+}
+
+function assertCompleteImport(teamCount: number, sourceLabel: string): void {
+  if (teamCount !== COMPLETE_NFL_TEAM_COUNT) {
+    throw new AuctionProImportError(
+      `${sourceLabel} must contain all ${COMPLETE_NFL_TEAM_COUNT} NFL teams; received ${teamCount}.`,
+      422,
+    );
+  }
+}
+
+async function resolveImportTeams(sourceTeams: AuctionProTeam[]): Promise<ResolvedImportTeam[]> {
+  const [teams, bidders] = await Promise.all([
+    db.select({ id: teamsTable.id, name: teamsTable.name }).from(teamsTable),
+    db.select({ id: biddersTable.id, name: biddersTable.name }).from(biddersTable),
+  ]);
+
+  const resolved: ResolvedImportTeam[] = [];
+  const teamIds = new Set<number>();
+  for (const sourceTeam of sourceTeams) {
+    const teamMatch = resolveUniqueByName(teams, sourceTeam.teamName, "Team");
+    if ("error" in teamMatch) throw new AuctionProImportError(teamMatch.error, 422);
+    if (teamIds.has(teamMatch.id)) {
+      throw new AuctionProImportError(
+        `AuctionPro export resolves more than one row to ${teamMatch.name}.`,
+        422,
+      );
+    }
+    teamIds.add(teamMatch.id);
+
+    const owners: ResolvedImportTeam["owners"] = [];
+    for (const sourceOwner of sourceTeam.owners) {
+      const bidderMatch = resolveUniqueByName(bidders, sourceOwner.name, "Bidder");
+      if ("error" in bidderMatch) throw new AuctionProImportError(bidderMatch.error, 422);
+      owners.push({
+        bidderId: bidderMatch.id,
+        bidderName: bidderMatch.name,
+        share: sourceOwner.share,
+      });
+    }
+    const ownership = validatePrimaryOwnership(
+      owners.map((owner) => ({ bidderId: owner.bidderId, share: owner.share })),
+    );
+    if (!ownership.ok) {
+      throw new AuctionProImportError(`${teamMatch.name}: ${ownership.error}`, 422);
+    }
+
+    resolved.push({
+      teamId: teamMatch.id,
+      teamName: teamMatch.name,
+      bidAmount: sourceTeam.bidAmount,
+      owners: owners.map((owner) => {
+        const normalizedOwner = ownership.owners.find((entry) => entry.bidderId === owner.bidderId)!;
+        return { ...owner, share: normalizedOwner.share };
+      }),
+    });
+  }
+
+  return resolved;
+}
+
+router.post("/auction/import", requireAdmin, async (req, res): Promise<void> => {
+
+  const parsed = ImportAuctionDataBody.safeParse(req.body);
+  if (!parsed.success) {
+    sendParsedJson(res, ErrorResponse, { error: parsed.error.message }, 400);
+    return;
+  }
+
+  const seasonRows = await db
+    .select({ id: seasonsTable.id })
+    .from(seasonsTable)
+    .where(eq(seasonsTable.year, parsed.data.seasonYear))
+    .limit(1);
+  if (!seasonRows[0]) {
+    sendParsedJson(res, ErrorResponse, { error: `Season ${parsed.data.seasonYear} not found.` }, 404);
+    return;
+  }
+
+  try {
+    const sourcePayload = await fetchAuctionProPayload();
+    const importedTeams = await resolveImportTeams(sourcePayload);
+    assertCompleteImport(importedTeams.length, "AuctionPro export");
+    const teamIds = importedTeams.map((team) => team.teamId);
+    const importedOwners = importedTeams.reduce(
+      (count, team) => count + team.owners.length,
+      0,
+    );
+
+    const importOutcome = await db.transaction(async (tx) => {
+      await tx.execute(
+        sql`select pg_advisory_xact_lock(${OWNERSHIP_SEASON_LOCK_NAMESPACE}, ${seasonRows[0]!.id})`,
+      );
+      const calcuttaId = await resolveCalcuttaId(tx, {
+        seasonId: seasonRows[0]!.id,
+        calcuttaId: (parsed.data as typeof parsed.data & { calcuttaId?: number }).calcuttaId,
+      });
+      if (!calcuttaId) throw new AuctionProImportError("Calcutta not found for this season.", 404);
+      const calcutta = await tx
+        .select({
+          sport: calcuttasTable.sport,
+          isCanonical: calcuttasTable.isCanonical,
+        })
+        .from(calcuttasTable)
+        .where(eq(calcuttasTable.id, calcuttaId))
+        .limit(1);
+      if (!calcutta[0]) throw new AuctionProImportError("Calcutta not found for this season.", 404);
+      const syncLegacyAuctionPrices =
+        calcutta[0].sport === "NFL" && calcutta[0].isCanonical;
+      const entryIds = new Map<number, number>();
+      for (const team of importedTeams) {
+        entryIds.set(team.teamId, await getOrCreateCalcuttaEntry(tx, calcuttaId, team.teamId));
+      }
+      // A source replay applies independently to each selected Calcutta.
+      const sourceHash = sourceFingerprint({ sourcePayload, calcuttaId });
+      const previousRun = await tx
+        .select({
+          importedTeams: importRunsTable.importedTeams,
+          importedOwners: importRunsTable.importedOwners,
+        })
+        .from(importRunsTable)
+        .where(
+          and(
+            eq(importRunsTable.seasonId, seasonRows[0]!.id),
+            eq(importRunsTable.source, "auctionpro_json"),
+            eq(importRunsTable.sourceHash, sourceHash),
+          ),
+        )
+        .limit(1);
+      if (previousRun[0]) {
+        return {
+          importedTeams: previousRun[0].importedTeams,
+          importedOwners: previousRun[0].importedOwners,
+        };
+      }
+      const approvedTrades = await tx
+        .select({ teamId: tradesTable.teamId })
+        .from(tradesTable)
+        .where(
+          and(
+            eq(tradesTable.seasonId, seasonRows[0]!.id),
+            eq(tradesTable.status, "approved"),
+            inArray(tradesTable.entryId, [...entryIds.values()]),
+          ),
+        )
+        .limit(1);
+      if (approvedTrades[0]) throw new ApprovedTradeConflictError();
+
+      await tx.delete(positionsTable).where(
+        and(inArray(positionsTable.entryId, [...entryIds.values()]), eq(positionsTable.source, "primary")),
+      );
+      // This is a season/team compatibility table, so only the canonical NFL
+      // ledger may maintain it. Selected positions retain each pool's price.
+      if (syncLegacyAuctionPrices) {
+        await tx
+          .delete(teamSeasonAuctionsTable)
+          .where(
+            and(
+              eq(teamSeasonAuctionsTable.seasonId, seasonRows[0]!.id),
+              inArray(teamSeasonAuctionsTable.teamId, teamIds),
+            ),
+          );
+
+        await tx.insert(teamSeasonAuctionsTable).values(
+          importedTeams.map((team) => ({
+            teamId: team.teamId,
+            seasonId: seasonRows[0]!.id,
+            bidAmount: String(team.bidAmount),
+          })),
+        );
+      }
+      await tx.insert(positionsTable).values(
+        importedTeams.flatMap((team) =>
+          team.owners.map((owner) => ({
+            entryId: entryIds.get(team.teamId)!,
+            bidderId: owner.bidderId,
+            ownershipShare: owner.share.toFixed(6),
+            source: "primary",
+            costBasis: (team.bidAmount * owner.share).toFixed(2),
+          })),
+        ),
+      );
+      await tx.insert(ownershipAdjustmentsTable).values(
+        importedTeams.map((team) => ({
+          seasonId: seasonRows[0]!.id,
+          teamId: team.teamId,
+          source: "auctionpro_import",
+          note: "Complete AuctionPro JSON export import",
+          owners: {
+            bidAmount: team.bidAmount,
+            owners: team.owners.map((owner) => ({
+              bidderId: owner.bidderId,
+              bidderName: owner.bidderName,
+              ownershipShare: owner.share,
+            })),
+          },
+        })),
+      );
+      await tx.insert(importRunsTable).values({
+        seasonId: seasonRows[0]!.id,
+        source: "auctionpro_json",
+        sourceHash,
+        importedTeams: importedTeams.length,
+        importedOwners,
+        requestedBy: "admin_api",
+        requestId: req.id == null ? null : String(req.id),
+      });
+      return { importedTeams: importedTeams.length, importedOwners };
+    });
+
+    const result = ImportAuctionDataResponse.parse({
+      seasonYear: parsed.data.seasonYear,
+      importedTeams: importOutcome.importedTeams,
+      importedOwners: importOutcome.importedOwners,
+      source: "AuctionPro JSON export",
+    });
+    sendParsedJson(res, ImportAuctionDataResponse, result);
+  } catch (error) {
+    if (error instanceof ApprovedTradeConflictError) {
+      sendParsedJson(res, ErrorResponse, { error: error.message }, 409);
+      return;
+    }
+    if (error instanceof AuctionProImportError) {
+      req.log.warn({ statusCode: error.statusCode }, "AuctionPro import rejected");
+      sendParsedJson(res, ErrorResponse, { error: error.message }, error.statusCode);
+      return;
+    }
+    req.log.error({ err: error }, "AuctionPro import failed");
+    sendParsedJson(res, ErrorResponse, { error: "AuctionPro import failed unexpectedly." }, 502);
+  }
+});
+
+// ── POST /auction/import/draft-order ─────────────────────────────────────────
+// Fetches the public AuctionPro live draft-order endpoint and atomically
+// replaces the selected Calcutta's single-owner ownership and auction cost
+// basis, plus draft order in team_results. It maintains legacy season auction
+// prices only for the canonical NFL Calcutta. Requires ADMIN_API_KEY. Blocked
+// if the selected entries have approved trades.
+
+router.post("/auction/import/draft-order", requireAdmin, async (req, res): Promise<void> => {
+
+  const parsed = ImportAuctionDataBody.safeParse(req.body);
+  if (!parsed.success) {
+    sendParsedJson(res, ErrorResponse, { error: parsed.error.message }, 400);
+    return;
+  }
+
+  const seasonRows = await db
+    .select({ id: seasonsTable.id })
+    .from(seasonsTable)
+    .where(eq(seasonsTable.year, parsed.data.seasonYear))
+    .limit(1);
+  if (!seasonRows[0]) {
+    sendParsedJson(res, ErrorResponse, { error: `Season ${parsed.data.seasonYear} not found.` }, 404);
+    return;
+  }
+
+  try {
+    const rawEntries = await fetchDraftOrderPayload();
+
+    const [teams, bidders] = await Promise.all([
+      db.select({ id: teamsTable.id, name: teamsTable.name }).from(teamsTable),
+      db.select({ id: biddersTable.id, name: biddersTable.name }).from(biddersTable),
+    ]);
+
+    type ResolvedDraftEntry = {
+      teamId: number;
+      teamName: string;
+      bidderId: number;
+      bidderName: string;
+      bidAmount: number;
+      draftOrder: number | null;
+    };
+
+    const resolved: ResolvedDraftEntry[] = [];
+    const seenTeamIds = new Set<number>();
+
+    for (const entry of rawEntries) {
+      const fullName = teamNameFromAbbrev(entry.team);
+      if (!fullName) {
+        throw new DraftOrderImportError(`Unknown team abbreviation "${entry.team}".`, 422);
+      }
+
+      const teamMatch = resolveUniqueByName(teams, fullName, "Team");
+      if ("error" in teamMatch) throw new DraftOrderImportError(teamMatch.error, 422);
+
+      if (seenTeamIds.has(teamMatch.id)) {
+        throw new DraftOrderImportError(
+          `Multiple draft-order entries resolve to team "${teamMatch.name}".`,
+          422,
+        );
+      }
+      seenTeamIds.add(teamMatch.id);
+
+      const bidderMatch = resolveUniqueByName(bidders, entry.owner, "Bidder");
+      if ("error" in bidderMatch) throw new DraftOrderImportError(bidderMatch.error, 422);
+
+      resolved.push({
+        teamId: teamMatch.id,
+        teamName: teamMatch.name,
+        bidderId: bidderMatch.id,
+        bidderName: bidderMatch.name,
+        bidAmount: entry.value,
+        draftOrder: entry.draftOrder,
+      });
+    }
+    if (resolved.length !== COMPLETE_NFL_TEAM_COUNT) {
+      throw new DraftOrderImportError(
+        `AuctionPro draft-order export must contain all ${COMPLETE_NFL_TEAM_COUNT} NFL teams; received ${resolved.length}.`,
+        422,
+      );
+    }
+
+    const teamIds = resolved.map((r) => r.teamId);
+
+    const importOutcome = await db.transaction(async (tx) => {
+      await tx.execute(
+        sql`select pg_advisory_xact_lock(${OWNERSHIP_SEASON_LOCK_NAMESPACE}, ${seasonRows[0]!.id})`,
+      );
+      const calcuttaId = await resolveCalcuttaId(tx, {
+        seasonId: seasonRows[0]!.id,
+        calcuttaId: (parsed.data as typeof parsed.data & { calcuttaId?: number }).calcuttaId,
+      });
+      if (!calcuttaId) throw new DraftOrderImportError("Calcutta not found for this season.", 404);
+      const calcutta = await tx
+        .select({
+          sport: calcuttasTable.sport,
+          isCanonical: calcuttasTable.isCanonical,
+        })
+        .from(calcuttasTable)
+        .where(eq(calcuttasTable.id, calcuttaId))
+        .limit(1);
+      if (!calcutta[0]) throw new DraftOrderImportError("Calcutta not found for this season.", 404);
+      const syncLegacyAuctionPrices =
+        calcutta[0].sport === "NFL" && calcutta[0].isCanonical;
+      const entryIds = new Map<number, number>();
+      for (const team of resolved) {
+        entryIds.set(team.teamId, await getOrCreateCalcuttaEntry(tx, calcuttaId, team.teamId));
+      }
+      // A source replay applies independently to each selected Calcutta.
+      const sourceHash = sourceFingerprint({ rawEntries, calcuttaId });
+      const previousRun = await tx
+        .select({
+          importedTeams: importRunsTable.importedTeams,
+          importedOwners: importRunsTable.importedOwners,
+        })
+        .from(importRunsTable)
+        .where(
+          and(
+            eq(importRunsTable.seasonId, seasonRows[0]!.id),
+            eq(importRunsTable.source, "auctionpro_draft_order"),
+            eq(importRunsTable.sourceHash, sourceHash),
+          ),
+        )
+        .limit(1);
+      if (previousRun[0]) {
+        return {
+          importedTeams: previousRun[0].importedTeams,
+          importedOwners: previousRun[0].importedOwners,
+        };
+      }
+
+      const approvedTrades = await tx
+        .select({ teamId: tradesTable.teamId })
+        .from(tradesTable)
+        .where(
+          and(
+            eq(tradesTable.seasonId, seasonRows[0]!.id),
+            eq(tradesTable.status, "approved"),
+            inArray(tradesTable.entryId, [...entryIds.values()]),
+          ),
+        )
+        .limit(1);
+      if (approvedTrades[0]) throw new ApprovedTradeConflictError();
+
+      // Replace selected Calcutta primary ownership and cost basis.
+      await tx.delete(positionsTable).where(
+        and(inArray(positionsTable.entryId, [...entryIds.values()]), eq(positionsTable.source, "primary")),
+      );
+      if (syncLegacyAuctionPrices) {
+        await tx
+          .delete(teamSeasonAuctionsTable)
+          .where(
+            and(
+              eq(teamSeasonAuctionsTable.seasonId, seasonRows[0]!.id),
+              inArray(teamSeasonAuctionsTable.teamId, teamIds),
+            ),
+          );
+
+        await tx.insert(teamSeasonAuctionsTable).values(
+          resolved.map((r) => ({
+            teamId: r.teamId,
+            seasonId: seasonRows[0]!.id,
+            bidAmount: String(r.bidAmount),
+          })),
+        );
+      }
+
+      await tx.insert(positionsTable).values(
+        resolved.map((r) => ({
+          entryId: entryIds.get(r.teamId)!,
+          bidderId: r.bidderId,
+          ownershipShare: "1.000000",
+          source: "primary",
+          costBasis: r.bidAmount.toFixed(2),
+        })),
+      );
+
+      // Upsert draftOrder only — preserves wins, playoff flags, etc.
+      for (const r of resolved) {
+        await tx
+          .insert(teamResultsTable)
+          .values({
+            teamId: r.teamId,
+            seasonId: seasonRows[0]!.id,
+            draftOrder: r.draftOrder,
+          })
+          .onConflictDoUpdate({
+            target: [teamResultsTable.teamId, teamResultsTable.seasonId],
+            set: { draftOrder: r.draftOrder },
+          });
+      }
+
+      // Audit log
+      await tx.insert(ownershipAdjustmentsTable).values(
+        resolved.map((r) => ({
+          seasonId: seasonRows[0]!.id,
+          teamId: r.teamId,
+          source: "draft_order_import",
+          note: "AuctionPro live draft-order import",
+          owners: {
+            bidAmount: r.bidAmount,
+            draftOrder: r.draftOrder,
+            owners: [
+              { bidderId: r.bidderId, bidderName: r.bidderName, ownershipShare: 1 },
+            ],
+          },
+        })),
+      );
+      await tx.insert(importRunsTable).values({
+        seasonId: seasonRows[0]!.id,
+        source: "auctionpro_draft_order",
+        sourceHash,
+        importedTeams: resolved.length,
+        importedOwners: resolved.length,
+        requestedBy: "admin_api",
+        requestId: req.id == null ? null : String(req.id),
+      });
+      return { importedTeams: resolved.length, importedOwners: resolved.length };
+    });
+
+    const result = ImportAuctionDataResponse.parse({
+      seasonYear: parsed.data.seasonYear,
+      importedTeams: importOutcome.importedTeams,
+      importedOwners: importOutcome.importedOwners,
+      source: "AuctionPro live draft-order",
+    });
+    sendParsedJson(res, ImportDraftOrderResponse, result);
+  } catch (error) {
+    if (error instanceof ApprovedTradeConflictError) {
+      sendParsedJson(res, ErrorResponse, { error: error.message }, 409);
+      return;
+    }
+    if (error instanceof DraftOrderImportError) {
+      req.log.warn({ statusCode: error.statusCode }, "Draft-order import rejected");
+      sendParsedJson(res, ErrorResponse, { error: error.message }, error.statusCode);
+      return;
+    }
+    req.log.error({ err: error }, "Draft-order import failed");
+    sendParsedJson(res, ErrorResponse, { error: "Draft-order import failed unexpectedly." }, 502);
+  }
+});
+
+export default router;

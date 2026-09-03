@@ -1,0 +1,14 @@
+{
+  "data": {
+    "trades": [
+      {
+        "entry_id": ["NFL", 2026, "Buffalo Bills"],
+        "from_bidder_id": "Seller One",
+        "to_bidder_id": "Buyer One",
+        "percentage": "50.00",
+        "trade_date": "2026-08-22",
+        "status": "approved"
+      }
+    ]
+  }
+}

@@ -1,0 +1,946 @@
+{
+ "edition": 7,
+ "name": "Calcutta VII",
+ "sport": "NBA",
+ "format_key": "NBA_PLAYOFFS_16",
+ "season_year": 2025,
+ "pot_size": 15555.0,
+ "as_of_date": "2025-04-19",
+ "normalization": {
+  "mode": "earned_total"
+ },
+ "periods": [
+  {
+   "key": "R1",
+   "seq": 1,
+   "label": "First Round",
+   "kind": "knockout",
+   "weight": 1,
+   "is_scored": true
+  },
+  {
+   "key": "R2",
+   "seq": 2,
+   "label": "Conference Semifinals",
+   "kind": "knockout",
+   "weight": 2,
+   "is_scored": true
+  },
+  {
+   "key": "CF",
+   "seq": 3,
+   "label": "Conference Finals",
+   "kind": "knockout",
+   "weight": 4,
+   "is_scored": true
+  },
+  {
+   "key": "FINALS",
+   "seq": 4,
+   "label": "NBA Finals",
+   "kind": "knockout",
+   "weight": 8,
+   "is_scored": true
+  }
+ ],
+ "rules": [
+  {
+   "kind": "per_unit",
+   "metric": "game_win",
+   "period_key": "R1",
+   "rate": 1,
+   "note": "1 pt per game won, x period weight 1 (workbook 'R1 Win' column)"
+  },
+  {
+   "kind": "per_unit",
+   "metric": "game_win",
+   "period_key": "R2",
+   "rate": 1,
+   "note": "1 pt per game won, x period weight 2 (workbook 'R2 Win' column)"
+  },
+  {
+   "kind": "per_unit",
+   "metric": "game_win",
+   "period_key": "CF",
+   "rate": 1,
+   "note": "1 pt per game won, x period weight 4 (workbook 'Conf Finals Win' column)"
+  },
+  {
+   "kind": "per_unit",
+   "metric": "game_win",
+   "period_key": "FINALS",
+   "rate": 1,
+   "note": "1 pt per game won, x period weight 8 (workbook 'Finals Win' column)"
+  },
+  {
+   "kind": "per_unit",
+   "metric": "sweep",
+   "period_key": null,
+   "rate": 15,
+   "note": "+15 per 4-0 series sweep; workbook aggregates all rounds in one 'Sweeps' column"
+  },
+  {
+   "kind": "per_unit",
+   "metric": "upset_series_win",
+   "period_key": null,
+   "rate": 10,
+   "note": "+10 per series won as the lower seed, CONFERENCE rounds only (not the Finals); workbook aggregates all rounds in one 'Upsets' column"
+  }
+ ],
+ "owners": [
+  {
+   "label": "Sam",
+   "name": "Sam",
+   "email": null
+  },
+  {
+   "label": "Ed",
+   "name": "Ed",
+   "email": null
+  },
+  {
+   "label": "Kurt",
+   "name": "Kurt",
+   "email": null
+  },
+  {
+   "label": "Zach",
+   "name": "Zach",
+   "email": null
+  }
+ ],
+ "entries": [
+  {
+   "label": "Cleveland",
+   "lot_order": 1,
+   "price": 2250.0,
+   "kind": "single",
+   "attributes": {
+    "seed": 1,
+    "region": "East",
+    "conference": "East",
+    "chop_owner1": 0.5,
+    "owner1_cost": 1125.0,
+    "owner2_cost": 1125.0
+   },
+   "teams": [
+    {
+     "name": "Cleveland",
+     "seed": 1,
+     "resolved": true
+    }
+   ],
+   "owners": [
+    {
+     "label": "Sam",
+     "share": 0.5
+    },
+    {
+     "label": "Ed",
+     "share": 0.5
+    }
+   ],
+   "events": [
+    {
+     "period_key": "R1",
+     "metric": "game_win",
+     "units": 4
+    },
+    {
+     "period_key": "R2",
+     "metric": "game_win",
+     "units": 1
+    },
+    {
+     "period_key": null,
+     "metric": "sweep",
+     "units": 1
+    }
+   ],
+   "expected": {
+    "points": 21,
+    "realized_return": 1214.330855
+   }
+  },
+  {
+   "label": "Boston",
+   "lot_order": 2,
+   "price": 2800.0,
+   "kind": "single",
+   "attributes": {
+    "seed": 2,
+    "region": "East",
+    "conference": "East",
+    "chop_owner1": 1.0,
+    "owner1_cost": 2800.0
+   },
+   "teams": [
+    {
+     "name": "Boston",
+     "seed": 2,
+     "resolved": true
+    }
+   ],
+   "owners": [
+    {
+     "label": "Kurt",
+     "share": 1.0
+    }
+   ],
+   "events": [
+    {
+     "period_key": "R1",
+     "metric": "game_win",
+     "units": 4
+    },
+    {
+     "period_key": "R2",
+     "metric": "game_win",
+     "units": 2
+    }
+   ],
+   "expected": {
+    "points": 8,
+    "realized_return": 462.602231
+   }
+  },
+  {
+   "label": "NYK",
+   "lot_order": 3,
+   "price": 700.0,
+   "kind": "single",
+   "attributes": {
+    "seed": 3,
+    "region": "East",
+    "conference": "East",
+    "chop_owner1": 1.0,
+    "owner1_cost": 700.0
+   },
+   "teams": [
+    {
+     "name": "NYK",
+     "seed": 3,
+     "resolved": true
+    }
+   ],
+   "owners": [
+    {
+     "label": "Zach",
+     "share": 1.0
+    }
+   ],
+   "events": [
+    {
+     "period_key": "R1",
+     "metric": "game_win",
+     "units": 4
+    },
+    {
+     "period_key": "R2",
+     "metric": "game_win",
+     "units": 4
+    },
+    {
+     "period_key": "CF",
+     "metric": "game_win",
+     "units": 2
+    },
+    {
+     "period_key": null,
+     "metric": "upset_series_win",
+     "units": 1
+    }
+   ],
+   "expected": {
+    "points": 30,
+    "realized_return": 1734.758364
+   }
+  },
+  {
+   "label": "Indiana",
+   "lot_order": 4,
+   "price": 600.0,
+   "kind": "single",
+   "attributes": {
+    "seed": 4,
+    "region": "East",
+    "conference": "East",
+    "chop_owner1": 1.0,
+    "owner1_cost": 600.0
+   },
+   "teams": [
+    {
+     "name": "Indiana",
+     "seed": 4,
+     "resolved": true
+    }
+   ],
+   "owners": [
+    {
+     "label": "Zach",
+     "share": 1.0
+    }
+   ],
+   "events": [
+    {
+     "period_key": "R1",
+     "metric": "game_win",
+     "units": 4
+    },
+    {
+     "period_key": "R2",
+     "metric": "game_win",
+     "units": 4
+    },
+    {
+     "period_key": "CF",
+     "metric": "game_win",
+     "units": 4
+    },
+    {
+     "period_key": "FINALS",
+     "metric": "game_win",
+     "units": 3
+    },
+    {
+     "period_key": null,
+     "metric": "upset_series_win",
+     "units": 2
+    }
+   ],
+   "expected": {
+    "points": 72,
+    "realized_return": 4163.420074
+   }
+  },
+  {
+   "label": "Milwaukee",
+   "lot_order": 5,
+   "price": 680.0,
+   "kind": "single",
+   "attributes": {
+    "seed": 5,
+    "region": "East",
+    "conference": "East",
+    "chop_owner1": 1.0,
+    "owner1_cost": 680.0
+   },
+   "teams": [
+    {
+     "name": "Milwaukee",
+     "seed": 5,
+     "resolved": true
+    }
+   ],
+   "owners": [
+    {
+     "label": "Sam",
+     "share": 1.0
+    }
+   ],
+   "events": [
+    {
+     "period_key": "R1",
+     "metric": "game_win",
+     "units": 1
+    }
+   ],
+   "expected": {
+    "points": 1,
+    "realized_return": 57.825279
+   }
+  },
+  {
+   "label": "Detroit",
+   "lot_order": 6,
+   "price": 390.0,
+   "kind": "single",
+   "attributes": {
+    "seed": 6,
+    "region": "East",
+    "conference": "East",
+    "chop_owner1": 1.0,
+    "owner1_cost": 390.0
+   },
+   "teams": [
+    {
+     "name": "Detroit",
+     "seed": 6,
+     "resolved": true
+    }
+   ],
+   "owners": [
+    {
+     "label": "Sam",
+     "share": 1.0
+    }
+   ],
+   "events": [
+    {
+     "period_key": "R1",
+     "metric": "game_win",
+     "units": 2
+    }
+   ],
+   "expected": {
+    "points": 2,
+    "realized_return": 115.650558
+   }
+  },
+  {
+   "label": "Orlando",
+   "lot_order": 7,
+   "price": 105.0,
+   "kind": "single",
+   "attributes": {
+    "seed": 7,
+    "region": "East",
+    "conference": "East",
+    "chop_owner1": 1.0,
+    "owner1_cost": 105.0
+   },
+   "teams": [
+    {
+     "name": "Orlando",
+     "seed": 7,
+     "resolved": true
+    }
+   ],
+   "owners": [
+    {
+     "label": "Sam",
+     "share": 1.0
+    }
+   ],
+   "events": [
+    {
+     "period_key": "R1",
+     "metric": "game_win",
+     "units": 1
+    }
+   ],
+   "expected": {
+    "points": 1,
+    "realized_return": 57.825279
+   }
+  },
+  {
+   "label": "Miami",
+   "lot_order": 8,
+   "price": 165.0,
+   "kind": "single",
+   "attributes": {
+    "seed": 8,
+    "region": "East",
+    "conference": "East",
+    "chop_owner1": 0.5,
+    "owner1_cost": 82.5,
+    "owner2_cost": 82.5
+   },
+   "teams": [
+    {
+     "name": "Miami",
+     "seed": 8,
+     "resolved": true
+    }
+   ],
+   "owners": [
+    {
+     "label": "Zach",
+     "share": 0.5
+    },
+    {
+     "label": "Ed",
+     "share": 0.5
+    }
+   ],
+   "events": [],
+   "expected": {
+    "points": 0,
+    "realized_return": 0.0
+   }
+  },
+  {
+   "label": "OKC",
+   "lot_order": 9,
+   "price": 2700.0,
+   "kind": "single",
+   "attributes": {
+    "seed": 1,
+    "region": "West",
+    "conference": "West",
+    "chop_owner1": 1.0,
+    "owner1_cost": 2700.0
+   },
+   "teams": [
+    {
+     "name": "OKC",
+     "seed": 1,
+     "resolved": true
+    }
+   ],
+   "owners": [
+    {
+     "label": "Kurt",
+     "share": 1.0
+    }
+   ],
+   "events": [
+    {
+     "period_key": "R1",
+     "metric": "game_win",
+     "units": 4
+    },
+    {
+     "period_key": "R2",
+     "metric": "game_win",
+     "units": 4
+    },
+    {
+     "period_key": "CF",
+     "metric": "game_win",
+     "units": 4
+    },
+    {
+     "period_key": "FINALS",
+     "metric": "game_win",
+     "units": 4
+    },
+    {
+     "period_key": null,
+     "metric": "sweep",
+     "units": 1
+    }
+   ],
+   "expected": {
+    "points": 75,
+    "realized_return": 4336.895911
+   }
+  },
+  {
+   "label": "Houston",
+   "lot_order": 10,
+   "price": 460.0,
+   "kind": "single",
+   "attributes": {
+    "seed": 2,
+    "region": "West",
+    "conference": "West",
+    "chop_owner1": 1.0,
+    "owner1_cost": 460.0
+   },
+   "teams": [
+    {
+     "name": "Houston",
+     "seed": 2,
+     "resolved": true
+    }
+   ],
+   "owners": [
+    {
+     "label": "Sam",
+     "share": 1.0
+    }
+   ],
+   "events": [
+    {
+     "period_key": "R1",
+     "metric": "game_win",
+     "units": 3
+    }
+   ],
+   "expected": {
+    "points": 3,
+    "realized_return": 173.475836
+   }
+  },
+  {
+   "label": "La Lakers",
+   "lot_order": 11,
+   "price": 1150.0,
+   "kind": "single",
+   "attributes": {
+    "seed": 3,
+    "region": "West",
+    "conference": "West",
+    "chop_owner1": 0.5,
+    "owner1_cost": 575.0,
+    "owner2_cost": 575.0
+   },
+   "teams": [
+    {
+     "name": "La Lakers",
+     "seed": 3,
+     "resolved": true
+    }
+   ],
+   "owners": [
+    {
+     "label": "Kurt",
+     "share": 0.5
+    },
+    {
+     "label": "Ed",
+     "share": 0.5
+    }
+   ],
+   "events": [
+    {
+     "period_key": "R1",
+     "metric": "game_win",
+     "units": 1
+    }
+   ],
+   "expected": {
+    "points": 1,
+    "realized_return": 57.825279
+   }
+  },
+  {
+   "label": "Denver",
+   "lot_order": 12,
+   "price": 605.0,
+   "kind": "single",
+   "attributes": {
+    "seed": 4,
+    "region": "West",
+    "conference": "West",
+    "chop_owner1": 1.0,
+    "owner1_cost": 605.0
+   },
+   "teams": [
+    {
+     "name": "Denver",
+     "seed": 4,
+     "resolved": true
+    }
+   ],
+   "owners": [
+    {
+     "label": "Zach",
+     "share": 1.0
+    }
+   ],
+   "events": [
+    {
+     "period_key": "R1",
+     "metric": "game_win",
+     "units": 4
+    },
+    {
+     "period_key": "R2",
+     "metric": "game_win",
+     "units": 3
+    }
+   ],
+   "expected": {
+    "points": 10,
+    "realized_return": 578.252788
+   }
+  },
+  {
+   "label": "Clippers",
+   "lot_order": 13,
+   "price": 850.0,
+   "kind": "single",
+   "attributes": {
+    "seed": 5,
+    "region": "West",
+    "conference": "West",
+    "chop_owner1": 1.0,
+    "owner1_cost": 850.0
+   },
+   "teams": [
+    {
+     "name": "Clippers",
+     "seed": 5,
+     "resolved": true
+    }
+   ],
+   "owners": [
+    {
+     "label": "Zach",
+     "share": 1.0
+    }
+   ],
+   "events": [
+    {
+     "period_key": "R1",
+     "metric": "game_win",
+     "units": 3
+    }
+   ],
+   "expected": {
+    "points": 3,
+    "realized_return": 173.475836
+   }
+  },
+  {
+   "label": "Minnesota",
+   "lot_order": 14,
+   "price": 700.0,
+   "kind": "single",
+   "attributes": {
+    "seed": 6,
+    "region": "West",
+    "conference": "West",
+    "chop_owner1": 1.0,
+    "owner1_cost": 700.0
+   },
+   "teams": [
+    {
+     "name": "Minnesota",
+     "seed": 6,
+     "resolved": true
+    }
+   ],
+   "owners": [
+    {
+     "label": "Sam",
+     "share": 1.0
+    }
+   ],
+   "events": [
+    {
+     "period_key": "R1",
+     "metric": "game_win",
+     "units": 4
+    },
+    {
+     "period_key": "R2",
+     "metric": "game_win",
+     "units": 4
+    },
+    {
+     "period_key": "CF",
+     "metric": "game_win",
+     "units": 1
+    },
+    {
+     "period_key": null,
+     "metric": "upset_series_win",
+     "units": 1
+    }
+   ],
+   "expected": {
+    "points": 26,
+    "realized_return": 1503.457249
+   }
+  },
+  {
+   "label": "Golden State",
+   "lot_order": 15,
+   "price": 1250.0,
+   "kind": "single",
+   "attributes": {
+    "seed": 7,
+    "region": "West",
+    "conference": "West",
+    "chop_owner1": 1.0,
+    "owner1_cost": 1250.0
+   },
+   "teams": [
+    {
+     "name": "Golden State",
+     "seed": 7,
+     "resolved": true
+    }
+   ],
+   "owners": [
+    {
+     "label": "Kurt",
+     "share": 1.0
+    }
+   ],
+   "events": [
+    {
+     "period_key": "R1",
+     "metric": "game_win",
+     "units": 4
+    },
+    {
+     "period_key": "R2",
+     "metric": "game_win",
+     "units": 1
+    },
+    {
+     "period_key": null,
+     "metric": "upset_series_win",
+     "units": 1
+    }
+   ],
+   "expected": {
+    "points": 16,
+    "realized_return": 925.204461
+   }
+  },
+  {
+   "label": "Memphis",
+   "lot_order": 16,
+   "price": 150.0,
+   "kind": "single",
+   "attributes": {
+    "seed": 8,
+    "region": "West",
+    "conference": "West",
+    "chop_owner1": 1.0,
+    "owner1_cost": 150.0
+   },
+   "teams": [
+    {
+     "name": "Memphis",
+     "seed": 8,
+     "resolved": true
+    }
+   ],
+   "owners": [
+    {
+     "label": "Sam",
+     "share": 1.0
+    }
+   ],
+   "events": [],
+   "expected": {
+    "points": 0,
+    "realized_return": 0.0
+   }
+  }
+ ],
+ "trades": [
+  {
+   "sheet_ref": "Tracker!B33",
+   "date": null,
+   "detail": "SIDEBET (prop, not a book/lot trade): 'Sam/Zach on Pistons/Knicks - $230 to Sam if Pistons win R1, $100 to Zach if Knicks win'. Status cell C33 reads 'Resolved' with NO cash amount, and it is not one of the three sidebets netted into the C41 settlement. Counterparties are Sam and Zach; the workbook records no direction or amount, so cash is null. (Factually the Knicks did win R1 - NYK 4-2 over Detroit - which would owe Zach $100, but the workbook does not book it.)",
+   "scope": "book",
+   "entry_label": null,
+   "from": null,
+   "to": null,
+   "pct": null,
+   "cash": null
+  },
+  {
+   "sheet_ref": "Tracker!B34",
+   "date": null,
+   "detail": "SIDEBET (prop): 'Sam/Zach - 200 to Sam if curry fails to play 20+ min R2, 600 to Zach otherwise'. C34 = 'Resolved', no cash recorded, not in the C41 netting.",
+   "scope": "book",
+   "entry_label": null,
+   "from": null,
+   "to": null,
+   "pct": null,
+   "cash": null
+  },
+  {
+   "sheet_ref": "Tracker!B35",
+   "date": null,
+   "detail": "SIDEBET (prop): 'Sam/Zach - 660 to Sam on Knicks W G3, 300 to Zach on Celtics W'. C35 = 'Resolved', no cash recorded, not in the C41 netting.",
+   "scope": "book",
+   "entry_label": null,
+   "from": null,
+   "to": null,
+   "pct": null,
+   "cash": null
+  },
+  {
+   "sheet_ref": "Tracker!B36",
+   "date": null,
+   "detail": "SIDEBET (prop): 'Sam/Zach - 720 to Sam on Nuggets W G3, 300 to Zach on OKC W'. C36 = 'Resolved', no cash recorded, not in the C41 netting.",
+   "scope": "book",
+   "entry_label": null,
+   "from": null,
+   "to": null,
+   "pct": null,
+   "cash": null
+  },
+  {
+   "sheet_ref": "Tracker!B37",
+   "date": null,
+   "detail": "SIDEBET, CASH BOOKED: 'Sam/Zach on Knicks/Celtics - $3250 to Sam if Knicks win R2, $500 to Zach if Celtics win'. C37 = $3,250 (hardcoded), direction cell F37 = 'Zach to Sam'. The Knicks did win R2 (NYK 4-2 over Boston), so the $3,250 leg paid. Netted into the C41 settlement.",
+   "scope": "book",
+   "entry_label": null,
+   "from": "Zach",
+   "to": "Sam",
+   "pct": null,
+   "cash": 3250.0
+  },
+  {
+   "sheet_ref": "Tracker!B38",
+   "date": null,
+   "detail": "SIDEBET, CASH BOOKED: 'Sam/Zach on Knicks/Celtics - $2750 to Sam if Knicks win R2, $1000 to Zach if Celtics win'. C38 = $2,750, F38 = 'Zach to Sam'. Netted into the C41 settlement.",
+   "scope": "book",
+   "entry_label": null,
+   "from": "Zach",
+   "to": "Sam",
+   "pct": null,
+   "cash": 2750.0
+  },
+  {
+   "sheet_ref": "Tracker!B39",
+   "date": null,
+   "detail": "SIDEBET, CASH BOOKED: 'Sam/Zach on Knicks/Pacers- $1500 to Zach if Knicks win R2, $2025 to Sam if Pacers win'. C39 = $2,025, F39 = 'Zach to Sam'. NOTE the wording says 'R2' but the Knicks/Pacers series was the Conference Finals; Indiana won it 4-2, so the $2,025 Pacers leg paid. Netted into the C41 settlement.",
+   "scope": "book",
+   "entry_label": null,
+   "from": "Zach",
+   "to": "Sam",
+   "pct": null,
+   "cash": 2025.0
+  },
+  {
+   "sheet_ref": "Tracker!B40",
+   "date": null,
+   "detail": "CROSS-BOOK / PORTFOLIO TRADE: '3x crossbook Sam/Zach', direction cell F40 = 'Sam to Zach'. Cash C40 = F31*3 where F31 = H29-H28 = (Zach net payout) - (Sam net payout) = $3,812.407063 - (-$1,094.600372) = $4,907.007435; x3 = $14,721.022305. Sam pays Zach 3x the spread between their two books' net results. Only Sam and Zach are in the crossbook; Ed and Kurt have no trades at all in this pool.",
+   "scope": "synthetic_book",
+   "entry_label": null,
+   "from": "Sam",
+   "to": "Zach",
+   "pct": 3.0,
+   "cash": 14721.022305
+  }
+ ],
+ "expected_owners": [
+  {
+   "label": "Ed",
+   "cost": 1782.5,
+   "realized": 636.0780669
+  },
+  {
+   "label": "Kurt",
+   "cost": 7325.0,
+   "realized": 5753.615242
+  },
+  {
+   "label": "Sam",
+   "cost": 3610.0,
+   "realized": 2515.399628
+  },
+  {
+   "label": "Zach",
+   "cost": 2837.5,
+   "realized": 6649.907063
+  }
+ ],
+ "validation": {
+  "check_1_sum_price_equals_pot": "PASS - the 16 lot prices sum to $15,555.00, exactly the stated Total Pool Size of $15,555.00 (delta $0.00). In this workbook the pot cell is itself a formula, J2 = sum(J7:J22), so the identity is structural.",
+  "check_2_shares_sum_to_one": "PASS - all 16 entries sum to exactly 1.0. Three lots are 50/50 two-owner splits (Cleveland Sam/Ed, Miami Zach/Ed, La Lakers Kurt/Ed); the remaining 13 are 100% single-owner. No thirds and no non-round chops, so no rounding residual anywhere.",
+  "check_3_points_equal_stated_total": "PASS - recomputing every entry from raw game counts x period weights + 15/sweep + 10/lower-seed-series-win gives 269 points, equal to the workbook's stated Total Points of 269 (J3 = sum(S7:S22)). All 16 rows match the workbook's own Total column individually, not just in aggregate.",
+  "check_4_payout_recompute": "PASS EXACTLY - $ per point = $15,555 / 269 = $57.82527881 (matches cell J4 to all 8 shown decimals). All 16 payouts reproduce column U to better than 1e-6, and all 4 owner-level Cost and Payout figures reproduce columns F26:G29 exactly. See notes for the hand arithmetic.",
+  "check_5_owner_labels_resolve": "PASS - all 4 labels used by entries (Sam, Ed, Kurt, Zach) exist in owners[]; every trade from/to label resolves too.",
+  "check_6_period_keys_exist": "PASS - only R1/R2/CF/FINALS appear on events, all declared in periods[]. sweep and upset_series_win carry period_key null because the workbook aggregates them into single all-rounds columns.",
+  "check_7_raw_counts_reproduce_weighted_columns": "PASS - for all 16 rows, raw x weight reproduces the workbook's weighted cells exactly: Upsets = n x 10, Sweeps = n x 15, R1 Win = g x 1, R2 Win = g x 2, Conf Finals Win = g x 4, Finals Win = g x 8. Every weighted cell in the sheet is an exact multiple of its weight, so the raw decomposition is unique.",
+  "check_8_bracket_self_consistency": "PASS - the 16 rows' raw game counts pair up into a legal 16-team best-of-seven bracket with no leftover games, and it is the real 2025 NBA playoff bracket (Cleveland swept Miami; Indiana beat Cleveland 4-1 then NYK 4-2; NYK beat Boston 4-2; OKC swept Memphis then beat Denver 4-3, Minnesota 4-1, Indiana 4-3 in the Finals; GSW upset Houston 4-3; Minnesota upset the Lakers 4-1). Every Upsets and Sweeps count is explained by that bracket, and the Finals upset exclusion holds - Indiana (4 seed) losing to OKC (1 seed) generates no upset for anyone.",
+  "check_9_trade_settlement_balances": "PASS - post-trade nets Ed -$1,146.421933, Kurt -$1,571.384758, Sam -$7,790.622677 (H31), Zach +$10,508.429370 (H30) sum to $0.00. The crossbook and the three cash sidebets net exactly."
+ },
+ "notes": [
+  "RUBRIC (derived from this workbook's own Scoring tab, not assumed): rules cells D6:D10 read (1) 'Winning a series as a seeded underdog = + 10 points (conference matchups only, i.e. does not apply to finals)', (2) 'Sweep = + 15 points', (3) 'Winning a game +1 pt' with 'Multiplier by round (i.e. R1 win = 1 pt, R2 = 2 pts, R3 = 4 pts, Finals = 8 pts)', and 'Each team gets % of pool = their total points based on above scoring divided by total points'. Per-event weight row G13:L13 = 10 / 15 / 1 / 2 / 4 / 8. So Calcutta VII's rubric is IDENTICAL to Calcutta X's, and normalization is earned_total in both - VII does NOT normalize differently. The Scoring tab also carries a '2024 representative results' worked example (16 teams, 256 points) that is a rubric illustration, not a pool; it is not transcribed as entries.",
+  "EVENT ENCODING: events carry RAW GAME COUNTS (units = games won in that round); the round multiplier lives on periods[].weight (R1 1, R2 2, CF 4, FINALS 8). The workbook's M:R columns store the already-weighted product, so raw = cell / weight. Worked example - Indiana: Upsets 20 -> 2 upsets, R1 Win 4 -> 4 games, R2 Win 8 -> 4 games, Conf Finals Win 16 -> 4 games, Finals Win 24 -> 3 games; recomputed 2x10 + 4x1 + 4x2 + 4x4 + 3x8 = 20+4+8+16+24 = 72 = the workbook's Total. Unlike Calcutta X, this workbook's Tracker tab has NO separate raw-count block; the raw counts had to be recovered by dividing out the weights (every cell divides exactly).",
+  "TIE-OUT ARITHMETIC (hand-recomputed rows; $ per point = 15,555 / 269 = 57.82527881). (1) Indiana (East 4, lost the Finals): 72 pts x 57.82527881 = $4,163.420074 -> workbook U10 $4,163.420074. (2) OKC (West 1, champion): 15 (sweep) + 4 + 8 + 16 + 32 = 75 pts x 57.82527881 = $4,336.895911 -> workbook U15 $4,336.895911. (3) NYK (East 3): 10 (upset) + 4 + 8 + 8 = 30 pts x 57.82527881 = $1,734.758364 -> workbook U9 $1,734.758364. (4) Cleveland (East 1): 15 (sweep) + 4 + 2 = 21 pts x 57.82527881 = $1,214.330855 -> workbook U7 $1,214.330855. (5) Minnesota (West 6): 10 + 4 + 8 + 4 = 26 pts x 57.82527881 = $1,503.457249 -> workbook U20 $1,503.457249. All 16 rows machine-rechecked identically, zero mismatches; the 16 payouts sum to exactly $15,555.00.",
+  "OWNER-LEVEL TIE-OUT: recomputing cost and payout from shares reproduces every workbook figure - Ed $1,782.50 / $636.078067 (sheet $636.0780669), Kurt $7,325.00 / $5,753.615243 (sheet $5,753.615242), Sam $3,610.00 / $2,515.399629 (sheet $2,515.399628), Zach $2,837.50 / $6,649.907062 (sheet $6,649.907063). Differences are pure float display, <1e-5. The 'Teams' column (Ed 1.5, Kurt 3.5, Sam 6.5, Zach 4.5 = 16.0) also reproduces exactly from the ownership fractions.",
+  "BUDGETS ARE NOT EQUAL in Calcutta VII: Kurt $7,325.00, Sam $3,610.00, Zach $2,837.50, Ed $1,782.50. This is a free-for-all auction with no per-bidder cap - a direct contrast with Calcutta X, where all three auction participants are booked at exactly $5,000. Note also that VII's spend is genuinely dispersed 4.1x between top and bottom bidder.",
+  "CROSS-BOOK / PORTFOLIO TRADE (one, Tracker!B40): '3x crossbook Sam/Zach', $14,721.022305, direction cell 'Sam to Zach'. Cash = 3 x (Zach's net payout - Sam's net payout) = 3 x ($3,812.407063 - (-$1,094.600372)) = 3 x $4,907.007435. Only Sam and Zach participate; Ed and Kurt have no trades and no sidebets in this pool at all.",
+  "SIDEBETS (7, Tracker!B33:B39) - all Sam-vs-Zach props, none touching Ed or Kurt. Four are marked 'Resolved' with NO cash figure and are excluded from the settlement netting: Pistons/Knicks R1 ($230 Sam / $100 Zach), a Curry minutes prop ($200 Sam / $600 Zach), Knicks G3 vs Celtics ($660 Sam / $300 Zach), and Nuggets G3 vs OKC ($720 Sam / $300 Zach). Three carry booked cash, all 'Zach to Sam': $3,250 (Knicks win R2), $2,750 (Knicks win R2), $2,025 (Pacers beat Knicks). The third is labelled 'win R2' but Knicks/Pacers was actually the Conference Finals - a labelling slip in the workbook, not a math error. These are genuine gambling props rather than book or lot transfers; the contract's scope enum has no 'sidebet' value, so they are recorded as scope 'book' with the nature spelled out in each detail string.",
+  "FUNDS FLOW / SETTLEMENT: F31 = H29-H28 = $4,907.007435 is the crossbook unit (Zach's net minus Sam's net). C40 = F31*3 = $14,721.022305 owed Sam -> Zach. C41 = C40 - (C37+C38+C39) = $14,721.022305 - $8,025.00 = $6,696.022305 = the single net wire, Sam -> Zach. Post-trade positions: Zach H30 = H29 + C41 = $10,508.429370; Sam H31 = H28 - C41 = -$7,790.622677; Ed -$1,146.421933 and Kurt -$1,571.384758 unchanged. The four post-trade nets sum to $0.00.",
+  "OWNER LABELS: this workbook writes first names only - Sam, Ed, Kurt, Zach - and gives no surnames, emails, or full names anywhere, so owners[].name repeats the label. FLAGGED. (Sibling pools in this consortium do carry surnames: calcutta-01/02 use 'Sam R.', 'Zach L.', 'Ed Z.', which would make these Sam R. / Zach L. / Ed Z. - but that is cross-workbook inference and is deliberately NOT written into name.) 'Kurt' appears in neither NCAAM pool; he looks specific to the NBA books.",
+  "STRUCTURE: 16 single-team lots, seeds 1-8 in each of East and West. NO bundles and NO placeholders - every 2025 lot is a named team (contrast Calcutta X, which has two play-in placeholders). Team labels are transcribed verbatim as the workbook writes them, including the abbreviations 'NYK', 'Clippers', 'Houston', 'Memphis' and the lowercase-a 'La Lakers'.",
+  "Stray cell A17 = 0.5 sits outside the table with no header or formula referencing it, in both this workbook and Calcutta X (same row offset). It affects nothing and is ignored.",
+  "as_of_date 2025-04-19 is the first day of the 2025 NBA playoffs (consortium anchor); the workbook carries no dates at all, so no trade or sidebet has a date."
+ ]
+}

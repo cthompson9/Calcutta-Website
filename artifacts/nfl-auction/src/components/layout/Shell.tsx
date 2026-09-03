@@ -19,13 +19,12 @@ interface ShellProps {
 export function Shell({ children }: ShellProps) {
   const [location] = useLocation();
   const { selectedCalcutta } = useSeason();
-  const isNflReportRoute =
-    location === "/" ||
+  const isNflOnlyRoute =
     ["/mtm", "/trades", "/teams", "/bidders", "/dashboard"].some((route) =>
       location.startsWith(route),
     );
   const unsupportedSport =
-    isNflReportRoute && selectedCalcutta && selectedCalcutta.sport !== "NFL"
+    isNflOnlyRoute && selectedCalcutta && selectedCalcutta.sport !== "NFL"
       ? selectedCalcutta.sport
       : null;
 

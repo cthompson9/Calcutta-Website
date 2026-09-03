@@ -1,0 +1,502 @@
+name: Nightly database backup
+
+on:
+  schedule:
+    - cron: "0 8 * * *"
+  workflow_dispatch:
+
+concurrency:
+  group: backup
+  cancel-in-progress: false
+
+permissions:
+  contents: read
+
+defaults:
+  run:
+    shell: bash -euo pipefail {0}
+
+jobs:
+  backup:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    env:
+      BACKUP_REPOSITORY: cthompson9/Calcutta-Backups
+      BACKUP_DATABASE_URL: ${{ secrets.BACKUP_DATABASE_URL }}
+      BACKUP_REPO_TOKEN: ${{ secrets.BACKUP_REPO_TOKEN }}
+
+    steps:
+      - name: Check out application
+        uses: actions/checkout@v4
+
+      - name: Set up pnpm
+        uses: pnpm/action-setup@v4
+        with:
+          version: 10.26.1
+
+      - name: Set up Node and pnpm
+        uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: pnpm
+
+      - name: Validate production backup connection
+        env:
+          BACKUP_DATABASE_URL: ${{ secrets.BACKUP_DATABASE_URL }}
+        run: |
+          test -n "$BACKUP_DATABASE_URL" || {
+            echo "BACKUP_DATABASE_URL is required and must point to the production read-only role" >&2
+            exit 1
+          }
+          BACKUP_DATABASE_URL="$BACKUP_DATABASE_URL" node <<'NODE'
+          const raw = process.env.BACKUP_DATABASE_URL;
+          let parsed;
+          try {
+            parsed = new URL(raw);
+          } catch {
+            console.error("BACKUP_DATABASE_URL is not a valid PostgreSQL connection URL");
+            process.exit(1);
+          }
+
+          const host = parsed.hostname.toLowerCase();
+          if (host.includes("pooler")) {
+            console.error(
+              "Refusing to run through a connection pooler: pg_dump requires a session-level snapshot",
+            );
+            process.exit(1);
+          }
+
+          if (parsed.searchParams.get("sslmode")?.toLowerCase() !== "require") {
+            console.error(
+              "Refusing to run without sslmode=require in BACKUP_DATABASE_URL",
+            );
+            process.exit(1);
+          }
+          NODE
+
+      - name: Install dependencies
+        run: |
+          pnpm install --frozen-lockfile
+
+      - name: Install PostgreSQL 16 client
+        run: |
+          sudo install -d -m 0755 /etc/apt/keyrings
+          curl --fail --silent --show-error --location \
+            https://www.postgresql.org/media/keys/ACCC4CF8.asc |
+            sudo gpg --dearmor --yes -o /etc/apt/keyrings/postgresql.gpg
+          echo "deb [signed-by=/etc/apt/keyrings/postgresql.gpg] http://apt.postgresql.org/pub/repos/apt \
+            $(. /etc/os-release && printf '%s' "$VERSION_CODENAME")-pgdg main" |
+            sudo tee /etc/apt/sources.list.d/pgdg.list >/dev/null
+          sudo apt-get update
+          sudo apt-get install --yes postgresql-client-16
+
+          pg_dump_version="$(pg_dump --version)"
+          case "$pg_dump_version" in
+            "pg_dump (PostgreSQL) 16."*) ;;
+            *)
+              echo "Expected PostgreSQL 16.x client, got: $pg_dump_version" >&2
+              exit 1
+              ;;
+          esac
+          echo "$pg_dump_version"
+
+      - name: Check out backup repository
+        uses: actions/checkout@v4
+        with:
+          repository: cthompson9/Calcutta-Backups
+          token: ${{ secrets.BACKUP_REPO_TOKEN }}
+          path: backup-repository
+          persist-credentials: true
+
+      - name: Check for stale backup
+        continue-on-error: true
+        env:
+          GH_TOKEN: ${{ secrets.BACKUP_REPO_TOKEN }}
+          RUN_URL: ${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}
+        run: |
+          if [ ! -d backup-repository/snapshots ]; then
+            echo "No snapshots directory exists yet; skipping staleness check."
+            exit 0
+          fi
+
+          latest_snapshot="$(
+            find backup-repository/snapshots \
+              -maxdepth 1 \
+              -type f \
+              -name 'snapshot-????-??-??.json' \
+              -printf '%f\n' |
+              sort |
+              tail -n 1
+          )"
+          if [ -z "$latest_snapshot" ]; then
+            echo "No snapshots exist yet; skipping staleness check."
+            exit 0
+          fi
+
+          snapshot_date="${latest_snapshot#snapshot-}"
+          snapshot_date="${snapshot_date%.json}"
+          snapshot_epoch="$(date -u -d "$snapshot_date" +%s)"
+          now_epoch="$(date -u +%s)"
+          age_seconds=$((now_epoch - snapshot_epoch))
+          if [ "$age_seconds" -le $((48 * 60 * 60)) ]; then
+            exit 0
+          fi
+
+          age_days=$((age_seconds / 86400))
+          issue_title="Backup stale: newest snapshot is $age_days days old"
+          issue_prefix="Backup stale: newest snapshot is "
+          issue_body="$(printf 'The newest snapshot is `%s`. This scheduled run detected it is more than 48 hours old.\n\nWorkflow run: %s' "$latest_snapshot" "$RUN_URL")"
+
+          if ! gh label create backup-alert \
+            --repo "$BACKUP_REPOSITORY" \
+            --color "B60205" \
+            --description "Backup freshness warning" \
+            --force >/dev/null 2>&1; then
+            echo "::warning::Could not ensure the backup-alert label exists"
+          fi
+
+          if ! open_issues="$(
+            gh issue list \
+              --repo "$BACKUP_REPOSITORY" \
+              --state open \
+              --limit 100 \
+              --json number,title
+          )"; then
+            echo "::warning::Could not search for an existing stale-backup issue"
+            exit 0
+          fi
+          existing_issue="$(
+            printf '%s\n' "$open_issues" |
+              jq -r --arg prefix "$issue_prefix" \
+                '.[] | select(.title | startswith($prefix)) | .number' |
+              head -n 1
+          )"
+          if [ -n "$existing_issue" ]; then
+            if ! gh issue comment "$existing_issue" \
+              --repo "$BACKUP_REPOSITORY" \
+              --body "$issue_body"; then
+              echo "::warning::Could not comment on existing backup-alert issue #$existing_issue"
+            fi
+          elif ! gh issue create \
+            --repo "$BACKUP_REPOSITORY" \
+            --title "$issue_title" \
+            --label backup-alert \
+            --body "$issue_body"; then
+            echo "::warning::Could not create stale-backup issue"
+          fi
+
+      - name: Create backup artifacts
+        id: artifacts
+        run: |
+          test -n "$BACKUP_DATABASE_URL" || {
+            echo "BACKUP_DATABASE_URL is required and must point to the production read-only role" >&2
+            exit 1
+          }
+          test -n "$BACKUP_REPO_TOKEN" || {
+            echo "BACKUP_REPO_TOKEN is required" >&2
+            exit 1
+          }
+
+          backup_date="$(date -u +%F)"
+          work_directory="$RUNNER_TEMP/calcutta-backup/$backup_date"
+          mkdir -p "$work_directory"
+          echo "backup_date=$backup_date" >> "$GITHUB_OUTPUT"
+          echo "work_directory=$work_directory" >> "$GITHUB_OUTPUT"
+
+          snapshot_path="$work_directory/snapshot-$backup_date.json"
+          schema_path="$work_directory/schema-$backup_date.sql"
+          restore_prelude_path="$GITHUB_WORKSPACE/reference/restore-prelude.sql"
+          raw_dump_path="$work_directory/dump-$backup_date.sql"
+          dump_path="$work_directory/dump-$backup_date.sql.gz"
+          test -s "$restore_prelude_path"
+
+          pnpm --filter @workspace/db run export-snapshot -- "$snapshot_path"
+          test -s "$snapshot_path"
+
+          pg_dump \
+            --dbname="$BACKUP_DATABASE_URL" \
+            --schema=public \
+            --schema-only \
+            --no-owner \
+            --no-privileges \
+            > "$schema_path"
+          test -s "$schema_path"
+
+          pg_dump \
+            --dbname="$BACKUP_DATABASE_URL" \
+            --schema=public \
+            --clean \
+            --if-exists \
+            --no-privileges \
+            > "$raw_dump_path"
+          test -s "$raw_dump_path"
+
+          awk -v prelude="$restore_prelude_path" '
+            BEGIN { injected = 0 }
+            {
+              print
+              if ($0 == "CREATE SCHEMA public;") {
+                while ((getline line < prelude) > 0) print line
+                close(prelude)
+                injected = 1
+              }
+            }
+            END {
+              if (!injected) {
+                print "Could not find CREATE SCHEMA public; in pg_dump output" > "/dev/stderr"
+                exit 1
+              }
+            }
+          ' "$raw_dump_path" |
+            gzip --stdout > "$dump_path"
+          rm -f "$raw_dump_path"
+          test -s "$dump_path"
+
+          echo "snapshot_path=$snapshot_path" >> "$GITHUB_OUTPUT"
+          echo "schema_path=$schema_path" >> "$GITHUB_OUTPUT"
+          echo "dump_path=$dump_path" >> "$GITHUB_OUTPUT"
+
+      - name: Report snapshot byte sizes
+        env:
+          SNAPSHOT_PATH: ${{ steps.artifacts.outputs.snapshot_path }}
+        run: |
+          total_bytes="$(jq '[.meta.serializedByteSizes[]] | add' "$SNAPSHOT_PATH")"
+          echo "Snapshot serialized byte sizes, largest first:"
+          jq -r '
+            .meta.serializedByteSizes
+            | to_entries
+            | sort_by(.value)
+            | reverse
+            | .[]
+            | "  \(.key): \(.value) bytes"
+          ' "$SNAPSHOT_PATH"
+          echo "Total serialized table bytes: $total_bytes"
+
+          while IFS=$'\t' read -r table bytes; do
+            if [ "$((bytes * 2))" -gt "$total_bytes" ]; then
+              echo "::error::$table is more than half of the serialized snapshot bytes ($bytes of $total_bytes bytes)."
+              exit 1
+            fi
+          done < <(
+            jq -r '
+              .meta.serializedByteSizes
+              | to_entries
+              | sort_by(.value)
+              | reverse
+              | .[]
+              | [.key, .value]
+              | @tsv
+            ' "$SNAPSHOT_PATH"
+          )
+
+      - name: Commit logical snapshot and schema
+        id: commit
+        env:
+          BACKUP_DATE: ${{ steps.artifacts.outputs.backup_date }}
+          SNAPSHOT_PATH: ${{ steps.artifacts.outputs.snapshot_path }}
+          SCHEMA_PATH: ${{ steps.artifacts.outputs.schema_path }}
+        working-directory: backup-repository
+        run: |
+          test -z "$(git status --porcelain)" || {
+            echo "Backup repository is not clean; refusing to mix unrelated changes into a backup commit" >&2
+            exit 1
+          }
+
+          mkdir -p snapshots schema
+          cp "$SNAPSHOT_PATH" "snapshots/snapshot-$BACKUP_DATE.json"
+          cp "$SCHEMA_PATH" "schema/schema-$BACKUP_DATE.sql"
+
+          git add -- "snapshots/snapshot-$BACKUP_DATE.json" "schema/schema-$BACKUP_DATE.sql"
+          if git diff --cached --quiet -- \
+            "snapshots/snapshot-$BACKUP_DATE.json" \
+            "schema/schema-$BACKUP_DATE.sql"; then
+            git reset -- \
+              "snapshots/snapshot-$BACKUP_DATE.json" \
+              "schema/schema-$BACKUP_DATE.sql"
+            echo "No logical snapshot or schema changes; skipping commit."
+            echo "committed=false" >> "$GITHUB_OUTPUT"
+            exit 0
+          fi
+
+          total_rows="$(jq '[.meta.rowCounts[]] | add' "$SNAPSHOT_PATH")"
+          table_count="$(jq '.meta.rowCounts | length' "$SNAPSHOT_PATH")"
+          git config user.name "calcutta-backup-bot"
+          git config user.email "calcutta-backup-bot@users.noreply.github.com"
+          git commit -m "snapshot $BACKUP_DATE — $total_rows rows across $table_count tables"
+          git push origin HEAD:main
+          echo "committed=true" >> "$GITHUB_OUTPUT"
+
+      - name: Detect append-only row decreases
+        id: row_drop
+        continue-on-error: true
+        env:
+          BACKUP_DATE: ${{ steps.artifacts.outputs.backup_date }}
+          CURRENT_SNAPSHOT_PATH: ${{ steps.artifacts.outputs.snapshot_path }}
+          GH_TOKEN: ${{ secrets.BACKUP_REPO_TOKEN }}
+        working-directory: backup-repository
+        run: |
+          previous_snapshot="$(
+            git log \
+              --all \
+              --diff-filter=A \
+              --format= \
+              --name-only \
+              -- 'snapshots/snapshot-*.json' |
+              awk -v today="$BACKUP_DATE" '
+                /^snapshots\/snapshot-[0-9]{4}-[0-9]{2}-[0-9]{2}\.json$/ {
+                  snapshot_date = substr($0, 20, 10)
+                  if (snapshot_date < today) {
+                    print $0
+                  }
+                }
+              ' |
+              sort --reverse |
+              head -n 1
+          )"
+
+          if [ -z "$previous_snapshot" ]; then
+            echo "No committed snapshot predates $BACKUP_DATE; skipping row-drop detection."
+            exit 0
+          fi
+
+          previous_commit="$(git log --all -1 --format=%H -- "$previous_snapshot")"
+          previous_snapshot_path="$RUNNER_TEMP/previous-snapshot.json"
+          comparison_path="$RUNNER_TEMP/snapshot-comparison.json"
+          git show "$previous_commit:$previous_snapshot" > "$previous_snapshot_path"
+
+          pnpm --dir .. --filter @workspace/db run compare-snapshots -- \
+            "$previous_snapshot_path" \
+            "$CURRENT_SNAPSHOT_PATH" \
+            "$comparison_path"
+
+          decrease_count="$(jq '.decreases | length' "$comparison_path")"
+          if [ "$decrease_count" -eq 0 ]; then
+            echo "No protected table lost rows."
+            exit 0
+          fi
+
+          if ! gh label create backup-alert \
+            --repo "$BACKUP_REPOSITORY" \
+            --color "B60205" \
+            --description "Backup integrity warning" \
+            --force >/dev/null 2>&1; then
+            echo "::warning::Could not ensure the backup-alert label exists"
+          fi
+
+          snapshot_commit="$(git rev-parse HEAD)"
+          snapshot_commit_url="https://github.com/$BACKUP_REPOSITORY/commit/$snapshot_commit"
+          issue_body="$(
+            jq -r \
+              --arg previous "$previous_snapshot" \
+              --arg current "snapshots/snapshot-$BACKUP_DATE.json" \
+              --arg commit_url "$snapshot_commit_url" \
+              '
+                [
+                  "Append-only row counts decreased between `" + $previous + "` and `" + $current + "`.",
+                  "",
+                  "Snapshot commit: " + $commit_url,
+                  "",
+                  "Affected tables:",
+                  (
+                    .decreases[]
+                    | "- `" + .table + "`: " + (.previousCount | tostring) + " -> " + (.currentCount | tostring)
+                      + "\n  Removed natural keys (up to 10):\n```json\n"
+                      + (.removedNaturalKeys | tojson)
+                      + "\n```"
+                  )
+                ]
+                | join("\n")
+              ' \
+              "$comparison_path"
+          )"
+
+          while IFS=$'\t' read -r table previous_count current_count; do
+            issue_title="Row count decrease: $table $previous_count -> $current_count"
+            issue_prefix="Row count decrease: $table "
+            open_issue="$(
+              gh issue list \
+                --repo "$BACKUP_REPOSITORY" \
+                --state open \
+                --limit 100 \
+                --json number,title \
+                --jq ".[] | select(.title | startswith(\"$issue_prefix\")) | .number" |
+                head -n 1 ||
+                true
+            )"
+            if [ -n "$open_issue" ]; then
+              if ! gh issue comment "$open_issue" \
+                --repo "$BACKUP_REPOSITORY" \
+                --body "$issue_body"; then
+                echo "::warning::Could not comment on row-drop issue #$open_issue"
+              fi
+            elif ! gh issue create \
+              --repo "$BACKUP_REPOSITORY" \
+              --title "$issue_title" \
+              --label backup-alert \
+              --body "$issue_body"; then
+              echo "::warning::Could not create row-drop issue for $table"
+            fi
+          done < <(
+            jq -r '.decreases[] | [.table, .previousCount, .currentCount] | @tsv' \
+              "$comparison_path"
+          )
+
+          while IFS= read -r table; do
+            issue_title="TRUNCATION: $table is now empty"
+            existing_issue="$(
+              gh issue list \
+                --repo "$BACKUP_REPOSITORY" \
+                --state open \
+                --limit 100 \
+                --search "$issue_title in:title" \
+                --json number,title \
+                --jq ".[] | select(.title == \"$issue_title\") | .number" |
+                head -n 1 ||
+                true
+            )"
+            if [ -n "$existing_issue" ]; then
+              if ! gh issue comment "$existing_issue" \
+                --repo "$BACKUP_REPOSITORY" \
+                --body "$issue_body"; then
+                echo "::warning::Could not comment on truncation issue #$existing_issue"
+              fi
+            elif ! gh issue create \
+              --repo "$BACKUP_REPOSITORY" \
+              --title "$issue_title" \
+              --label backup-alert \
+              --body "$issue_body"; then
+              echo "::warning::Could not create truncation issue for $table"
+            fi
+          done < <(jq -r '.truncations[].table' "$comparison_path")
+
+          echo "::error::$decrease_count protected table(s) lost rows; see backup-alert issues."
+          exit 1
+
+      - name: Publish compressed dump release
+        env:
+          BACKUP_DATE: ${{ steps.artifacts.outputs.backup_date }}
+          DUMP_PATH: ${{ steps.artifacts.outputs.dump_path }}
+          GH_TOKEN: ${{ secrets.BACKUP_REPO_TOKEN }}
+        run: |
+          release_tag="backup-$BACKUP_DATE"
+          release_title="Database backup $BACKUP_DATE"
+          release_notes="Automated PostgreSQL dump for $BACKUP_DATE UTC."
+
+          if gh release view "$release_tag" --repo "$BACKUP_REPOSITORY" >/dev/null 2>&1; then
+            gh release upload "$release_tag" "$DUMP_PATH" \
+              --repo "$BACKUP_REPOSITORY" \
+              --clobber
+            echo "Updated existing release $release_tag."
+          else
+            gh release create "$release_tag" "$DUMP_PATH" \
+              --repo "$BACKUP_REPOSITORY" \
+              --title "$release_title" \
+              --notes "$release_notes"
+            echo "Created release $release_tag."
+          fi
+
+      - name: Fail when append-only rows decreased
+        if: steps.row_drop.outcome == 'failure'
+        run: |
+          echo "Append-only row-drop detection failed; review the backup-alert issue and detector logs." >&2
+          exit 1

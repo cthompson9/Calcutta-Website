@@ -1,0 +1,78 @@
+name: Schema drift
+
+on:
+  pull_request:
+  push:
+    branches:
+      - main
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+defaults:
+  run:
+    shell: bash -euo pipefail {0}
+
+jobs:
+  schema-drift:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    services:
+      postgres:
+        image: postgres:16
+        env:
+          POSTGRES_DB: calcutta_schema_check
+          POSTGRES_PASSWORD: postgres
+          POSTGRES_USER: postgres
+        options: >-
+          --health-cmd "pg_isready -U postgres -d calcutta_schema_check"
+          --health-interval 5s
+          --health-timeout 5s
+          --health-retries 10
+        ports:
+          - 5432:5432
+    env:
+      DATABASE_URL: postgresql://postgres:postgres@127.0.0.1:5432/calcutta_schema_check
+      SCHEMA_CHECK_DISPOSABLE: "1"
+
+    steps:
+      - name: Check out application
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Set up pnpm
+        uses: pnpm/action-setup@v4
+        with:
+          version: 10.26.1
+
+      - name: Set up Node and pnpm
+        uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: pnpm
+
+      - name: Install dependencies
+        run: pnpm install --frozen-lockfile
+
+      - name: Select immutable baseline revision
+        env:
+          EVENT_NAME: ${{ github.event_name }}
+          PULL_REQUEST_BASE: ${{ github.event.pull_request.base.sha }}
+          PUSH_BASE: ${{ github.event.before }}
+        run: |
+          if [ "$EVENT_NAME" = "pull_request" ]; then
+            baseline="$PULL_REQUEST_BASE"
+          elif [ "$EVENT_NAME" = "push" ] &&
+               [ -n "$PUSH_BASE" ] &&
+               [ "$PUSH_BASE" != "0000000000000000000000000000000000000000" ]; then
+            baseline="$PUSH_BASE"
+          else
+            baseline="$(git rev-parse HEAD^)"
+          fi
+          git cat-file -e "$baseline^{commit}"
+          echo "SCHEMA_CHECK_BASE_REF=$baseline" >> "$GITHUB_ENV"
+
+      - name: Check schema convergence
+        run: pnpm --filter @workspace/db run check:schema-drift

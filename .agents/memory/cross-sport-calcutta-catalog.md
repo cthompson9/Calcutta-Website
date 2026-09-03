@@ -3,8 +3,8 @@ name: Cross-sport Calcutta catalog
 description: Product behavior for selecting Calcuttas outside the current NFL reporting model.
 ---
 
-The global Calcutta selector must list every loaded Calcutta across sports. Existing Results, M2M, Trades, Auction Results, Teams, and Bidders views remain NFL-only.
+The global Calcutta selector must list every loaded Calcutta across sports. Results renders normalized historical reports for backloaded pools in any sport. Live MTM, Trades, Auction Results, Teams, and Bidders remain NFL-only.
 
-**Why:** The user wants the full historical catalog visible now, but explicitly chose a clear unsupported-sport experience instead of expanding every report and data model to all sports.
+**Why:** The normalized historical read model is sport-agnostic and is the authoritative source for older Calcuttas. Blocking non-NFL Results hid valid backloaded data, while the operational views still depend on the live NFL model.
 
-**How to apply:** Preserve an NFL selection when resolving legacy year-only links. When a non-NFL Calcutta is selected on an NFL report route, do not issue NFL report requests for it; show the unsupported-sport state and leave catalog navigation usable.
+**How to apply:** Preserve an NFL selection when resolving legacy year-only links. Let Results match older selections to normalized pools by name, year, and sport. On other non-NFL report routes, do not issue NFL requests; show the unsupported-sport state.

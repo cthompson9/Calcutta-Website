@@ -1,0 +1,3885 @@
+openapi: 3.1.0
+info:
+  # Do not change the title, if the title changes, the import paths will be broken
+  title: Api
+  version: 0.1.0
+  description: NFL Auction Manager API
+servers:
+  - url: /api
+    description: Base API path
+tags:
+  - name: health
+  - name: teams
+  - name: bidders
+  - name: seasons
+  - name: calcuttas
+  - name: results
+  - name: trades
+  - name: mtm
+  - name: summary
+  - name: auction
+  - name: jobs
+  - name: agent
+
+paths:
+  /healthz:
+    get:
+      operationId: healthCheck
+      tags: [health]
+      summary: Health check
+      responses:
+        "200":
+          description: Healthy
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/HealthStatus"
+
+  /seasons:
+    get:
+      operationId: getSeasons
+      tags: [seasons]
+      summary: List all seasons
+      responses:
+        "200":
+          description: List of seasons
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: "#/components/schemas/Season"
+    post:
+      operationId: createSeason
+      tags: [seasons]
+      summary: Create a season
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/SeasonInput"
+      responses:
+        "201":
+          description: Created season
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Season"
+        "400":
+          description: Validation error
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+  /teams:
+    get:
+      operationId: getTeams
+      tags: [teams]
+      summary: List all teams
+      parameters:
+        - name: conference
+          in: query
+          schema:
+            type: string
+            enum: [AFC, NFC]
+        - name: division
+          in: query
+          schema:
+            type: string
+            enum: [East, North, South, West]
+        - name: search
+          in: query
+          schema:
+            type: string
+        - name: bidderId
+          in: query
+          schema:
+            type: ["number", "null"]
+        - name: season
+          in: query
+          schema:
+            type: ["number", "null"]
+        - name: calcuttaId
+          in: query
+          schema:
+            type: ["number", "null"]
+        - name: sport
+          in: query
+          schema:
+            type: string
+            enum: [NFL, CFB]
+            default: NFL
+      responses:
+        "200":
+          description: List of teams
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: "#/components/schemas/Team"
+    post:
+      operationId: createTeam
+      tags: [teams]
+      summary: Create a team entry
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/TeamInput"
+      responses:
+        "201":
+          description: Created team
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Team"
+        "400":
+          description: Validation error
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+  /teams/{id}:
+    get:
+      operationId: getTeam
+      tags: [teams]
+      summary: Get a single team
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: number
+      responses:
+        "200":
+          description: Team detail
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Team"
+        "404":
+          description: Not found
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+    patch:
+      operationId: updateTeam
+      tags: [teams]
+      summary: Update a team entry
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: number
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/TeamUpdate"
+      responses:
+        "200":
+          description: Updated team
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Team"
+        "404":
+          description: Not found
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+    delete:
+      operationId: deleteTeam
+      tags: [teams]
+      summary: Delete a team entry
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: number
+      responses:
+        "204":
+          description: Deleted
+        "404":
+          description: Not found
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+
+  /bidders:
+    get:
+      operationId: getBidders
+      tags: [bidders]
+      summary: List bidders. With season, returns only season participants (primary owners + approved trade recipients). Without season, returns all bidders (global identity directory).
+      parameters:
+        - name: season
+          in: query
+          schema:
+            type: ["number", "null"]
+          description: When supplied, filter to bidders with a season presence (team_bidders owners + approved trade toBidders). Without season, returns all bidders for global identity directory use.
+        - name: calcuttaId
+          in: query
+          schema:
+            type: ["number", "null"]
+          description: When supplied with season, filter participants to this Calcutta. Omit both filters for the global bidder directory.
+      responses:
+        "200":
+          description: List of bidders
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: "#/components/schemas/BidderSummary"
+    post:
+      operationId: createBidder
+      tags: [bidders]
+      summary: Create a bidder
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/BidderInput"
+      responses:
+        "201":
+          description: Created bidder
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Bidder"
+        "400":
+          description: Validation error
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+
+  /calcuttas:
+    get:
+      operationId: getCalcuttas
+      tags: [calcuttas]
+      summary: List all canonical NFL Calcuttas
+      responses:
+        "200":
+          description: Canonical NFL Calcuttas ordered newest first
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: "#/components/schemas/CalcuttaOption"
+
+  /bidders/{id}:
+    patch:
+      operationId: updateBidder
+      tags: [bidders]
+      summary: Update a bidder
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: number
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/BidderUpdate"
+      responses:
+        "200":
+          description: Updated bidder
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Bidder"
+        "404":
+          description: Not found
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+    delete:
+      operationId: deleteBidder
+      tags: [bidders]
+      summary: Delete a bidder
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: number
+      responses:
+        "204":
+          description: Deleted
+        "404":
+          description: Not found
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+
+  /results:
+    get:
+      operationId: getResults
+      tags: [results]
+      summary: Calcutta Returns by team for a season
+      parameters:
+        - name: season
+          in: query
+          required: true
+          schema:
+            type: number
+        - name: calcuttaId
+          in: query
+          schema:
+            type: ["number", "null"]
+        - name: period
+          in: query
+          description: NFL period sequence through which cumulative returns are calculated.
+          schema:
+            type: integer
+            minimum: 0
+            maximum: 22
+        - name: basis
+          in: query
+          description: Select the snapshot basis used for the focused return view.
+          schema:
+            type: string
+            enum: [realized, mtm]
+        - name: conference
+          in: query
+          schema:
+            type: string
+            enum: [AFC, NFC]
+        - name: search
+          in: query
+          schema:
+            type: string
+      responses:
+        "200":
+          description: List of team results
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: "#/components/schemas/TeamResultRow"
+
+  /v2/pools:
+    get:
+      operationId: getHistoricalPools
+      tags: [historical]
+      summary: List normalized historical Calcuttas
+      description: Returns the immutable normalized historical pool catalog, ordered newest edition first. Calcutta XII is intentionally not part of this read model.
+      responses:
+        "200":
+          description: Normalized historical pools
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: "#/components/schemas/HistoricalPool"
+
+  /v2/owners:
+    get:
+      operationId: getHistoricalOwners
+      tags: [historical]
+      summary: List canonical owner results across normalized historical Calcuttas
+      description: Returns covered owner roll-ups for Calcuttas I–XI with stable canonical owner IDs so clients can compare the same approved person across pools.
+      responses:
+        "200":
+          description: Cross-pool normalized historical owner results
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: "#/components/schemas/HistoricalCrossPoolOwnerResult"
+
+  /v2/pool/{id}/entries:
+    get:
+      operationId: getHistoricalPoolEntries
+      tags: [historical]
+      summary: List entries in a normalized historical Calcutta
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: number
+      responses:
+        "400":
+          description: Invalid historical pool id
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+        "200":
+          description: Normalized historical auction entries
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: "#/components/schemas/HistoricalPoolEntry"
+        "404":
+          description: Historical pool not found
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+
+  /v2/pool/{id}/owners:
+    get:
+      operationId: getHistoricalPoolOwners
+      tags: [historical]
+      summary: List canonical owner totals for a normalized historical Calcutta
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: number
+      responses:
+        "400":
+          description: Invalid historical pool id
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+        "200":
+          description: Normalized historical owner roll-ups
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: "#/components/schemas/HistoricalPoolOwner"
+        "404":
+          description: Historical pool not found
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+
+  /v2/pool/{id}/trades:
+    get:
+      operationId: getHistoricalPoolTrades
+      tags: [historical]
+      summary: List normalized historical entry and book trades
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: number
+      responses:
+        "400":
+          description: Invalid historical pool id
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+        "200":
+          description: Normalized historical trades
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: "#/components/schemas/HistoricalPoolTrade"
+        "404":
+          description: Historical pool not found
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+
+  /results/by-owner:
+    get:
+      operationId: getResultsByOwner
+      tags: [results]
+      summary: Calcutta Returns aggregated by owner for a season
+      parameters:
+        - name: season
+          in: query
+          required: true
+          schema:
+            type: number
+        - name: calcuttaId
+          in: query
+          schema:
+            type: ["number", "null"]
+        - name: period
+          in: query
+          description: NFL period sequence through which cumulative returns are calculated.
+          schema:
+            type: number
+            minimum: 0
+            maximum: 22
+            multipleOf: 1
+        - name: basis
+          in: query
+          description: Select the snapshot basis used for the focused return view.
+          schema:
+            type: string
+            enum: [realized, mtm]
+        - name: membershipView
+          in: query
+          description: Use historical consortium membership at the Calcutta as-of date (default), or the current roster.
+          schema:
+            type: string
+            enum: [historical, current]
+      responses:
+        "200":
+          description: Owner-level result summaries
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: "#/components/schemas/OwnerResultRow"
+
+  /results/nfl-standings/preview:
+    post:
+      operationId: previewNflStandingsImport
+      tags: [results]
+      summary: Fetch and validate the current NFL standings without writing results
+      description: Requires the ADMIN_API_KEY bearer token. The NFL source URL is fixed server-side.
+      security:
+        - AdminBearerAuth: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/NflStandingsImportInput"
+      responses:
+        "200":
+          description: Validated standings preview
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/NflStandingsImportPreview"
+        "4XX":
+          description: Source or validation error
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+        "401":
+          description: ADMIN_API_KEY bearer token required
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+
+  /results/nfl-standings/apply:
+    post:
+      operationId: applyNflStandingsImport
+      tags: [results]
+      summary: Atomically import the current NFL standings
+      description: Requires the ADMIN_API_KEY bearer token. The NFL source URL is fixed server-side.
+      security:
+        - AdminBearerAuth: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/NflStandingsImportInput"
+      responses:
+        "200":
+          description: Import result
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/NflStandingsImportResponse"
+        "4XX":
+          description: Source or validation error
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+        "401":
+          description: ADMIN_API_KEY bearer token required
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+
+  /jobs/refresh:
+    post:
+      operationId: refreshNflStandingsJob
+      tags: [jobs]
+      summary: Trigger a guarded, request-driven NFL standings refresh
+      description: Requires the dedicated JOB_RUNNER_SECRET bearer token. The endpoint exits without fetching standings when no NFL game is live or recently final and the stored standings are fresh.
+      security:
+        - JobRunnerBearerAuth: []
+      requestBody:
+        required: false
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/NflStandingsRefreshJobInput"
+      responses:
+        "200":
+          description: Completed refresh or an intentional no-op
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/NflStandingsRefreshJobResponse"
+        "400":
+          description: Invalid job request
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+        "401":
+          description: JOB_RUNNER_SECRET bearer token required
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+        "500":
+          description: Schedule or standings source failure
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+
+  /results/availability:
+    get:
+      operationId: getResultsAvailability
+      tags: [results]
+      summary: Latest recorded reporting periods for a season and basis
+      parameters:
+        - name: season
+          in: query
+          required: true
+          schema:
+            type: number
+        - name: calcuttaId
+          in: query
+          schema:
+            type: ["number", "null"]
+        - name: basis
+          in: query
+          description: Snapshot basis used to identify recorded reporting periods.
+          schema:
+            type: string
+            enum: [realized, mtm]
+      responses:
+        "200":
+          description: Most recent and immediately preceding recorded reporting periods.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ResultsAvailability"
+
+  /results/compare:
+    get:
+      operationId: getResultsCompare
+      tags: [results]
+      summary: Compare bidder or consortium returns across selected Calcuttas
+      parameters:
+        - name: seasons
+          in: query
+          required: true
+          description: Comma-separated NFL season years to compare (two to six selections).
+          schema:
+            type: string
+            example: "2025,2026"
+        - name: period
+          in: query
+          description: NFL period sequence through which cumulative returns are calculated.
+          schema:
+            type: number
+            minimum: 0
+            maximum: 22
+            multipleOf: 1
+        - name: basis
+          in: query
+          description: Basis used to rank the comparison rows and identify missing snapshots.
+          schema:
+            type: string
+            enum: [realized, mtm]
+        - name: groupBy
+          in: query
+          description: Roll up positions by individual bidder or dated consortium roster.
+          schema:
+            type: string
+            enum: [bidder, consortium]
+        - name: membershipView
+          in: query
+          description: Use historical consortium membership at each Calcutta as-of date (default), or the current roster.
+          schema:
+            type: string
+            enum: [historical, current]
+      responses:
+        "200":
+          description: Cross-Calcutta comparison rows
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/CalcuttaComparisonResponse"
+        "400":
+          description: Validation error
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+
+  /results/upsert:
+    post:
+      operationId: upsertTeamResult
+      tags: [results]
+      summary: Create or update a team result record
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/TeamResultInput"
+      responses:
+        "200":
+          description: Upserted team result
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/TeamResultRow"
+        "400":
+          description: Validation error
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+
+  /periods:
+    get:
+      operationId: getSportPeriods
+      tags: [results]
+      summary: List shared sport periods
+      parameters:
+        - name: sport
+          in: query
+          schema:
+            type: string
+            default: NFL
+      responses:
+        "200":
+          description: Shared period template
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: "#/components/schemas/SportPeriod"
+
+  /period-snapshots:
+    post:
+      operationId: upsertTeamPeriodSnapshot
+      tags: [results]
+      summary: Write one cumulative realized or mark-to-market team snapshot for an NFL period
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/TeamPeriodSnapshotInput"
+      responses:
+        "200":
+          description: Upserted snapshot and calculated gross return
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/TeamPeriodSnapshotRow"
+        "400":
+          description: Validation error
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+
+  /period-snapshots/week-zero:
+    post:
+      operationId: initializeWeekZeroPoints
+      tags: [results]
+      summary: Initialize the immutable zero-stat Week 0 baseline for a season
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/InitializeWeekZeroPointsInput"
+      responses:
+        "200":
+          description: Week 0 realized and MTM snapshots initialized or already present
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/WeekZeroPointsInitialization"
+        "400":
+          description: Validation error or no auctioned teams
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+        "401":
+          description: Unauthorized — ADMIN_API_KEY required
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+        "404":
+          description: Season not found
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+
+  /payout-rules:
+    get:
+      operationId: getPayoutRules
+      tags: [results]
+      summary: List a season Calcutta's payout rules
+      parameters:
+        - name: season
+          in: query
+          required: true
+          schema:
+            type: number
+        - name: calcuttaId
+          in: query
+          schema:
+            type: ["number", "null"]
+      responses:
+        "200":
+          description: Payout rules
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: "#/components/schemas/PayoutRuleRow"
+    put:
+      operationId: replacePayoutRules
+      tags: [results]
+      summary: Replace all payout rules for a season's canonical Calcutta
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/PayoutRulesUpdate"
+      responses:
+        "200":
+          description: Saved payout rules
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: "#/components/schemas/PayoutRuleRow"
+
+  /trades:
+    get:
+      operationId: getTrades
+      tags: [trades]
+      summary: List trades for a season
+      parameters:
+        - name: season
+          in: query
+          required: true
+          schema:
+            type: number
+        - name: calcuttaId
+          in: query
+          schema:
+            type: ["number", "null"]
+      responses:
+        "200":
+          description: List of trades
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: "#/components/schemas/TradeRow"
+    post:
+      operationId: createTrade
+      tags: [trades]
+      summary: Submit a trade for commissioner review (always pending)
+      security:
+        - AdminBearerAuth: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/TradeInput"
+      responses:
+        "201":
+          description: Created trade
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/TradeRow"
+        "401":
+          description: ADMIN_API_KEY bearer token required
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+        "400":
+          description: Validation error
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+
+  /trades/{id}:
+    patch:
+      operationId: updateTrade
+      tags: [trades]
+      summary: Update a pending trade record (admin only)
+      security:
+        - AdminBearerAuth: []
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: number
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/TradeUpdate"
+      responses:
+        "200":
+          description: Updated trade
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/TradeRow"
+        "404":
+          description: Not found
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+        "401":
+          description: ADMIN_API_KEY bearer token required
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+        "409":
+          description: Approved trades are immutable
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+    delete:
+      operationId: deleteTrade
+      tags: [trades]
+      summary: Delete a pending trade record (admin only — requires ADMIN_API_KEY bearer token)
+      security:
+        - AdminBearerAuth: []
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: number
+      responses:
+        "204":
+          description: Deleted
+        "404":
+          description: Not found
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+        "401":
+          description: Unauthorized — ADMIN_API_KEY required
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+        "409":
+          description: Approved trades cannot be deleted
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+
+  /admin/validate:
+    get:
+      operationId: validateAdminKey
+      tags: [trades]
+      summary: Validate the commissioner admin bearer token
+      security:
+        - AdminBearerAuth: []
+      responses:
+        "204":
+          description: Admin token is valid
+        "401":
+          description: Unauthorized — ADMIN_API_KEY required
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+
+  /trades/{id}/status:
+    patch:
+      operationId: setTradeStatus
+      tags: [trades]
+      summary: Confirm a pending trade decision or void an approved trade (admin only — requires ADMIN_API_KEY bearer token)
+      security:
+        - AdminBearerAuth: []
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: number
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/TradeStatusUpdate"
+      responses:
+        "200":
+          description: Updated trade
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/TradeRow"
+        "401":
+          description: Unauthorized — ADMIN_API_KEY required
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+        "404":
+          description: Not found
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+
+  /mtm:
+    get:
+      operationId: getMtmSnapshots
+      tags: [mtm]
+      summary: Get weekly MTM snapshots for a season
+      parameters:
+        - name: season
+          in: query
+          required: true
+          schema:
+            type: number
+        - name: calcuttaId
+          in: query
+          schema:
+            type: ["number", "null"]
+        - name: teamId
+          in: query
+          schema:
+            type: ["number", "null"]
+      responses:
+        "200":
+          description: MTM snapshots
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/MtmData"
+    post:
+      operationId: upsertMtmSnapshot
+      tags: [mtm]
+      summary: Add or update a weekly MTM snapshot
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/MtmSnapshotInput"
+      responses:
+        "200":
+          description: Upserted snapshot
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/MtmSnapshot"
+        "400":
+          description: Validation error
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+        "401":
+          description: Unauthorized — ADMIN_API_KEY required
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+        "409":
+          description: The target team/date is protected Kalshi Week 0 data
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+
+  /mtm/pipeline/evidence:
+    get:
+      operationId: getMtmPipelineEvidence
+      tags: [mtm]
+      summary: Inspect immutable Kalshi evidence for frozen-engine MTM attempts
+      security:
+        - AdminBearerAuth: []
+      parameters:
+        - name: season
+          in: query
+          required: true
+          schema:
+            type: number
+        - name: calcuttaId
+          in: query
+          schema:
+            type: number
+        - name: attemptId
+          in: query
+          description: Attempt to inspect. Defaults to the newest attempt in the selected pool.
+          schema:
+            type: number
+      responses:
+        "200":
+          description: Attempt history and evidence for the selected attempt
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/MtmPipelineEvidenceResponse"
+        "400":
+          description: Invalid query
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+        "401":
+          description: Unauthorized — ADMIN_API_KEY required
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+        "404":
+          description: Selected NFL Calcutta or attempt not found
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+
+  /mtm/week-zero/capture:
+    post:
+      operationId: captureWeekZeroMtm
+      tags: [mtm]
+      summary: Capture an admin-authorized Week 0 valuation from public Kalshi market data
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/WeekZeroCaptureInput"
+      responses:
+        "200":
+          description: Captured Week 0 valuation diagnostics
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/WeekZeroCaptureResult"
+        "400":
+          description: Validation or incomplete market data error
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+        "401":
+          description: Unauthorized — ADMIN_API_KEY required
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+        "404":
+          description: Season not found
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+        "409":
+          description: The selected Week 0 date is already occupied by manual MTM data
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+        "502":
+          description: Kalshi market data could not be captured
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+
+  /summary:
+    get:
+      operationId: getAuctionSummary
+      tags: [summary]
+      summary: Overall auction summary for a specific season
+      parameters:
+        - name: season
+          in: query
+          required: true
+          schema:
+            type: number
+          description: Season year (YYYY). Required. Returns empty/zero data if the season has no auction rows.
+        - name: calcuttaId
+          in: query
+          schema:
+            type: ["number", "null"]
+      responses:
+        "200":
+          description: Auction summary
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/AuctionSummary"
+        "400":
+          description: Validation error
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+
+  /auction/import:
+    post:
+      operationId: importAuctionData
+      tags: [auction]
+      summary: Import a complete season auction export from the configured AuctionPro source
+      description: Requires the ADMIN_API_KEY bearer token. The source URL and optional source authorization stay server-side.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/AuctionImportInput"
+      responses:
+        "200":
+          description: Imported selected season auction data
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/AuctionImportResult"
+        "401":
+          description: Unauthorized — ADMIN_API_KEY required
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+        "404":
+          description: Season not found
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+        "409":
+          description: Existing approved trades make it unsafe to replace primary ownership
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+        "422":
+          description: Source export is malformed, incomplete, or cannot be resolved safely
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+        "502":
+          description: Configured AuctionPro source is unavailable
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+
+  /auction/import/draft-order:
+    post:
+      operationId: importDraftOrder
+      tags: [auction]
+      summary: Import auction prices, ownership, and draft order from the AuctionPro live endpoint
+      description: >
+        Fetches the public AuctionPro draft-order endpoint and atomically replaces the
+        season's auction prices, single-owner primary ownership, and draft order in
+        team results. Requires the ADMIN_API_KEY bearer token. Blocked if any of the
+        32 teams already have approved trades for the target season.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/AuctionImportInput"
+      responses:
+        "200":
+          description: Successfully imported draft-order data
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/AuctionImportResult"
+        "401":
+          description: Unauthorized — ADMIN_API_KEY required
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+        "404":
+          description: Season not found
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+        "409":
+          description: Existing approved trades make it unsafe to replace primary ownership
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+        "422":
+          description: Source export is malformed, incomplete, or cannot be resolved safely
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+        "502":
+          description: AuctionPro draft-order endpoint is unavailable or returned a non-JSON response
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+
+  /v2/owner/portfolio:
+    get:
+      operationId: getOwnerPortfolioV2
+      tags: [agent]
+      summary: Return every current signed position for one owner
+      parameters:
+        - $ref: "#/components/parameters/AgentOwner"
+        - $ref: "#/components/parameters/AgentSeason"
+        - $ref: "#/components/parameters/AgentCalcuttaId"
+        - $ref: "#/components/parameters/AgentPeriod"
+        - $ref: "#/components/parameters/AgentBasis"
+      responses:
+        "200":
+          description: Owner portfolio
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/AgentOwnerPortfolio"
+        "400":
+          $ref: "#/components/responses/AgentError"
+        "404":
+          $ref: "#/components/responses/AgentError"
+
+  /v2/owner/summary:
+    get:
+      operationId: getOwnerSummaryV2
+      tags: [agent]
+      summary: Return owner portfolio totals
+      parameters:
+        - $ref: "#/components/parameters/AgentOwner"
+        - $ref: "#/components/parameters/AgentSeason"
+        - $ref: "#/components/parameters/AgentCalcuttaId"
+        - $ref: "#/components/parameters/AgentPeriod"
+        - $ref: "#/components/parameters/AgentBasis"
+      responses:
+        "200":
+          description: Owner summary
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/AgentOwnerSummary"
+        "400":
+          $ref: "#/components/responses/AgentError"
+        "404":
+          $ref: "#/components/responses/AgentError"
+
+  /v2/owner/portfolio/performance:
+    get:
+      operationId: getOwnerPortfolioPerformanceV2
+      tags: [agent]
+      summary: Return team-by-team owner performance
+      parameters:
+        - $ref: "#/components/parameters/AgentOwner"
+        - $ref: "#/components/parameters/AgentSeason"
+        - $ref: "#/components/parameters/AgentCalcuttaId"
+        - $ref: "#/components/parameters/AgentPeriod"
+        - $ref: "#/components/parameters/AgentBasis"
+      responses:
+        "200":
+          description: Owner performance
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/AgentOwnerPerformance"
+        "400":
+          $ref: "#/components/responses/AgentError"
+        "404":
+          $ref: "#/components/responses/AgentError"
+
+  /v2/schedule:
+    get:
+      operationId: getScheduleV2
+      tags: [agent]
+      summary: Return canonical NFL games matching optional filters
+      parameters:
+        - $ref: "#/components/parameters/AgentSeason"
+        - $ref: "#/components/parameters/AgentCalcuttaId"
+        - $ref: "#/components/parameters/AgentTeam"
+        - $ref: "#/components/parameters/AgentWeek"
+        - $ref: "#/components/parameters/AgentDateFrom"
+        - $ref: "#/components/parameters/AgentDateTo"
+        - $ref: "#/components/parameters/AgentIncludeMarket"
+        - $ref: "#/components/parameters/AgentIncludeProjection"
+      responses:
+        "200":
+          description: Matching games
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/AgentSchedule"
+        "400":
+          $ref: "#/components/responses/AgentError"
+        "404":
+          $ref: "#/components/responses/AgentError"
+
+  /v2/team/schedule:
+    get:
+      operationId: getTeamScheduleV2
+      tags: [agent]
+      summary: Return one NFL team's schedule and current Calcutta context
+      parameters:
+        - $ref: "#/components/parameters/AgentSeason"
+        - $ref: "#/components/parameters/AgentCalcuttaId"
+        - $ref: "#/components/parameters/AgentTeamRequired"
+        - $ref: "#/components/parameters/AgentWeek"
+        - $ref: "#/components/parameters/AgentDateFrom"
+        - $ref: "#/components/parameters/AgentDateTo"
+        - $ref: "#/components/parameters/AgentIncludeMarket"
+        - $ref: "#/components/parameters/AgentIncludeProjection"
+        - $ref: "#/components/parameters/AgentPeriod"
+        - $ref: "#/components/parameters/AgentBasis"
+      responses:
+        "200":
+          description: Team schedule
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/AgentTeamSchedule"
+        "400":
+          $ref: "#/components/responses/AgentError"
+        "404":
+          $ref: "#/components/responses/AgentError"
+
+  /v2/game:
+    get:
+      operationId: getGameV2
+      tags: [agent]
+      summary: Return complete known information for one canonical NFL game
+      parameters:
+        - name: game_id
+          in: query
+          required: true
+          schema:
+            type: string
+        - $ref: "#/components/parameters/AgentSeason"
+        - $ref: "#/components/parameters/AgentCalcuttaId"
+        - $ref: "#/components/parameters/AgentPeriod"
+        - $ref: "#/components/parameters/AgentBasis"
+      responses:
+        "200":
+          description: Game detail
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/AgentGameDetail"
+        "400":
+          $ref: "#/components/responses/AgentError"
+        "404":
+          $ref: "#/components/responses/AgentError"
+
+  /v2/points-rubric:
+    get:
+      operationId: getPointsRubricV2
+      tags: [agent]
+      summary: Return the authoritative selected-Calcutta scoring rubric
+      parameters:
+        - $ref: "#/components/parameters/AgentSeason"
+        - $ref: "#/components/parameters/AgentCalcuttaId"
+      responses:
+        "200":
+          description: Points rubric
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/AgentPointsRubric"
+        "400":
+          $ref: "#/components/responses/AgentError"
+        "404":
+          $ref: "#/components/responses/AgentError"
+
+  /v2/leaderboard/consortia:
+    get:
+      operationId: getConsortiumLeaderboardV2
+      tags: [agent]
+      summary: Return a selected-Calcutta consortium leaderboard
+      parameters:
+        - $ref: "#/components/parameters/AgentSeason"
+        - $ref: "#/components/parameters/AgentCalcuttaId"
+        - $ref: "#/components/parameters/AgentPeriod"
+        - $ref: "#/components/parameters/AgentBasis"
+        - name: membershipView
+          in: query
+          schema:
+            type: string
+            enum: [historical, current]
+            default: historical
+      responses:
+        "200":
+          description: Consortium leaderboard
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/AgentConsortiumLeaderboard"
+        "400":
+          $ref: "#/components/responses/AgentError"
+        "404":
+          $ref: "#/components/responses/AgentError"
+
+components:
+  securitySchemes:
+    AdminBearerAuth:
+      type: http
+      scheme: bearer
+      description: Administrative bearer token supplied through ADMIN_API_KEY.
+    JobRunnerBearerAuth:
+      type: http
+      scheme: bearer
+      description: Restricted job trigger token supplied through JOB_RUNNER_SECRET.
+  responses:
+    AgentError:
+      description: Invalid or unresolved agent request
+      content:
+        application/json:
+          schema:
+            $ref: "#/components/schemas/ErrorResponse"
+  parameters:
+    HistoricalPoolId:
+      name: id
+      in: path
+      required: true
+      description: Normalized historical pool identifier. Only Calcuttas I through XI are available here.
+      schema:
+        type: number
+        minimum: 1
+    AgentOwner:
+      name: owner
+      in: query
+      required: true
+      description: Exact or unambiguous partial registered owner name.
+      schema: { type: string }
+    AgentSeason:
+      name: season
+      in: query
+      required: true
+      schema: { type: number }
+    AgentCalcuttaId:
+      name: calcuttaId
+      in: query
+      description: Defaults to the season's canonical NFL Calcutta.
+      schema: { type: number }
+    AgentPeriod:
+      name: period
+      in: query
+      schema: { type: number, minimum: 0, maximum: 22 }
+    AgentBasis:
+      name: basis
+      in: query
+      schema: { type: string, enum: [realized, mtm], default: realized }
+    AgentTeam:
+      name: team
+      in: query
+      description: NFL abbreviation, exact name, or unambiguous partial name.
+      schema: { type: string }
+    AgentTeamRequired:
+      name: team
+      in: query
+      required: true
+      description: NFL abbreviation, exact name, or unambiguous partial name.
+      schema: { type: string }
+    AgentWeek:
+      name: week
+      in: query
+      schema: { type: number, minimum: 0, maximum: 22 }
+    AgentDateFrom:
+      name: date_from
+      in: query
+      schema: { type: string, pattern: '^\d{4}-\d{2}-\d{2}$' }
+    AgentDateTo:
+      name: date_to
+      in: query
+      schema: { type: string, pattern: '^\d{4}-\d{2}-\d{2}$' }
+    AgentIncludeMarket:
+      name: include_market
+      in: query
+      schema: { type: boolean, default: false }
+    AgentIncludeProjection:
+      name: include_projection
+      in: query
+      schema: { type: boolean, default: false }
+  schemas:
+    AgentPortfolioTeam:
+      type: object
+      required: [team_id, team, abbreviation, ownership_percentage, original_ownership_percentage, cost_basis, trade_paid, trade_received, current_mtm, realized_return, net_mtm, net_return, value_source, wins, losses, ties, point_differential, playoff_status, playoff_seed, market_status, market_status_reasons]
+      properties:
+        team_id: { type: number }
+        team: { type: string }
+        abbreviation: { type: ["string", "null"] }
+        ownership_percentage: { type: number }
+        original_ownership_percentage: { type: number }
+        cost_basis: { type: number }
+        trade_paid: { type: number }
+        trade_received: { type: number }
+        current_mtm: { type: ["number", "null"] }
+        realized_return: { type: ["number", "null"] }
+        net_mtm: { type: ["number", "null"] }
+        net_return: { type: ["number", "null"] }
+        value_source: { type: string, enum: [calculated, legacy, unavailable] }
+        wins: { type: ["number", "null"] }
+        losses: { type: ["number", "null"] }
+        ties: { type: ["number", "null"] }
+        point_differential: { type: ["number", "null"] }
+        playoff_status: { type: ["string", "null"] }
+        playoff_seed: { type: ["number", "null"] }
+        market_status:
+          type: ["string", "null"]
+          enum: [live, stale, null]
+          description: Quality of the Kalshi MTM inputs; null when no authoritative MTM is available.
+        market_status_reasons:
+          type: array
+          items: { type: string }
+    AgentOwnerPortfolio:
+      type: object
+      required: [owner, season, calcutta_id, basis, through_period, total_cost, current_mtm, realized_return, total_return, roi, calculation_status, market_status, market_status_reasons, teams]
+      properties:
+        owner: { type: string }
+        season: { type: number }
+        calcutta_id: { type: number }
+        basis: { type: string, enum: [realized, mtm] }
+        through_period: { type: ["number", "null"] }
+        total_cost: { type: number }
+        current_mtm: { type: ["number", "null"] }
+        realized_return: { type: ["number", "null"] }
+        total_return: { type: ["number", "null"] }
+        roi: { type: ["number", "null"] }
+        calculation_status: { type: string, enum: [calculated, legacy, mixed, unavailable] }
+        market_status:
+          type: ["string", "null"]
+          enum: [live, stale, null]
+        market_status_reasons:
+          type: array
+          items: { type: string }
+        teams:
+          type: array
+          items: { $ref: "#/components/schemas/AgentPortfolioTeam" }
+    AgentOwnerSummary:
+      type: object
+      required: [owner, season, calcutta_id, team_count, total_cost, current_mtm, realized_return, total_return, roi, basis, through_period, calculation_status]
+      properties:
+        owner: { type: string }
+        season: { type: number }
+        calcutta_id: { type: number }
+        team_count: { type: number }
+        total_cost: { type: number }
+        current_mtm: { type: ["number", "null"] }
+        realized_return: { type: ["number", "null"] }
+        total_return: { type: ["number", "null"] }
+        roi: { type: ["number", "null"] }
+        basis: { type: string, enum: [realized, mtm] }
+        through_period: { type: ["number", "null"] }
+        calculation_status: { type: string, enum: [calculated, legacy, mixed, unavailable] }
+    AgentOwnerPerformance:
+      type: object
+      required: [owner, season, calcutta_id, basis, through_period, teams, calculation_status]
+      properties:
+        owner: { type: string }
+        season: { type: number }
+        calcutta_id: { type: number }
+        basis: { type: string, enum: [realized, mtm] }
+        through_period: { type: ["number", "null"] }
+        calculation_status: { type: string, enum: [calculated, legacy, mixed, unavailable] }
+        teams:
+          type: array
+          items: { $ref: "#/components/schemas/AgentPortfolioTeam" }
+    AgentMarket:
+      type: ["object", "null"]
+      required: [snapshot_at, source, spread, home_moneyline, away_moneyline, home_implied_probability, away_implied_probability, total]
+      properties:
+        snapshot_at: { type: string, format: date-time }
+        source: { type: string }
+        spread: { type: ["number", "null"] }
+        home_moneyline: { type: ["number", "null"] }
+        away_moneyline: { type: ["number", "null"] }
+        home_implied_probability: { type: ["number", "null"] }
+        away_implied_probability: { type: ["number", "null"] }
+        total: { type: ["number", "null"] }
+    AgentProjection:
+      type: ["object", "null"]
+      required: [snapshot_at, source, model_name, home_win_probability, away_win_probability, projected_home_score, projected_away_score, projected_point_differential]
+      properties:
+        snapshot_at: { type: string, format: date-time }
+        source: { type: string }
+        model_name: { type: string }
+        home_win_probability: { type: ["number", "null"] }
+        away_win_probability: { type: ["number", "null"] }
+        projected_home_score: { type: ["number", "null"] }
+        projected_away_score: { type: ["number", "null"] }
+        projected_point_differential: { type: ["number", "null"] }
+    AgentGame:
+      type: object
+      required: [game_id, source_game_id, database_id, week, date, kickoff_at, timezone, away_team, away_abbreviation, home_team, home_abbreviation, venue, network, status, away_score, home_score, is_marquee, point_diff_multiplier, source, updated_at, market, projection]
+      properties:
+        game_id: { type: string }
+        source_game_id: { type: string }
+        database_id: { type: number }
+        week: { type: number }
+        date: { type: string, format: date }
+        kickoff_at: { type: ["string", "null"] }
+        timezone: { type: string }
+        away_team: { type: string }
+        away_abbreviation: { type: ["string", "null"] }
+        home_team: { type: string }
+        home_abbreviation: { type: ["string", "null"] }
+        venue: { type: ["string", "null"] }
+        network: { type: ["string", "null"] }
+        status: { type: string }
+        away_score: { type: ["number", "null"] }
+        home_score: { type: ["number", "null"] }
+        is_marquee: { type: ["boolean", "null"] }
+        point_diff_multiplier: { type: ["number", "null"] }
+        source: { type: string }
+        updated_at: { type: string, format: date-time }
+        market: { $ref: "#/components/schemas/AgentMarket" }
+        projection: { $ref: "#/components/schemas/AgentProjection" }
+    AgentSchedule:
+      type: object
+      required: [season, calcutta_id, games]
+      properties:
+        season: { type: number }
+        calcutta_id: { type: number }
+        games:
+          type: array
+          items: { $ref: "#/components/schemas/AgentGame" }
+    AgentTeamScheduleGame:
+      allOf:
+        - $ref: "#/components/schemas/AgentGame"
+        - type: object
+          required: [opponent, home_away, current_calcutta_value, projected_ev_impact]
+          properties:
+            opponent: { type: string }
+            home_away: { type: string, enum: [home, away] }
+            current_calcutta_value: { type: ["number", "null"] }
+            projected_ev_impact: { type: ["number", "null"] }
+    AgentTeamSchedule:
+      type: object
+      required: [season, calcutta_id, team, games, ownership, record]
+      properties:
+        season: { type: number }
+        calcutta_id: { type: number }
+        team: { type: string }
+        games:
+          type: array
+          items: { $ref: "#/components/schemas/AgentTeamScheduleGame" }
+        ownership:
+          type: array
+          items:
+            type: object
+            additionalProperties: true
+        record:
+          type: ["object", "null"]
+          additionalProperties: true
+    AgentGameDetail:
+      type: object
+      required: [game, market, projection, calcutta]
+      properties:
+        game: { $ref: "#/components/schemas/AgentGame" }
+        market: { $ref: "#/components/schemas/AgentMarket" }
+        projection: { $ref: "#/components/schemas/AgentProjection" }
+        calcutta:
+          type: object
+          additionalProperties: true
+    AgentPointsRule:
+      type: object
+      required: [rule_name, metric, value, unit, multiplier, description]
+      properties:
+        rule_name: { type: string }
+        metric: { type: string }
+        value: { type: ["number", "null"] }
+        unit: { type: string }
+        multiplier: { type: ["number", "null"] }
+        description: { type: string }
+    AgentPointsRubric:
+      type: object
+      required: [season, calcutta_id, starting_points, rules]
+      properties:
+        season: { type: number }
+        calcutta_id: { type: number }
+        starting_points: { type: number }
+        rules:
+          type: array
+          items: { $ref: "#/components/schemas/AgentPointsRule" }
+    AgentConsortiumLeaderboardRow:
+      type: object
+      required: [rank, consortium, owner_count, total_cost, realized_return, current_mtm, net_return, net_mtm, roi, market_status, market_status_reasons]
+      properties:
+        rank: { type: number }
+        consortium: { type: string }
+        owner_count: { type: number }
+        total_cost: { type: number }
+        realized_return: { type: ["number", "null"] }
+        current_mtm: { type: ["number", "null"] }
+        net_return: { type: ["number", "null"] }
+        net_mtm: { type: ["number", "null"] }
+        roi: { type: ["number", "null"] }
+        market_status:
+          type: ["string", "null"]
+          enum: [live, stale, null]
+        market_status_reasons:
+          type: array
+          items: { type: string }
+    AgentConsortiumLeaderboard:
+      type: object
+      required: [season, calcutta_id, basis, through_period, membership_view, market_status, market_status_reasons, rows]
+      properties:
+        season: { type: number }
+        calcutta_id: { type: number }
+        basis: { type: string, enum: [realized, mtm] }
+        through_period: { type: ["number", "null"] }
+        membership_view: { type: string, enum: [historical, current] }
+        market_status:
+          type: ["string", "null"]
+          enum: [live, stale, null]
+        market_status_reasons:
+          type: array
+          items: { type: string }
+        rows:
+          type: array
+          items: { $ref: "#/components/schemas/AgentConsortiumLeaderboardRow" }
+    HealthStatus:
+      type: object
+      properties:
+        status:
+          type: string
+      required: [status]
+
+    ErrorResponse:
+      type: object
+      properties:
+        error:
+          type: string
+      required: [error]
+
+    NflStandingsRefreshJobInput:
+      type: object
+      additionalProperties: false
+      properties:
+        job:
+          type: string
+          enum: [standings]
+          default: standings
+        force:
+          type: boolean
+          default: false
+
+    NflStandingsRefreshJobResponse:
+      type: object
+      properties:
+        job:
+          type: string
+          enum: [standings]
+        ran:
+          type: boolean
+        reason:
+          type: string
+          enum: [no-games-live, already-running, already-current]
+        teamsUpdated:
+          type: number
+        durationMs:
+          type: number
+      required: [job, ran, durationMs]
+
+    Season:
+      type: object
+      properties:
+        id:
+          type: number
+        year:
+          type: number
+        isActive:
+          type: boolean
+        isComplete:
+          type: boolean
+        label:
+          type: string
+      required: [id, year, isActive, isComplete, label]
+
+    SeasonInput:
+      type: object
+      properties:
+        year:
+          type: number
+        isActive:
+          type: boolean
+        isComplete:
+          type: boolean
+        label:
+          type: string
+      required: [year, label]
+
+    CalcuttaOption:
+      type: object
+      properties:
+        id:
+          type: number
+        seasonId:
+          type: number
+        name:
+          type: string
+        sport:
+          type: string
+        year:
+          type: number
+        isActive:
+          type: boolean
+        isComplete:
+          type: boolean
+        isCanonical:
+          type: boolean
+      required: [id, seasonId, name, sport, year, isActive, isComplete, isCanonical]
+
+    Bidder:
+      type: object
+      properties:
+        id:
+          type: number
+        name:
+          type: string
+        consortium:
+          type: ["string", "null"]
+          description: Consortium assigned to this bidder, if any.
+      required: [id, name, consortium]
+
+    BidderSummary:
+      type: object
+      properties:
+        id:
+          type: number
+        name:
+          type: string
+        consortium:
+          type: ["string", "null"]
+          description: Consortium assigned to this bidder, if any.
+        teamCount:
+          type: number
+        totalPaid:
+          type: number
+        teams:
+          type: array
+          items:
+            $ref: "#/components/schemas/TeamRef"
+      required: [id, name, consortium, teamCount, totalPaid, teams]
+
+    TeamRef:
+      type: object
+      properties:
+        id:
+          type: number
+        name:
+          type: string
+        conference:
+          type: string
+        division:
+          type: string
+        bidAmount:
+          type: number
+        ownershipShare:
+          type: number
+      required: [id, name, conference, division, bidAmount, ownershipShare]
+
+    BidderInput:
+      type: object
+      properties:
+        name:
+          type: string
+          minLength: 1
+          maxLength: 120
+        calcuttaId:
+          type: number
+      required: [name]
+
+    BidderUpdate:
+      type: object
+      properties:
+        name:
+          type: string
+          minLength: 1
+          maxLength: 120
+        calcuttaId:
+          type: number
+
+    Team:
+      type: object
+      properties:
+        id:
+          type: number
+        name:
+          type: string
+        conference:
+          type: string
+          enum: [AFC, NFC]
+        division:
+          type: string
+          enum: [East, North, South, West]
+        bidAmount:
+          type: number
+        owners:
+          type: array
+          items:
+            $ref: "#/components/schemas/TeamOwner"
+      required: [id, name, conference, division, bidAmount, owners]
+
+    TeamOwner:
+      type: object
+      properties:
+        bidderId:
+          type: number
+        bidderName:
+          type: string
+        ownershipShare:
+          type: number
+      required: [bidderId, bidderName, ownershipShare]
+
+    ResultTeamOwner:
+      type: object
+      description: Signed, trade-aware owner economics for a result team row.
+      properties:
+        bidderId:
+          type: number
+        bidderName:
+          type: string
+        ownershipShare:
+          type: number
+          description: Signed effective fractional share; negative values represent shorts.
+        cost:
+          type: number
+          description: Owner-specific signed cost basis after approved trades.
+        realizedGross:
+          type: number
+          description: Owner-specific realized gross return.
+        net:
+          type: number
+          description: Owner-specific realized gross return less signed cost basis.
+        mtmGross:
+          type: number
+          description: Owner-specific mark-to-market gross return.
+        mtmNet:
+          type: number
+          description: Owner-specific mark-to-market gross return less signed cost basis.
+        ptsToBreakeven:
+          type: number
+          nullable: true
+          description: Signed points to breakeven for this owner position, when point value is available.
+      required: [bidderId, bidderName, ownershipShare, cost, realizedGross, net, mtmGross, mtmNet, ptsToBreakeven]
+
+    OwnershipSegment:
+      type: object
+      description: An original auction stake or one signed leg of an approved trade.
+      properties:
+        bidderId:
+          type: number
+        bidderName:
+          type: string
+        ownershipShare:
+          type: number
+          description: Signed fractional share. For example, 2 is 200% and -2 is a 200% sale.
+        source:
+          type: string
+          enum: [primary, trade]
+        tradeDirection:
+          type: string
+          enum: [acquired, sold]
+        tradeId:
+          type: number
+        counterpartyBidderId:
+          type: number
+        counterpartyBidderName:
+          type: string
+      required: [bidderId, bidderName, ownershipShare, source]
+
+    TeamInput:
+      type: object
+      properties:
+        name:
+          type: string
+          minLength: 1
+        conference:
+          type: string
+          enum: [AFC, NFC]
+        division:
+          type: string
+          enum: [East, North, South, West]
+        bidAmount:
+          type: number
+          minimum: 0
+        season:
+          type: number
+        calcuttaId:
+          type: number
+        sport:
+          type: string
+          enum: [NFL, CFB]
+          default: NFL
+        owners:
+          type: array
+          items:
+            $ref: "#/components/schemas/OwnerInput"
+          minItems: 1
+      required: [name, conference, division, bidAmount, owners]
+
+    TeamUpdate:
+      type: object
+      properties:
+        name:
+          type: string
+          minLength: 1
+        conference:
+          type: string
+          enum: [AFC, NFC]
+        division:
+          type: string
+          enum: [East, North, South, West]
+        bidAmount:
+          type: number
+          minimum: 0
+        season:
+          type: number
+        calcuttaId:
+          type: number
+        sport:
+          type: string
+          enum: [NFL, CFB]
+          default: NFL
+        owners:
+          type: array
+          items:
+            $ref: "#/components/schemas/OwnerInput"
+          minItems: 1
+
+    OwnerInput:
+      type: object
+      properties:
+        bidderId:
+          type: number
+        ownershipShare:
+          type: number
+      required: [bidderId, ownershipShare]
+
+    # Results (Calcutta Returns format)
+    TeamResultRow:
+      type: object
+      properties:
+        teamId:
+          type: number
+        teamName:
+          type: string
+        conference:
+          type: string
+        division:
+          type: string
+        owners:
+          type: array
+          items:
+            $ref: "#/components/schemas/ResultTeamOwner"
+
+        ownershipSegments:
+          type: array
+          items:
+            $ref: "#/components/schemas/OwnershipSegment"
+        cost:
+          type: number
+        wins:
+          type: number
+        losses:
+          type: number
+        ties:
+          type: number
+        ptDiff:
+          type: number
+        playoffStatus:
+          type: string
+          enum: [unknown, alive, clinched, eliminated]
+        startingPoints:
+          type: number
+        draftOrder:
+          type: ["number", "null"]
+        playoffBerth:
+          type: boolean
+        divRound:
+          type: boolean
+        confRound:
+          type: boolean
+        sbBerth:
+          type: boolean
+        winSuperBowl:
+          type: boolean
+        realizedReturn:
+          type: number
+          description: Realized gross dollars from normalized actual points.
+        realizedMultiple:
+          type: number
+        netReturn:
+          type: number
+          description: Realized gross return minus cost.
+        netPctReturn:
+          type: number
+          description: Net return as a decimal fraction of cost (for example, 0.25 means 25%).
+        markToMarket:
+          type: number
+          description: MTM gross dollars from normalized market points.
+        netMtm:
+          type: number
+          description: MTM gross return minus cost.
+        ptsToBreakeven:
+          type: ["number", "null"]
+          description: Remaining realized points needed to reach 1.0x cost, rounded to whole points.
+        marketStatus:
+          type: ["string", "null"]
+          enum: [live, stale, null]
+          description: Quality of the authoritative Kalshi MTM inputs; null when MTM coverage is unavailable.
+        marketStatusReasons:
+          type: array
+          items:
+            type: string
+          description: Human-readable warnings explaining stale MTM inputs.
+        seed:
+          type: ["number", "null"]
+          description: "Playoff seed within conference (1–7). Null if team missed playoffs or seed not yet set."
+      required:
+        - teamId
+        - teamName
+        - conference
+        - division
+        - owners
+        - ownershipSegments
+        - cost
+        - wins
+        - losses
+        - ties
+        - ptDiff
+        - playoffStatus
+        - startingPoints
+        - playoffBerth
+        - divRound
+        - confRound
+        - sbBerth
+        - winSuperBowl
+        - realizedReturn
+        - realizedMultiple
+        - netReturn
+        - netPctReturn
+        - markToMarket
+        - netMtm
+        - ptsToBreakeven
+        - marketStatus
+        - marketStatusReasons
+
+    NflStandingsImportInput:
+      type: object
+      properties:
+        seasonYear:
+          type: number
+          minimum: 2000
+          maximum: 2100
+        calcuttaId:
+          type: number
+      required: [seasonYear]
+
+    NflStandingsImportTeamPreview:
+      type: object
+      properties:
+        abbreviation:
+          type: string
+        teamId:
+          type: number
+        teamName:
+          type: string
+        registeredTeamName:
+          type: string
+        conference:
+          type: string
+        division:
+          type: string
+        wins:
+          type: number
+        losses:
+          type: number
+        ties:
+          type: number
+        ptDiff:
+          type: number
+        rank:
+          type: number
+        playoffStatus:
+          type: string
+          enum: [unknown, alive, clinched, eliminated]
+        changed:
+          type: boolean
+      required: [abbreviation, teamId, teamName, registeredTeamName, conference, division, wins, losses, ties, ptDiff, rank, playoffStatus, changed]
+
+    NflStandingsImportPreview:
+      type: object
+      properties:
+        seasonYear:
+          type: number
+        phase:
+          type: string
+          enum: [REG]
+        sourceUrl:
+          type: string
+        sourceHash:
+          type: string
+        fetchedAt:
+          type: string
+        teamCount:
+          type: number
+        replay:
+          type: boolean
+        teams:
+          type: array
+          items:
+            $ref: "#/components/schemas/NflStandingsImportTeamPreview"
+      required: [seasonYear, phase, sourceUrl, sourceHash, fetchedAt, teamCount, replay, teams]
+
+    NflStandingsImportResponse:
+      type: object
+      properties:
+        seasonYear:
+          type: number
+        source:
+          type: string
+        sourceUrl:
+          type: string
+        sourceHash:
+          type: string
+        fetchedAt:
+          type: string
+        importedTeams:
+          type: number
+        replay:
+          type: boolean
+      required: [seasonYear, source, sourceUrl, sourceHash, fetchedAt, importedTeams, replay]
+
+    SportPeriod:
+      type: object
+      properties:
+        sequence:
+          type: number
+          multipleOf: 1
+        label:
+          type: string
+        isPlayoff:
+          type: boolean
+      required: [sequence, label, isPlayoff]
+
+    PayoutMetric:
+      type: string
+      pattern: "^[a-z][a-z0-9_]*$"
+
+    PayoutRuleInput:
+      type: object
+      properties:
+        metric:
+          $ref: "#/components/schemas/PayoutMetric"
+        dollarsPerUnit:
+          type: number
+        playoffMultiplier:
+          type: number
+          minimum: 0
+          default: 2
+      required: [metric, dollarsPerUnit]
+
+    PayoutRuleRow:
+      type: object
+      properties:
+        metric:
+          $ref: "#/components/schemas/PayoutMetric"
+        dollarsPerUnit:
+          type: ["number", "null"]
+        playoffMultiplier:
+          type: ["number", "null"]
+          minimum: 0
+      required: [metric, dollarsPerUnit, playoffMultiplier]
+
+    PayoutRulesUpdate:
+      type: object
+      properties:
+        seasonYear:
+          type: number
+        calcuttaId:
+          type: number
+        startingPoints:
+          type: ["number", "null"]
+        normalizationDenominator:
+          type: ["number", "null"]
+        rules:
+          type: array
+          minItems: 1
+          items:
+            $ref: "#/components/schemas/PayoutRuleInput"
+      required: [seasonYear, rules]
+
+    TeamPeriodSnapshotInput:
+      type: object
+      properties:
+        teamId:
+          type: number
+        seasonYear:
+          type: number
+        calcuttaId:
+          type: number
+        periodSequence:
+          type: number
+          multipleOf: 1
+          minimum: 0
+          maximum: 22
+        basis:
+          type: string
+          enum: [realized, mtm]
+        wins:
+          type: number
+          minimum: 0
+        losses:
+          type: number
+          minimum: 0
+        ties:
+          type: number
+          minimum: 0
+        ordinaryWins:
+          type: number
+          minimum: 0
+        marqueeWins:
+          type: number
+          minimum: 0
+        ordinaryTies:
+          type: number
+          minimum: 0
+        marqueeTies:
+          type: number
+          minimum: 0
+        ordinaryPtDiff:
+          type: number
+        marqueePtDiff:
+          type: number
+        ptDiff:
+          type: number
+        playoffBerth:
+          type: number
+          minimum: 0
+          maximum: 1
+        divRound:
+          type: number
+          minimum: 0
+          maximum: 1
+        confRound:
+          type: number
+          minimum: 0
+          maximum: 1
+        sbBerth:
+          type: number
+          minimum: 0
+          maximum: 1
+        winSuperBowl:
+          type: number
+          minimum: 0
+          maximum: 1
+        playoffStatus:
+          type: string
+          enum: [unknown, alive, clinched, eliminated]
+      required: [teamId, seasonYear, periodSequence, basis]
+
+    TeamPeriodSnapshotRow:
+      type: object
+      properties:
+        teamId:
+          type: number
+        seasonYear:
+          type: number
+        periodSequence:
+          type: number
+          multipleOf: 1
+          minimum: 0
+          maximum: 22
+        periodLabel:
+          type: string
+        isPlayoff:
+          type: boolean
+        basis:
+          type: string
+          enum: [realized, mtm]
+        wins:
+          type: number
+        losses:
+          type: number
+        ties:
+          type: number
+        ordinaryWins:
+          type: number
+        marqueeWins:
+          type: number
+        ordinaryTies:
+          type: number
+        marqueeTies:
+          type: number
+        ordinaryPtDiff:
+          type: number
+        marqueePtDiff:
+          type: number
+        ptDiff:
+          type: number
+        playoffBerth:
+          type: number
+        divRound:
+          type: number
+        confRound:
+          type: number
+        sbBerth:
+          type: number
+        winSuperBowl:
+          type: number
+        playoffStatus:
+          type: string
+          enum: [unknown, alive, clinched, eliminated]
+        grossReturn:
+          type: number
+      required:
+        - teamId
+        - seasonYear
+        - periodSequence
+        - periodLabel
+        - isPlayoff
+        - basis
+        - wins
+        - losses
+        - ties
+        - ordinaryWins
+        - marqueeWins
+        - ordinaryTies
+        - marqueeTies
+        - ordinaryPtDiff
+        - marqueePtDiff
+        - ptDiff
+        - playoffBerth
+        - divRound
+        - confRound
+        - sbBerth
+        - winSuperBowl
+        - playoffStatus
+        - grossReturn
+
+    InitializeWeekZeroPointsInput:
+      type: object
+      properties:
+        seasonYear:
+          type: number
+          description: NFL season to initialize
+        calcuttaId:
+          type: number
+      required: [seasonYear]
+
+    WeekZeroPointsInitialization:
+      type: object
+      properties:
+        seasonYear:
+          type: number
+        periodSequence:
+          type: number
+        periodLabel:
+          type: string
+        teamCount:
+          type: number
+        realizedSnapshotsWritten:
+          type: number
+        mtmSnapshotsWritten:
+          type: number
+        snapshotsWritten:
+          type: number
+        alreadyInitialized:
+          type: boolean
+      required:
+        - seasonYear
+        - periodSequence
+        - periodLabel
+        - teamCount
+        - realizedSnapshotsWritten
+        - mtmSnapshotsWritten
+        - snapshotsWritten
+        - alreadyInitialized
+
+    OwnerResultRow:
+      type: object
+      properties:
+        bidderId:
+          type: number
+        bidderName:
+          type: string
+        consortium:
+          type: ["string", "null"]
+          description: Consortium assigned to this bidder, if any.
+        teamCount:
+          type: number
+        totalCost:
+          type: number
+        totalRealizedReturn:
+          type: number
+        totalNetReturn:
+          type: number
+        netPctReturn:
+          type: number
+          description: Net return as a decimal fraction of cost (for example, 0.25 means 25%).
+        totalMtm:
+          type: number
+          description: Total MTM gross dollars.
+        totalNetMtm:
+          type: number
+          description: Total MTM gross return minus signed cost basis.
+        marketStatus:
+          type: ["string", "null"]
+          enum: [live, stale, null]
+          description: Worst authoritative MTM quality among this owner's teams.
+        marketStatusReasons:
+          type: array
+          items:
+            type: string
+        teams:
+          type: array
+          items:
+            $ref: "#/components/schemas/TeamResultRow"
+      required:
+        - bidderId
+        - bidderName
+        - consortium
+        - teamCount
+        - totalCost
+        - totalRealizedReturn
+        - totalNetReturn
+        - netPctReturn
+        - totalMtm
+        - totalNetMtm
+        - marketStatus
+        - marketStatusReasons
+        - teams
+
+    HistoricalPool:
+      type: object
+      properties:
+        id:
+          type: number
+        editionNumber:
+          type: number
+        name:
+          type: string
+        sport:
+          type: string
+        formatKey:
+          type: string
+        seasonYear:
+          type: number
+        asOfDate:
+          type: ["string", "null"]
+        potSize:
+          type: ["number", "null"]
+          description: Historical pool pot size; null when the normalized source does not provide it.
+        potSizeAvailable:
+          type: boolean
+        entryPriceTotal:
+          type: ["number", "null"]
+          description: Sum of normalized auction entry prices.
+        entryPriceTotalAvailable:
+          type: boolean
+        entryPricePotDifference:
+          type: ["number", "null"]
+          description: Entry-price total less the recorded pot size.
+        entryPricePotDifferenceAvailable:
+          type: boolean
+        entryPricePotVarianceStatus:
+          type: string
+          enum: [unavailable, matched, known_variance, unexpected_variance]
+        status:
+          type: string
+      required:
+        - id
+        - editionNumber
+        - name
+        - sport
+        - formatKey
+        - seasonYear
+        - asOfDate
+        - potSize
+        - potSizeAvailable
+        - entryPriceTotal
+        - entryPriceTotalAvailable
+        - entryPricePotDifference
+        - entryPricePotDifferenceAvailable
+        - entryPricePotVarianceStatus
+        - status
+
+    HistoricalPoolEntryTeam:
+      type: object
+      properties:
+        id:
+          type: number
+        name:
+          type: string
+        seed:
+          type: ["number", "null"]
+        resolved:
+          type: boolean
+      required: [id, name, seed, resolved]
+
+    HistoricalPoolEntryOwner:
+      type: object
+      properties:
+        ownerId:
+          type: number
+        ownerName:
+          type: string
+        label:
+          type: string
+        share:
+          type: number
+          description: Signed fractional ownership share.
+        source:
+          type: string
+          enum: [primary, trade]
+        consortium:
+          type: ["string", "null"]
+        rosterStatus:
+          type: string
+          enum: [mapped, unassigned, not_supplied]
+        rosterSourceOwnerLabel:
+          type: ["string", "null"]
+      required:
+        [ownerId, ownerName, label, share, source, consortium, rosterStatus, rosterSourceOwnerLabel]
+
+    HistoricalPoolEntry:
+      type: object
+      properties:
+        id:
+          type: number
+        label:
+          type: string
+        kind:
+          type: string
+          enum: [single, bundle, placeholder]
+        attributes:
+          type: ["object", "null"]
+          additionalProperties: true
+        price:
+          type: ["number", "null"]
+          description: Auction price; null when the normalized source does not provide it.
+        priceAvailable:
+          type: boolean
+        teams:
+          type: array
+          items:
+            $ref: "#/components/schemas/HistoricalPoolEntryTeam"
+        ownership:
+          type: array
+          items:
+            $ref: "#/components/schemas/HistoricalPoolEntryOwner"
+        tracking:
+          type: ["string", "null"]
+        points:
+          type: ["number", "null"]
+          description: Imported comparison points; null when the source did not provide points.
+        pointsAvailable:
+          type: boolean
+        payout:
+          type: ["number", "null"]
+          description: Imported comparison payout; null when the source did not provide a payout.
+        payoutAvailable:
+          type: boolean
+      required:
+        - id
+        - label
+        - kind
+        - attributes
+        - price
+        - priceAvailable
+        - teams
+        - ownership
+        - tracking
+        - points
+        - pointsAvailable
+        - payout
+        - payoutAvailable
+
+    HistoricalPoolOwner:
+      type: object
+      properties:
+        ownerId:
+          type: number
+        ownerName:
+          type: string
+        labels:
+          type: array
+          items:
+            type: string
+        lotCount:
+          type: number
+          description: Fractional number of auction lots held.
+        cost:
+          type: ["number", "null"]
+          description: Normalized historical cost; null when owner cost coverage is unavailable.
+        costAvailable:
+          type: boolean
+        payout:
+          type: ["number", "null"]
+          description: Normalized historical payout; null when owner payout coverage is unavailable.
+        payoutAvailable:
+          type: boolean
+        consortium:
+          type: ["string", "null"]
+        rosterStatus:
+          type: string
+          enum: [mapped, unassigned, not_supplied]
+        rosterSourceOwnerLabel:
+          type: ["string", "null"]
+      required:
+        - ownerId
+        - ownerName
+        - labels
+        - lotCount
+        - cost
+        - costAvailable
+        - payout
+        - payoutAvailable
+        - consortium
+        - rosterStatus
+        - rosterSourceOwnerLabel
+
+    HistoricalCrossPoolOwnerResult:
+      allOf:
+        - $ref: "#/components/schemas/HistoricalPoolOwner"
+        - type: object
+          properties:
+            poolId:
+              type: number
+            editionNumber:
+              type: number
+            poolName:
+              type: string
+          required:
+            - poolId
+            - editionNumber
+            - poolName
+
+    HistoricalPoolTrade:
+      type: object
+      properties:
+        id:
+          type: number
+        sheetRef:
+          type: ["string", "null"]
+        tradeDate:
+          type: ["string", "null"]
+        detail:
+          type: ["string", "null"]
+        scope:
+          type: string
+          enum: [entry, book, synthetic_book, sidebet, cash]
+        entryId:
+          type: ["number", "null"]
+        entryLabel:
+          type: ["string", "null"]
+        fromOwnerId:
+          type: ["number", "null"]
+        fromOwnerName:
+          type: ["string", "null"]
+        toOwnerId:
+          type: ["number", "null"]
+        toOwnerName:
+          type: ["string", "null"]
+        pct:
+          type: ["number", "null"]
+        cash:
+          type: ["number", "null"]
+          description: Trade cash; null when the source did not provide cash.
+        cashAvailable:
+          type: boolean
+        factor:
+          type: ["number", "null"]
+        basis:
+          type: ["string", "null"]
+          enum: [lion_king, net, null]
+        knownBookVariance:
+          type: boolean
+          description: True only for a reviewed, allowlisted difference between derived and booked cash.
+        derivedCash:
+          type: ["number", "null"]
+          description: Rules-derived book value for reviewed known variances.
+        derivedCashAvailable:
+          type: boolean
+        absoluteCashDifference:
+          type: ["number", "null"]
+          description: Absolute derived cash less absolute booked cash for a reviewed known variance.
+        absoluteCashDifferenceAvailable:
+          type: boolean
+        status:
+          type: string
+      required:
+        - id
+        - sheetRef
+        - tradeDate
+        - detail
+        - scope
+        - entryId
+        - entryLabel
+        - fromOwnerId
+        - fromOwnerName
+        - toOwnerId
+        - toOwnerName
+        - pct
+        - cash
+        - cashAvailable
+        - factor
+        - basis
+        - knownBookVariance
+        - derivedCash
+        - derivedCashAvailable
+        - absoluteCashDifference
+        - absoluteCashDifferenceAvailable
+        - status
+
+    ResultsAvailability:
+      type: object
+      properties:
+        latestPeriod:
+          type: ["number", "null"]
+          description: Latest period with at least one snapshot for the requested basis.
+        previousPeriod:
+          type: ["number", "null"]
+          description: Immediately preceding recorded period for the requested basis.
+      required: [latestPeriod, previousPeriod]
+
+    CalcuttaComparisonCell:
+      type: object
+      properties:
+        calcuttaId:
+          type: number
+        seasonId:
+          type: number
+        year:
+          type: number
+        label:
+          type: string
+        asOfDate:
+          type: ["string", "null"]
+        consortium:
+          type: ["string", "null"]
+        teamCount:
+          type: number
+        snapshotTeamCount:
+          type: number
+          description: Number of positions with a valid snapshot for the selected basis and period.
+        signedShare:
+          type: number
+          description: Net signed ownership share. A negative value represents a net short.
+        exposure:
+          type: number
+          description: Absolute dollar exposure across long and short position legs.
+        totalCost:
+          type: number
+        totalRealizedReturn:
+          type: number
+        totalNetReturn:
+          type: number
+        totalMtm:
+          type: number
+          description: Total MTM gross dollars.
+        totalNetMtm:
+          type: number
+          description: Total MTM gross return minus signed cost basis.
+        netPctReturn:
+          type: number
+          description: Net return as a decimal fraction of cost (for example, 0.25 means 25%).
+        snapshotAvailable:
+          type: boolean
+          description: False when this Calcutta has payout rules but no valid snapshot for the selected basis and period.
+        throughPeriod:
+          type: ["number", "null"]
+        periodLabel:
+          type: ["string", "null"]
+      required:
+        - calcuttaId
+        - seasonId
+        - year
+        - label
+        - asOfDate
+        - consortium
+        - teamCount
+        - snapshotTeamCount
+        - signedShare
+        - exposure
+        - totalCost
+        - totalRealizedReturn
+        - totalNetReturn
+        - totalMtm
+        - totalNetMtm
+        - netPctReturn
+        - snapshotAvailable
+        - throughPeriod
+        - periodLabel
+
+    CalcuttaComparisonAggregate:
+      type: object
+      properties:
+        teamCount:
+          type: number
+        snapshotTeamCount:
+          type: number
+        missingSnapshotCount:
+          type: number
+        snapshotAvailable:
+          type: boolean
+        signedShare:
+          type: number
+        exposure:
+          type: number
+        totalCost:
+          type: number
+        totalRealizedReturn:
+          type: number
+        totalNetReturn:
+          type: number
+        totalMtm:
+          type: number
+          description: Total MTM gross dollars.
+        totalNetMtm:
+          type: number
+          description: Total MTM gross return minus signed cost basis.
+        netPctReturn:
+          type: number
+          description: Net return as a decimal fraction of cost (for example, 0.25 means 25%).
+      required:
+        - teamCount
+        - snapshotTeamCount
+        - missingSnapshotCount
+        - snapshotAvailable
+        - signedShare
+        - exposure
+        - totalCost
+        - totalRealizedReturn
+        - totalNetReturn
+        - totalMtm
+        - totalNetMtm
+        - netPctReturn
+
+    CalcuttaComparisonRow:
+      type: object
+      properties:
+        id:
+          type: string
+        name:
+          type: string
+        bidderId:
+          type: ["number", "null"]
+        bidderName:
+          type: ["string", "null"]
+        consortium:
+          type: ["string", "null"]
+        calcuttas:
+          type: array
+          items:
+            anyOf:
+              - $ref: "#/components/schemas/CalcuttaComparisonCell"
+              - type: "null"
+        aggregate:
+          $ref: "#/components/schemas/CalcuttaComparisonAggregate"
+      required:
+        - id
+        - name
+        - bidderId
+        - bidderName
+        - consortium
+        - calcuttas
+        - aggregate
+
+    CalcuttaComparisonResponse:
+      type: object
+      properties:
+        groupBy:
+          type: string
+          enum: [bidder, consortium]
+        calcuttas:
+          type: array
+          items:
+            type: object
+            properties:
+              id:
+                type: number
+              seasonId:
+                type: number
+              year:
+                type: number
+              label:
+                type: string
+              asOfDate:
+                type: ["string", "null"]
+            required: [id, seasonId, year, label, asOfDate]
+        rows:
+          type: array
+          items:
+            $ref: "#/components/schemas/CalcuttaComparisonRow"
+      required: [groupBy, calcuttas, rows]
+
+    TeamResultInput:
+      type: object
+      properties:
+        teamId:
+          type: number
+        seasonYear:
+          type: number
+        calcuttaId:
+          type: number
+        wins:
+          type: number
+          minimum: 0
+        losses:
+          type: number
+          minimum: 0
+        ties:
+          type: number
+          minimum: 0
+        ptDiff:
+          type: number
+        playoffStatus:
+          type: string
+          enum: [unknown, alive, clinched, eliminated]
+        startingPoints:
+          type: number
+        draftOrder:
+          type: ["number", "null"]
+        playoffBerth:
+          type: boolean
+        divRound:
+          type: boolean
+        confRound:
+          type: boolean
+        sbBerth:
+          type: boolean
+        winSuperBowl:
+          type: boolean
+        realizedReturn:
+          type: number
+        realizedMultiple:
+          type: number
+        netReturn:
+          type: number
+        netPctReturn:
+          type: number
+          description: Net return as a decimal fraction of cost (for example, 0.25 means 25%).
+        markToMarket:
+          type: number
+      required: [teamId, seasonYear]
+
+    # Trades
+    TradeRow:
+      type: object
+      properties:
+        id:
+          type: number
+        seasonYear:
+          type: number
+        teamId:
+          type: number
+        teamName:
+          type: string
+        fromBidderId:
+          type: number
+        fromBidderName:
+          type: string
+        toBidderId:
+          type: number
+        toBidderName:
+          type: string
+        price:
+          type: number
+        percentage:
+          type: number
+          description: Percentage of team traded (0–100). Default 100 = full transfer.
+        status:
+          type: string
+          enum: [pending, approved, rejected, voided]
+          description: Approval status. New trades start as pending; an approved trade may later be voided.
+        decisionAt:
+          type: ["string", "null"]
+          format: date-time
+          description: Time the commissioner decision was recorded. Null for pending or legacy records.
+        decisionSource:
+          type: ["string", "null"]
+          description: Trusted channel that recorded the decision. Null for pending or legacy records.
+        voidedAt:
+          type: ["string", "null"]
+          format: date-time
+          description: Time the approved trade was voided. Null unless the trade is voided.
+        voidedSource:
+          type: ["string", "null"]
+          description: Trusted channel that recorded the void. Null unless the trade is voided.
+        voidReason:
+          type: ["string", "null"]
+          description: Required commissioner explanation when the trade is voided.
+        tradeDate:
+          type: string
+        notes:
+          type: ["string", "null"]
+      required:
+        - id
+        - seasonYear
+        - teamId
+        - teamName
+        - fromBidderId
+        - fromBidderName
+        - toBidderId
+        - toBidderName
+        - price
+        - percentage
+        - status
+        - decisionAt
+        - decisionSource
+        - voidedAt
+        - voidedSource
+        - voidReason
+        - tradeDate
+
+    TradeInput:
+      type: object
+      properties:
+        seasonYear:
+          type: number
+        calcuttaId:
+          type: number
+        teamId:
+          type: number
+        fromBidderId:
+          type: number
+        toBidderId:
+          type: number
+        price:
+          type: number
+          description: Trade price. If omitted, defaults to the team's original draft cost × percentage / 100.
+        percentage:
+          type: number
+          description: Percentage of team traded (0–100). Defaults to 100.
+        tradeDate:
+          type: string
+        notes:
+          type: string
+          maxLength: 2000
+      required: [seasonYear, teamId, fromBidderId, toBidderId, tradeDate]
+
+    TradeUpdate:
+      type: object
+      properties:
+        calcuttaId:
+          type: number
+        price:
+          type: number
+        percentage:
+          type: number
+        tradeDate:
+          type: string
+        notes:
+          type: string
+          maxLength: 2000
+
+    TradeStatusUpdate:
+      oneOf:
+        - type: object
+          additionalProperties: false
+          properties:
+            calcuttaId:
+              type: number
+            status:
+              type: string
+              enum: [approved, rejected]
+            confirmed:
+              type: boolean
+              enum: [true]
+              description: Must be true to record this irreversible commissioner decision.
+          required: [status, confirmed]
+        - type: object
+          additionalProperties: false
+          properties:
+            calcuttaId:
+              type: number
+            status:
+              type: string
+              enum: [voided]
+            confirmed:
+              type: boolean
+              enum: [true]
+              description: Must be true to explicitly confirm this irreversible void.
+            reason:
+              type: string
+              minLength: 1
+              description: Commissioner explanation for voiding the approved trade.
+          required: [status, confirmed, reason]
+
+    # MTM
+    MtmPipelineAttempt:
+      type: object
+      properties:
+        id:
+          type: number
+        status:
+          type: string
+          enum: [ok, failed]
+        trigger:
+          type: string
+          enum: [scheduled, manual]
+        asOf:
+          type: string
+          format: date-time
+        createdAt:
+          type: string
+          format: date-time
+        methodVersion:
+          type: string
+        error:
+          type: ["string", "null"]
+        quoteCount:
+          type: number
+      required: [id, status, trigger, asOf, createdAt, methodVersion, error, quoteCount]
+
+    MtmPipelineReceivedMarket:
+      type: object
+      properties:
+        series:
+          type: string
+        quoteCount:
+          type: number
+        teams:
+          type: array
+          items:
+            type: string
+      required: [series, quoteCount, teams]
+
+    MtmPipelineEvidenceQuote:
+      type: object
+      properties:
+        source:
+          type: string
+        series:
+          type: string
+        ticker:
+          type: string
+        team:
+          type: ["string", "null"]
+        bid:
+          type: ["number", "null"]
+        ask:
+          type: ["number", "null"]
+        strike:
+          type: ["number", "null"]
+        volume:
+          type: ["number", "null"]
+        fetchedAt:
+          type: string
+          format: date-time
+      required: [source, series, ticker, team, bid, ask, strike, volume, fetchedAt]
+
+    MtmPipelineEvidenceDetail:
+      allOf:
+        - $ref: "#/components/schemas/MtmPipelineAttempt"
+        - type: object
+          properties:
+            diagnostics:
+              type: ["object", "null"]
+              additionalProperties: true
+            receivedMarkets:
+              type: array
+              items:
+                $ref: "#/components/schemas/MtmPipelineReceivedMarket"
+            failedSources:
+              type: array
+              items:
+                type: string
+            quotes:
+              type: array
+              items:
+                $ref: "#/components/schemas/MtmPipelineEvidenceQuote"
+          required: [diagnostics, receivedMarkets, failedSources, quotes]
+
+    MtmPipelineEvidenceResponse:
+      type: object
+      properties:
+        attempts:
+          type: array
+          items:
+            $ref: "#/components/schemas/MtmPipelineAttempt"
+        selectedAttempt:
+          oneOf:
+            - $ref: "#/components/schemas/MtmPipelineEvidenceDetail"
+            - type: "null"
+      required: [attempts, selectedAttempt]
+
+    MtmSnapshot:
+      type: object
+      properties:
+        id:
+          type: number
+        teamId:
+          type: number
+        seasonId:
+          type: number
+        weekNum:
+          type: ["number", "null"]
+        snapshotDate:
+          type: string
+        mtmValue:
+          type: number
+        snapshotKey:
+          type: ["string", "null"]
+        source:
+          type: string
+        capturedAt:
+          type: ["string", "null"]
+        marketStatus:
+          type: ["string", "null"]
+          enum: [live, stale, incomplete, manual, null]
+        bankedPoints:
+          type: ["number", "null"]
+        seasonEquityPoints:
+          type: ["number", "null"]
+        bonusEquityPoints:
+          type: ["number", "null"]
+        totalPoints:
+          type: ["number", "null"]
+        normalizedShare:
+          type: ["number", "null"]
+      required: [id, teamId, seasonId, snapshotDate, mtmValue]
+
+    MtmWeekData:
+      type: object
+      properties:
+        snapshotDate:
+          type: string
+        weekNum:
+          type: ["number", "null"]
+        label:
+          type: string
+        source:
+          type: string
+        capturedAt:
+          type: ["string", "null"]
+        potSize:
+          type: number
+        rawPointTotal:
+          type: number
+        normalizedShareTotal:
+          type: number
+        marketStatusCounts:
+          $ref: "#/components/schemas/MtmMarketStatusCounts"
+        ownerTotals:
+          type: array
+          items:
+            $ref: "#/components/schemas/MtmOwnerWeek"
+        teamValues:
+          type: array
+          items:
+            $ref: "#/components/schemas/MtmTeamWeek"
+      required:
+        [
+          snapshotDate,
+          label,
+          source,
+          potSize,
+          rawPointTotal,
+          normalizedShareTotal,
+          marketStatusCounts,
+          ownerTotals,
+          teamValues,
+        ]
+
+    MtmMarketStatusCounts:
+      type: object
+      properties:
+        live:
+          type: number
+        stale:
+          type: number
+        incomplete:
+          type: number
+        manual:
+          type: number
+      required: [live, stale, incomplete, manual]
+
+    MtmOwnerWeek:
+      type: object
+      properties:
+        bidderName:
+          type: string
+        mtmTotal:
+          type: number
+      required: [bidderName, mtmTotal]
+
+    MtmTeamWeek:
+      type: object
+      properties:
+        teamId:
+          type: number
+        teamName:
+          type: string
+        ownerName:
+          type: string
+        mtmValue:
+          type: number
+        source:
+          type: string
+        capturedAt:
+          type: ["string", "null"]
+        marketStatus:
+          type: string
+          enum: [live, stale, incomplete, manual]
+        contractSetId:
+          type: ["string", "null"]
+        marketStatusReasons:
+          type: array
+          items:
+            type: string
+        bankedPoints:
+          type: ["number", "null"]
+        seasonEquityPoints:
+          type: ["number", "null"]
+        bonusEquityPoints:
+          type: ["number", "null"]
+        totalPoints:
+          type: ["number", "null"]
+        normalizedShare:
+          type: ["number", "null"]
+        winTotalLine:
+          type: ["number", "null"]
+        winTotalOverProbability:
+          type: ["number", "null"]
+        rawExpectedWins:
+          type: ["number", "null"]
+        expectedWins:
+          type: ["number", "null"]
+        playoffProbability:
+          type: ["number", "null"]
+        divisionalProbability:
+          type: ["number", "null"]
+        conferenceGameProbability:
+          type: ["number", "null"]
+        superBowlProbability:
+          type: ["number", "null"]
+        championshipProbability:
+          type: ["number", "null"]
+        regularSeasonMethod:
+          type: ["string", "null"]
+        intermediateRoundMethod:
+          type: ["string", "null"]
+        marketQuotes:
+          type: array
+          items:
+            $ref: "#/components/schemas/MtmMarketQuote"
+      required:
+        [
+          teamId,
+          teamName,
+          ownerName,
+          mtmValue,
+          source,
+          marketStatus,
+          marketStatusReasons,
+          marketQuotes,
+        ]
+
+    MtmMarketQuote:
+      type: object
+      properties:
+        ticker:
+          type: string
+        kind:
+          type: string
+          enum: [win_threshold, playoff, conference_champion, championship]
+        line:
+          type: ["number", "null"]
+        bid:
+          type: ["number", "null"]
+        ask:
+          type: ["number", "null"]
+        last:
+          type: ["number", "null"]
+        probability:
+          type: ["number", "null"]
+        spread:
+          type: ["number", "null"]
+        bidDepth:
+          type: ["number", "null"]
+        askDepth:
+          type: ["number", "null"]
+        quality:
+          type: string
+          enum: [live, stale, unavailable]
+        updatedAt:
+          type: ["string", "null"]
+        derived:
+          type: boolean
+      required:
+        [
+          ticker,
+          kind,
+          line,
+          bid,
+          ask,
+          last,
+          probability,
+          spread,
+          bidDepth,
+          askDepth,
+          quality,
+          updatedAt,
+          derived,
+        ]
+
+    MtmData:
+      type: object
+      properties:
+        weeks:
+          type: array
+          items:
+            $ref: "#/components/schemas/MtmWeekData"
+        teams:
+          type: array
+          items:
+            $ref: "#/components/schemas/MtmTeamSeries"
+        owners:
+          type: array
+          items:
+            $ref: "#/components/schemas/MtmOwnerSeries"
+      required: [weeks, teams, owners]
+
+    MtmTeamSeries:
+      type: object
+      properties:
+        teamId:
+          type: number
+        teamName:
+          type: string
+        conference:
+          type: string
+        ownerName:
+          type: string
+        weeklyValues:
+          type: array
+          items:
+            type: number
+      required: [teamId, teamName, conference, ownerName, weeklyValues]
+
+    MtmOwnerSeries:
+      type: object
+      properties:
+        bidderName:
+          type: string
+        weeklyTotals:
+          type: array
+          items:
+            type: number
+      required: [bidderName, weeklyTotals]
+
+    MtmSnapshotInput:
+      type: object
+      properties:
+        teamId:
+          type: number
+        seasonYear:
+          type: number
+        calcuttaId:
+          type: number
+        weekNum:
+          type: number
+          description: Optional week label (0=pre-season, 1–18=regular, 19+=playoffs)
+        snapshotDate:
+          type: string
+          description: "Date as YYYY-MM-DD. Defaults to today. Same-day submissions overwrite the previous value."
+        mtmValue:
+          type: number
+      required: [teamId, seasonYear, mtmValue]
+
+    WeekZeroCaptureInput:
+      type: object
+      properties:
+        seasonYear:
+          type: number
+        calcuttaId:
+          type: number
+        snapshotDate:
+          type: string
+          description: Optional Week 0 calendar date as YYYY-MM-DD. The first successful capture fixes this date for idempotent retries.
+      required: [seasonYear]
+
+    WeekZeroCaptureResult:
+      type: object
+      properties:
+        seasonYear:
+          type: number
+        snapshotDate:
+          type: string
+        capturedAt:
+          type: string
+        teamCount:
+          type: number
+        contractSetId:
+          type: string
+        potSize:
+          type: number
+        rawPointTotal:
+          type: number
+        normalizedShareTotal:
+          type: number
+        marketStatusCounts:
+          $ref: "#/components/schemas/MtmMarketStatusCounts"
+      required:
+        [
+          seasonYear,
+          snapshotDate,
+          capturedAt,
+          teamCount,
+          contractSetId,
+          potSize,
+          rawPointTotal,
+          normalizedShareTotal,
+          marketStatusCounts,
+        ]
+
+    # Summary
+    AuctionSummary:
+      type: object
+      properties:
+        potSize:
+          type: number
+        teamsAuctioned:
+          type: number
+        avgBidPerTeam:
+          type: number
+        mostExpensiveTeam:
+          nullable: true
+          allOf:
+            - $ref: "#/components/schemas/MostExpensiveTeam"
+        auctionResults:
+          type: array
+          items:
+            $ref: "#/components/schemas/AuctionResult"
+        conferenceBreakdown:
+          type: array
+          items:
+            $ref: "#/components/schemas/ConferenceBreakdown"
+      required:
+        - potSize
+        - teamsAuctioned
+        - avgBidPerTeam
+        - mostExpensiveTeam
+        - auctionResults
+        - conferenceBreakdown
+
+    MostExpensiveTeam:
+      type: object
+      properties:
+        name:
+          type: string
+        bidAmount:
+          type: number
+      required: [name, bidAmount]
+
+    AuctionResult:
+      type: object
+      properties:
+        teamId:
+          type: number
+        teamName:
+          type: string
+        winnerName:
+          type: string
+        bidAmount:
+          type: number
+        draftOrder:
+          type: number
+          nullable: true
+      required: [teamId, teamName, winnerName, bidAmount, draftOrder]
+
+    ConferenceBreakdown:
+      type: object
+      properties:
+        conference:
+          type: string
+        totalSpent:
+          type: number
+        teamCount:
+          type: number
+        avgBid:
+          type: number
+      required: [conference, totalSpent, teamCount, avgBid]
+
+    AuctionImportInput:
+      type: object
+      properties:
+        seasonYear:
+          type: number
+          description: Season year to replace from the configured complete AuctionPro export.
+        calcuttaId:
+          type: number
+      required: [seasonYear]
+
+    AuctionImportResult:
+      type: object
+      properties:
+        seasonYear:
+          type: number
+        importedTeams:
+          type: number
+        importedOwners:
+          type: number
+        source:
+          type: string
+      required: [seasonYear, importedTeams, importedOwners, source]

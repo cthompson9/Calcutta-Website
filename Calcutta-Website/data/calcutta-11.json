@@ -1,0 +1,3049 @@
+{
+ "edition": 11,
+ "name": "Calcutta XI",
+ "sport": "SOCCER",
+ "format_key": "WORLD_CUP_48",
+ "season_year": 2026,
+ "pot_size": 111930.0,
+ "as_of_date": "2026-06-11",
+ "normalization": {
+  "mode": "earned_total"
+ },
+ "periods": [
+  {
+   "key": "GROUP",
+   "seq": 1,
+   "label": "Pool Play (Group Stage)",
+   "kind": "group",
+   "weight": 1,
+   "is_scored": true
+  },
+  {
+   "key": "R32",
+   "seq": 2,
+   "label": "Round of 32",
+   "kind": "knockout",
+   "weight": 1,
+   "is_scored": true
+  },
+  {
+   "key": "R16",
+   "seq": 3,
+   "label": "Round of 16",
+   "kind": "knockout",
+   "weight": 1,
+   "is_scored": true
+  },
+  {
+   "key": "QF",
+   "seq": 4,
+   "label": "Quarterfinal",
+   "kind": "knockout",
+   "weight": 1,
+   "is_scored": true
+  },
+  {
+   "key": "SF",
+   "seq": 5,
+   "label": "Semifinal",
+   "kind": "knockout",
+   "weight": 1,
+   "is_scored": true
+  },
+  {
+   "key": "F",
+   "seq": 6,
+   "label": "Final",
+   "kind": "knockout",
+   "weight": 1,
+   "is_scored": true
+  }
+ ],
+ "rules": [
+  {
+   "kind": "per_unit",
+   "metric": "win",
+   "period_key": "GROUP",
+   "rate": 3.0
+  },
+  {
+   "kind": "per_unit",
+   "metric": "tie",
+   "period_key": "GROUP",
+   "rate": 1.0
+  },
+  {
+   "kind": "per_unit",
+   "metric": "loss",
+   "period_key": "GROUP",
+   "rate": 0.0
+  },
+  {
+   "kind": "per_unit",
+   "metric": "top_table",
+   "period_key": "GROUP",
+   "rate": 5.0
+  },
+  {
+   "kind": "per_unit",
+   "metric": "knockouts",
+   "period_key": "GROUP",
+   "rate": 5.0
+  },
+  {
+   "kind": "per_unit",
+   "metric": "win",
+   "period_key": "R32",
+   "rate": 10
+  },
+  {
+   "kind": "per_unit",
+   "metric": "shootout_loss",
+   "period_key": "R32",
+   "rate": 2.0
+  },
+  {
+   "kind": "per_unit",
+   "metric": "win",
+   "period_key": "R16",
+   "rate": 20
+  },
+  {
+   "kind": "per_unit",
+   "metric": "shootout_loss",
+   "period_key": "R16",
+   "rate": 4
+  },
+  {
+   "kind": "per_unit",
+   "metric": "win",
+   "period_key": "QF",
+   "rate": 50.0
+  },
+  {
+   "kind": "per_unit",
+   "metric": "shootout_loss",
+   "period_key": "QF",
+   "rate": 10.0
+  },
+  {
+   "kind": "per_unit",
+   "metric": "win",
+   "period_key": "SF",
+   "rate": 100
+  },
+  {
+   "kind": "per_unit",
+   "metric": "shootout_loss",
+   "period_key": "SF",
+   "rate": 20
+  },
+  {
+   "kind": "per_unit",
+   "metric": "win",
+   "period_key": "F",
+   "rate": 200
+  },
+  {
+   "kind": "per_unit",
+   "metric": "shootout_loss",
+   "period_key": "F",
+   "rate": 40
+  },
+  {
+   "kind": "group_rank_bonus",
+   "group_attr": "pot",
+   "rate": 48.0
+  }
+ ],
+ "owners": [
+  {
+   "label": "Ezra Pemstein",
+   "name": "Ezra Pemstein",
+   "email": null
+  },
+  {
+   "label": "Craig Thompson",
+   "name": "Craig Thompson",
+   "email": null
+  },
+  {
+   "label": "Ed Zhang",
+   "name": "Ed Zhang",
+   "email": null
+  },
+  {
+   "label": "Zachary Long",
+   "name": "Zachary Long",
+   "email": null
+  },
+  {
+   "label": "Joey Anthony",
+   "name": "Joey Anthony",
+   "email": null
+  },
+  {
+   "label": "Samuel Rosen",
+   "name": "Samuel Rosen",
+   "email": null
+  }
+ ],
+ "consortia": [
+  {
+   "leader": "Ezra Pemstein",
+   "members": [
+    "Zack Miller"
+   ]
+  },
+  {
+   "leader": "Craig Thompson",
+   "members": [
+    "Damon Hatheway"
+   ]
+  },
+  {
+   "leader": "Ed Zhang",
+   "members": [
+    "Shaun McGuire"
+   ]
+  },
+  {
+   "leader": "Zachary Long",
+   "members": [
+    "Greg Karabinos"
+   ]
+  },
+  {
+   "leader": "Joey Anthony",
+   "members": [
+    "Kurt Dehut"
+   ]
+  },
+  {
+   "leader": "Samuel Rosen",
+   "members": []
+  }
+ ],
+ "entries": [
+  {
+   "label": "Spain",
+   "lot_order": 1,
+   "price": 8100.0,
+   "kind": "single",
+   "attributes": {
+    "group": "H",
+    "pot": 1,
+    "status": "Alive"
+   },
+   "teams": [
+    {
+     "name": "Spain",
+     "seed": null,
+     "resolved": true
+    }
+   ],
+   "owners": [
+    {
+     "label": "Craig Thompson",
+     "share": 1.0
+    }
+   ],
+   "events": [
+    {
+     "period_key": "GROUP",
+     "metric": "win",
+     "units": 2
+    },
+    {
+     "period_key": "GROUP",
+     "metric": "tie",
+     "units": 1
+    },
+    {
+     "period_key": "GROUP",
+     "metric": "top_table",
+     "units": 1
+    },
+    {
+     "period_key": "GROUP",
+     "metric": "knockouts",
+     "units": 1
+    },
+    {
+     "period_key": "R32",
+     "metric": "win",
+     "units": 1
+    },
+    {
+     "period_key": "R16",
+     "metric": "win",
+     "units": 1
+    },
+    {
+     "period_key": "QF",
+     "metric": "win",
+     "units": 1
+    },
+    {
+     "period_key": "SF",
+     "metric": "win",
+     "units": 1
+    },
+    {
+     "period_key": "F",
+     "metric": "win",
+     "units": 1
+    }
+   ],
+   "expected": {
+    "points": 445.0,
+    "realized_return": 32385.46814
+   }
+  },
+  {
+   "label": "Haiti",
+   "lot_order": 2,
+   "price": 140.0,
+   "kind": "single",
+   "attributes": {
+    "group": "C",
+    "pot": 4,
+    "status": "Dead"
+   },
+   "teams": [
+    {
+     "name": "Haiti",
+     "seed": null,
+     "resolved": true
+    }
+   ],
+   "owners": [
+    {
+     "label": "Samuel Rosen",
+     "share": 1.0
+    }
+   ],
+   "events": [
+    {
+     "period_key": "GROUP",
+     "metric": "loss",
+     "units": 3
+    }
+   ],
+   "expected": {
+    "points": 0.0,
+    "realized_return": 0.0
+   }
+  },
+  {
+   "label": "United States",
+   "lot_order": 3,
+   "price": 2270.0,
+   "kind": "single",
+   "attributes": {
+    "group": "D",
+    "pot": 1,
+    "status": "Dead"
+   },
+   "teams": [
+    {
+     "name": "United States",
+     "seed": null,
+     "resolved": true
+    }
+   ],
+   "owners": [
+    {
+     "label": "Ezra Pemstein",
+     "share": 1.0
+    }
+   ],
+   "events": [
+    {
+     "period_key": "GROUP",
+     "metric": "win",
+     "units": 2
+    },
+    {
+     "period_key": "GROUP",
+     "metric": "loss",
+     "units": 1
+    },
+    {
+     "period_key": "GROUP",
+     "metric": "top_table",
+     "units": 1
+    },
+    {
+     "period_key": "GROUP",
+     "metric": "knockouts",
+     "units": 1
+    },
+    {
+     "period_key": "R32",
+     "metric": "win",
+     "units": 1
+    }
+   ],
+   "expected": {
+    "points": 26.0,
+    "realized_return": 1892.184655
+   }
+  },
+  {
+   "label": "Uruguay",
+   "lot_order": 4,
+   "price": 2180.0,
+   "kind": "single",
+   "attributes": {
+    "group": "H",
+    "pot": 2,
+    "status": "Dead"
+   },
+   "teams": [
+    {
+     "name": "Uruguay",
+     "seed": null,
+     "resolved": true
+    }
+   ],
+   "owners": [
+    {
+     "label": "Zachary Long",
+     "share": 1.0
+    }
+   ],
+   "events": [
+    {
+     "period_key": "GROUP",
+     "metric": "tie",
+     "units": 2
+    },
+    {
+     "period_key": "GROUP",
+     "metric": "loss",
+     "units": 1
+    }
+   ],
+   "expected": {
+    "points": 2.0,
+    "realized_return": 145.5526658
+   }
+  },
+  {
+   "label": "Paraguay",
+   "lot_order": 5,
+   "price": 1410.0,
+   "kind": "single",
+   "attributes": {
+    "group": "D",
+    "pot": 3,
+    "status": "Dead"
+   },
+   "teams": [
+    {
+     "name": "Paraguay",
+     "seed": null,
+     "resolved": true
+    }
+   ],
+   "owners": [
+    {
+     "label": "Craig Thompson",
+     "share": 1.0
+    }
+   ],
+   "events": [
+    {
+     "period_key": "GROUP",
+     "metric": "win",
+     "units": 1
+    },
+    {
+     "period_key": "GROUP",
+     "metric": "tie",
+     "units": 1
+    },
+    {
+     "period_key": "GROUP",
+     "metric": "loss",
+     "units": 1
+    },
+    {
+     "period_key": "GROUP",
+     "metric": "knockouts",
+     "units": 1
+    },
+    {
+     "period_key": "R32",
+     "metric": "win",
+     "units": 1
+    }
+   ],
+   "expected": {
+    "points": 19.0,
+    "realized_return": 1382.750325
+   }
+  },
+  {
+   "label": "Panama",
+   "lot_order": 6,
+   "price": 550.0,
+   "kind": "single",
+   "attributes": {
+    "group": "L",
+    "pot": 3,
+    "status": "Dead"
+   },
+   "teams": [
+    {
+     "name": "Panama",
+     "seed": null,
+     "resolved": true
+    }
+   ],
+   "owners": [
+    {
+     "label": "Zachary Long",
+     "share": 1.0
+    }
+   ],
+   "events": [
+    {
+     "period_key": "GROUP",
+     "metric": "loss",
+     "units": 3
+    }
+   ],
+   "expected": {
+    "points": 0.0,
+    "realized_return": 0.0
+   }
+  },
+  {
+   "label": "Ghana",
+   "lot_order": 7,
+   "price": 1030.0,
+   "kind": "single",
+   "attributes": {
+    "group": "L",
+    "pot": 4,
+    "status": "Dead"
+   },
+   "teams": [
+    {
+     "name": "Ghana",
+     "seed": null,
+     "resolved": true
+    }
+   ],
+   "owners": [
+    {
+     "label": "Zachary Long",
+     "share": 1.0
+    }
+   ],
+   "events": [
+    {
+     "period_key": "GROUP",
+     "metric": "win",
+     "units": 1
+    },
+    {
+     "period_key": "GROUP",
+     "metric": "tie",
+     "units": 1
+    },
+    {
+     "period_key": "GROUP",
+     "metric": "loss",
+     "units": 1
+    },
+    {
+     "period_key": "GROUP",
+     "metric": "knockouts",
+     "units": 1
+    }
+   ],
+   "expected": {
+    "points": 21.0,
+    "realized_return": 1528.302991
+   }
+  },
+  {
+   "label": "Austria",
+   "lot_order": 8,
+   "price": 1670.0,
+   "kind": "single",
+   "attributes": {
+    "group": "J",
+    "pot": 2,
+    "status": "Dead"
+   },
+   "teams": [
+    {
+     "name": "Austria",
+     "seed": null,
+     "resolved": true
+    }
+   ],
+   "owners": [
+    {
+     "label": "Zachary Long",
+     "share": 1.0
+    }
+   ],
+   "events": [
+    {
+     "period_key": "GROUP",
+     "metric": "win",
+     "units": 1
+    },
+    {
+     "period_key": "GROUP",
+     "metric": "tie",
+     "units": 1
+    },
+    {
+     "period_key": "GROUP",
+     "metric": "loss",
+     "units": 1
+    },
+    {
+     "period_key": "GROUP",
+     "metric": "knockouts",
+     "units": 1
+    }
+   ],
+   "expected": {
+    "points": 9.0,
+    "realized_return": 654.9869961
+   }
+  },
+  {
+   "label": "Germany",
+   "lot_order": 9,
+   "price": 4730.0,
+   "kind": "single",
+   "attributes": {
+    "group": "E",
+    "pot": 1,
+    "status": "Dead"
+   },
+   "teams": [
+    {
+     "name": "Germany",
+     "seed": null,
+     "resolved": true
+    }
+   ],
+   "owners": [
+    {
+     "label": "Ezra Pemstein",
+     "share": 1.0
+    }
+   ],
+   "events": [
+    {
+     "period_key": "GROUP",
+     "metric": "win",
+     "units": 2
+    },
+    {
+     "period_key": "GROUP",
+     "metric": "loss",
+     "units": 1
+    },
+    {
+     "period_key": "GROUP",
+     "metric": "top_table",
+     "units": 1
+    },
+    {
+     "period_key": "GROUP",
+     "metric": "knockouts",
+     "units": 1
+    },
+    {
+     "period_key": "R32",
+     "metric": "shootout_loss",
+     "units": 1
+    }
+   ],
+   "expected": {
+    "points": 18.0,
+    "realized_return": 1309.973992
+   }
+  },
+  {
+   "label": "Czechia",
+   "lot_order": 10,
+   "price": 1900.0,
+   "kind": "single",
+   "attributes": {
+    "group": "A",
+    "pot": 4,
+    "status": "Dead"
+   },
+   "teams": [
+    {
+     "name": "Czechia",
+     "seed": null,
+     "resolved": true
+    }
+   ],
+   "owners": [
+    {
+     "label": "Ezra Pemstein",
+     "share": 1.0
+    }
+   ],
+   "events": [
+    {
+     "period_key": "GROUP",
+     "metric": "tie",
+     "units": 1
+    },
+    {
+     "period_key": "GROUP",
+     "metric": "loss",
+     "units": 2
+    }
+   ],
+   "expected": {
+    "points": 1.0,
+    "realized_return": 72.7763329
+   }
+  },
+  {
+   "label": "Egypt",
+   "lot_order": 11,
+   "price": 1450.0,
+   "kind": "single",
+   "attributes": {
+    "group": "G",
+    "pot": 3,
+    "status": "Dead"
+   },
+   "teams": [
+    {
+     "name": "Egypt",
+     "seed": null,
+     "resolved": true
+    }
+   ],
+   "owners": [
+    {
+     "label": "Zachary Long",
+     "share": 1.0
+    }
+   ],
+   "events": [
+    {
+     "period_key": "GROUP",
+     "metric": "win",
+     "units": 1
+    },
+    {
+     "period_key": "GROUP",
+     "metric": "tie",
+     "units": 2
+    },
+    {
+     "period_key": "GROUP",
+     "metric": "knockouts",
+     "units": 1
+    },
+    {
+     "period_key": "R32",
+     "metric": "win",
+     "units": 1
+    }
+   ],
+   "expected": {
+    "points": 20.0,
+    "realized_return": 1455.526658
+   }
+  },
+  {
+   "label": "Senegal",
+   "lot_order": 12,
+   "price": 1440.0,
+   "kind": "single",
+   "attributes": {
+    "group": "I",
+    "pot": 2,
+    "status": "Dead"
+   },
+   "teams": [
+    {
+     "name": "Senegal",
+     "seed": null,
+     "resolved": true
+    }
+   ],
+   "owners": [
+    {
+     "label": "Joey Anthony",
+     "share": 1.0
+    }
+   ],
+   "events": [
+    {
+     "period_key": "GROUP",
+     "metric": "win",
+     "units": 1
+    },
+    {
+     "period_key": "GROUP",
+     "metric": "loss",
+     "units": 2
+    },
+    {
+     "period_key": "GROUP",
+     "metric": "knockouts",
+     "units": 1
+    }
+   ],
+   "expected": {
+    "points": 8.0,
+    "realized_return": 582.2106632
+   }
+  },
+  {
+   "label": "Türkiye",
+   "lot_order": 13,
+   "price": 3000.0,
+   "kind": "single",
+   "attributes": {
+    "group": "D",
+    "pot": 4,
+    "status": "Dead"
+   },
+   "teams": [
+    {
+     "name": "Türkiye",
+     "seed": null,
+     "resolved": true
+    }
+   ],
+   "owners": [
+    {
+     "label": "Joey Anthony",
+     "share": 1.0
+    }
+   ],
+   "events": [
+    {
+     "period_key": "GROUP",
+     "metric": "win",
+     "units": 1
+    },
+    {
+     "period_key": "GROUP",
+     "metric": "loss",
+     "units": 2
+    }
+   ],
+   "expected": {
+    "points": 3.0,
+    "realized_return": 218.3289987
+   }
+  },
+  {
+   "label": "Iraq",
+   "lot_order": 14,
+   "price": 260.0,
+   "kind": "single",
+   "attributes": {
+    "group": "I",
+    "pot": 4,
+    "status": "Dead"
+   },
+   "teams": [
+    {
+     "name": "Iraq",
+     "seed": null,
+     "resolved": true
+    }
+   ],
+   "owners": [
+    {
+     "label": "Samuel Rosen",
+     "share": 0.5
+    },
+    {
+     "label": "Zachary Long",
+     "share": 0.5
+    }
+   ],
+   "events": [
+    {
+     "period_key": "GROUP",
+     "metric": "loss",
+     "units": 3
+    }
+   ],
+   "expected": {
+    "points": 0.0,
+    "realized_return": 0.0
+   }
+  },
+  {
+   "label": "South Africa",
+   "lot_order": 15,
+   "price": 600.0,
+   "kind": "single",
+   "attributes": {
+    "group": "A",
+    "pot": 3,
+    "status": "Dead"
+   },
+   "teams": [
+    {
+     "name": "South Africa",
+     "seed": null,
+     "resolved": true
+    }
+   ],
+   "owners": [
+    {
+     "label": "Zachary Long",
+     "share": 1.0
+    }
+   ],
+   "events": [
+    {
+     "period_key": "GROUP",
+     "metric": "win",
+     "units": 1
+    },
+    {
+     "period_key": "GROUP",
+     "metric": "tie",
+     "units": 1
+    },
+    {
+     "period_key": "GROUP",
+     "metric": "loss",
+     "units": 1
+    },
+    {
+     "period_key": "GROUP",
+     "metric": "knockouts",
+     "units": 1
+    }
+   ],
+   "expected": {
+    "points": 9.0,
+    "realized_return": 654.9869961
+   }
+  },
+  {
+   "label": "Colombia",
+   "lot_order": 16,
+   "price": 3210.0,
+   "kind": "single",
+   "attributes": {
+    "group": "K",
+    "pot": 2,
+    "status": "Dead"
+   },
+   "teams": [
+    {
+     "name": "Colombia",
+     "seed": null,
+     "resolved": true
+    }
+   ],
+   "owners": [
+    {
+     "label": "Ed Zhang",
+     "share": 1.0
+    }
+   ],
+   "events": [
+    {
+     "period_key": "GROUP",
+     "metric": "win",
+     "units": 2
+    },
+    {
+     "period_key": "GROUP",
+     "metric": "tie",
+     "units": 1
+    },
+    {
+     "period_key": "GROUP",
+     "metric": "top_table",
+     "units": 1
+    },
+    {
+     "period_key": "GROUP",
+     "metric": "knockouts",
+     "units": 1
+    },
+    {
+     "period_key": "R32",
+     "metric": "win",
+     "units": 1
+    },
+    {
+     "period_key": "R16",
+     "metric": "shootout_loss",
+     "units": 1
+    }
+   ],
+   "expected": {
+    "points": 31.0,
+    "realized_return": 2256.06632
+   }
+  },
+  {
+   "label": "Brazil",
+   "lot_order": 17,
+   "price": 7000.0,
+   "kind": "single",
+   "attributes": {
+    "group": "C",
+    "pot": 1,
+    "status": "Dead"
+   },
+   "teams": [
+    {
+     "name": "Brazil",
+     "seed": null,
+     "resolved": true
+    }
+   ],
+   "owners": [
+    {
+     "label": "Zachary Long",
+     "share": 1.0
+    }
+   ],
+   "events": [
+    {
+     "period_key": "GROUP",
+     "metric": "win",
+     "units": 2
+    },
+    {
+     "period_key": "GROUP",
+     "metric": "tie",
+     "units": 1
+    },
+    {
+     "period_key": "GROUP",
+     "metric": "top_table",
+     "units": 1
+    },
+    {
+     "period_key": "GROUP",
+     "metric": "knockouts",
+     "units": 1
+    },
+    {
+     "period_key": "R32",
+     "metric": "win",
+     "units": 1
+    }
+   ],
+   "expected": {
+    "points": 27.0,
+    "realized_return": 1964.960988
+   }
+  },
+  {
+   "label": "Canada",
+   "lot_order": 18,
+   "price": 1540.0,
+   "kind": "single",
+   "attributes": {
+    "group": "B",
+    "pot": 1,
+    "status": "Dead"
+   },
+   "teams": [
+    {
+     "name": "Canada",
+     "seed": null,
+     "resolved": true
+    }
+   ],
+   "owners": [
+    {
+     "label": "Zachary Long",
+     "share": 1.0
+    }
+   ],
+   "events": [
+    {
+     "period_key": "GROUP",
+     "metric": "win",
+     "units": 1
+    },
+    {
+     "period_key": "GROUP",
+     "metric": "tie",
+     "units": 1
+    },
+    {
+     "period_key": "GROUP",
+     "metric": "loss",
+     "units": 1
+    },
+    {
+     "period_key": "GROUP",
+     "metric": "knockouts",
+     "units": 1
+    },
+    {
+     "period_key": "R32",
+     "metric": "win",
+     "units": 1
+    }
+   ],
+   "expected": {
+    "points": 19.0,
+    "realized_return": 1382.750325
+   }
+  },
+  {
+   "label": "Iran",
+   "lot_order": 19,
+   "price": 840.0,
+   "kind": "single",
+   "attributes": {
+    "group": "G",
+    "pot": 2,
+    "status": "Dead"
+   },
+   "teams": [
+    {
+     "name": "Iran",
+     "seed": null,
+     "resolved": true
+    }
+   ],
+   "owners": [
+    {
+     "label": "Zachary Long",
+     "share": 1.0
+    }
+   ],
+   "events": [
+    {
+     "period_key": "GROUP",
+     "metric": "tie",
+     "units": 3
+    }
+   ],
+   "expected": {
+    "points": 3.0,
+    "realized_return": 218.3289987
+   }
+  },
+  {
+   "label": "Ivory Coast",
+   "lot_order": 20,
+   "price": 1800.0,
+   "kind": "single",
+   "attributes": {
+    "group": "E",
+    "pot": 3,
+    "status": "Dead"
+   },
+   "teams": [
+    {
+     "name": "Ivory Coast",
+     "seed": null,
+     "resolved": true
+    }
+   ],
+   "owners": [
+    {
+     "label": "Samuel Rosen",
+     "share": 1.0
+    }
+   ],
+   "events": [
+    {
+     "period_key": "GROUP",
+     "metric": "win",
+     "units": 2
+    },
+    {
+     "period_key": "GROUP",
+     "metric": "loss",
+     "units": 1
+    },
+    {
+     "period_key": "GROUP",
+     "metric": "knockouts",
+     "units": 1
+    }
+   ],
+   "expected": {
+    "points": 11.0,
+    "realized_return": 800.5396619
+   }
+  },
+  {
+   "label": "Switzerland",
+   "lot_order": 21,
+   "price": 2610.0,
+   "kind": "single",
+   "attributes": {
+    "group": "B",
+    "pot": 2,
+    "status": "Dead"
+   },
+   "teams": [
+    {
+     "name": "Switzerland",
+     "seed": null,
+     "resolved": true
+    }
+   ],
+   "owners": [
+    {
+     "label": "Ezra Pemstein",
+     "share": 1.0
+    }
+   ],
+   "events": [
+    {
+     "period_key": "GROUP",
+     "metric": "win",
+     "units": 2
+    },
+    {
+     "period_key": "GROUP",
+     "metric": "tie",
+     "units": 1
+    },
+    {
+     "period_key": "GROUP",
+     "metric": "top_table",
+     "units": 1
+    },
+    {
+     "period_key": "GROUP",
+     "metric": "knockouts",
+     "units": 1
+    },
+    {
+     "period_key": "R32",
+     "metric": "win",
+     "units": 1
+    },
+    {
+     "period_key": "R16",
+     "metric": "win",
+     "units": 1
+    }
+   ],
+   "expected": {
+    "points": 95.0,
+    "realized_return": 6913.751625
+   }
+  },
+  {
+   "label": "Croatia",
+   "lot_order": 22,
+   "price": 2310.0,
+   "kind": "single",
+   "attributes": {
+    "group": "L",
+    "pot": 2,
+    "status": "Dead"
+   },
+   "teams": [
+    {
+     "name": "Croatia",
+     "seed": null,
+     "resolved": true
+    }
+   ],
+   "owners": [
+    {
+     "label": "Joey Anthony",
+     "share": 1.0
+    }
+   ],
+   "events": [
+    {
+     "period_key": "GROUP",
+     "metric": "win",
+     "units": 2
+    },
+    {
+     "period_key": "GROUP",
+     "metric": "loss",
+     "units": 1
+    },
+    {
+     "period_key": "GROUP",
+     "metric": "knockouts",
+     "units": 1
+    }
+   ],
+   "expected": {
+    "points": 11.0,
+    "realized_return": 800.5396619
+   }
+  },
+  {
+   "label": "Ecuador",
+   "lot_order": 23,
+   "price": 2050.0,
+   "kind": "single",
+   "attributes": {
+    "group": "E",
+    "pot": 2,
+    "status": "Dead"
+   },
+   "teams": [
+    {
+     "name": "Ecuador",
+     "seed": null,
+     "resolved": true
+    }
+   ],
+   "owners": [
+    {
+     "label": "Samuel Rosen",
+     "share": 0.5
+    },
+    {
+     "label": "Zachary Long",
+     "share": 0.5
+    }
+   ],
+   "events": [
+    {
+     "period_key": "GROUP",
+     "metric": "win",
+     "units": 1
+    },
+    {
+     "period_key": "GROUP",
+     "metric": "tie",
+     "units": 1
+    },
+    {
+     "period_key": "GROUP",
+     "metric": "loss",
+     "units": 1
+    },
+    {
+     "period_key": "GROUP",
+     "metric": "knockouts",
+     "units": 1
+    }
+   ],
+   "expected": {
+    "points": 9.0,
+    "realized_return": 654.9869961
+   }
+  },
+  {
+   "label": "Australia",
+   "lot_order": 24,
+   "price": 730.0,
+   "kind": "single",
+   "attributes": {
+    "group": "D",
+    "pot": 2,
+    "status": "Dead"
+   },
+   "teams": [
+    {
+     "name": "Australia",
+     "seed": null,
+     "resolved": true
+    }
+   ],
+   "owners": [
+    {
+     "label": "Zachary Long",
+     "share": 1.0
+    }
+   ],
+   "events": [
+    {
+     "period_key": "GROUP",
+     "metric": "win",
+     "units": 1
+    },
+    {
+     "period_key": "GROUP",
+     "metric": "tie",
+     "units": 1
+    },
+    {
+     "period_key": "GROUP",
+     "metric": "loss",
+     "units": 1
+    },
+    {
+     "period_key": "GROUP",
+     "metric": "knockouts",
+     "units": 1
+    },
+    {
+     "period_key": "R32",
+     "metric": "shootout_loss",
+     "units": 1
+    }
+   ],
+   "expected": {
+    "points": 11.0,
+    "realized_return": 800.5396619
+   }
+  },
+  {
+   "label": "New Zealand",
+   "lot_order": 25,
+   "price": 420.0,
+   "kind": "single",
+   "attributes": {
+    "group": "G",
+    "pot": 4,
+    "status": "Dead"
+   },
+   "teams": [
+    {
+     "name": "New Zealand",
+     "seed": null,
+     "resolved": true
+    }
+   ],
+   "owners": [
+    {
+     "label": "Samuel Rosen",
+     "share": 1.0
+    }
+   ],
+   "events": [
+    {
+     "period_key": "GROUP",
+     "metric": "tie",
+     "units": 1
+    },
+    {
+     "period_key": "GROUP",
+     "metric": "loss",
+     "units": 2
+    }
+   ],
+   "expected": {
+    "points": 1.0,
+    "realized_return": 72.7763329
+   }
+  },
+  {
+   "label": "Algeria",
+   "lot_order": 26,
+   "price": 1210.0,
+   "kind": "single",
+   "attributes": {
+    "group": "J",
+    "pot": 3,
+    "status": "Dead"
+   },
+   "teams": [
+    {
+     "name": "Algeria",
+     "seed": null,
+     "resolved": true
+    }
+   ],
+   "owners": [
+    {
+     "label": "Samuel Rosen",
+     "share": 0.5
+    },
+    {
+     "label": "Zachary Long",
+     "share": 0.5
+    }
+   ],
+   "events": [
+    {
+     "period_key": "GROUP",
+     "metric": "win",
+     "units": 1
+    },
+    {
+     "period_key": "GROUP",
+     "metric": "tie",
+     "units": 1
+    },
+    {
+     "period_key": "GROUP",
+     "metric": "loss",
+     "units": 1
+    },
+    {
+     "period_key": "GROUP",
+     "metric": "knockouts",
+     "units": 1
+    }
+   ],
+   "expected": {
+    "points": 9.0,
+    "realized_return": 654.9869961
+   }
+  },
+  {
+   "label": "Argentina",
+   "lot_order": 27,
+   "price": 6610.0,
+   "kind": "single",
+   "attributes": {
+    "group": "J",
+    "pot": 1,
+    "status": "Dead"
+   },
+   "teams": [
+    {
+     "name": "Argentina",
+     "seed": null,
+     "resolved": true
+    }
+   ],
+   "owners": [
+    {
+     "label": "Joey Anthony",
+     "share": 1.0
+    }
+   ],
+   "events": [
+    {
+     "period_key": "GROUP",
+     "metric": "win",
+     "units": 3
+    },
+    {
+     "period_key": "GROUP",
+     "metric": "top_table",
+     "units": 1
+    },
+    {
+     "period_key": "GROUP",
+     "metric": "knockouts",
+     "units": 1
+    },
+    {
+     "period_key": "R32",
+     "metric": "win",
+     "units": 1
+    },
+    {
+     "period_key": "R16",
+     "metric": "win",
+     "units": 1
+    },
+    {
+     "period_key": "QF",
+     "metric": "win",
+     "units": 1
+    },
+    {
+     "period_key": "SF",
+     "metric": "win",
+     "units": 1
+    }
+   ],
+   "expected": {
+    "points": 199.0,
+    "realized_return": 14482.49025
+   }
+  },
+  {
+   "label": "Cape Verde",
+   "lot_order": 28,
+   "price": 410.0,
+   "kind": "single",
+   "attributes": {
+    "group": "H",
+    "pot": 4,
+    "status": "Dead"
+   },
+   "teams": [
+    {
+     "name": "Cape Verde",
+     "seed": null,
+     "resolved": true
+    }
+   ],
+   "owners": [
+    {
+     "label": "Ezra Pemstein",
+     "share": 1.0
+    }
+   ],
+   "events": [
+    {
+     "period_key": "GROUP",
+     "metric": "tie",
+     "units": 3
+    },
+    {
+     "period_key": "GROUP",
+     "metric": "knockouts",
+     "units": 1
+    }
+   ],
+   "expected": {
+    "points": 8.0,
+    "realized_return": 582.2106632
+   }
+  },
+  {
+   "label": "Tunisia",
+   "lot_order": 29,
+   "price": 690.0,
+   "kind": "single",
+   "attributes": {
+    "group": "F",
+    "pot": 3,
+    "status": "Dead"
+   },
+   "teams": [
+    {
+     "name": "Tunisia",
+     "seed": null,
+     "resolved": true
+    }
+   ],
+   "owners": [
+    {
+     "label": "Samuel Rosen",
+     "share": 1.0
+    }
+   ],
+   "events": [
+    {
+     "period_key": "GROUP",
+     "metric": "loss",
+     "units": 3
+    }
+   ],
+   "expected": {
+    "points": 0.0,
+    "realized_return": 0.0
+   }
+  },
+  {
+   "label": "Scotland",
+   "lot_order": 30,
+   "price": 1340.0,
+   "kind": "single",
+   "attributes": {
+    "group": "C",
+    "pot": 3,
+    "status": "Dead"
+   },
+   "teams": [
+    {
+     "name": "Scotland",
+     "seed": null,
+     "resolved": true
+    }
+   ],
+   "owners": [
+    {
+     "label": "Ezra Pemstein",
+     "share": 1.0
+    }
+   ],
+   "events": [
+    {
+     "period_key": "GROUP",
+     "metric": "win",
+     "units": 1
+    },
+    {
+     "period_key": "GROUP",
+     "metric": "loss",
+     "units": 2
+    }
+   ],
+   "expected": {
+    "points": 3.0,
+    "realized_return": 218.3289987
+   }
+  },
+  {
+   "label": "France",
+   "lot_order": 31,
+   "price": 9090.0,
+   "kind": "single",
+   "attributes": {
+    "group": "I",
+    "pot": 1,
+    "status": "Dead"
+   },
+   "teams": [
+    {
+     "name": "France",
+     "seed": null,
+     "resolved": true
+    }
+   ],
+   "owners": [
+    {
+     "label": "Ezra Pemstein",
+     "share": 1.0
+    }
+   ],
+   "events": [
+    {
+     "period_key": "GROUP",
+     "metric": "win",
+     "units": 3
+    },
+    {
+     "period_key": "GROUP",
+     "metric": "top_table",
+     "units": 1
+    },
+    {
+     "period_key": "GROUP",
+     "metric": "knockouts",
+     "units": 1
+    },
+    {
+     "period_key": "R32",
+     "metric": "win",
+     "units": 1
+    },
+    {
+     "period_key": "R16",
+     "metric": "win",
+     "units": 1
+    },
+    {
+     "period_key": "QF",
+     "metric": "win",
+     "units": 1
+    }
+   ],
+   "expected": {
+    "points": 99.0,
+    "realized_return": 7204.856957
+   }
+  },
+  {
+   "label": "Uzbekistan",
+   "lot_order": 32,
+   "price": 400.0,
+   "kind": "single",
+   "attributes": {
+    "group": "K",
+    "pot": 3,
+    "status": "Dead"
+   },
+   "teams": [
+    {
+     "name": "Uzbekistan",
+     "seed": null,
+     "resolved": true
+    }
+   ],
+   "owners": [
+    {
+     "label": "Zachary Long",
+     "share": 1.0
+    }
+   ],
+   "events": [
+    {
+     "period_key": "GROUP",
+     "metric": "loss",
+     "units": 3
+    }
+   ],
+   "expected": {
+    "points": 0.0,
+    "realized_return": 0.0
+   }
+  },
+  {
+   "label": "Saudi Arabia",
+   "lot_order": 33,
+   "price": 730.0,
+   "kind": "single",
+   "attributes": {
+    "group": "H",
+    "pot": 3,
+    "status": "Dead"
+   },
+   "teams": [
+    {
+     "name": "Saudi Arabia",
+     "seed": null,
+     "resolved": true
+    }
+   ],
+   "owners": [
+    {
+     "label": "Samuel Rosen",
+     "share": 1.0
+    }
+   ],
+   "events": [
+    {
+     "period_key": "GROUP",
+     "metric": "tie",
+     "units": 2
+    },
+    {
+     "period_key": "GROUP",
+     "metric": "loss",
+     "units": 1
+    }
+   ],
+   "expected": {
+    "points": 2.0,
+    "realized_return": 145.5526658
+   }
+  },
+  {
+   "label": "South Korea",
+   "lot_order": 34,
+   "price": 1320.0,
+   "kind": "single",
+   "attributes": {
+    "group": "A",
+    "pot": 2,
+    "status": "Dead"
+   },
+   "teams": [
+    {
+     "name": "South Korea",
+     "seed": null,
+     "resolved": true
+    }
+   ],
+   "owners": [
+    {
+     "label": "Ezra Pemstein",
+     "share": 1.0
+    }
+   ],
+   "events": [
+    {
+     "period_key": "GROUP",
+     "metric": "win",
+     "units": 1
+    },
+    {
+     "period_key": "GROUP",
+     "metric": "loss",
+     "units": 2
+    }
+   ],
+   "expected": {
+    "points": 3.0,
+    "realized_return": 218.3289987
+   }
+  },
+  {
+   "label": "Qatar",
+   "lot_order": 35,
+   "price": 390.0,
+   "kind": "single",
+   "attributes": {
+    "group": "B",
+    "pot": 3,
+    "status": "Dead"
+   },
+   "teams": [
+    {
+     "name": "Qatar",
+     "seed": null,
+     "resolved": true
+    }
+   ],
+   "owners": [
+    {
+     "label": "Zachary Long",
+     "share": 1.0
+    }
+   ],
+   "events": [
+    {
+     "period_key": "GROUP",
+     "metric": "tie",
+     "units": 1
+    },
+    {
+     "period_key": "GROUP",
+     "metric": "loss",
+     "units": 2
+    }
+   ],
+   "expected": {
+    "points": 1.0,
+    "realized_return": 72.7763329
+   }
+  },
+  {
+   "label": "Belgium",
+   "lot_order": 36,
+   "price": 3580.0,
+   "kind": "single",
+   "attributes": {
+    "group": "G",
+    "pot": 1,
+    "status": "Dead"
+   },
+   "teams": [
+    {
+     "name": "Belgium",
+     "seed": null,
+     "resolved": true
+    }
+   ],
+   "owners": [
+    {
+     "label": "Zachary Long",
+     "share": 1.0
+    }
+   ],
+   "events": [
+    {
+     "period_key": "GROUP",
+     "metric": "win",
+     "units": 1
+    },
+    {
+     "period_key": "GROUP",
+     "metric": "tie",
+     "units": 2
+    },
+    {
+     "period_key": "GROUP",
+     "metric": "top_table",
+     "units": 1
+    },
+    {
+     "period_key": "GROUP",
+     "metric": "knockouts",
+     "units": 1
+    },
+    {
+     "period_key": "R32",
+     "metric": "win",
+     "units": 1
+    },
+    {
+     "period_key": "R16",
+     "metric": "win",
+     "units": 1
+    }
+   ],
+   "expected": {
+    "points": 45.0,
+    "realized_return": 3274.93498
+   }
+  },
+  {
+   "label": "Sweden",
+   "lot_order": 37,
+   "price": 1700.0,
+   "kind": "single",
+   "attributes": {
+    "group": "F",
+    "pot": 4,
+    "status": "Dead"
+   },
+   "teams": [
+    {
+     "name": "Sweden",
+     "seed": null,
+     "resolved": true
+    }
+   ],
+   "owners": [
+    {
+     "label": "Ed Zhang",
+     "share": 1.0
+    }
+   ],
+   "events": [
+    {
+     "period_key": "GROUP",
+     "metric": "win",
+     "units": 1
+    },
+    {
+     "period_key": "GROUP",
+     "metric": "tie",
+     "units": 1
+    },
+    {
+     "period_key": "GROUP",
+     "metric": "loss",
+     "units": 1
+    },
+    {
+     "period_key": "GROUP",
+     "metric": "knockouts",
+     "units": 1
+    }
+   ],
+   "expected": {
+    "points": 21.0,
+    "realized_return": 1528.302991
+   }
+  },
+  {
+   "label": "Japan",
+   "lot_order": 38,
+   "price": 2280.0,
+   "kind": "single",
+   "attributes": {
+    "group": "F",
+    "pot": 2,
+    "status": "Dead"
+   },
+   "teams": [
+    {
+     "name": "Japan",
+     "seed": null,
+     "resolved": true
+    }
+   ],
+   "owners": [
+    {
+     "label": "Ed Zhang",
+     "share": 0.5
+    },
+    {
+     "label": "Zachary Long",
+     "share": 0.5
+    }
+   ],
+   "events": [
+    {
+     "period_key": "GROUP",
+     "metric": "win",
+     "units": 1
+    },
+    {
+     "period_key": "GROUP",
+     "metric": "tie",
+     "units": 2
+    },
+    {
+     "period_key": "GROUP",
+     "metric": "knockouts",
+     "units": 1
+    }
+   ],
+   "expected": {
+    "points": 10.0,
+    "realized_return": 727.763329
+   }
+  },
+  {
+   "label": "Portugal",
+   "lot_order": 39,
+   "price": 6070.0,
+   "kind": "single",
+   "attributes": {
+    "group": "K",
+    "pot": 1,
+    "status": "Dead"
+   },
+   "teams": [
+    {
+     "name": "Portugal",
+     "seed": null,
+     "resolved": true
+    }
+   ],
+   "owners": [
+    {
+     "label": "Joey Anthony",
+     "share": 0.5
+    },
+    {
+     "label": "Ezra Pemstein",
+     "share": 0.5
+    }
+   ],
+   "events": [
+    {
+     "period_key": "GROUP",
+     "metric": "win",
+     "units": 1
+    },
+    {
+     "period_key": "GROUP",
+     "metric": "tie",
+     "units": 2
+    },
+    {
+     "period_key": "GROUP",
+     "metric": "knockouts",
+     "units": 1
+    },
+    {
+     "period_key": "R32",
+     "metric": "win",
+     "units": 1
+    }
+   ],
+   "expected": {
+    "points": 20.0,
+    "realized_return": 1455.526658
+   }
+  },
+  {
+   "label": "Netherlands",
+   "lot_order": 40,
+   "price": 3700.0,
+   "kind": "single",
+   "attributes": {
+    "group": "F",
+    "pot": 1,
+    "status": "Dead"
+   },
+   "teams": [
+    {
+     "name": "Netherlands",
+     "seed": null,
+     "resolved": true
+    }
+   ],
+   "owners": [
+    {
+     "label": "Ed Zhang",
+     "share": 1.0
+    }
+   ],
+   "events": [
+    {
+     "period_key": "GROUP",
+     "metric": "win",
+     "units": 2
+    },
+    {
+     "period_key": "GROUP",
+     "metric": "tie",
+     "units": 1
+    },
+    {
+     "period_key": "GROUP",
+     "metric": "top_table",
+     "units": 1
+    },
+    {
+     "period_key": "GROUP",
+     "metric": "knockouts",
+     "units": 1
+    },
+    {
+     "period_key": "R32",
+     "metric": "shootout_loss",
+     "units": 1
+    }
+   ],
+   "expected": {
+    "points": 19.0,
+    "realized_return": 1382.750325
+   }
+  },
+  {
+   "label": "Norway",
+   "lot_order": 41,
+   "price": 4030.0,
+   "kind": "single",
+   "attributes": {
+    "group": "I",
+    "pot": 3,
+    "status": "Dead"
+   },
+   "teams": [
+    {
+     "name": "Norway",
+     "seed": null,
+     "resolved": true
+    }
+   ],
+   "owners": [
+    {
+     "label": "Craig Thompson",
+     "share": 0.5
+    },
+    {
+     "label": "Samuel Rosen",
+     "share": 0.5
+    }
+   ],
+   "events": [
+    {
+     "period_key": "GROUP",
+     "metric": "win",
+     "units": 2
+    },
+    {
+     "period_key": "GROUP",
+     "metric": "loss",
+     "units": 1
+    },
+    {
+     "period_key": "GROUP",
+     "metric": "knockouts",
+     "units": 1
+    },
+    {
+     "period_key": "R32",
+     "metric": "win",
+     "units": 1
+    },
+    {
+     "period_key": "R16",
+     "metric": "win",
+     "units": 1
+    }
+   ],
+   "expected": {
+    "points": 89.0,
+    "realized_return": 6477.093628
+   }
+  },
+  {
+   "label": "England",
+   "lot_order": 42,
+   "price": 7400.0,
+   "kind": "single",
+   "attributes": {
+    "group": "L",
+    "pot": 1,
+    "status": "Dead"
+   },
+   "teams": [
+    {
+     "name": "England",
+     "seed": null,
+     "resolved": true
+    }
+   ],
+   "owners": [
+    {
+     "label": "Ed Zhang",
+     "share": 1.0
+    }
+   ],
+   "events": [
+    {
+     "period_key": "GROUP",
+     "metric": "win",
+     "units": 2
+    },
+    {
+     "period_key": "GROUP",
+     "metric": "tie",
+     "units": 1
+    },
+    {
+     "period_key": "GROUP",
+     "metric": "top_table",
+     "units": 1
+    },
+    {
+     "period_key": "GROUP",
+     "metric": "knockouts",
+     "units": 1
+    },
+    {
+     "period_key": "R32",
+     "metric": "win",
+     "units": 1
+    },
+    {
+     "period_key": "R16",
+     "metric": "win",
+     "units": 1
+    },
+    {
+     "period_key": "QF",
+     "metric": "win",
+     "units": 1
+    }
+   ],
+   "expected": {
+    "points": 97.0,
+    "realized_return": 7059.304291
+   }
+  },
+  {
+   "label": "Jordan",
+   "lot_order": 43,
+   "price": 300.0,
+   "kind": "single",
+   "attributes": {
+    "group": "J",
+    "pot": 4,
+    "status": "Dead"
+   },
+   "teams": [
+    {
+     "name": "Jordan",
+     "seed": null,
+     "resolved": true
+    }
+   ],
+   "owners": [
+    {
+     "label": "Samuel Rosen",
+     "share": 0.5
+    },
+    {
+     "label": "Zachary Long",
+     "share": 0.5
+    }
+   ],
+   "events": [
+    {
+     "period_key": "GROUP",
+     "metric": "loss",
+     "units": 3
+    }
+   ],
+   "expected": {
+    "points": 0.0,
+    "realized_return": 0.0
+   }
+  },
+  {
+   "label": "Morocco",
+   "lot_order": 44,
+   "price": 2650.0,
+   "kind": "single",
+   "attributes": {
+    "group": "C",
+    "pot": 2,
+    "status": "Dead"
+   },
+   "teams": [
+    {
+     "name": "Morocco",
+     "seed": null,
+     "resolved": true
+    }
+   ],
+   "owners": [
+    {
+     "label": "Joey Anthony",
+     "share": 1.0
+    }
+   ],
+   "events": [
+    {
+     "period_key": "GROUP",
+     "metric": "win",
+     "units": 2
+    },
+    {
+     "period_key": "GROUP",
+     "metric": "tie",
+     "units": 1
+    },
+    {
+     "period_key": "GROUP",
+     "metric": "knockouts",
+     "units": 1
+    },
+    {
+     "period_key": "R32",
+     "metric": "win",
+     "units": 1
+    },
+    {
+     "period_key": "R16",
+     "metric": "win",
+     "units": 1
+    }
+   ],
+   "expected": {
+    "points": 42.0,
+    "realized_return": 3056.605982
+   }
+  },
+  {
+   "label": "Curaçao",
+   "lot_order": 45,
+   "price": 150.0,
+   "kind": "single",
+   "attributes": {
+    "group": "E",
+    "pot": 4,
+    "status": "Dead"
+   },
+   "teams": [
+    {
+     "name": "Curaçao",
+     "seed": null,
+     "resolved": true
+    }
+   ],
+   "owners": [
+    {
+     "label": "Zachary Long",
+     "share": 1.0
+    }
+   ],
+   "events": [
+    {
+     "period_key": "GROUP",
+     "metric": "tie",
+     "units": 1
+    },
+    {
+     "period_key": "GROUP",
+     "metric": "loss",
+     "units": 2
+    }
+   ],
+   "expected": {
+    "points": 1.0,
+    "realized_return": 72.7763329
+   }
+  },
+  {
+   "label": "Bosnia-Herzegovina",
+   "lot_order": 46,
+   "price": 1700.0,
+   "kind": "single",
+   "attributes": {
+    "group": "B",
+    "pot": 4,
+    "status": "Dead"
+   },
+   "teams": [
+    {
+     "name": "Bosnia-Herzegovina",
+     "seed": null,
+     "resolved": true
+    }
+   ],
+   "owners": [
+    {
+     "label": "Ezra Pemstein",
+     "share": 0.5
+    },
+    {
+     "label": "Craig Thompson",
+     "share": 0.5
+    }
+   ],
+   "events": [
+    {
+     "period_key": "GROUP",
+     "metric": "win",
+     "units": 1
+    },
+    {
+     "period_key": "GROUP",
+     "metric": "tie",
+     "units": 1
+    },
+    {
+     "period_key": "GROUP",
+     "metric": "loss",
+     "units": 1
+    },
+    {
+     "period_key": "GROUP",
+     "metric": "knockouts",
+     "units": 1
+    }
+   ],
+   "expected": {
+    "points": 21.0,
+    "realized_return": 1528.302991
+   }
+  },
+  {
+   "label": "Mexico",
+   "lot_order": 47,
+   "price": 2210.0,
+   "kind": "single",
+   "attributes": {
+    "group": "A",
+    "pot": 1,
+    "status": "Dead"
+   },
+   "teams": [
+    {
+     "name": "Mexico",
+     "seed": null,
+     "resolved": true
+    }
+   ],
+   "owners": [
+    {
+     "label": "Samuel Rosen",
+     "share": 1.0
+    }
+   ],
+   "events": [
+    {
+     "period_key": "GROUP",
+     "metric": "win",
+     "units": 3
+    },
+    {
+     "period_key": "GROUP",
+     "metric": "top_table",
+     "units": 1
+    },
+    {
+     "period_key": "GROUP",
+     "metric": "knockouts",
+     "units": 1
+    },
+    {
+     "period_key": "R32",
+     "metric": "win",
+     "units": 1
+    }
+   ],
+   "expected": {
+    "points": 29.0,
+    "realized_return": 2110.513654
+   }
+  },
+  {
+   "label": "Congo DR",
+   "lot_order": 48,
+   "price": 730.0,
+   "kind": "single",
+   "attributes": {
+    "group": "K",
+    "pot": 4,
+    "status": "Dead"
+   },
+   "teams": [
+    {
+     "name": "Congo DR",
+     "seed": null,
+     "resolved": true
+    }
+   ],
+   "owners": [
+    {
+     "label": "Samuel Rosen",
+     "share": 0.5
+    },
+    {
+     "label": "Craig Thompson",
+     "share": 0.5
+    }
+   ],
+   "events": [
+    {
+     "period_key": "GROUP",
+     "metric": "win",
+     "units": 1
+    },
+    {
+     "period_key": "GROUP",
+     "metric": "tie",
+     "units": 1
+    },
+    {
+     "period_key": "GROUP",
+     "metric": "loss",
+     "units": 1
+    },
+    {
+     "period_key": "GROUP",
+     "metric": "knockouts",
+     "units": 1
+    }
+   ],
+   "expected": {
+    "points": 21.0,
+    "realized_return": 1528.302991
+   }
+  }
+ ],
+ "trades": [
+  {
+   "sheet_ref": "1",
+   "date": "2026-05-14",
+   "detail": "Zach buys Haiti for $200",
+   "scope": "entry",
+   "entry_label": "Haiti",
+   "from": "Samuel Rosen",
+   "to": "Zachary Long",
+   "pct": 1.0,
+   "cash": -200,
+   "leg_owner": "Zachary Long",
+   "leg_side": "buy",
+   "asset_value": -200,
+   "synthetic": false
+  },
+  {
+   "sheet_ref": "1",
+   "date": "2026-05-14",
+   "detail": "Sam sells Haiti for $200",
+   "scope": "entry",
+   "entry_label": "Haiti",
+   "from": "Samuel Rosen",
+   "to": "Zachary Long",
+   "pct": 1.0,
+   "cash": 200,
+   "leg_owner": "Samuel Rosen",
+   "leg_side": "sell",
+   "asset_value": 200,
+   "synthetic": false
+  },
+  {
+   "sheet_ref": "2",
+   "date": "2026-05-14",
+   "detail": "Zach buys 50% of Saudi Arabia for $740",
+   "scope": "entry",
+   "entry_label": "Saudi Arabia",
+   "from": "Samuel Rosen",
+   "to": "Zachary Long",
+   "pct": 0.5,
+   "cash": -297.2236671,
+   "leg_owner": "Zachary Long",
+   "leg_side": "buy",
+   "asset_value": -594.4473342,
+   "synthetic": false
+  },
+  {
+   "sheet_ref": "2",
+   "date": "2026-05-14",
+   "detail": "Sam sells 50% of Saudi Arabia for $740",
+   "scope": "entry",
+   "entry_label": "Saudi Arabia",
+   "from": "Samuel Rosen",
+   "to": "Zachary Long",
+   "pct": 0.5,
+   "cash": 297.2236671,
+   "leg_owner": "Samuel Rosen",
+   "leg_side": "sell",
+   "asset_value": 594.4473342,
+   "synthetic": false
+  },
+  {
+   "sheet_ref": "3",
+   "date": "2026-06-01",
+   "detail": "Sam buys 50% of Spain for $9,000",
+   "scope": "entry",
+   "entry_label": "Spain",
+   "from": "Craig Thompson",
+   "to": "Samuel Rosen",
+   "pct": 0.5,
+   "cash": 11692.73407,
+   "leg_owner": "Samuel Rosen",
+   "leg_side": "buy",
+   "asset_value": 23385.46814,
+   "synthetic": false
+  },
+  {
+   "sheet_ref": "3",
+   "date": "2026-06-01",
+   "detail": "Craig sells 50% of Spain for $9,000",
+   "scope": "entry",
+   "entry_label": "Spain",
+   "from": "Craig Thompson",
+   "to": "Samuel Rosen",
+   "pct": 0.5,
+   "cash": -11692.73407,
+   "leg_owner": "Craig Thompson",
+   "leg_side": "sell",
+   "asset_value": -23385.46814,
+   "synthetic": false
+  },
+  {
+   "sheet_ref": "4",
+   "date": "2026-06-01",
+   "detail": "Joey synthetic buys 50% of France",
+   "scope": "entry",
+   "entry_label": "France",
+   "from": "Samuel Rosen",
+   "to": "Joey Anthony",
+   "pct": 0.5,
+   "cash": -942.5715215,
+   "leg_owner": "Joey Anthony",
+   "leg_side": "synthetic_buy",
+   "asset_value": -1885.143043,
+   "synthetic": true
+  },
+  {
+   "sheet_ref": "4",
+   "date": "2026-06-01",
+   "detail": "Sam short sells 50% of France",
+   "scope": "entry",
+   "entry_label": "France",
+   "from": "Samuel Rosen",
+   "to": "Joey Anthony",
+   "pct": 0.5,
+   "cash": 942.5715215,
+   "leg_owner": "Samuel Rosen",
+   "leg_side": "short_sell",
+   "asset_value": 1885.143043,
+   "synthetic": true
+  },
+  {
+   "sheet_ref": "5",
+   "date": "2026-06-11",
+   "detail": "Ed synthetic buys 50% of Egypt",
+   "scope": "entry",
+   "entry_label": "Egypt",
+   "from": "Samuel Rosen",
+   "to": "Ed Zhang",
+   "pct": 0.5,
+   "cash": 2.763328999,
+   "leg_owner": "Ed Zhang",
+   "leg_side": "synthetic_buy",
+   "asset_value": 5.526657997,
+   "synthetic": true
+  },
+  {
+   "sheet_ref": "5",
+   "date": "2026-06-11",
+   "detail": "Sam short sells 50% of Egypt",
+   "scope": "entry",
+   "entry_label": "Egypt",
+   "from": "Samuel Rosen",
+   "to": "Ed Zhang",
+   "pct": 0.5,
+   "cash": -2.763328999,
+   "leg_owner": "Samuel Rosen",
+   "leg_side": "short_sell",
+   "asset_value": -5.526657997,
+   "synthetic": true
+  },
+  {
+   "sheet_ref": "6",
+   "date": "2026-06-11",
+   "detail": "Sam synthetic buys 50% of Uruguay",
+   "scope": "entry",
+   "entry_label": "Uruguay",
+   "from": "Craig Thompson",
+   "to": "Samuel Rosen",
+   "pct": 0.5,
+   "cash": -1017.223667,
+   "leg_owner": "Samuel Rosen",
+   "leg_side": "synthetic_buy",
+   "asset_value": -2034.447334,
+   "synthetic": true
+  },
+  {
+   "sheet_ref": "6",
+   "date": "2026-06-11",
+   "detail": "Craig short sells 50% of Uruguay",
+   "scope": "entry",
+   "entry_label": "Uruguay",
+   "from": "Craig Thompson",
+   "to": "Samuel Rosen",
+   "pct": 0.5,
+   "cash": 1017.223667,
+   "leg_owner": "Craig Thompson",
+   "leg_side": "short_sell",
+   "asset_value": 2034.447334,
+   "synthetic": true
+  },
+  {
+   "sheet_ref": "7",
+   "date": "2026-06-11",
+   "detail": "Craig synthetic buys 50% of Sweden",
+   "scope": "entry",
+   "entry_label": "Sweden",
+   "from": "Samuel Rosen",
+   "to": "Craig Thompson",
+   "pct": 0.5,
+   "cash": -85.84850455,
+   "leg_owner": "Craig Thompson",
+   "leg_side": "synthetic_buy",
+   "asset_value": -171.6970091,
+   "synthetic": true
+  },
+  {
+   "sheet_ref": "7",
+   "date": "2026-06-11",
+   "detail": "Sam short sells 50% of Sweden",
+   "scope": "entry",
+   "entry_label": "Sweden",
+   "from": "Samuel Rosen",
+   "to": "Craig Thompson",
+   "pct": 0.5,
+   "cash": 85.84850455,
+   "leg_owner": "Samuel Rosen",
+   "leg_side": "short_sell",
+   "asset_value": 171.6970091,
+   "synthetic": true
+  },
+  {
+   "sheet_ref": "8",
+   "date": "2026-06-11",
+   "detail": "Craig synthetic buys 50% of Czechia",
+   "scope": "entry",
+   "entry_label": "Czechia",
+   "from": "Samuel Rosen",
+   "to": "Craig Thompson",
+   "pct": 0.5,
+   "cash": -913.6118336,
+   "leg_owner": "Craig Thompson",
+   "leg_side": "synthetic_buy",
+   "asset_value": -1827.223667,
+   "synthetic": true
+  },
+  {
+   "sheet_ref": "8",
+   "date": "2026-06-11",
+   "detail": "Sam short sells 50% of Czechia",
+   "scope": "entry",
+   "entry_label": "Czechia",
+   "from": "Samuel Rosen",
+   "to": "Craig Thompson",
+   "pct": 0.5,
+   "cash": 913.6118336,
+   "leg_owner": "Samuel Rosen",
+   "leg_side": "short_sell",
+   "asset_value": 1827.223667,
+   "synthetic": true
+  },
+  {
+   "sheet_ref": "9",
+   "date": "2026-06-11",
+   "detail": "Craig synthetic buys 50% of Belgium @ $3,500",
+   "scope": "entry",
+   "entry_label": "Belgium",
+   "from": "Samuel Rosen",
+   "to": "Craig Thompson",
+   "pct": 0.5,
+   "cash": -112.5325098,
+   "leg_owner": "Craig Thompson",
+   "leg_side": "synthetic_buy",
+   "asset_value": -225.0650195,
+   "synthetic": true
+  },
+  {
+   "sheet_ref": "9",
+   "date": "2026-06-11",
+   "detail": "Sam short sells 50% of Belgium",
+   "scope": "entry",
+   "entry_label": "Belgium",
+   "from": "Samuel Rosen",
+   "to": "Craig Thompson",
+   "pct": 0.5,
+   "cash": 112.5325098,
+   "leg_owner": "Samuel Rosen",
+   "leg_side": "short_sell",
+   "asset_value": 225.0650195,
+   "synthetic": true
+  },
+  {
+   "sheet_ref": "10",
+   "date": "2026-06-15",
+   "detail": "Sam synthetic buys 50% of Uruguay",
+   "scope": "entry",
+   "entry_label": "Uruguay",
+   "from": "Joey Anthony",
+   "to": "Samuel Rosen",
+   "pct": 0.5,
+   "cash": -1017.223667,
+   "leg_owner": "Samuel Rosen",
+   "leg_side": "synthetic_buy",
+   "asset_value": -2034.447334,
+   "synthetic": true
+  },
+  {
+   "sheet_ref": "10",
+   "date": "2026-06-15",
+   "detail": "Joey short sells 50% of Uruguay",
+   "scope": "entry",
+   "entry_label": "Uruguay",
+   "from": "Joey Anthony",
+   "to": "Samuel Rosen",
+   "pct": 0.5,
+   "cash": 1017.223667,
+   "leg_owner": "Joey Anthony",
+   "leg_side": "short_sell",
+   "asset_value": 2034.447334,
+   "synthetic": true
+  },
+  {
+   "sheet_ref": "12",
+   "date": "2026-06-23",
+   "detail": "Ed buys 10% of Norway @ $5,000",
+   "scope": "entry",
+   "entry_label": "Norway",
+   "from": "Craig Thompson",
+   "to": "Ed Zhang",
+   "pct": 0.1,
+   "cash": 147.7093628,
+   "leg_owner": "Ed Zhang",
+   "leg_side": "buy",
+   "asset_value": 1477.093628,
+   "synthetic": false
+  },
+  {
+   "sheet_ref": "12",
+   "date": "2026-06-23",
+   "detail": "Craig sells 10% of Norway @ $5,000",
+   "scope": "entry",
+   "entry_label": "Norway",
+   "from": "Craig Thompson",
+   "to": "Ed Zhang",
+   "pct": 0.1,
+   "cash": -147.7093628,
+   "leg_owner": "Craig Thompson",
+   "leg_side": "sell",
+   "asset_value": -1477.093628,
+   "synthetic": false
+  },
+  {
+   "sheet_ref": "13",
+   "date": "2026-06-23",
+   "detail": "Zach buys 50% of Paraguay @ $1,433",
+   "scope": "entry",
+   "entry_label": "Paraguay",
+   "from": "Craig Thompson",
+   "to": "Zachary Long",
+   "pct": 0.5,
+   "cash": -25.12483745,
+   "leg_owner": "Zachary Long",
+   "leg_side": "buy",
+   "asset_value": -50.2496749,
+   "synthetic": false
+  },
+  {
+   "sheet_ref": "13",
+   "date": "2026-06-23",
+   "detail": "Craig sells 50% of Paraguay @ $1,433",
+   "scope": "entry",
+   "entry_label": "Paraguay",
+   "from": "Craig Thompson",
+   "to": "Zachary Long",
+   "pct": 0.5,
+   "cash": 25.12483745,
+   "leg_owner": "Craig Thompson",
+   "leg_side": "sell",
+   "asset_value": 50.2496749,
+   "synthetic": false
+  },
+  {
+   "sheet_ref": "14",
+   "date": "2026-07-14",
+   "detail": "Zach buys 10% of Spain for $13,900",
+   "scope": "entry",
+   "entry_label": "Spain",
+   "from": "Craig Thompson",
+   "to": "Zachary Long",
+   "pct": 0.1,
+   "cash": 1848.546814,
+   "leg_owner": "Zachary Long",
+   "leg_side": "buy",
+   "asset_value": 18485.46814,
+   "synthetic": false
+  },
+  {
+   "sheet_ref": "14",
+   "date": "2026-07-14",
+   "detail": "Craig sells 10% of Spain for $13,900",
+   "scope": "entry",
+   "entry_label": "Spain",
+   "from": "Craig Thompson",
+   "to": "Zachary Long",
+   "pct": 0.1,
+   "cash": -1848.546814,
+   "leg_owner": "Craig Thompson",
+   "leg_side": "sell",
+   "asset_value": -18485.46814,
+   "synthetic": false
+  }
+ ],
+ "expected_owners": [
+  {
+   "label": "Ezra Pemstein",
+   "cost": 27555.0,
+   "realized": 19904.32705,
+   "trade_impact": 0.0,
+   "net": -7650.672952
+  },
+  {
+   "label": "Craig Thompson",
+   "cost": 12740.0,
+   "realized": 38535.06827,
+   "trade_impact": -13758.63459,
+   "net": 12036.43368
+  },
+  {
+   "label": "Ed Zhang",
+   "cost": 17150.0,
+   "realized": 12590.30559,
+   "trade_impact": 150.4726918,
+   "net": -4409.221717
+  },
+  {
+   "label": "Zachary Long",
+   "cost": 25160.0,
+   "realized": 13245.29259,
+   "trade_impact": 1326.198309,
+   "net": -10588.5091
+  },
+  {
+   "label": "Joey Anthony",
+   "cost": 19045.0,
+   "realized": 19867.93888,
+   "trade_impact": 74.65214564,
+   "net": 897.5910273
+  },
+  {
+   "label": "Samuel Rosen",
+   "cost": 10280.0,
+   "realized": 7787.06762,
+   "trade_impact": 12207.31144,
+   "net": 9714.379064
+  }
+ ],
+ "validation": {
+  "check_1_sum_price_equals_pot": "PASS - sum of the 48 entry prices = $111,930.00 = workbook pot $111,930.00 (Results!AD1, and the 'Total' row of the Auction Pro bidder block); delta $0.00. Prices also agree cell-for-cell between Results!G (Cost) and 'Results - Auction Pro'!F (Price) on all 48 lots.",
+  "check_2_shares_sum_to_one": "PASS - all 48 entries sum to exactly 1.0. 40 lots are single-owner (1.0); 8 lots have an Owner #2 and are encoded 0.5/0.5. The 0.5/0.5 reading is confirmed by the workbook itself: 'Split Value' = Price/2 and 'Split Payoff' = Realized Payoff/2 on exactly those 8 lots, and owner-level cost/return rebuilt from 50/50 shares reproduces the Auction Pro '$ Invested' and '$ Returned' columns for all 6 owners to the cent. No three-way splits, no explicit percentages, no negative (short) auction shares. Failures: none.",
+  "check_3_points_denominator": "PASS - sum of the 48 final (post-bonus) point totals = 1538, equal to the workbook's own total-points cell (Results!AC1 = 1538). $111,930 / 1538 pts = $72.7763329 per point, which matches the workbook's $/point cell (Results!AD2 = 72.7763329) to 9 significant figures; pot / $per-point = 1538.000000 pts, i.e. 1538 within floating-point noise. The sheet displays this as '$73'. normalization = earned_total is therefore consistent.",
+  "check_4_pot_bonus_derivation": "PASS - independently derived from the Pre-Bonus Tally column with no reference to the Pot Bonus column: pot 1 max 397 -> Spain alone, +48.00; pot 2 max 47 -> Switzerland alone, +48.00; pot 3 max 41 -> Norway alone, +48.00; pot 4 max 9 -> FOUR-WAY TIE (Bosnia-Herzegovina, Sweden, Congo DR, Ghana), 48/4 = +12.00 each. This reproduces Results!Z (Pot Bonus) for all 48 rows exactly, including the four 12s and the 44 zeros. The Market Odds tab independently corroborates the tie: its 'Pool Bonus' column carries 0.25 for each of those four teams and 1.0 for Spain / Switzerland / Norway.",
+  "check_5_payout_recompute": "PASS - Spain: events->pre-bonus 397 (sheet 397); +pot bonus 48 = 445 (sheet Total 445); 445 x $72.7763329/pt = $32,385.47 vs workbook Realized Payoff $32,385.47 || Mexico: events->pre-bonus 29 (sheet 29); +pot bonus 0 = 29 (sheet Total 29); 29 x $72.7763329/pt = $2,110.51 vs workbook Realized Payoff $2,110.51 || Germany: events->pre-bonus 18 (sheet 18); +pot bonus 0 = 18 (sheet Total 18); 18 x $72.7763329/pt = $1,309.97 vs workbook Realized Payoff $1,309.97 || Portugal: events->pre-bonus 20 (sheet 20); +pot bonus 0 = 20 (sheet Total 20); 20 x $72.7763329/pt = $1,455.53 vs workbook Realized Payoff $1,455.53 || Norway: events->pre-bonus 41 (sheet 41); +pot bonus 48 = 89 (sheet Total 89); 89 x $72.7763329/pt = $6,477.09 vs workbook Realized Payoff $6,477.09 || Congo DR: events->pre-bonus 9 (sheet 9); +pot bonus 12 = 21 (sheet Total 21); 21 x $72.7763329/pt = $1,528.30 vs workbook Realized Payoff $1,528.30",
+  "check_6_owner_labels_and_periods": "PASS - every entry owner label exists in owners[] (failures: none); every event period_key exists in periods[] (failures: none).",
+  "check_7_trade_impact_tie_out": "PASS - summing the 26 transcribed trade legs' Net Trade Value by 'New Owner' reproduces the Auction Pro 'Trade Impact' column for all 6 owners (Ezra 0.00, Craig -13,758.63, Ed +150.47, Zach +1,326.20, Joey +74.65, Sam +12,207.31) and the legs net to $0.00 across the pool. Mismatches: none. This is the check that catches dropped trailing trade rows.",
+  "check_8_per_row_scoring": "PASS - recomputing Win*3 + Tie*1 + Loss*0 + TopTable*5 + Knockouts*5 + per-round Win/ShootoutLoss at 10/2, 20/4, 50/10, 100/20, 200/40 reproduces the workbook's 'Pre-Bonus Tally' for all 48 rows exactly, and Pre-Bonus + derived Pot Bonus reproduces 'Total' for all 48 rows. Win+Tie+Loss = 3 for all 48 teams (every team played exactly 3 pool games), and Realized Payoff = Total * $72.7763329 for all 48 rows to the cent (also cross-checked against the Auction Pro 'Payoff' column)."
+ },
+ "notes": [
+  "RUBRIC read off this workbook's own header row (Results!H1:Z1), not assumed: Pool play Win 3 / Tie 1 / Loss 0, plus two 1/0 flag bonuses - 'Top Table' (finished first in group) 5 and 'Knockouts' (advanced to the Round of 32) 5. Knockouts pay per round on a Win / Shootout Loss pair: R32 10/2, R16 20/4, QF 50/10, SF 100/20, Final 200/40. Pot bonus 48 (Results!Z1). 48-team, 12-group, Round-of-32 format.",
+  "A SHOOTOUT LOSS IS ITS OWN OUTCOME TYPE, not a win and not a draw. It appears only in the knockout columns and is scored at 20% of that round's win value. Germany (R32 shootout loss) and Netherlands (R32 shootout loss) and Colombia (R16 shootout loss) are the three teams that used it. Germany: 2W 0T 1L + TT + KO + R32 shootout loss = 6+0+5+5+2 = 18, matching the workbook.",
+  "POT BONUS IS NOT TRANSCRIBED AS AN EVENT, per instruction: it is expressed only as rules[] {kind: group_rank_bonus, group_attr: 'pot', rate: 48} so the engine must derive it. The workbook's FINAL total (Results!AC, 'Total', which INCLUDES the bonus) is what lands in expected.points. The pre-bonus figure lives only in the workbook's 'Pre-Bonus Tally' column and is not carried in this JSON; the engine should reproduce it from events alone.",
+  "The pot-bonus tie in pot 4 is a genuine four-way tie at 9 pre-bonus points: Bosnia-Herzegovina, Sweden, Congo DR and Ghana all went 1W-1T-1L (5 pts) and all advanced (+5 knockouts, no Top Table), = 9, and all four exited the R32 in regulation. 48 / 4 = 12 each. Cape Verde is the near-miss at 8 (0W-3T-0L + knockouts).",
+  "OWNER IDENTITY: this workbook writes FULL NAMES in every owner cell ('Ezra Pemstein', 'Craig Thompson', 'Ed Zhang', 'Zachary Long', 'Joey Anthony', 'Samuel Rosen'), unlike the sibling pools which use first names or initials. owners[].label and owners[].name are both the full name. The trade Detail strings, by contrast, use first names ('Zach buys...', 'Sam short sells...'); the paired 'New Owner' column gives the full name, so the mapping Zach->Zachary Long, Sam->Samuel Rosen, Craig->Craig Thompson, Joey->Joey Anthony, Ed->Ed Zhang, Ezra->Ezra Pemstein is established by the workbook itself, not inferred.",
+  "CONSORTIA: the Auction Pro tab carries a 'Consortia Leaders' / 'Additional Members' pair of columns. Each of the 6 bidding entities is a consortium of 1-2 people; only the leader ever appears as an owner of a lot, so the consortium members are NOT owners in entries[]. Recorded under the top-level 'consortia' key. Samuel Rosen has no additional member (members: []). The additional members (Zack Miller, Damon Hatheway, Shaun McGuire, Greg Karabinos, Kurt Dehut) appear nowhere else in the workbook except that Shaun McGuire also shows up as a zero-dollar player row on the leftover NFL tab.",
+  "The 'Funds Flow' block on the Auction Pro tab settles at the consortium level and names payees as consortium pairs: Ezra pays 7,650.672952 to Craig (and a 3,825.336476 figure sits one column further right, i.e. the per-head half); Ed pays 4,385.760728 to Craig and 23.4609883 'To Joey / Kurt'; Zach pays 9,714.379064 to Sam and 874.130039 'To Joey / Kurt'. This is the only place the workbook treats a consortium as a single settlement counterparty.",
+  "TRADES ARE TRANSCRIBED ONE OBJECT PER LEG (26 objects for 13 economic trades), because both legs carry their own date, % of Asset, Value of Traded Asset and Net Trade Value in the workbook and short/synthetic legs are only identifiable from the leg text. Both legs of a trade share the same sheet_ref (the workbook's Trade ID) and the same from/to, so a loader can collapse them by sheet_ref. 'cash' is that leg's Net Trade Value; 'asset_value' is its Value of Traded Asset; 'leg_side' is one of buy / sell / synthetic_buy / short_sell; 'leg_owner' is the workbook's 'New Owner' cell for that leg.",
+  "SHORT SALES AND SYNTHETIC BUYS: 8 of the 13 trades are synthetic pairs (a 'synthetic buys' leg against a 'short sells' leg) rather than real transfers of the lot - France 50% (Joey synthetic long / Sam short), Egypt 50% (Ed long / Sam short), Uruguay 50% twice (Sam long / Craig short on 6/11, then Sam long AGAIN / Joey short on 6/15 - Sam doubled the same synthetic position), Sweden 50% (Craig long / Sam short), Czechia 50% (Craig long / Sam short), Belgium 50% @ $3,500 (Craig long / Sam short). Sam is the short seller on 5 of them. Only 5 trades are real ownership transfers: Haiti 100% @ $200, Saudi Arabia 50% @ $740, Spain 50% @ $9,000, Norway 10% @ $5,000, Paraguay 50% @ $1,433, Spain 10% @ $13,900 (that is 6 real legs across trades 1,2,3,12,13,14).",
+  "IMPORTANT: entries[].owners records the AUCTION ownership as the workbook's own Owner #1 / Owner #2 columns state it, and the workbook does NOT restate ownership after trades. Spain is still listed as Craig Thompson 100% even though Craig sold 50% to Sam (trade 3) and 10% to Zach (trade 14); Haiti is still Samuel Rosen even though Zach bought it outright (trade 1). The trade economics are carried entirely by the separate 'Trade Impact' column, which the 26 trade legs reproduce exactly. Do not net the trades into the shares - that would double-count.",
+  "Trade ID 11 exists in the workbook as two rows with the text 'Intentionally left blank - Scotland trade off BS' and no numbers. It is NOT transcribed as a trade. Trade IDs 15-18 are pre-numbered empty placeholder row pairs. So 14 IDs, 13 real trades, 26 legs.",
+  "MTM / VALUATION TAB ('Market Odds'): this is the World Cup analogue of the NFL pools' Kalshi week-zero model. Layout: one row per team, keyed Group / Pot / Team, then a Pts column (current earned pre-bonus points), then eight PROBABILITY columns - 'To Advance', 'To Win Group', 'To Win R32', 'To Win R16', 'To Win Quarterfinals', 'To Win Semis', 'To Win Finals', 'Pool Bonus' - then Pts (expected total), FV (fair value in dollars) and MTM (FV minus cost). Row 1 above the probability columns holds the point value each probability is multiplied by: 1 (per pool-play point already banked), 5 (To Advance = the Knockouts flag), 5 (To Win Group = Top Table), 10 / 20 / 50 / 100 / 200 (the five knockout round wins), and 48 (Pool Bonus), with 1538 (total pool points) sitting at the end. So the inputs it needs are: (a) per-team market-implied probabilities for advancing out of the group, winning the group, and winning each of the five knockout rounds, (b) a per-team probability of taking its pot bonus, (c) each team's already-banked points, and (d) the pool-wide total-points denominator and $/point. FV = expected points x $ per point. In the exported snapshot all eight probability cells are EMPTY and only the realised flags remain (Pool Bonus = 1.0 for Spain / Switzerland / Norway and 0.25 for each of the four tied pot-4 teams), because the workbook was last saved after the tournament resolved - so the tab shows structure, not live odds. The 48-shootout-loss outcomes are NOT modelled here: the probability grid has no shootout-loss column, so its expected points are systematically a little low for teams that can exit on penalties.",
+  "LEFTOVER NFL TABS - four of them, none used for this transcription. (1) 'Calcutta Returns - M2M' is exactly the NFL-format tab described in the brief: columns Division / Team / Owner / $ Cost / Starting Points / # Reg. Season Wins / Adj. Point Differential / Playoff Berth / Div. Round / Conf. Round / SB Berth / Win Super Bowl. VERDICT: it is a BROKEN LEFTOVER, not real data and not an empty template - all 32 Division rows are present with hard-coded 150 Starting Points and real 1/0 playoff-round flags, but every Team, Owner, $ Cost, Wins, Point Differential and Return cell is #REF!, the header says 'LAST UPDATED: 9/8/25', and the player summary block is #REF! except two zero rows (Ian Culnane, Shaun McGuire). It also carries its OWN Secondary Trades block of 15 NFL trades dated 8/13-8/14/25 (Lion King crossbook, synthetic longs/shorts on the Pats, Dolphins, Raiders, Texans, plus % transfers of the Ravens, Commanders, Chiefs, Texans, Packers, Jets, Eagles) whose text survived but whose every dollar value is #REF!. Ignored entirely, per contract. (2) 'Sheet1' holds a live-looking NFL auction: 32 NFL teams with Bid / Owner / Owner #2 (first names) and a trailing note 'Sam / Zach: 25% Crossbook of everything touched'. (3) 'Scoring Rubric' holds the NFL scoring rubric (old and new: per-win 20, playoff berth 25, div 50, conf 100, SB berth 200, win SB 500, per point-differential-above--100 pool 100, 11420 denominator, 2x primetime point-differential multiplier) plus a fully populated NFL results grid. (4) 'Valuations Over Time' is an NFL week-by-week MTM history (Draft, Week 0-18) naming NFL owners including Joshua Melnick, Ian Culnane and Shaun McGuire who never appear in the World Cup pool. These four tabs together look like the NFL edition's workbook, saved-as and partially overwritten.",
+  "NL-READ TRUNCATION CONFIRMED. The natural-language read (read_file_content) of this workbook silently STOPS MID-TRADE: its Results-tab trade block ends at trade 9's first leg ('Craig synthetic buys 50% of Belgium @ $3,500') and drops the second leg of trade 9 plus trades 10, 12, 13 and 14 entirely - 9 of the 26 legs, including both Spain resales and the Norway and Paraguay transfers. Everything in this file was taken from the xlsx export parsed with openpyxl; the NL read was used only as a cross-check. Its 48-team block was complete and its team-level numbers agreed.",
+  "as_of_date is set to 2026-06-11 (tournament kickoff, the consortium anchor the contract asks for). For reference the workbook's own 'As of:' cell (Results!D1) reads 2026-07-06, and its trade dates run 2026-05-14 (pre-tournament) through 2026-07-14. The 2026-07-14 Spain trade postdates the workbook's own as-of date.",
+  "Spain is the only team whose Status is 'Alive' (the workbook was saved with Spain having won the Final but its status flag not flipped); the other 47 are 'Dead'. Status is carried in entries[].attributes.status for reference and is not used in scoring. Spain: 2W 1T 0L, Top Table 1, Knockouts 1, wins in R32/R16/QF/SF/Final = 6+1+5+5+10+20+50+100+200 = 397 pre-bonus, +48 pot bonus = 445, x $72.7763329 = $32,385.47.",
+  "expected.realized_return is the workbook's ENTRY-level 'Realized Payoff' (Results!AD), not the per-owner 'Split Payoff' (Results!AE). For the 8 two-owner lots Split Payoff is exactly half of Realized Payoff - Portugal is the example called out in the brief: Realized Payoff $1,455.526658, Split Payoff $727.763329, split Joey Anthony / Ezra Pemstein. The workbook also carries 'Est. Fully Loaded Payoff Per Owner' (Results!AG) and 'Est. MTM' (Results!AH) columns which are not transcribed.",
+  "Two lots tie at $730 (Saudi Arabia, Congo DR) and two at $1,700 (Sweden, Bosnia-Herzegovina); lot_order comes from the Auction Pro 'Order' column (1-48, complete with no gaps or duplicates) and disambiguates them. Spain was lot 1 and went for $8,100; France was the most expensive lot at $9,090.",
+  "Team names are transcribed with the workbook's own diacritics and spellings: 'Turkiye' is written Türkiye, 'Curacao' is written Curaçao, and the workbook uses 'Congo DR', 'Ivory Coast', 'Czechia', 'Cape Verde', 'United States', 'South Korea', 'Bosnia-Herzegovina'.",
+  "Six teams finished with 0 points (Tunisia, Uzbekistan, Panama, Haiti, Iraq, Jordan - all 0W-0T-3L) and therefore $0 realized payoff, a total write-off of $2,970 of entry cost.",
+  "No bundles and no placeholders in this pool: all 48 lots are single named national teams, one lot per team, so entries[].kind is 'single' throughout and teams[] always has exactly one member. teams[].seed is null (a World Cup has pots, not seeds); the pot is carried in attributes.pot and is the group_attr the pot bonus keys on."
+ ]
+}

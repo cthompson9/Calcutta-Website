@@ -1,0 +1,65 @@
+# Nightly backups committed to a private repository
+
+Depends on task `00`. Requires the `Calcutta-Backups` repository, `BACKUP_REPO_TOKEN`,
+`DATABASE_URL` and `BACKUP_DATABASE_URL` to already exist as described in this folder's README.
+
+Paste the block below to Replit as one task. Verify before moving on.
+
+```
+Create .github/workflows/backup.yml. Model the secret handling and the workflow_dispatch input
+pattern on the existing .github/workflows/refresh.yml.
+
+TRIGGERS.
+- schedule: daily at 08:00 UTC (04:00 ET)
+- workflow_dispatch with no inputs, for manual runs and for pre-deploy snapshots
+
+STEPS.
+
+1. Install the PostgreSQL 16 client explicitly from the PGDG apt repository. Do not rely on the
+   runner image's bundled client. The .replit file declares postgresql-16 and pg_dump refuses to
+   dump from a server newer than itself, so an unpinned client will break silently on a future
+   runner image bump. Assert the installed version is 16.x and fail the job if it is not.
+
+2. Produce three artifacts into a working directory, using a UTC date stamp YYYY-MM-DD:
+   a. snapshot-<date>.json      — the logical export from task 00, run with BACKUP_DATABASE_URL
+   b. schema-<date>.sql         — pg_dump --schema-only --no-owner --no-privileges
+   c. dump-<date>.sql.gz        — pg_dump plain text, gzipped
+   Fail the job if any artifact is zero bytes or if any command exits non-zero. Do not continue
+   on error anywhere in this workflow.
+
+3. Check out cthompson9/Calcutta-Backups using BACKUP_REPO_TOKEN into a separate path.
+
+4. Commit (a) and (b) into that repository under snapshots/ and schema/ respectively. These are
+   text and belong in the git tree, where their history is the recovery record.
+
+5. Attach (c) as an asset on a GitHub Release in the backup repository, tagged
+   backup-<date>. Do not commit it into the tree: git has no delta compression for gzipped
+   binaries, so committing a nightly dump grows the repository linearly and permanently.
+
+6. Commit message format: "snapshot <date> — <total row count> rows across <n> tables". Read
+   both figures out of the meta block of the JSON export rather than recomputing them.
+
+7. If the working tree in the backup repository has no changes, skip the commit and log that
+   fact rather than failing. An unchanged database is a valid outcome.
+
+8. Set a job-level timeout of 10 minutes and concurrency group "backup" with
+   cancel-in-progress: false.
+
+DO NOT add the drop detector or any alerting to this workflow. That is task 03 and belongs in
+its own file.
+
+ACCEPTANCE.
+- Trigger via workflow_dispatch. Confirm a new commit in Calcutta-Backups containing both text
+  artifacts, and a release carrying the gzipped dump.
+- Confirm the committed JSON is byte-identical to a local run of the exporter against the same
+  database at the same point in time.
+- Read the printed per-table byte sizes from the job log and report which tables dominate. If
+  event_market_snapshots is more than half the total, say so and stop — it will need a separate
+  weekly cadence and this workflow will need revisiting before the season generates real volume.
+```
+
+## Verify before moving on
+
+Trigger it manually twice on the same day and confirm the second run either produces a clean
+no-op or an intelligible one-line diff. Then read the byte-size report — that number decides
+whether the daily cadence is sustainable once Kalshi quotes start accumulating weekly.

@@ -1,0 +1,93 @@
+name: Calcutta refresh
+
+on:
+  schedule:
+    - cron: "*/5 * * * *"
+    - cron: "0 7,8 * * 2"
+  workflow_dispatch:
+    inputs:
+      job:
+        description: "Job to run (standings | mtm)"
+        default: "standings"
+        type: choice
+        options:
+          - standings
+          - mtm
+      sport:
+        description: "Sport scope for a manual standings refresh"
+        default: "NFL"
+        type: choice
+        options:
+          - NFL
+          - CFB
+          - both
+
+jobs:
+  tick:
+    runs-on: ubuntu-latest
+    timeout-minutes: 3
+    steps:
+      - name: Determine job type
+        id: job
+        env:
+          REQUESTED_JOB: ${{ inputs.job }}
+          REQUESTED_SPORT: ${{ inputs.sport }}
+        run: |
+          if [ "${{ github.event_name }}" = "workflow_dispatch" ]; then
+            case "$REQUESTED_JOB" in
+              standings|mtm) echo "name=$REQUESTED_JOB" >> "$GITHUB_OUTPUT" ;;
+              *) echo "Unsupported job" >&2; exit 1 ;;
+            esac
+            case "$REQUESTED_SPORT" in
+              NFL|CFB|both) echo "sport=$REQUESTED_SPORT" >> "$GITHUB_OUTPUT" ;;
+              *) echo "Unsupported sport" >&2; exit 1 ;;
+            esac
+          elif [ "${{ github.event.schedule }}" = "0 7,8 * * 2" ]; then
+            echo "name=mtm" >> "$GITHUB_OUTPUT"
+            echo "sport=NFL" >> "$GITHUB_OUTPUT"
+          else
+            echo "name=standings" >> "$GITHUB_OUTPUT"
+            echo "sport=NFL" >> "$GITHUB_OUTPUT"
+          fi
+      - name: Trigger refresh
+        env:
+          REFRESH_JOB: ${{ steps.job.outputs.name }}
+          REFRESH_SPORT: ${{ steps.job.outputs.sport }}
+          CALCUTTA_APP_URL: ${{ secrets.CALCUTTA_APP_URL }}
+          CALCUTTA_JOB_SECRET: ${{ secrets.CALCUTTA_JOB_SECRET }}
+        run: |
+          if [ "${{ github.event_name }}" = "schedule" ] && [ "$REFRESH_JOB" = "mtm" ]; then
+            et_hour="$(TZ=America/New_York date +%H)"
+            if [ "$et_hour" != "03" ]; then
+              echo "Skipping duplicate DST candidate; New York hour is $et_hour"
+              exit 0
+            fi
+          fi
+
+          trigger_refresh() {
+            case "$1" in
+              NFL) competition="NFL_REGULAR_SEASON" ;;
+              CFB) competition="CFB_REGULAR_SEASON" ;;
+              *) echo "Unsupported sport" >&2; return 1 ;;
+            esac
+            curl -fsS --max-time 120 --retry 2 --retry-delay 10 \
+              -X POST "$CALCUTTA_APP_URL/api/jobs/refresh" \
+              -H "Authorization: Bearer $CALCUTTA_JOB_SECRET" \
+              -H "Content-Type: application/json" \
+              -d "{\"job\":\"$REFRESH_JOB\",\"sport\":\"$1\",\"competition\":\"$competition\"}"
+          }
+
+          if [ "$REFRESH_JOB" = "mtm" ] && [ "$REFRESH_SPORT" != "NFL" ]; then
+            echo "MTM refresh is only supported for NFL" >&2
+            exit 1
+          fi
+          if [ "$REFRESH_SPORT" = "both" ]; then
+            trigger_refresh NFL &
+            nfl_pid=$!
+            trigger_refresh CFB &
+            cfb_pid=$!
+            wait "$nfl_pid"
+            wait "$cfb_pid"
+          else
+            trigger_refresh "$REFRESH_SPORT"
+          fi

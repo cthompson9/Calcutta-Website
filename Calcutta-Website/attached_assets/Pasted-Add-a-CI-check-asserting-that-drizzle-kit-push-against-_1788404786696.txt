@@ -1,0 +1,40 @@
+Add a CI check asserting that drizzle-kit push against the current committed schema baseline
+emits no DDL.
+
+1. Commit reference/schema-baseline.sql — a pg_dump --schema-only --no-owner --no-privileges of
+   the production database taken after task 04 landed. This is a deliberately reviewed artifact,
+   not an automated one: updating it is part of any intentional schema change, which is what
+   makes the gate meaningful. Add a header comment stating the date it was captured and that it
+   must be regenerated in the same PR as any schema change.
+
+2. Create .github/workflows/schema-check.yml, running on pull_request and on push to main:
+   - a postgres:16 service container
+   - load reference/schema-baseline.sql into it
+   - run drizzle-kit push against it in a non-interactive mode, capturing any SQL it would emit
+   - fail the job if any DDL statement is emitted, printing the statements
+
+   Determine the correct non-interactive invocation yourself from the installed drizzle-kit
+   version's help output. If push cannot be made to report a diff without applying it, use
+   introspection instead: introspect the loaded baseline, generate from the Drizzle schema, and
+   compare. Either mechanism is acceptable; the assertion is what matters. State in your summary
+   which one you used and why.
+
+3. Add a job step that fails with a clear message when reference/schema-baseline.sql is more than
+   90 days old, so a stale baseline cannot quietly make the gate vacuous.
+
+4. Document the workflow in one paragraph in docs/database-maintenance.md under the section
+   rewritten in task 04: what the gate asserts, and the instruction that a schema change PR must
+   include a regenerated baseline.
+
+ACCEPTANCE.
+- The workflow passes on the current main.
+- Add a throwaway column to any schema file on a scratch branch and confirm the workflow fails
+  and prints the ALTER statement it would emit. Then revert.
+- The workflow does not require any repository secret and does not connect to production.
+```
+
+## Verify before moving on
+
+Confirm the deliberate-failure test. A gate that cannot fail is worse than no gate, because it
+manufactures confidence.
+

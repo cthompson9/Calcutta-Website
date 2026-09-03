@@ -18,6 +18,11 @@ import {
   getGetMtmSnapshotsQueryKey,
   useGetTrades,
   getGetTradesQueryKey,
+  useGetHistoricalPools,
+  useGetHistoricalPoolEntries,
+  getGetHistoricalPoolEntriesQueryKey,
+  useGetHistoricalPoolOwners,
+  getGetHistoricalPoolOwnersQueryKey,
 } from "@workspace/api-client-react";
 import type {
   OwnershipSegment,
@@ -56,13 +61,18 @@ import {
   type TradeGroup,
 } from "@/lib/tradeGroups";
 import { ReleaseNotes } from "@/components/ReleaseNotes";
+import { HistoricalResultsView } from "@/components/HistoricalResultsView";
 
 type TabId = "byOwner" | "byTeam" | "compare";
 
 export default function Results() {
   const { year, selectedCalcutta } = useSeason();
   const isNflCalcutta = selectedCalcutta?.sport === "NFL";
-  const calcuttaId = isNflCalcutta ? selectedCalcutta.id : undefined;
+  const usesLiveResults =
+    isNflCalcutta && year >= 2025;
+  const prefersHistoricalResults =
+    selectedCalcutta != null && !usesLiveResults;
+  const calcuttaId = usesLiveResults ? selectedCalcutta.id : undefined;
   const [tab, setTab] = useState<TabId>("byOwner");
   const [expandedOwner, setExpandedOwner] = useState<number | null>(null);
   const [period, setPeriod] = useState<number | undefined>(undefined);
@@ -72,6 +82,38 @@ export default function Results() {
   const teamBasis = "realized" as const;
   const viewBasis = tab === "byTeam" ? teamBasis : consortiumBasis;
 
+  const {
+    data: historicalPools,
+    isLoading: loadingHistoricalPools,
+  } = useGetHistoricalPools();
+  const historicalPool = useMemo(
+    () =>
+      historicalPools?.find(
+        (pool) =>
+          pool.name === selectedCalcutta?.name &&
+          pool.seasonYear === selectedCalcutta?.year &&
+          pool.sport.toUpperCase() === selectedCalcutta?.sport.toUpperCase(),
+      ) ?? null,
+    [historicalPools, selectedCalcutta],
+  );
+  const historicalPoolId = historicalPool?.id ?? 0;
+  const isHistoricalReport =
+    prefersHistoricalResults && historicalPool != null;
+  const { data: historicalEntries, isLoading: loadingHistoricalEntries } =
+    useGetHistoricalPoolEntries(historicalPoolId, {
+      query: {
+        enabled: isHistoricalReport,
+        queryKey: getGetHistoricalPoolEntriesQueryKey(historicalPoolId),
+      },
+    });
+  const { data: historicalOwners, isLoading: loadingHistoricalOwners } =
+    useGetHistoricalPoolOwners(historicalPoolId, {
+      query: {
+        enabled: isHistoricalReport,
+        queryKey: getGetHistoricalPoolOwnersQueryKey(historicalPoolId),
+      },
+    });
+
   const { data: periods } = useGetSportPeriods({ sport: "NFL" });
   const { data: allSeasons } = useGetSeasons();
   const availabilityParams = { season: year, calcuttaId, basis: viewBasis };
@@ -79,7 +121,7 @@ export default function Results() {
     availabilityParams,
     {
       query: {
-        enabled: isNflCalcutta && (tab === "byOwner" || tab === "byTeam"),
+        enabled: usesLiveResults && (tab === "byOwner" || tab === "byTeam"),
         queryKey: getGetResultsAvailabilityQueryKey(availabilityParams),
       },
     },
@@ -99,11 +141,18 @@ export default function Results() {
     }
   }, [allSeasons, compareSeasons.length]);
 
+  useEffect(() => {
+    setPeriod(undefined);
+    if (prefersHistoricalResults && tab === "compare") {
+      setTab("byOwner");
+    }
+  }, [prefersHistoricalResults, selectedCalcutta?.id, tab]);
+
   const { data: teamResults, isLoading: loadingTeams } = useGetResults(
     { season: year, calcuttaId, period: selectedPeriod, basis: teamBasis },
     {
       query: {
-        enabled: isNflCalcutta && tab === "byTeam" && (period != null || availability !== undefined),
+        enabled: usesLiveResults && tab === "byTeam" && (period != null || availability !== undefined),
         queryKey: getGetResultsQueryKey({ season: year, calcuttaId, period: selectedPeriod, basis: teamBasis }),
       },
     },
@@ -117,7 +166,7 @@ export default function Results() {
     },
     {
       query: {
-        enabled: isNflCalcutta && tab === "byOwner",
+        enabled: usesLiveResults && tab === "byOwner",
         queryKey: getGetResultsByOwnerQueryKey({
           season: year,
           calcuttaId,
@@ -137,7 +186,7 @@ export default function Results() {
     { season: year, calcuttaId, period: previousPeriod, basis: consortiumBasis },
     {
       query: {
-        enabled: isNflCalcutta && tab === "byOwner" && previousPeriod != null,
+        enabled: usesLiveResults && tab === "byOwner" && previousPeriod != null,
         queryKey: getGetResultsByOwnerQueryKey({
           season: year,
           calcuttaId,
@@ -151,7 +200,7 @@ export default function Results() {
     { season: year, calcuttaId },
     {
       query: {
-        enabled: isNflCalcutta && tab === "byOwner",
+        enabled: usesLiveResults && tab === "byOwner",
         queryKey: getGetAuctionSummaryQueryKey({ season: year, calcuttaId }),
       },
     },
@@ -160,7 +209,7 @@ export default function Results() {
     { season: year, calcuttaId },
     {
       query: {
-        enabled: isNflCalcutta && tab === "byOwner",
+        enabled: usesLiveResults && tab === "byOwner",
         queryKey: getGetMtmSnapshotsQueryKey({ season: year, calcuttaId }),
       },
     },
@@ -169,7 +218,7 @@ export default function Results() {
     { season: year, calcuttaId },
     {
       query: {
-        enabled: isNflCalcutta && tab === "byOwner",
+        enabled: usesLiveResults && tab === "byOwner",
         queryKey: getGetTradesQueryKey({ season: year, calcuttaId }),
       },
     },
@@ -183,17 +232,28 @@ export default function Results() {
   };
   const { data: compareResults, isLoading: loadingCompare } = useGetResultsCompare(
     compareParams,
-    { query: { enabled: tab === "compare" && compareSeasons.length >= 2, queryKey: getGetResultsCompareQueryKey(compareParams) } }
+    {
+      query: {
+        enabled:
+          !prefersHistoricalResults &&
+          tab === "compare" &&
+          compareSeasons.length >= 2,
+        queryKey: getGetResultsCompareQueryKey(compareParams),
+      },
+    },
   );
 
   const { data: bidders } = useGetBidders(
     { season: year, calcuttaId },
-    { query: { enabled: isNflCalcutta, queryKey: getGetBiddersQueryKey({ season: year, calcuttaId }) } },
+    { query: { enabled: usesLiveResults, queryKey: getGetBiddersQueryKey({ season: year, calcuttaId }) } },
   );
   const consortiumByBidderId = useMemo(() => bidderConsortiums(bidders), [bidders]);
 
-  const isLoading =
-    tab === "byTeam"
+  const isLoading = prefersHistoricalResults
+    ? loadingHistoricalPools ||
+      (isHistoricalReport &&
+        (loadingHistoricalEntries || loadingHistoricalOwners))
+    : tab === "byTeam"
       ? loadingTeams
       : tab === "byOwner"
         ? loadingOwners
@@ -208,10 +268,14 @@ export default function Results() {
     return [...new Set([...teamReasons, ...ownerReasons])];
   }, [teamResults, ownerResults]);
 
-  const reportBasisLabel = tab === "byTeam"
+  const reportBasisLabel = prefersHistoricalResults
+    ? "Final normalized historical returns"
+    : tab === "byTeam"
     ? "Realized team returns + latest MTM"
     : "Latest net mark-to-market";
-  const selectedPeriodLabel = period == null
+  const selectedPeriodLabel = prefersHistoricalResults
+    ? "final imported results"
+    : period == null
     ? "latest available period"
     : periods?.find((item) => item.sequence === period)?.label ?? `Period ${period}`;
 
@@ -233,6 +297,7 @@ export default function Results() {
         <ReleaseNotes />
       </div>
 
+      {!prefersHistoricalResults && (
       <div className="px-4 md:px-0">
         <div className="flex flex-col gap-4 rounded-none md:rounded-lg border-y md:border border-border bg-card p-4 sm:flex-row sm:items-center sm:justify-between -mx-4 md:mx-0 shadow-sm">
           <label className="flex flex-col sm:flex-row sm:items-center gap-1.5 text-xs font-mono font-bold uppercase tracking-widest text-muted-foreground">
@@ -276,8 +341,9 @@ export default function Results() {
           )}
         </div>
       </div>
+      )}
 
-      {tab === "compare" && allSeasons && (
+      {!prefersHistoricalResults && tab === "compare" && allSeasons && (
         <div className="px-4 md:px-0">
           <div className="flex flex-wrap items-center gap-1.5 rounded-none md:rounded-lg border-y md:border border-border bg-card p-3 -mx-4 md:mx-0 shadow-sm">
             <span className="text-xs font-mono font-bold uppercase tracking-widest text-muted-foreground mr-2">
@@ -315,7 +381,10 @@ export default function Results() {
 
       {/* Tabs */}
       <div className="flex border-b border-border overflow-x-auto no-scrollbar mx-4 md:mx-0">
-        {(["byOwner", "byTeam", "compare"] as TabId[]).map((t) => (
+        {(prefersHistoricalResults
+          ? (["byOwner", "byTeam"] as TabId[])
+          : (["byOwner", "byTeam", "compare"] as TabId[])
+        ).map((t) => (
           <button
             key={t}
             data-testid={`tab-${t}`}
@@ -332,7 +401,7 @@ export default function Results() {
         ))}
       </div>
 
-      {tab !== "compare" && staleMtmReasons.length > 0 && (
+      {!prefersHistoricalResults && tab !== "compare" && staleMtmReasons.length > 0 && (
         <div
           className="mx-4 flex items-start gap-3 border border-amber-300 bg-amber-50 px-4 py-3 text-amber-950 dark:border-amber-800 dark:bg-amber-950/40 dark:text-amber-100 md:mx-0"
           role="status"
@@ -353,6 +422,15 @@ export default function Results() {
       <div className="px-0 md:px-0">
         {isLoading ? (
           <LoadingSkeleton />
+        ) : isHistoricalReport && historicalPool ? (
+          <HistoricalResultsView
+            pool={historicalPool}
+            entries={historicalEntries ?? []}
+            owners={historicalOwners ?? []}
+            tab={tab === "byTeam" ? "byTeam" : "byOwner"}
+          />
+        ) : prefersHistoricalResults ? (
+          <HistoricalResultsUnavailable />
         ) : tab === "byOwner" ? (
           <>
             <div className="hidden md:block">
@@ -396,6 +474,21 @@ export default function Results() {
           />
         )}
       </div>
+    </div>
+  );
+}
+
+function HistoricalResultsUnavailable() {
+  return (
+    <div className="mx-4 flex flex-col items-center justify-center rounded-none border-y border-dashed border-border bg-card/50 p-12 text-center text-muted-foreground md:mx-0 md:rounded-lg md:border">
+      <History className="mb-4 h-8 w-8 opacity-40" />
+      <p className="font-mono text-sm font-bold uppercase tracking-widest text-foreground">
+        Historical backload unavailable
+      </p>
+      <p className="mt-1 max-w-xl text-sm">
+        No normalized historical pool matches this Calcutta. The report will not
+        fall back to another season or treat missing values as zero.
+      </p>
     </div>
   );
 }
