@@ -177,6 +177,24 @@ gzip --decompress --stdout \
   psql -X -v ON_ERROR_STOP=1 --dbname="$TARGET_DATABASE_URL"
 ```
 
+The full dump deliberately contains no grants or default-privilege statements;
+those belong to the target environment and are excluded with `--no-privileges`.
+After the data restore, recreate the target's backup role and access grants as a
+database administrator using the existing reference script:
+
+```sh
+export TARGET_DATABASE_NAME='disposable_calcutta'
+psql -X -v ON_ERROR_STOP=1 \
+  -v DBNAME="$TARGET_DATABASE_NAME" \
+  --dbname="$TARGET_DATABASE_URL" \
+  -f reference/backup-role.sql
+```
+
+`reference/backup-role.sql` prompts for the new `calcutta_backup` password,
+grants table and sequence access, and installs the matching default privileges
+for `neondb_owner`. Do not copy production role passwords into the restore
+target.
+
 `psql -v ON_ERROR_STOP=1` is mandatory. Without it, `psql` logs a restore
 error, continues, and exits zero, producing a silently partial restore in
 which later constraints are skipped.
@@ -242,5 +260,9 @@ Findings and resolutions:
    rows but only 3 of 44 natural keys. The documented verification now checks
    `pg_constraint` and `pg_index` counts in addition to representative data
    counts and logical-snapshot reconciliation.
+5. **Target-role privileges were not portable.** The dump attempted to execute
+   `ALTER DEFAULT PRIVILEGES FOR ROLE neondb_owner` and failed on the final
+   statement. The full dump now uses `--no-privileges`; restore targets must
+   recreate `calcutta_backup` and its grants with `reference/backup-role.sql`.
 
 Never test recovery by overwriting the live production database.

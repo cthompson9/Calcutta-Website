@@ -227,6 +227,7 @@ jobs:
             --schema=public \
             --clean \
             --if-exists \
+            --no-privileges \
             > "$raw_dump_path"
           test -s "$raw_dump_path"
 
