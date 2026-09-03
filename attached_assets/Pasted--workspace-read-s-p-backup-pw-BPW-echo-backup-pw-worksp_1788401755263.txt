@@ -1,0 +1,86 @@
+~/workspace$ read -s -p "backup pw: " BPW; echo
+backup pw: 
+~/workspace$ PROD="postgresql://calcutta_backup:${BPW}@ep-sweet-bar-ayhu1bkt.c-5.us-east-2.aws.neon.tech/neondb?sslmode=require"
+~/workspace$ psql "$PROD" -c "select current_database(), (select count(*) from trades) as trades;"
+ current_database | trades 
+------------------+--------
+ neondb           |     60
+(1 row)
+
+~/workspace$ DEV=postgresql://postgres:password@helium/heliumdb?sslmode=disable
+psql "$DEV" -c "select current_database(), (select count(*) from trades) as trades;"
+ current_database | trades 
+------------------+--------
+ heliumdb         |     45
+(1 row)
+
+~/workspace$ BACKUP_DATABASE_URL="$DEV" pnpm --filter @workspace/db run export-snapshot -- /tmp/audit.json 2>&1 | sed -n '/Natural key audit/,/^$/p' | grep -E "NONE|trades|snapshot_metrics|ownership_adjustments|team_period_snapshots|import_runs|team_results"
+~/workspace$ psql "$PROD" -c "select indexrelid::regclass as index, pg_get_expr(indpred, indrelid) as predicate from pg_index where indrelid = 'snapshot_metrics'::regclass;"
+                          index                          |       predicate        
+---------------------------------------------------------+------------------------
+ snapshot_metrics_pkey                                   | 
+ snapshot_metrics_calcutta_entry_period_basis_metric_idx | (entry_id IS NOT NULL)
+ snapshot_metrics_calcutta_period_basis_metric_idx       | (entry_id IS NULL)
+ snapshot_metrics_entry_basis_idx                        | 
+ snapshot_metrics_period_basis_idx                       | 
+(5 rows)
+
+~/workspace$ psql "$PROD" -c "select calcutta_id, entry_id, period_id, basis, metric, count(*) from snapshot_metrics group by 1,2,3,4,5 having count(*) > 1 limit 10;"
+ calcutta_id | entry_id | period_id | basis | metric | count 
+-------------+----------+-----------+-------+--------+-------
+(0 rows)
+
+~/workspace$ psql "$PROD" -c "select season_id, team_id, source, created_at, count(*) from ownership_adjustments group by 1,2,3,4 having count(*) > 1;"
+ season_id | team_id | source | created_at | count 
+-----------+---------+--------+------------+-------
+(0 rows)
+
+~/workspace$ pnpm --filter @workspace/db test 2>&1 | tail -30
+✔ loaded history is complete and every primary ownership split nets to one (21.787883ms)
+✔ normalized SQL views reproduce every supplied reconciliation field (73.127085ms)
+✔ each historical pool persists its exact period ladder (21.67697ms)
+✔ owner identity decision file covers all 73 source records (106.972593ms)
+✔ approved review covers all records and preserves protected non-merges (10.685751ms)
+✔ identity validation rejects missing, duplicate, and ambiguous records (5.712151ms)
+✔ Phase 2 ownership inversion preserves primary ownership and installs immutable ledger guards (56.686382ms)
+✔ 0024 preserves protected rows, canonicalizes rules, and validates ownership coverage (332.865398ms)
+✔ 0024 aborts atomically when protected entry mappings do not round-trip (227.579635ms)
+✔ 0013 preserves the populated legacy ownership rows when replacing the table with a view (88.267017ms)
+✔ 0013 rejects an empty ownership replacement and leaves the table intact (48.773547ms)
+✔ 0014 preserves every MTM row and round-trips entry identity before tightening (58.261809ms)
+✔ 0014 aborts unresolved MTM backfills before tightening and rolls back its DDL (45.745965ms)
+✔ Phase 1 migration SQL contains the required destructive-operation guards (0.513533ms)
+✔ Phase 1 schema migration preserves live legacy data and seeds canonical NFL rules (49.045592ms)
+✔ Phase 1 trade trigger derives entry_id for legacy season/team writes (53.202696ms)
+✔ 0019 executes against a pre-migration PostgreSQL shape without losing rows (242.610036ms)
+✔ 0019 rejects inconsistent orphan entry data and rolls its DDL back (95.225988ms)
+✔ flags a removed trade and reports its natural key (10.10144ms)
+✔ ignores a row-count decrease outside the protected tables (3.019614ms)
+✔ fails when a declared foreign-key target has no registered natural key (2.184506ms)
+✔ uses the declared target for non-conventional source column names (0.192924ms)
+ℹ tests 30
+ℹ suites 1
+ℹ pass 30
+ℹ fail 0
+ℹ cancelled 0
+ℹ skipped 0
+ℹ todo 0
+ℹ duration_ms 2363.358106
+~/workspace$ grep -n -A12 "Report snapshot byte sizes" .github/workflows/backup.yml
+258:      - name: Report snapshot byte sizes
+259-        env:
+260-          SNAPSHOT_PATH: ${{ steps.artifacts.outputs.snapshot_path }}
+261-        run: |
+262-          total_bytes="$(jq '[.meta.serializedByteSizes[]] | add' "$SNAPSHOT_PATH")"
+263-          event_bytes="$(jq '.meta.serializedByteSizes.event_market_snapshots // 0' "$SNAPSHOT_PATH")"
+264-          echo "Snapshot serialized byte sizes, largest first:"
+265-          jq -r '
+266-            .meta.serializedByteSizes
+267-            | to_entries
+268-            | sort_by(.value)
+269-            | reverse
+270-            | .[]
+~/workspace$ BACKUP_DATABASE_URL="$DEV" pnpm --filter @workspace/db run export-snapshot -- /tmp/a.json >/dev/null 2>&1
+BACKUP_DATABASE_URL="$DEV" pnpm --filter @workspace/db run export-snapshot -- /tmp/b.json >/dev/null 2>&1
+diff <(jq 'del(.meta.generatedAt)' /tmp/a.json) <(jq 'del(.meta.generatedAt)' /tmp/b.json) && echo DETERMINISTIC
+DETERMINISTIC

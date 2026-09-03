@@ -260,7 +260,6 @@ jobs:
           SNAPSHOT_PATH: ${{ steps.artifacts.outputs.snapshot_path }}
         run: |
           total_bytes="$(jq '[.meta.serializedByteSizes[]] | add' "$SNAPSHOT_PATH")"
-          event_bytes="$(jq '.meta.serializedByteSizes.event_market_snapshots // 0' "$SNAPSHOT_PATH")"
           echo "Snapshot serialized byte sizes, largest first:"
           jq -r '
             .meta.serializedByteSizes
@@ -272,11 +271,22 @@ jobs:
           ' "$SNAPSHOT_PATH"
           echo "Total serialized table bytes: $total_bytes"
 
-          if [ "$event_bytes" -gt 0 ] && [ "$((event_bytes * 2))" -gt "$total_bytes" ]; then
-            echo "::error::event_market_snapshots is more than half of the serialized snapshot bytes."
-            echo "Move event-market snapshots to a separate weekly cadence before continuing."
-            exit 1
-          fi
+          while IFS=$'\t' read -r table bytes; do
+            if [ "$((bytes * 2))" -gt "$total_bytes" ]; then
+              echo "::error::$table is more than half of the serialized snapshot bytes ($bytes of $total_bytes bytes)."
+              exit 1
+            fi
+          done < <(
+            jq -r '
+              .meta.serializedByteSizes
+              | to_entries
+              | sort_by(.value)
+              | reverse
+              | .[]
+              | [.key, .value]
+              | @tsv
+            ' "$SNAPSHOT_PATH"
+          )
 
       - name: Commit logical snapshot and schema
         id: commit
