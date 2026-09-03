@@ -13,6 +13,16 @@ export type ReleaseNote = {
 
 export const releaseNotes: ReleaseNote[] = [
   {
+    date: "September 3, 2026",
+    updates: [
+      {
+        title: "The Calcutta back catalog is live",
+        description:
+          "Results from past Calcuttas are now available in the app across the historical sports catalog. Historical trade data is still being completed and will be added later.",
+      },
+    ],
+  },
+  {
     date: "August 30, 2026",
     updates: [
       {
