@@ -56,6 +56,9 @@ const identifierPattern = /^[a-z_][a-z0-9_]*$/;
 const registeredNaturalKeys: Readonly<Record<string, readonly string[]>> = {
   // Backed by the case-insensitive consortia_name_lower_unique index.
   consortia: ["name"],
+  // Complementary partial indexes cover the entry_id null and non-null cases.
+  // Runtime uniqueness validation below keeps this fail-loud.
+  snapshot_metrics: ["calcutta_id", "entry_id", "period_id", "basis", "metric"],
   // Pipeline attempts are immutable and created_at distinguishes retries.
   // Runtime uniqueness validation below keeps this fail-loud.
   mtm_snapshot: ["pool_id", "as_of", "created_at"],
