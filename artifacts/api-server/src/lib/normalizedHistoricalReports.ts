@@ -304,7 +304,7 @@ export async function loadNormalizedHistoricalOwners(poolId: number) {
         round(sum(p.share * e.price), 2) as cost,
         case
           when bool_and(x.realized_return is not null)
-            then round(sum(p.share * x.realized_return), 2)
+            then sum(p.share * x.realized_return)
           else null
         end as payout
       from normalized_positions p
@@ -313,6 +313,19 @@ export async function loadNormalizedHistoricalOwners(poolId: number) {
       where e.calcutta_id = ${poolId}
         and p.source = 'primary'
       group by p.owner_id
+    ),
+    trade_impacts as (
+      select
+        co.owner_id,
+        sum(tr.cash) as cash
+      from normalized_trades tr
+      join normalized_calcutta_owners co
+        on co.calcutta_id = tr.calcutta_id
+       and co.label = tr.source_data->>'leg_owner'
+      where tr.calcutta_id = ${poolId}
+        and tr.status = 'approved'
+        and tr.cash is not null
+      group by co.owner_id
     ),
     trade_owners as (
       select from_owner_id as owner_id
@@ -333,7 +346,24 @@ export async function loadNormalizedHistoricalOwners(poolId: number) {
       array[co.label] as labels,
       coalesce(r.lots, 0) as "lotCount",
       case when r.owner_id is not null then r.cost else expected.cost end as cost,
-      case when r.owner_id is not null then r.payout else expected.realized end as payout,
+      case
+        when r.owner_id is not null and r.payout is not null
+          then round(
+            (
+              case
+                when expected.realized is not null
+                  and abs(expected.realized - r.payout) <= 0.01
+                  then expected.realized
+                else r.payout
+              end
+            ) + coalesce(trade_impact.cash, 0),
+            2
+          )
+        when r.owner_id is not null then null
+        when expected.realized is not null
+          then round(expected.realized + coalesce(trade_impact.cash, 0), 2)
+        else null
+      end as payout,
       consortium.name as consortium,
       case
         when roster.owner_id is null then 'not_supplied'
@@ -344,6 +374,7 @@ export async function loadNormalizedHistoricalOwners(poolId: number) {
     from normalized_calcutta_owners co
     join normalized_owners o on o.id = co.owner_id
     left join primary_rollups r on r.owner_id = o.id
+    left join trade_impacts trade_impact on trade_impact.owner_id = o.id
     left join trade_owners trade_owner on trade_owner.owner_id = o.id
     left join normalized_expected_owner_results expected
       on expected.calcutta_id = co.calcutta_id
@@ -379,19 +410,68 @@ export async function loadNormalizedHistoricalOwners(poolId: number) {
 
 export async function loadNormalizedHistoricalOwnerResults() {
   const result = await db.execute(sql`
-    with covered_results as (
+    with primary_rollups as (
       select
-        c.id as pool_id,
-        o.id as owner_id,
-        v.lots,
-        v.cost,
-        v.payout
-      from v_owner_results v
-      join normalized_calcuttas c
-        on c.edition_number = v.ed
-       and c.name = v.calcutta
-      join normalized_owners o on o.display_name = v.owner
+        e.calcutta_id as pool_id,
+        p.owner_id,
+        round(sum(p.share), 4) as lots,
+        round(sum(p.share * e.price), 2) as cost,
+        case
+          when bool_and(x.realized_return is not null)
+            then sum(p.share * x.realized_return)
+          else null
+        end as payout
+      from normalized_positions p
+      join normalized_entries e on e.id = p.entry_id
+      join normalized_calcuttas c on c.id = e.calcutta_id
+      left join normalized_expected_entry_results x on x.entry_id = e.id
+      where p.source = 'primary'
+        and c.edition_number < ${FIRST_LIVE_EDITION}
+      group by e.calcutta_id, p.owner_id
+    ),
+    trade_impacts as (
+      select
+        tr.calcutta_id as pool_id,
+        co.owner_id,
+        sum(tr.cash) as cash
+      from normalized_trades tr
+      join normalized_calcuttas c on c.id = tr.calcutta_id
+      join normalized_calcutta_owners co
+        on co.calcutta_id = tr.calcutta_id
+       and co.label = tr.source_data->>'leg_owner'
       where c.edition_number < ${FIRST_LIVE_EDITION}
+        and tr.status = 'approved'
+        and tr.cash is not null
+      group by tr.calcutta_id, co.owner_id
+    ),
+    covered_results as (
+      select
+        primary_result.pool_id,
+        primary_result.owner_id,
+        primary_result.lots,
+        primary_result.cost,
+        case
+          when primary_result.payout is not null
+            then round(
+              (
+                case
+                  when expected.realized is not null
+                    and abs(expected.realized - primary_result.payout) <= 0.01
+                    then expected.realized
+                  else primary_result.payout
+                end
+              ) + coalesce(trade_impact.cash, 0),
+              2
+            )
+          else null
+        end as payout
+      from primary_rollups primary_result
+      left join trade_impacts trade_impact
+        on trade_impact.pool_id = primary_result.pool_id
+       and trade_impact.owner_id = primary_result.owner_id
+      left join normalized_expected_owner_results expected
+        on expected.calcutta_id = primary_result.pool_id
+       and expected.owner_id = primary_result.owner_id
 
       union all
 
@@ -400,9 +480,16 @@ export async function loadNormalizedHistoricalOwnerResults() {
         expected.owner_id,
         0::numeric as lots,
         expected.cost,
-        expected.realized as payout
+        case
+          when expected.realized is not null
+            then round(expected.realized + coalesce(trade_impact.cash, 0), 2)
+          else null
+        end as payout
       from normalized_expected_owner_results expected
       join normalized_calcuttas c on c.id = expected.calcutta_id
+      left join trade_impacts trade_impact
+        on trade_impact.pool_id = expected.calcutta_id
+       and trade_impact.owner_id = expected.owner_id
       where c.edition_number < ${FIRST_LIVE_EDITION}
         and (expected.cost is not null or expected.realized is not null)
         and not exists (

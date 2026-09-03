@@ -9,8 +9,8 @@ Reconcile trades by resolved entry, seller, buyer, percentage, and trade date, c
 
 Historical workbook trades stay scoped to their original Calcutta. In particular, the Calcutta V Sam-to-Ed Jacksonville exchange cannot justify a Calcutta VIII, Calcutta XII, or generic 2026 Jacksonville trade.
 
-Normalized historical position rows already represent the final source ownership state. Their normalized trade rows are a read-only audit ledger and must never be replayed into positions or costs.
+Normalized historical position rows already represent the final source ownership state. Their normalized trade rows are a read-only ownership ledger and must never be replayed into positions or costs. However, approved trade cash still adjusts owner payout/net and must be booked to the source payload's authoritative `leg_owner`, not inferred from seller/buyer direction.
 
 **Why:** Entry and trade IDs were remapped during migration, while historical and live Calcuttas can contain the same NFL team with different ownership. Matching IDs or team names alone can silently restore the wrong economic event. Reapplying historical trades would double-count transfers that are already reflected in the final positions.
 
-**How to apply:** Require the authoritative source before constructing a restore set. For live pools, validate trade existence and signed position legs separately, restore approved trades through the authenticated trade API, then assert every entry's ownership shares sum exactly to 1.000000. For normalized historical pools, reconcile and expose the ledger without mutating positions.
+**How to apply:** Require the authoritative source before constructing a restore set. For live pools, validate trade existence and signed position legs separately, restore approved trades through the authenticated trade API, then assert every entry's ownership shares sum exactly to 1.000000. For normalized historical pools, do not mutate positions; add approved trade cash to owner returns by `leg_owner`.
