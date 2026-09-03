@@ -11,6 +11,11 @@ import {
 import { biddersTable } from "./bidders";
 import { consortiaTable } from "./consortia";
 
+/**
+ * Migration 0005 owns the btree_gist extension and the
+ * consortium_memberships_no_overlap exclusion constraint. Drizzle-kit does
+ * not introspect extensions or PostgreSQL exclusion constraints.
+ */
 export const consortiumMembershipsTable = pgTable(
   "consortium_memberships",
   {

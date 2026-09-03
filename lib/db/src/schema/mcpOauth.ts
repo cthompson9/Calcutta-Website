@@ -1,4 +1,7 @@
+import { sql } from "drizzle-orm";
 import {
+  check,
+  foreignKey,
   index,
   jsonb,
   pgTable,
@@ -29,9 +32,7 @@ export const mcpOauthAuthorizationCodesTable = pgTable(
   "mcp_oauth_authorization_codes",
   {
     codeHash: text("code_hash").primaryKey(),
-    clientId: text("client_id")
-      .notNull()
-      .references(() => mcpOauthClientsTable.clientId, { onDelete: "cascade" }),
+    clientId: text("client_id").notNull(),
     redirectUri: text("redirect_uri").notNull(),
     codeChallenge: text("code_challenge").notNull(),
     scope: text("scope").notNull().default("mcp"),
@@ -41,6 +42,11 @@ export const mcpOauthAuthorizationCodesTable = pgTable(
     createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
   },
   (t) => [
+    foreignKey({
+      columns: [t.clientId],
+      foreignColumns: [mcpOauthClientsTable.clientId],
+      name: "mcp_oauth_codes_client_fk",
+    }).onDelete("cascade"),
     index("mcp_oauth_codes_client_idx").on(t.clientId),
     index("mcp_oauth_codes_expires_idx").on(t.expiresAt),
   ],
@@ -65,6 +71,10 @@ export const mcpOauthTokensTable = pgTable(
     createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
   },
   (t) => [
+    check(
+      "mcp_oauth_tokens_token_type_check",
+      sql`${t.tokenType} in ('access', 'refresh')`,
+    ),
     index("mcp_oauth_tokens_client_idx").on(t.clientId),
     index("mcp_oauth_tokens_expires_idx").on(t.expiresAt),
   ],

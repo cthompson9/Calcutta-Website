@@ -2,17 +2,39 @@
 
 ## Safe schema changes
 
-1. Make schema changes in `lib/db/src/schema`.
-2. Run the development checks and apply the development schema with:
+This project deliberately has two schema mechanisms with separate ownership:
+
+- `lib/db/src/schema` owns every Drizzle-expressible table, column, default,
+  primary/foreign/check constraint, and ordinary or unique index. A
+  `drizzle-kit push` must converge to an empty diff after guarded migrations
+  have run.
+- `lib/db/src/migrations` owns ordered data backfills and DDL that
+  drizzle-kit cannot represent or safely introspect: extensions, PostgreSQL
+  exclusion constraints, trigger functions and triggers, migration-defined
+  compatibility/reporting views, and forward constraint renames.
+
+The API calls `runDatabaseMigrations()` at startup before serving requests.
+Those migrations are versioned in `app_schema_migrations`, transactionally
+guarded, and safe to retry; they are the supported owner for the
+migration-only categories above.
+
+1. Declare every Drizzle-expressible schema change in `lib/db/src/schema`.
+   Add a guarded forward migration only when existing data or object names
+   must be backfilled, validated, or renamed before the schema diff.
+2. Run the development checks, restart the API so guarded migrations apply,
+   and then verify schema convergence:
    ```sh
    pnpm run typecheck
    pnpm --filter @workspace/db run push
    ```
+   Stop without accepting the push if it proposes dropping or truncating any
+   populated relation or integrity object. Run it a second time and require
+   another empty diff.
 3. Verify the relevant API and UI flows against the development database.
 4. Publish the app to apply the reviewed development-to-production schema diff.
 
 Do not run ad-hoc production DDL, database push commands against production, or
-startup-time migrations. The Publish flow is the supported production schema
+unversioned startup DDL. The Publish flow is the supported production schema
 change path and will surface destructive or rename operations for confirmation.
 
 ## Phase 1 release gate

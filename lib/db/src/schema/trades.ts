@@ -17,6 +17,11 @@ import { calcuttaEntriesTable } from "./calcuttaEntries";
 import { createInsertSchema } from "drizzle-zod";
 import { z } from "zod/v4";
 
+/**
+ * Migration 0012 owns populate_trade_entry_id / trades_populate_entry_id.
+ * Drizzle does not model trigger functions; the trigger preserves legacy
+ * season/team inserts while entry-first write paths are phased in.
+ */
 export const tradesTable = pgTable(
   "trades",
   {
@@ -28,12 +33,11 @@ export const tradesTable = pgTable(
       .notNull()
       .references(() => teamsTable.id, { onDelete: "cascade" }),
     /**
-     * Phase 1 keeps existing season/team writes compatible: a database trigger
-     * derives this value until Phase 2 moves write paths to entry-first inputs.
+     * Phase 1 compatibility: a database trigger derives this value when legacy
+     * season/team writes omit it, until write paths move to entry-first inputs.
      */
     entryId: integer("entry_id")
       .notNull()
-      .default(sql`null`)
       .references(() => calcuttaEntriesTable.id, { onDelete: "restrict" }),
     fromBidderId: integer("from_bidder_id")
       .notNull()

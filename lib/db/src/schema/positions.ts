@@ -13,6 +13,13 @@ import { biddersTable } from "./bidders";
 import { calcuttaEntriesTable } from "./calcuttaEntries";
 import { tradesTable } from "./trades";
 
+/**
+ * Migration 0013 owns the functions/triggers
+ * enforce_positions_entry_ownership_total / positions_entry_ownership_total
+ * and prevent_approved_trade_primary_position_change /
+ * positions_primary_approved_trade_immutable. Drizzle does not model trigger
+ * functions or deferred constraint triggers.
+ */
 export const positionsTable = pgTable(
   "positions",
   {
@@ -40,6 +47,9 @@ export const positionsTable = pgTable(
       t.source,
       t.tradeId,
     ),
+    uniqueIndex("positions_primary_entry_bidder_idx")
+      .on(t.entryId, t.bidderId)
+      .where(sql`${t.source} = 'primary'`),
     check(
       "positions_source_values",
       sql`${t.source} IN ('primary', 'trade')`,

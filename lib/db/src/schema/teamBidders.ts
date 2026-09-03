@@ -7,6 +7,8 @@ import {
 /**
  * Read-only legacy compatibility projection. Primary ownership is stored in
  * positions; this view intentionally has no insert/update/delete table API.
+ * Migration 0013 owns the view definition because `.existing()` tells
+ * drizzle-kit to introspect but not create or replace it.
  */
 export const teamBiddersTable = pgView(
   "team_bidders",

@@ -24,6 +24,7 @@ import {
   mtmRatingPrecisionMigration,
   immutableMtmAttemptsMigration,
   consortiumTypoCorrectionMigration,
+  schemaConvergenceMigration,
 } from "./migrations";
 
 const migrations = [
@@ -50,6 +51,7 @@ const migrations = [
   mtmRatingPrecisionMigration,
   immutableMtmAttemptsMigration,
   consortiumTypoCorrectionMigration,
+  schemaConvergenceMigration,
 ] as const;
 
 /**

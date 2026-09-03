@@ -8,6 +8,7 @@ import {
   jsonb,
   numeric,
   pgTable,
+  pgView,
   primaryKey,
   serial,
   text,
@@ -16,6 +17,13 @@ import {
   uniqueIndex,
 } from "drizzle-orm/pg-core";
 
+/**
+ * Migration 0020 owns enforce_normalized_entry_ownership_total /
+ * normalized_positions_net_one and the v_tracking, v_entry_results, and
+ * v_owner_results views. Drizzle does not model deferred trigger functions,
+ * and these migration-defined reporting views intentionally remain outside
+ * the table schema.
+ */
 /**
  * Stage-1's historical ledger is deliberately namespaced.  The unprefixed
  * calcutta/teams/positions relations are the live XII read model and must not
@@ -195,9 +203,17 @@ export const normalizedScoringEventsTable = pgTable("normalized_scoring_events",
   units: numeric("units", { precision: 12, scale: 4 }).notNull(),
   source: text("source").notNull().default("sheet"),
 }, (t) => [
-  unique("normalized_scoring_events_entry_period_metric_idx")
-    .on(t.entryId, t.periodKey, t.metric)
-    .nullsNotDistinct(),
+  /**
+   * Migration 0020 owns this constraint's NULLS NOT DISTINCT modifier.
+   * drizzle-kit 0.31 introspection drops that modifier, so spelling it here
+   * makes every push try to replace the already-correct populated constraint.
+   * Keep this introspection-compatible declaration until that bug is fixed.
+   */
+  unique("normalized_scoring_events_entry_period_metric_idx").on(
+    t.entryId,
+    t.periodKey,
+    t.metric,
+  ),
   index("normalized_scoring_events_entry_idx").on(t.entryId),
 ]);
 
@@ -227,3 +243,34 @@ export const normalizedImportRunsTable = pgTable("normalized_import_runs", {
 }, (t) => [
   uniqueIndex("normalized_import_runs_edition_source_hash_idx").on(t.editionNumber, t.source, t.sourceHash),
 ]);
+
+export const normalizedTrackingView = pgView("v_tracking", {
+  entryId: integer("entry_id"),
+  sequence: integer("seq"),
+  phrase: text("phrase"),
+}).existing();
+
+export const normalizedEntryResultsView = pgView("v_entry_results", {
+  editionNumber: integer("ed"),
+  calcutta: text("calcutta"),
+  sport: text("sport"),
+  lot: text("lot"),
+  kind: text("kind"),
+  seed: text("seed"),
+  grouping: text("grouping"),
+  price: numeric("price", { precision: 14, scale: 2 }),
+  ownership: text("ownership"),
+  tracking: text("tracking"),
+  points: numeric("points", { precision: 14, scale: 4 }),
+  payout: numeric("payout", { precision: 14, scale: 2 }),
+}).existing();
+
+export const normalizedOwnerResultsView = pgView("v_owner_results", {
+  editionNumber: integer("ed"),
+  calcutta: text("calcutta"),
+  sport: text("sport"),
+  owner: text("owner"),
+  lots: numeric("lots"),
+  cost: numeric("cost"),
+  payout: numeric("payout"),
+}).existing();

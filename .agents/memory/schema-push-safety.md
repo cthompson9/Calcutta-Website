@@ -8,3 +8,9 @@ Never accept an auto-generated schema push when it proposes `TRUNCATE ... CASCAD
 **Why:** On populated tables, a push cannot safely invent backfill values. Its repair path can erase the ownership ledger, trade history, short positions, and opening market marks while leaving an apparently healthy empty application.
 
 **How to apply:** Cancel the push. Use the project's guarded startup migration runner: add new foreign-key columns nullable, backfill from the canonical Calcutta entry mapping, verify zero nulls and exact row preservation, then enforce `NOT NULL`. Keep `team_bidders` as its read-only compatibility view and keep `calcutta_rules` as a separate scoring-configuration table.
+
+Drizzle-kit 0.31 introspection does not preserve PostgreSQL `UNIQUE NULLS NOT DISTINCT`. Keep the stronger modifier in its guarded migration and use a plain named `unique(...)` schema declaration so push recognizes the populated constraint instead of trying to replace it.
+
+**Why:** Declaring `.nullsNotDistinct()` made push offer to truncate a populated normalized scoring ledger even though the live constraint was already correct.
+
+**How to apply:** Before changing this workaround, verify a newer drizzle-kit pull preserves `NULLS NOT DISTINCT` and that two consecutive guarded pushes remain empty.
