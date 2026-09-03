@@ -18,7 +18,7 @@ export const releaseNotes: ReleaseNote[] = [
       {
         title: "The Calcutta back catalog is live",
         description:
-          "Results from past Calcuttas are now available in the app across the historical sports catalog. Historical trade data is still being completed and will be added later.",
+          "Results from past Calcuttas are now available across the historical sports catalog, including the recorded trade ledger wherever the source contains trade history.",
       },
     ],
   },

@@ -6,6 +6,9 @@ import {
   useCreateTrade,
   getGetTradesQueryKey,
   getGetTeamsQueryKey,
+  useGetHistoricalPools,
+  useGetHistoricalPoolTrades,
+  getGetHistoricalPoolTradesQueryKey,
 } from "@workspace/api-client-react";
 import type { TradeInput, TradeRow } from "@workspace/api-client-react";
 import { formatCurrency } from "@/lib/utils";
@@ -35,6 +38,7 @@ import {
 } from "lucide-react";
 import { bidderConsortiums, ownerLabelById } from "@/lib/ownerDisplay";
 import { ConsortiumLabel } from "@/components/ConsortiumLabel";
+import { HistoricalTradeTable } from "@/components/HistoricalResultsView";
 
 // ── Status badge ─────────────────────────────────────────────────────────────
 
@@ -926,6 +930,85 @@ function Field({ label, children }: { label: string; children: React.ReactNode }
 // ── Page ──────────────────────────────────────────────────────────────────────
 
 export default function Trades() {
+  const { year, selectedCalcutta } = useSeason();
+  const usesLiveTrades =
+    selectedCalcutta?.sport === "NFL" && year >= 2025;
+
+  return usesLiveTrades ? <LiveTrades /> : <HistoricalTrades />;
+}
+
+function HistoricalTrades() {
+  const { selectedCalcutta } = useSeason();
+  const { data: historicalPools, isLoading: loadingPools } =
+    useGetHistoricalPools();
+  const historicalPool = useMemo(
+    () =>
+      historicalPools?.find(
+        (pool) =>
+          pool.name === selectedCalcutta?.name &&
+          pool.seasonYear === selectedCalcutta?.year &&
+          pool.sport.toUpperCase() === selectedCalcutta?.sport.toUpperCase(),
+      ) ?? null,
+    [historicalPools, selectedCalcutta],
+  );
+  const poolId = historicalPool?.id ?? 0;
+  const { data: trades, isLoading: loadingTrades } =
+    useGetHistoricalPoolTrades(poolId, {
+      query: {
+        enabled: historicalPool != null,
+        queryKey: getGetHistoricalPoolTradesQueryKey(poolId),
+      },
+    });
+
+  return (
+    <div className="mx-auto max-w-6xl space-y-5 px-4 pb-6 pt-4 md:space-y-6 md:p-8">
+      <header>
+        <h1
+          className="mb-1 text-3xl font-extrabold uppercase tracking-tighter md:text-5xl"
+          data-testid="text-trades-title"
+        >
+          Trades
+        </h1>
+        <p className="font-mono text-xs uppercase tracking-widest text-muted-foreground md:text-sm">
+          Historical trade ledger · {selectedCalcutta?.year}
+        </p>
+      </header>
+
+      {loadingPools || (historicalPool != null && loadingTrades) ? (
+        <div className="space-y-3 animate-pulse">
+          {[1, 2, 3].map((index) => (
+            <div key={index} className="h-20 border border-border bg-muted" />
+          ))}
+        </div>
+      ) : historicalPool ? (
+        <>
+          <div
+            className="border border-sky-300 bg-sky-50 px-4 py-3 text-xs text-sky-950 dark:border-sky-800 dark:bg-sky-950/40 dark:text-sky-100"
+            role="status"
+            data-testid="historical-trades-notice"
+          >
+            Approved trades recorded in the normalized historical source for{" "}
+            {historicalPool.name}. This ledger is read-only and is not the live
+            commissioner workflow.
+          </div>
+          <HistoricalTradeTable trades={trades ?? []} />
+        </>
+      ) : (
+        <div className="flex flex-col items-center justify-center border border-dashed border-border py-24 text-center">
+          <p className="font-mono text-sm uppercase tracking-widest text-muted-foreground">
+            Historical trade ledger unavailable
+          </p>
+          <p className="mt-2 max-w-xl text-xs text-muted-foreground">
+            No normalized historical pool matches this Calcutta. The page will
+            not fall back to another season.
+          </p>
+        </div>
+      )}
+    </div>
+  );
+}
+
+function LiveTrades() {
   const { year, setYear, selectedCalcutta } = useSeason();
   const isNflCalcutta = selectedCalcutta?.sport === "NFL";
   const calcuttaId = isNflCalcutta ? selectedCalcutta.id : undefined;

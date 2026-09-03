@@ -20,7 +20,7 @@ export function Shell({ children }: ShellProps) {
   const [location] = useLocation();
   const { selectedCalcutta } = useSeason();
   const isNflOnlyRoute =
-    ["/mtm", "/trades", "/teams", "/bidders", "/dashboard"].some((route) =>
+    ["/mtm", "/teams", "/bidders", "/dashboard"].some((route) =>
       location.startsWith(route),
     );
   const unsupportedSport =

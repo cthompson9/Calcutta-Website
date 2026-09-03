@@ -151,6 +151,7 @@ export function validateHistoricalDocument(
   );
   const periodKeys = new Set((doc.periods ?? []).map((period) => period.key));
   const ownerLabels = new Set(doc.owners.map((owner) => owner.label));
+  const entryLabels = new Set(doc.entries.map((entry) => entry.label));
   const potCents = Math.round(doc.pot_size * 100);
   const priceCents = doc.entries.reduce(
     (total, entry) => total + Math.round(entry.price * 100),
@@ -208,6 +209,24 @@ export function validateHistoricalDocument(
       );
     }
   }
+  for (const trade of doc.trades ?? []) {
+    if (trade.entry_label && !entryLabels.has(trade.entry_label)) {
+      throw new Error(
+        `Calcutta ${doc.edition} trade ${trade.sheet_ref ?? ""} references unknown entry ${trade.entry_label}.`,
+      );
+    }
+    for (const [role, label] of [
+      ["seller", trade.from],
+      ["buyer", trade.to],
+      ["reference owner", trade.reference_owner],
+    ] as const) {
+      if (label && !ownerLabels.has(label)) {
+        throw new Error(
+          `Calcutta ${doc.edition} trade ${trade.sheet_ref ?? ""} references unknown ${role} ${label}.`,
+        );
+      }
+    }
+  }
 
   return {
     edition: doc.edition,
@@ -225,6 +244,25 @@ export function validateHistoricalDocument(
     ownerReferencesValid: true,
     periodReferencesValid: true,
   };
+}
+
+export function shouldRepairHistoricalTrades(
+  persistedTradeCount: number,
+  sourceTradeCount: number,
+): boolean {
+  if (
+    !Number.isInteger(persistedTradeCount) ||
+    persistedTradeCount < 0 ||
+    !Number.isInteger(sourceTradeCount) ||
+    sourceTradeCount < 0
+  ) {
+    throw new Error("Historical trade counts must be non-negative integers.");
+  }
+  if (persistedTradeCount === sourceTradeCount) return false;
+  if (persistedTradeCount === 0) return sourceTradeCount > 0;
+  throw new Error(
+    `Historical pool has ${persistedTradeCount} of ${sourceTradeCount} source trades; refusing an ambiguous partial repair.`,
+  );
 }
 
 function normalizedTradeScope(trade: HistoricalTrade): HistoricalTrade["scope"] {
@@ -468,13 +506,94 @@ async function persistHistoricalCalcutta(
           person: String(row.display_name),
         })),
       );
+      const existingTrades = await tx.execute(sql`
+        select count(*)::integer as count
+        from normalized_trades
+        where calcutta_id=${calcuttaId}
+      `);
+      const persistedTradeCount = Number(
+        (existingTrades.rows[0] as { count: number } | undefined)?.count ?? 0,
+      );
+      const sourceTrades = doc.trades ?? [];
+      let shouldRepairTrades = false;
+      try {
+        shouldRepairTrades = shouldRepairHistoricalTrades(
+          persistedTradeCount,
+          sourceTrades.length,
+        );
+      } catch (error) {
+        throw new Error(
+          `Historical edition ${doc.edition}: ${error instanceof Error ? error.message : String(error)}`,
+        );
+      }
+      if (shouldRepairTrades) {
+        const persistedEntries = await tx.execute(sql`
+          select id,label
+          from normalized_entries
+          where calcutta_id=${calcuttaId}
+        `);
+        const entryIds = new Map(
+          persistedEntries.rows.map((row) => [
+            String(row.label),
+            Number(row.id),
+          ]),
+        );
+        const ownerIds = new Map(
+          persistedOwners.rows.map((row) => [
+            String(row.label),
+            Number(row.owner_id),
+          ]),
+        );
+        for (const trade of sourceTrades) {
+          const scope = normalizedTradeScope(trade);
+          const entryId = trade.entry_label
+            ? entryIds.get(trade.entry_label)
+            : undefined;
+          if (trade.entry_label && !entryId) {
+            throw new Error(
+              `Trade ${trade.sheet_ref ?? ""} references unknown entry ${trade.entry_label}.`,
+            );
+          }
+          const isBook = scope === "book" || scope === "synthetic_book";
+          await tx.execute(sql`
+            insert into normalized_trades(
+              calcutta_id,sheet_ref,trade_date,detail,scope,entry_id,
+              from_owner_id,to_owner_id,pct,cash,status,reference_owner_id,factor,basis,
+              source_data
+            )
+            values(
+              ${calcuttaId},
+              ${trade.sheet_ref == null ? null : String(trade.sheet_ref)},
+              ${trade.date ?? null},
+              ${trade.detail ?? null},
+              ${scope},
+              ${entryId ?? null},
+              ${trade.from ? ownerIds.get(trade.from) ?? null : null},
+              ${trade.to ? ownerIds.get(trade.to) ?? null : null},
+              ${scope === "entry" ? trade.pct ?? null : null},
+              ${trade.cash ?? null},
+              ${"approved"},
+              ${trade.reference_owner
+                ? ownerIds.get(trade.reference_owner) ?? null
+                : null},
+              ${isBook ? trade.factor ?? trade.pct ?? null : null},
+              ${isBook ? trade.basis ?? "lion_king" : null},
+              ${JSON.stringify(trade)}::jsonb
+            )
+          `);
+        }
+      }
       await tx.execute(sql`
         update normalized_calcuttas
         set format_key=${effectiveFormatKey}
         where edition_number=${doc.edition}
           and format_key<>${effectiveFormatKey}
       `);
-      return { loaded: false, edition: doc.edition, validation };
+      return {
+        loaded: shouldRepairTrades,
+        edition: doc.edition,
+        validation,
+      };
     }
     const conflictingEdition = await tx.execute(sql`
       select 1 from normalized_calcuttas where edition_number=${doc.edition}

@@ -2,12 +2,13 @@ import type {
   HistoricalPool,
   HistoricalPoolEntry,
   HistoricalPoolOwner,
+  HistoricalPoolTrade,
 } from "@workspace/api-client-react";
 import { useMemo, useState } from "react";
 import { History, Search, Trophy } from "lucide-react";
 import { cn, formatCurrency } from "@/lib/utils";
 
-type HistoricalTab = "byOwner" | "byTeam";
+type HistoricalTab = "byOwner" | "byTeam" | "historicalTrades";
 type SortDirection = "asc" | "desc";
 type ConsortiumSortKey =
   | "name"
@@ -25,6 +26,14 @@ type EntrySortKey =
   | "payout"
   | "net"
   | "tracking";
+type TradeSortKey =
+  | "reference"
+  | "scope"
+  | "entry"
+  | "from"
+  | "to"
+  | "stake"
+  | "cash";
 
 type ConsortiumResult = {
   name: string;
@@ -199,11 +208,13 @@ export function HistoricalResultsView({
   pool,
   entries,
   owners,
+  trades,
   tab,
 }: {
   pool: HistoricalPool;
   entries: HistoricalPoolEntry[];
   owners: HistoricalPoolOwner[];
+  trades: HistoricalPoolTrade[];
   tab: HistoricalTab;
 }) {
   const consortiums = consortiumResults(owners);
@@ -243,8 +254,10 @@ export function HistoricalResultsView({
 
       {tab === "byOwner" ? (
         <HistoricalConsortiumTable rows={consortiums} />
-      ) : (
+      ) : tab === "byTeam" ? (
         <HistoricalEntryTable entries={entries} />
+      ) : (
+        <HistoricalTradeTable trades={trades} />
       )}
     </div>
   );
@@ -539,6 +552,184 @@ function HistoricalEntryTable({ entries }: { entries: HistoricalPoolEntry[] }) {
           </tbody>
         </table>
       </div>
+    </section>
+  );
+}
+
+function tradeStake(trade: HistoricalPoolTrade): number | null {
+  return trade.pct ?? trade.factor;
+}
+
+function tradeReference(trade: HistoricalPoolTrade): string {
+  return trade.tradeDate ?? trade.sheetRef ?? "";
+}
+
+export function HistoricalTradeTable({ trades }: { trades: HistoricalPoolTrade[] }) {
+  const [search, setSearch] = useState("");
+  const [sortKey, setSortKey] = useState<TradeSortKey>("reference");
+  const [direction, setDirection] = useState<SortDirection>("asc");
+
+  const visibleTrades = useMemo(() => {
+    const query = search.trim().toLowerCase();
+    const filtered = query
+      ? trades.filter((trade) =>
+          [
+            trade.sheetRef ?? "",
+            trade.tradeDate ?? "",
+            trade.scope,
+            trade.entryLabel ?? "",
+            trade.fromOwnerName ?? "",
+            trade.toOwnerName ?? "",
+            trade.detail ?? "",
+            trade.status,
+          ].some((value) => value.toLowerCase().includes(query)),
+        )
+      : trades;
+
+    return [...filtered].sort((left, right) => {
+      switch (sortKey) {
+        case "reference":
+          return compareText(tradeReference(left), tradeReference(right), direction);
+        case "scope":
+          return compareText(left.scope, right.scope, direction);
+        case "entry":
+          return compareText(left.entryLabel ?? "", right.entryLabel ?? "", direction);
+        case "from":
+          return compareText(
+            left.fromOwnerName ?? "",
+            right.fromOwnerName ?? "",
+            direction,
+          );
+        case "to":
+          return compareText(
+            left.toOwnerName ?? "",
+            right.toOwnerName ?? "",
+            direction,
+          );
+        case "stake":
+          return compareNullableNumbers(
+            tradeStake(left),
+            tradeStake(right),
+            direction,
+          );
+        case "cash":
+          return compareNullableNumbers(
+            left.cashAvailable ? left.cash : null,
+            right.cashAvailable ? right.cash : null,
+            direction,
+          );
+        default:
+          return 0;
+      }
+    });
+  }, [direction, search, sortKey, trades]);
+
+  function handleSort(key: TradeSortKey) {
+    if (sortKey === key) {
+      setDirection((current) => (current === "asc" ? "desc" : "asc"));
+      return;
+    }
+    setSortKey(key);
+    setDirection(
+      ["reference", "scope", "entry", "from", "to"].includes(key)
+        ? "asc"
+        : "desc",
+    );
+  }
+
+  return (
+    <section className="border border-border bg-card shadow-sm">
+      <div className="flex flex-col gap-3 border-b border-border p-4 sm:flex-row sm:items-start sm:justify-between">
+        <div>
+          <p className="font-mono text-[10px] font-bold uppercase tracking-widest text-primary">
+            Historical trade ledger
+          </p>
+          <p className="mt-1 text-xs text-muted-foreground">
+            Approved entry transfers, book trades, side bets, and cash adjustments
+            recorded in the immutable historical source.
+          </p>
+        </div>
+        <HistoricalFilter
+          value={search}
+          onChange={setSearch}
+          placeholder="Filter trades, teams, or owners…"
+          label="Filter historical trades"
+          resultCount={visibleTrades.length}
+          totalCount={trades.length}
+        />
+      </div>
+      {trades.length === 0 ? (
+        <div
+          className="px-4 py-12 text-center text-sm text-muted-foreground"
+          data-testid="historical-trades-empty"
+        >
+          The historical source contains no recorded trades for this Calcutta.
+        </div>
+      ) : (
+        <div className="table-scroll">
+          <table className="w-full min-w-[1040px] border-collapse text-sm">
+            <caption className="sr-only">
+              Filterable and sortable historical trade ledger
+            </caption>
+            <thead className="sticky-table-header border-b border-border bg-muted/30">
+              <tr>
+                <th className="px-4 py-3 text-left"><SortButton label="Ref / date" sortKey="reference" activeSortKey={sortKey} direction={direction} onSort={handleSort} align="left" /></th>
+                <th className="px-3 py-3 text-left"><SortButton label="Scope" sortKey="scope" activeSortKey={sortKey} direction={direction} onSort={handleSort} align="left" /></th>
+                <th className="px-3 py-3 text-left"><SortButton label="Entry" sortKey="entry" activeSortKey={sortKey} direction={direction} onSort={handleSort} align="left" /></th>
+                <th className="px-3 py-3 text-left"><SortButton label="From" sortKey="from" activeSortKey={sortKey} direction={direction} onSort={handleSort} align="left" /></th>
+                <th className="px-3 py-3 text-left"><SortButton label="To" sortKey="to" activeSortKey={sortKey} direction={direction} onSort={handleSort} align="left" /></th>
+                <th className="px-3 py-3 text-right"><SortButton label="Stake" sortKey="stake" activeSortKey={sortKey} direction={direction} onSort={handleSort} /></th>
+                <th className="px-3 py-3 text-right"><SortButton label="Cash" sortKey="cash" activeSortKey={sortKey} direction={direction} onSort={handleSort} /></th>
+                <th className="px-4 py-3 text-left">Detail</th>
+              </tr>
+            </thead>
+            <tbody className="divide-y divide-border/70">
+              {visibleTrades.map((trade) => (
+                <tr key={trade.id} data-testid="historical-trade-row">
+                  <td className="px-4 py-3 font-mono text-xs">
+                    {trade.tradeDate ?? (trade.sheetRef ? `#${trade.sheetRef}` : "—")}
+                  </td>
+                  <td className="px-3 py-3">
+                    <span className="border border-border bg-muted/40 px-2 py-1 font-mono text-[10px] font-bold uppercase tracking-wider">
+                      {trade.scope.replaceAll("_", " ")}
+                    </span>
+                  </td>
+                  <td className="px-3 py-3 font-semibold">
+                    {trade.entryLabel ?? "Portfolio"}
+                  </td>
+                  <td className="px-3 py-3">{trade.fromOwnerName ?? "—"}</td>
+                  <td className="px-3 py-3">{trade.toOwnerName ?? "—"}</td>
+                  <td className="px-3 py-3 text-right font-mono">
+                    {trade.pct != null
+                      ? `${(trade.pct * 100).toFixed(1)}%`
+                      : trade.factor != null
+                        ? `${trade.factor.toFixed(2)}×`
+                        : "—"}
+                  </td>
+                  <td className="px-3 py-3 text-right font-mono">
+                    {trade.cashAvailable ? signedMoney(trade.cash) : "—"}
+                  </td>
+                  <td className="max-w-[28rem] px-4 py-3 text-xs text-muted-foreground">
+                    {trade.detail ?? "—"}
+                    {trade.knownBookVariance && (
+                      <span className="ml-2 text-amber-700 dark:text-amber-300">
+                        Reviewed book variance
+                      </span>
+                    )}
+                  </td>
+                </tr>
+              ))}
+              {visibleTrades.length === 0 && (
+                <tr>
+                  <td colSpan={8} className="px-4 py-10 text-center text-sm text-muted-foreground">
+                    No trades match “{search.trim()}”.
+                  </td>
+                </tr>
+              )}
+            </tbody>
+          </table>
+        </div>
+      )}
     </section>
   );
 }

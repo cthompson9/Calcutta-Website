@@ -23,6 +23,8 @@ import {
   getGetHistoricalPoolEntriesQueryKey,
   useGetHistoricalPoolOwners,
   getGetHistoricalPoolOwnersQueryKey,
+  useGetHistoricalPoolTrades,
+  getGetHistoricalPoolTradesQueryKey,
 } from "@workspace/api-client-react";
 import type {
   OwnershipSegment,
@@ -63,7 +65,7 @@ import {
 import { ReleaseNotes } from "@/components/ReleaseNotes";
 import { HistoricalResultsView } from "@/components/HistoricalResultsView";
 
-type TabId = "byOwner" | "byTeam" | "compare";
+type TabId = "byOwner" | "byTeam" | "historicalTrades" | "compare";
 
 export default function Results() {
   const { year, selectedCalcutta } = useSeason();
@@ -113,6 +115,13 @@ export default function Results() {
         queryKey: getGetHistoricalPoolOwnersQueryKey(historicalPoolId),
       },
     });
+  const { data: historicalTrades, isLoading: loadingHistoricalTrades } =
+    useGetHistoricalPoolTrades(historicalPoolId, {
+      query: {
+        enabled: isHistoricalReport,
+        queryKey: getGetHistoricalPoolTradesQueryKey(historicalPoolId),
+      },
+    });
 
   const { data: periods } = useGetSportPeriods({ sport: "NFL" });
   const { data: allSeasons } = useGetSeasons();
@@ -144,6 +153,8 @@ export default function Results() {
   useEffect(() => {
     setPeriod(undefined);
     if (prefersHistoricalResults && tab === "compare") {
+      setTab("byOwner");
+    } else if (!prefersHistoricalResults && tab === "historicalTrades") {
       setTab("byOwner");
     }
   }, [prefersHistoricalResults, selectedCalcutta?.id, tab]);
@@ -252,7 +263,9 @@ export default function Results() {
   const isLoading = prefersHistoricalResults
     ? loadingHistoricalPools ||
       (isHistoricalReport &&
-        (loadingHistoricalEntries || loadingHistoricalOwners))
+        (loadingHistoricalEntries ||
+          loadingHistoricalOwners ||
+          loadingHistoricalTrades))
     : tab === "byTeam"
       ? loadingTeams
       : tab === "byOwner"
@@ -382,7 +395,7 @@ export default function Results() {
       {/* Tabs */}
       <div className="flex border-b border-border overflow-x-auto no-scrollbar mx-4 md:mx-0">
         {(prefersHistoricalResults
-          ? (["byOwner", "byTeam"] as TabId[])
+          ? (["byOwner", "byTeam", "historicalTrades"] as TabId[])
           : (["byOwner", "byTeam", "compare"] as TabId[])
         ).map((t) => (
           <button
@@ -396,7 +409,13 @@ export default function Results() {
                 : "border-transparent text-muted-foreground hover:text-foreground",
             )}
           >
-            {t === "byOwner" ? "By Consortium" : t === "byTeam" ? "By Team" : "Compare"}
+            {t === "byOwner"
+              ? "By Consortium"
+              : t === "byTeam"
+                ? "By Team"
+                : t === "historicalTrades"
+                  ? "Trades"
+                  : "Compare"}
           </button>
         ))}
       </div>
@@ -427,7 +446,14 @@ export default function Results() {
             pool={historicalPool}
             entries={historicalEntries ?? []}
             owners={historicalOwners ?? []}
-            tab={tab === "byTeam" ? "byTeam" : "byOwner"}
+            trades={historicalTrades ?? []}
+            tab={
+              tab === "byTeam"
+                ? "byTeam"
+                : tab === "historicalTrades"
+                  ? "historicalTrades"
+                  : "byOwner"
+            }
           />
         ) : prefersHistoricalResults ? (
           <HistoricalResultsUnavailable />

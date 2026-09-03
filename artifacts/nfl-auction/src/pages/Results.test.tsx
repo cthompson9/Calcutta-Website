@@ -120,6 +120,36 @@ const historicalOwners = {
   ],
 } satisfies Record<number, unknown[]>;
 
+const historicalTrades = {
+  103: [
+    {
+      id: 901,
+      sheetRef: "1",
+      tradeDate: null,
+      detail: "Alex trades 25% of Buffalo to Casey",
+      scope: "entry",
+      entryId: 301,
+      entryLabel: "Buffalo Bills",
+      fromOwnerId: 1,
+      fromOwnerName: "Alex Owner",
+      toOwnerId: 2,
+      toOwnerName: "Casey Owner",
+      pct: 0.25,
+      cash: 125,
+      cashAvailable: true,
+      factor: null,
+      basis: null,
+      knownBookVariance: false,
+      derivedCash: null,
+      derivedCashAvailable: false,
+      absoluteCashDifference: null,
+      absoluteCashDifferenceAvailable: false,
+      status: "approved",
+    },
+  ],
+  101: [],
+} satisfies Record<number, unknown[]>;
+
 const liveOwnerRows = [
   {
     bidderId: 80,
@@ -153,6 +183,10 @@ vi.mock("@workspace/api-client-react", () => {
       data: historicalOwners[poolId as keyof typeof historicalOwners] ?? [],
       isLoading: false,
     }),
+    useGetHistoricalPoolTrades: (poolId: number) => ({
+      data: historicalTrades[poolId as keyof typeof historicalTrades] ?? [],
+      isLoading: false,
+    }),
     useGetResults: emptyQuery,
     useGetResultsByOwner: () => ({ data: liveOwnerRows, isLoading: false }),
     useGetBidders: emptyQuery,
@@ -173,6 +207,7 @@ vi.mock("@workspace/api-client-react", () => {
     getGetTradesQueryKey: queryKey,
     getGetHistoricalPoolEntriesQueryKey: queryKey,
     getGetHistoricalPoolOwnersQueryKey: queryKey,
+    getGetHistoricalPoolTradesQueryKey: queryKey,
   };
 });
 
@@ -209,6 +244,14 @@ describe("Results Calcutta data source", () => {
     expect(within(teamRow).getByText("North Star")).toBeInTheDocument();
     expect(within(teamRow).getAllByText("—")).toHaveLength(5);
     expect(within(teamRow).queryByText("$0.00")).not.toBeInTheDocument();
+
+    await user.click(screen.getByTestId("tab-historicalTrades"));
+
+    const tradeRow = await screen.findByTestId("historical-trade-row");
+    expect(within(tradeRow).getByText("Buffalo Bills")).toBeInTheDocument();
+    expect(within(tradeRow).getByText("Alex Owner")).toBeInTheDocument();
+    expect(within(tradeRow).getByText("Casey Owner")).toBeInTheDocument();
+    expect(within(tradeRow).getByText("25.0%")).toBeInTheDocument();
   });
 
   it("allows non-NFL historical Results for Calcutta I", async () => {
