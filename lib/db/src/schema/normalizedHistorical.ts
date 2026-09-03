@@ -3,6 +3,7 @@ import {
   boolean,
   check,
   date,
+  foreignKey,
   index,
   integer,
   jsonb,
@@ -86,10 +87,15 @@ export const normalizedOwnersTable = pgTable("normalized_owners", {
 }, (t) => [uniqueIndex("normalized_owners_display_name_idx").on(t.displayName)]);
 
 export const normalizedCalcuttaOwnersTable = pgTable("normalized_calcutta_owners", {
-  calcuttaId: integer("calcutta_id").notNull().references(() => normalizedCalcuttasTable.id, { onDelete: "cascade" }),
+  calcuttaId: integer("calcutta_id").notNull(),
   ownerId: integer("owner_id").notNull().references(() => normalizedOwnersTable.id),
   label: text("label").notNull(),
 }, (t) => [
+  foreignKey({
+    columns: [t.calcuttaId],
+    foreignColumns: [normalizedCalcuttasTable.id],
+    name: "normalized_calcutta_owners_calcutta_fk",
+  }).onDelete("cascade"),
   primaryKey({ columns: [t.calcuttaId, t.ownerId], name: "normalized_calcutta_owners_pkey" }),
   uniqueIndex("normalized_calcutta_owners_label_idx").on(t.calcuttaId, t.label),
 ]);
@@ -218,17 +224,35 @@ export const normalizedScoringEventsTable = pgTable("normalized_scoring_events",
 ]);
 
 export const normalizedExpectedEntryResultsTable = pgTable("normalized_expected_entry_results", {
-  entryId: integer("entry_id").primaryKey().references(() => normalizedEntriesTable.id, { onDelete: "cascade" }),
+  entryId: integer("entry_id").primaryKey(),
   points: numeric("points", { precision: 14, scale: 4 }),
   realizedReturn: numeric("realized_return", { precision: 14, scale: 2 }),
-});
+}, (t) => [
+  foreignKey({
+    columns: [t.entryId],
+    foreignColumns: [normalizedEntriesTable.id],
+    name: "normalized_expected_entry_results_entry_fk",
+  }).onDelete("cascade"),
+]);
 
 export const normalizedExpectedOwnerResultsTable = pgTable("normalized_expected_owner_results", {
-  calcuttaId: integer("calcutta_id").notNull().references(() => normalizedCalcuttasTable.id, { onDelete: "cascade" }),
-  ownerId: integer("owner_id").notNull().references(() => normalizedOwnersTable.id),
+  calcuttaId: integer("calcutta_id").notNull(),
+  ownerId: integer("owner_id").notNull(),
   cost: numeric("cost", { precision: 14, scale: 2 }),
   realized: numeric("realized", { precision: 14, scale: 2 }),
-}, (t) => [primaryKey({ columns: [t.calcuttaId, t.ownerId], name: "normalized_expected_owner_results_pkey" })]);
+}, (t) => [
+  foreignKey({
+    columns: [t.calcuttaId],
+    foreignColumns: [normalizedCalcuttasTable.id],
+    name: "normalized_expected_owner_results_calcutta_fk",
+  }).onDelete("cascade"),
+  foreignKey({
+    columns: [t.ownerId],
+    foreignColumns: [normalizedOwnersTable.id],
+    name: "normalized_expected_owner_results_owner_fk",
+  }),
+  primaryKey({ columns: [t.calcuttaId, t.ownerId], name: "normalized_expected_owner_results_pkey" }),
+]);
 
 /** Same provenance fields as import_runs, scoped to a historical edition. */
 export const normalizedImportRunsTable = pgTable("normalized_import_runs", {

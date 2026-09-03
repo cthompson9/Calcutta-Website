@@ -22,9 +22,7 @@ export const historicalCalcuttaRostersTable = pgTable(
   "historical_calcutta_rosters",
   {
     id: serial("id").primaryKey(),
-    calcuttaId: integer("calcutta_id")
-      .notNull()
-      .references(() => normalizedCalcuttasTable.id, { onDelete: "cascade" }),
+    calcuttaId: integer("calcutta_id").notNull(),
     ownerId: integer("owner_id").references(() => normalizedOwnersTable.id),
     bidderId: integer("bidder_id").references(() => biddersTable.id, {
       onDelete: "set null",
@@ -40,6 +38,11 @@ export const historicalCalcuttaRostersTable = pgTable(
       .defaultNow(),
   },
   (t) => [
+    foreignKey({
+      columns: [t.calcuttaId],
+      foreignColumns: [normalizedCalcuttasTable.id],
+      name: "historical_rosters_calcutta_fk",
+    }).onDelete("cascade"),
     foreignKey({
       columns: [t.calcuttaId, t.ownerId],
       foreignColumns: [
@@ -70,8 +73,7 @@ export const historicalCalcuttaLinksTable = pgTable(
   "historical_calcutta_links",
   {
     normalizedCalcuttaId: integer("normalized_calcutta_id")
-      .primaryKey()
-      .references(() => normalizedCalcuttasTable.id, { onDelete: "cascade" }),
+      .primaryKey(),
     legacyCalcuttaId: integer("legacy_calcutta_id")
       .notNull()
       .references(() => calcuttasTable.id, { onDelete: "restrict" }),
@@ -82,6 +84,11 @@ export const historicalCalcuttaLinksTable = pgTable(
       .defaultNow(),
   },
   (t) => [
+    foreignKey({
+      columns: [t.normalizedCalcuttaId],
+      foreignColumns: [normalizedCalcuttasTable.id],
+      name: "historical_links_normalized_calcutta_fk",
+    }).onDelete("cascade"),
     uniqueIndex("historical_calcutta_links_legacy_idx").on(t.legacyCalcuttaId),
   ],
 );

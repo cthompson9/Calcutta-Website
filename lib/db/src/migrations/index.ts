@@ -22,3 +22,4 @@ export { mtmRatingPrecisionMigration } from "./0026MtmRatingPrecision";
 export { immutableMtmAttemptsMigration } from "./0027ImmutableMtmAttempts";
 export { consortiumTypoCorrectionMigration } from "./0028ConsortiumTypoCorrection";
 export { schemaConvergenceMigration } from "./0029SchemaConvergence";
+export { stableForeignKeyNamesMigration } from "./0030StableForeignKeyNames";

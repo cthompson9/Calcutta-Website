@@ -37,6 +37,13 @@ Do not run ad-hoc production DDL, database push commands against production, or
 unversioned startup DDL. The Publish flow is the supported production schema
 change path and will surface destructive or rename operations for confirmation.
 
+The `Schema convergence` workflow loads `reference/schema-baseline.sql` into an
+isolated PostgreSQL 16 service and asserts that the committed Drizzle schema
+produces no DDL from `drizzle-kit push`; it also fails when the baseline is more
+than 90 days old. Any intentional schema change must include a regenerated,
+reviewed baseline in the same pull request, and the workflow never connects to
+production or requires a repository secret.
+
 ## Phase 1 release gate
 
 The Phase 1 ownership/MTM release remains development-only until the normal
