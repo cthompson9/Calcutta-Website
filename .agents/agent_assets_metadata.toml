@@ -28,3 +28,17 @@ mtime_ms = 1787491526479
 storage_uri = "gcs://replit-rams-assets-picard/rams/assets/repl:20ced4e6-12f6-4285-a30b-9d56cdf8826c/ae879f35-ac98-4eeb-8a84-9f0e4850a911/1727d826-2bfe-4102-adbb-6f7624317843"
 storage_version_token = "1787491531630167"
 content_type = "application/octet-stream"
+
+[[outputs]]
+id = "2FmAM9YjeXYC6zC5Xgh5j"
+uri = "file://.agents/skills/calcutta-trade-extraction/SKILL.md"
+type = "text"
+title = "Calcutta Trade Extraction Skill"
+description = "Reusable methodology and JSON handoff format for extracting historical trades, side bets, shorts, and settlements from each Calcutta Google Sheet."
+logical_id = "2a877d86-5471-46db-8606-c57b6d0ffeed"
+content_hash = "sha256:c59d95fc40ecf313006b765b5da6dc040d3b3de48632280b9f91eee621999d0e"
+size = 9194
+mtime_ms = 1788468767659
+storage_uri = "gcs://replit-rams-assets-picard/rams/assets/repl:20ced4e6-12f6-4285-a30b-9d56cdf8826c/2a877d86-5471-46db-8606-c57b6d0ffeed/a40832ce-ba19-4076-871d-7fb4a895858f"
+storage_version_token = "1788468839638001"
+content_type = "text/markdown"
