@@ -138,6 +138,20 @@ function asNumber(value: unknown, fallback = 0): number {
   return Number.isFinite(result) ? result : fallback;
 }
 
+function pipelineMarkWeek(stateJson: Record<string, unknown> | null): number {
+  const remainingSchedule = stateJson?.remaining_schedule;
+  if (!Array.isArray(remainingSchedule)) return 0;
+  const remainingWeeks = remainingSchedule
+    .map((game) => (
+      game && typeof game === "object" && "week" in game
+        ? Number(game.week)
+        : Number.NaN
+    ))
+    .filter((week) => Number.isInteger(week) && week > 0);
+  if (remainingWeeks.length === 0) return 18;
+  return Math.max(0, Math.min(...remainingWeeks) - 1);
+}
+
 function seasonCode(year: number): string {
   return String(year + 1).slice(-2);
 }
@@ -683,10 +697,17 @@ export async function getMtmPipelineStatus(seasonYear: number, calcuttaId?: numb
       sql`${mtmSnapshotTable.asOf} desc`,
       sql`${mtmSnapshotTable.id} desc`,
     );
-  const current = successfulRows[0];
-  const previous = successfulRows[1];
+  const seenMarkWeeks = new Set<number>();
+  const weeklySuccessfulRows = successfulRows.filter((snapshot) => {
+    const markWeek = pipelineMarkWeek(snapshot.stateJson);
+    if (seenMarkWeeks.has(markWeek)) return false;
+    seenMarkWeeks.add(markWeek);
+    return true;
+  });
+  const current = weeklySuccessfulRows[0];
+  const previous = weeklySuccessfulRows[1];
   const dataSnapshotId = current?.id ?? attempt.id;
-  const successfulSnapshotIds = successfulRows.map((snapshot) => snapshot.id);
+  const successfulSnapshotIds = weeklySuccessfulRows.map((snapshot) => snapshot.id);
   const [projections, valuations, historicalValuations, entryRows, ownership] = await Promise.all([
     db.select().from(mtmTeamProjectionTable).where(eq(mtmTeamProjectionTable.snapshotId, dataSnapshotId)),
     db.select().from(mtmEntryValuationTable).where(eq(mtmEntryValuationTable.snapshotId, dataSnapshotId)),
@@ -731,7 +752,9 @@ export async function getMtmPipelineStatus(seasonYear: number, calcuttaId?: numb
           .map((valuation) => [valuation.entryId, valuation.expectedPayout])
       : [],
   );
-  const chronologicalSnapshots = [...successfulRows].reverse();
+  const chronologicalSnapshots = [...weeklySuccessfulRows].sort(
+    (a, b) => pipelineMarkWeek(a.stateJson) - pipelineMarkWeek(b.stateJson),
+  );
   const enrichedValuations = valuations.map((valuation) => {
     const entry = entryById.get(valuation.entryId);
     const owners = entry
@@ -746,7 +769,7 @@ export async function getMtmPipelineStatus(seasonYear: number, calcuttaId?: numb
       teamId: entry?.teamId ?? null,
       teamName: entry?.teamName ?? `Entry ${valuation.entryId}`,
       previousExpectedPayout: previousPayoutByEntry.get(valuation.entryId) ?? null,
-      history: chronologicalSnapshots.flatMap((snapshot, index) => {
+      history: chronologicalSnapshots.flatMap((snapshot) => {
         const historical = historicalValuationBySnapshotAndEntry.get(
           `${snapshot.id}:${valuation.entryId}`,
         );
@@ -761,7 +784,7 @@ export async function getMtmPipelineStatus(seasonYear: number, calcuttaId?: numb
           : null;
         return [{
           snapshotId: snapshot.id,
-          label: index === 0 ? "Week 0" : `Week ${index}`,
+          label: `Week ${pipelineMarkWeek(snapshot.stateJson)}`,
           asOf: snapshot.asOf.toISOString(),
           expectedPayout,
           auctionPrice,

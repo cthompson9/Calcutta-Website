@@ -35,3 +35,4 @@
 - [Backup catalog visibility](backup-catalog-visibility.md) — SELECT-only backup roles may not see key metadata in information_schema; use pg_catalog for snapshot identity discovery.
 - [PostgreSQL constraint names](postgres-constraint-names.md) — give long Drizzle foreign keys explicit short names; PostgreSQL truncation otherwise causes endless drop/recreate drift.
 - [Zero-sum live marks](zero-sum-live-marks.md) — normalize each pipeline week to its auction pool before calculating team net payouts.
+- [Live mark week boundaries](live-mark-week-boundaries.md) — bucket pipeline captures by completed NFL week; retries replace the same point instead of advancing history.

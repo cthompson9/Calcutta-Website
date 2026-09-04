@@ -1047,6 +1047,7 @@ describe(
       async () => {
         const entryIds = [...entryIdByTeam.values()];
         const weekZeroAt = new Date("2026-08-25T12:00:00.000Z");
+        const weekZeroRetryAt = new Date("2026-08-26T12:00:00.000Z");
         const weekOneAt = new Date("2026-09-01T12:00:00.000Z");
         const failedAt = new Date("2026-09-01T13:00:00.000Z");
         let pipelineSnapshotIds = [];
@@ -1063,6 +1064,21 @@ describe(
                 trigger: "scheduled",
                 status: "ok",
                 methodVersion: "test",
+                stateJson: {
+                  remaining_schedule: [{ week: 2 }],
+                },
+              },
+              {
+                poolId: testCalcuttaId,
+                asOf: weekZeroRetryAt,
+                asOfHour: weekZeroRetryAt,
+                createdAt: weekZeroRetryAt,
+                trigger: "scheduled",
+                status: "ok",
+                methodVersion: "test",
+                stateJson: {
+                  remaining_schedule: [{ week: 1 }],
+                },
               },
               {
                 poolId: testCalcuttaId,
@@ -1072,6 +1088,9 @@ describe(
                 trigger: "scheduled",
                 status: "ok",
                 methodVersion: "test",
+                stateJson: {
+                  remaining_schedule: [{ week: 1 }],
+                },
               },
               {
                 poolId: testCalcuttaId,
@@ -1088,8 +1107,11 @@ describe(
           pipelineSnapshotIds = inserted.map((snapshot) => snapshot.id);
           const weekOne = inserted.find((snapshot) => snapshot.asOf.getTime() === weekOneAt.getTime());
           const weekZero = inserted.find((snapshot) => snapshot.asOf.getTime() === weekZeroAt.getTime());
+          const weekZeroRetry = inserted.find(
+            (snapshot) => snapshot.asOf.getTime() === weekZeroRetryAt.getTime(),
+          );
           const failed = inserted.find((snapshot) => snapshot.asOf.getTime() === failedAt.getTime());
-          assert.ok(weekZero && weekOne && failed);
+          assert.ok(weekZero && weekZeroRetry && weekOne && failed);
 
           await db.insert(mtmEntryValuationTable).values([
             ...entryIds.map((entryId, index) => ({
@@ -1097,6 +1119,14 @@ describe(
               entryId,
               expectedPoints: String(10 + index),
               expectedPayout: String(900 + index * 25),
+              auctionPrice: "1500",
+              mtmMultiple: "1",
+            })),
+            ...entryIds.map((entryId, index) => ({
+              snapshotId: weekZeroRetry.id,
+              entryId,
+              expectedPoints: String(11 + index),
+              expectedPayout: String(950 + index * 25),
               auctionPrice: "1500",
               mtmMultiple: "1",
             })),
@@ -1125,11 +1155,13 @@ describe(
             );
             assert.deepEqual(
               valuation.history.map((point) => point.snapshotId),
-              [weekZero.id, weekOne.id],
+              [weekZeroRetry.id, weekOne.id],
             );
             assert.ok(
-              valuation.history.every((point) => point.snapshotId !== failed.id),
-              "a failed attempt must not become a chart point",
+              valuation.history.every(
+                (point) => point.snapshotId !== failed.id && point.snapshotId !== weekZero.id,
+              ),
+              "failed attempts and superseded same-week captures must not become chart points",
             );
           }
 
