@@ -10,7 +10,7 @@ describe("NetPayoutHistoryChart", () => {
           {
             entryId: 7,
             teamId: 12,
-            teamName: "Test Team",
+            teamName: "Buffalo Bills",
             expectedPoints: "20",
             expectedPayout: "1600",
             previousExpectedPayout: "1400",
@@ -42,6 +42,7 @@ describe("NetPayoutHistoryChart", () => {
 
     const path = screen.getByTestId("net-payout-path-7");
     expect(path.getAttribute("d")).toMatch(/^M[^L]+L/);
+    expect(path).toHaveAttribute("stroke", "#00338D");
     expect(screen.getByText("2 weekly marks")).toBeInTheDocument();
   });
 });
