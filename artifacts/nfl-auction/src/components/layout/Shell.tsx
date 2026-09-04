@@ -6,9 +6,11 @@ import {
   TrendingUp,
   Sparkles,
   CircleHelp,
+  PanelLeftClose,
+  PanelLeftOpen,
 } from "lucide-react";
 import { cn } from "@/lib/utils";
-import { ReactNode } from "react";
+import { ReactNode, useEffect, useState } from "react";
 import { SeasonToggle } from "@/components/SeasonToggle";
 import { useSeason } from "@/hooks/useSeason";
 
@@ -19,6 +21,18 @@ interface ShellProps {
 export function Shell({ children }: ShellProps) {
   const [location] = useLocation();
   const { selectedCalcutta } = useSeason();
+  const [sidebarCollapsed, setSidebarCollapsed] = useState(() => {
+    if (typeof window === "undefined") return false;
+    return window.localStorage.getItem("calcutta-sidebar-collapsed") === "true";
+  });
+
+  useEffect(() => {
+    window.localStorage.setItem(
+      "calcutta-sidebar-collapsed",
+      String(sidebarCollapsed),
+    );
+  }, [sidebarCollapsed]);
+
   const isNflOnlyRoute =
     ["/mtm", "/teams", "/bidders", "/dashboard"].some((route) =>
       location.startsWith(route),
@@ -41,10 +55,16 @@ export function Shell({ children }: ShellProps) {
   const mobileNavItems = [...navItems, ...utilityNavItems];
 
   return (
-    <div className="flex min-h-[100dvh] w-full flex-col md:flex-row bg-background md:bg-muted/20">
+    <div className="flex min-h-[100dvh] w-full max-w-full flex-col overflow-x-hidden bg-background md:h-[100dvh] md:flex-row md:overflow-hidden md:bg-muted/20">
       {/* Desktop Sidebar */}
-      <aside className="hidden md:flex flex-col w-72 shrink-0 border-r border-border bg-sidebar h-[100dvh] sticky top-0">
-        <div className="p-5 border-b border-sidebar-border flex items-center gap-3">
+      <aside
+        className={cn(
+          "hidden h-[100dvh] shrink-0 flex-col overflow-hidden border-sidebar-border bg-sidebar transition-[width,border-color] duration-200 ease-out md:flex",
+          sidebarCollapsed ? "w-0 border-r-0" : "w-72 border-r",
+        )}
+        aria-hidden={sidebarCollapsed}
+      >
+        <div className="flex min-w-72 items-center gap-3 border-b border-sidebar-border p-5">
           <img
             src="/calcutta-lion.png"
             alt="Calcutta lion"
@@ -56,10 +76,10 @@ export function Shell({ children }: ShellProps) {
             className="min-w-0 flex-1 object-contain object-left"
           />
         </div>
-        <div className="px-3 py-4 border-b border-sidebar-border">
+        <div className="min-w-72 border-b border-sidebar-border px-3 py-4">
           <SeasonToggle testId="select-calcutta-desktop" />
         </div>
-        <nav className="flex-1 py-6 px-3 flex flex-col gap-1">
+        <nav className="flex min-w-72 flex-1 flex-col gap-1 px-3 py-6">
           {navItems.map((item) => {
             const active =
               location === item.href ||
@@ -105,8 +125,27 @@ export function Shell({ children }: ShellProps) {
         </nav>
       </aside>
 
+      <button
+        type="button"
+        onClick={() => setSidebarCollapsed((collapsed) => !collapsed)}
+        className={cn(
+          "fixed top-20 z-50 hidden h-9 w-9 items-center justify-center rounded-md border border-border bg-background text-muted-foreground shadow-sm transition-[left,color,background-color] duration-200 hover:bg-muted hover:text-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring md:flex",
+          sidebarCollapsed ? "left-3" : "left-[calc(18rem-1.125rem)]",
+        )}
+        aria-label={sidebarCollapsed ? "Show sidebar" : "Hide sidebar"}
+        aria-expanded={!sidebarCollapsed}
+        title={sidebarCollapsed ? "Show sidebar" : "Hide sidebar"}
+        data-testid="toggle-desktop-sidebar"
+      >
+        {sidebarCollapsed ? (
+          <PanelLeftOpen className="h-4 w-4" />
+        ) : (
+          <PanelLeftClose className="h-4 w-4" />
+        )}
+      </button>
+
       {/* Main Content */}
-      <main className="flex-1 pb-[calc(3.5rem+env(safe-area-inset-bottom))] md:pb-0 min-h-[100dvh] max-w-[100vw] overflow-x-clip">
+      <main className="min-h-[100dvh] min-w-0 max-w-full flex-1 overflow-x-hidden pb-[calc(3.5rem+env(safe-area-inset-bottom))] md:h-[100dvh] md:min-h-0 md:overflow-y-auto md:pb-0">
         <div className="md:hidden sticky top-0 z-40 flex items-center gap-2 border-b border-border/60 bg-background/95 px-4 py-2.5 backdrop-blur">
           <div className="flex min-w-0 items-center gap-2">
             <img
