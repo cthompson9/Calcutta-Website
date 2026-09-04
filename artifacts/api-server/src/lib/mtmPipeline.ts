@@ -671,12 +671,18 @@ export async function getMtmPipelineStatus(seasonYear: number, calcuttaId?: numb
   if (!selected[0]) return null;
   const attempts = await db.select().from(mtmSnapshotTable)
     .where(eq(mtmSnapshotTable.poolId, selected[0].poolId))
-    .orderBy(sql`${mtmSnapshotTable.createdAt} desc`).limit(1);
+    .orderBy(
+      sql`${mtmSnapshotTable.createdAt} desc`,
+      sql`${mtmSnapshotTable.id} desc`,
+    ).limit(1);
   const attempt = attempts[0];
   if (!attempt) return null;
   const successfulRows = await db.select().from(mtmSnapshotTable)
     .where(and(eq(mtmSnapshotTable.poolId, selected[0].poolId), eq(mtmSnapshotTable.status, "ok")))
-    .orderBy(sql`${mtmSnapshotTable.createdAt} desc`);
+    .orderBy(
+      sql`${mtmSnapshotTable.asOf} desc`,
+      sql`${mtmSnapshotTable.id} desc`,
+    );
   const current = successfulRows[0];
   const previous = successfulRows[1];
   const dataSnapshotId = current?.id ?? attempt.id;

@@ -540,7 +540,7 @@ function PipelineMarkPanel({
   );
 }
 
-function NetPayoutHistoryChart({
+export function NetPayoutHistoryChart({
   valuations,
 }: {
   valuations: PipelineValuation[];
@@ -701,6 +701,7 @@ function NetPayoutHistoryChart({
               <g key={valuation.entryId}>
                 {history.length > 1 && (
                   <path
+                    data-testid={`net-payout-path-${valuation.entryId}`}
                     d={path}
                     fill="none"
                     stroke={lineColor}

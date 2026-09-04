@@ -31,6 +31,7 @@ let db, mtmSnapshotsTable, mtmSnapshotTable, mtmEntryValuationTable, snapshotMet
 let app;
 let WEEK_ZERO_SNAPSHOT_KEY;
 let runCanonicalMtmRefresh;
+let getMtmPipelineStatus;
 
 if (canRun) {
   ({ db, mtmSnapshotsTable, mtmSnapshotTable, mtmEntryValuationTable, snapshotMetricsTable, sportPeriodsTable, seasonsTable, teamsTable, teamSeasonAuctionsTable, calcuttasTable, calcuttaEntriesTable, positionsTable, biddersTable } =
@@ -38,6 +39,7 @@ if (canRun) {
   ({ default: app } = await import("../app.ts"));
   ({ WEEK_ZERO_SNAPSHOT_KEY } = await import("../lib/weekZeroValuation.ts"));
   ({ runCanonicalMtmRefresh } = await import("../lib/jobMtmRefresh.ts"));
+  ({ getMtmPipelineStatus } = await import("../lib/mtmPipeline.ts"));
 }
 
 // ── Kalshi fetch mock ────────────────────────────────────────────────────────
@@ -1036,6 +1038,113 @@ describe(
           await deletePipelineSnapshotsByIds(
             pipelineSnapshotId == null ? [] : [pipelineSnapshotId],
           );
+        }
+      },
+    );
+
+    test(
+      "pipeline status keeps successful weekly history ordered and zero-sum while excluding a failed retry",
+      async () => {
+        const entryIds = [...entryIdByTeam.values()];
+        const weekZeroAt = new Date("2026-08-25T12:00:00.000Z");
+        const weekOneAt = new Date("2026-09-01T12:00:00.000Z");
+        const failedAt = new Date("2026-09-01T13:00:00.000Z");
+        let pipelineSnapshotIds = [];
+
+        try {
+          const inserted = await db
+            .insert(mtmSnapshotTable)
+            .values([
+              {
+                poolId: testCalcuttaId,
+                asOf: weekOneAt,
+                asOfHour: weekOneAt,
+                createdAt: weekOneAt,
+                trigger: "scheduled",
+                status: "ok",
+                methodVersion: "test",
+              },
+              {
+                poolId: testCalcuttaId,
+                asOf: weekZeroAt,
+                asOfHour: weekZeroAt,
+                createdAt: weekZeroAt,
+                trigger: "scheduled",
+                status: "ok",
+                methodVersion: "test",
+              },
+              {
+                poolId: testCalcuttaId,
+                asOf: failedAt,
+                asOfHour: failedAt,
+                createdAt: failedAt,
+                trigger: "scheduled",
+                status: "failed",
+                methodVersion: "test",
+                error: "test weekly retry failed",
+              },
+            ])
+            .returning({ id: mtmSnapshotTable.id, asOf: mtmSnapshotTable.asOf });
+          pipelineSnapshotIds = inserted.map((snapshot) => snapshot.id);
+          const weekOne = inserted.find((snapshot) => snapshot.asOf.getTime() === weekOneAt.getTime());
+          const weekZero = inserted.find((snapshot) => snapshot.asOf.getTime() === weekZeroAt.getTime());
+          const failed = inserted.find((snapshot) => snapshot.asOf.getTime() === failedAt.getTime());
+          assert.ok(weekZero && weekOne && failed);
+
+          await db.insert(mtmEntryValuationTable).values([
+            ...entryIds.map((entryId, index) => ({
+              snapshotId: weekZero.id,
+              entryId,
+              expectedPoints: String(10 + index),
+              expectedPayout: String(900 + index * 25),
+              auctionPrice: "1500",
+              mtmMultiple: "1",
+            })),
+            ...entryIds.map((entryId, index) => ({
+              snapshotId: weekOne.id,
+              entryId,
+              expectedPoints: String(42 - index),
+              expectedPayout: String(1800 - index * 20),
+              auctionPrice: "1500",
+              mtmMultiple: "1",
+            })),
+          ]);
+
+          const status = await getMtmPipelineStatus(9999, testCalcuttaId);
+          assert.ok(status);
+          assert.equal(status.id, failed.id, "the failed retry remains the latest attempt");
+          assert.equal(status.currentSnapshotId, weekOne.id, "the newest success remains current");
+          assert.equal(status.status, "failed");
+          assert.ok(status.staleReasons.includes("test weekly retry failed"));
+          assert.equal(status.valuations.length, 32);
+
+          for (const valuation of status.valuations) {
+            assert.deepEqual(
+              valuation.history.map((point) => point.label),
+              ["Week 0", "Week 1"],
+            );
+            assert.deepEqual(
+              valuation.history.map((point) => point.snapshotId),
+              [weekZero.id, weekOne.id],
+            );
+            assert.ok(
+              valuation.history.every((point) => point.snapshotId !== failed.id),
+              "a failed attempt must not become a chart point",
+            );
+          }
+
+          for (const historyIndex of [0, 1]) {
+            const weeklyNet = status.valuations.reduce(
+              (sum, valuation) => sum + valuation.history[historyIndex].netPayout,
+              0,
+            );
+            assert.ok(
+              Math.abs(weeklyNet) <= 0.01,
+              `Week ${historyIndex} normalized net payout must balance to zero; got ${weeklyNet}`,
+            );
+          }
+        } finally {
+          await deletePipelineSnapshotsByIds(pipelineSnapshotIds);
         }
       },
     );
