@@ -44,7 +44,7 @@ export function Shell({ children }: ShellProps) {
 
   const navItems = [
     { href: "/", label: "Results", mobileLabel: "Results", icon: Trophy },
-    { href: "/mtm", label: "MTM Tracker", mobileLabel: "MTM", icon: TrendingUp },
+    { href: "/mtm", label: "Live Tracker", mobileLabel: "Live", icon: TrendingUp },
     { href: "/trades", label: "Trades", mobileLabel: "Trades", icon: ArrowLeftRight },
     { href: "/dashboard", label: "Auction Results", mobileLabel: "Auction", icon: LayoutDashboard },
   ];
@@ -236,7 +236,7 @@ function UnsupportedSportState({
         <p className="mt-3 text-sm leading-6 text-muted-foreground">
           This catalog includes Calcuttas from multiple sports, but the current
           reports are still NFL-only. Choose an NFL Calcutta above to view
-          Results, MTM Tracker, Trades, or Auction Results.
+          Results, Live Tracker, Trades, or Auction Results.
         </p>
       </div>
     </section>

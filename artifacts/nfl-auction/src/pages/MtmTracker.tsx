@@ -73,6 +73,14 @@ type PipelineValuation = {
   previousExpectedPayout: string | null;
   auctionPrice: string | null;
   mtmMultiple: string | null;
+  history: Array<{
+    snapshotId: number;
+    label: string;
+    asOf: string;
+    expectedPayout: number;
+    auctionPrice: number | null;
+    netPayout: number | null;
+  }>;
   owners: PipelineOwnerValue[];
 };
 
@@ -229,7 +237,7 @@ export default function MtmTracker() {
     <div className="space-y-5 px-4 pb-6 pt-4 md:space-y-6 md:p-8 max-w-5xl mx-auto">
       <header className="flex flex-col md:flex-row md:items-end justify-between gap-4">
         <div>
-          <h1 className="text-3xl md:text-5xl font-extrabold uppercase tracking-tighter mb-1" data-testid="text-mtm-title">MTM Tracker</h1>
+          <h1 className="text-3xl md:text-5xl font-extrabold uppercase tracking-tighter mb-1" data-testid="text-mtm-title">Live Tracker</h1>
           <p className="text-muted-foreground font-mono text-xs md:text-sm uppercase tracking-widest">
             Current team and consortium values · {year}
           </p>
@@ -309,6 +317,17 @@ function PipelineMarkPanel({
       .join(" / ");
   }
 
+  function currentNetPayout(valuation: PipelineValuation) {
+    const current = valuation.history?.[valuation.history.length - 1];
+    return current?.netPayout ?? null;
+  }
+
+  function previousNetPayout(valuation: PipelineValuation) {
+    const history = valuation.history ?? [];
+    const prior = history[history.length - 2];
+    return prior?.netPayout ?? null;
+  }
+
   const query = search.trim().toLowerCase();
   const filtered = status.valuations.filter((valuation) =>
     !query ||
@@ -316,16 +335,18 @@ function PipelineMarkPanel({
     ownerText(valuation).toLowerCase().includes(query)
   );
   const valuations = [...filtered].sort((a, b) => {
-    const previousA = a.previousExpectedPayout == null ? null : Number(a.previousExpectedPayout);
-    const previousB = b.previousExpectedPayout == null ? null : Number(b.previousExpectedPayout);
+    const netA = currentNetPayout(a);
+    const netB = currentNetPayout(b);
+    const priorNetA = previousNetPayout(a);
+    const priorNetB = previousNetPayout(b);
     const values: Record<Exclude<SortKey, "team" | "owner">, [number, number]> = {
       points: [Number(a.expectedPoints), Number(b.expectedPoints)],
-      payout: [Number(a.expectedPayout), Number(b.expectedPayout)],
+      payout: [netA ?? -Infinity, netB ?? -Infinity],
       price: [Number(a.auctionPrice ?? -Infinity), Number(b.auctionPrice ?? -Infinity)],
       multiple: [Number(a.mtmMultiple ?? -Infinity), Number(b.mtmMultiple ?? -Infinity)],
       prior: [
-        previousA == null ? -Infinity : Number(a.expectedPayout) - previousA,
-        previousB == null ? -Infinity : Number(b.expectedPayout) - previousB,
+        netA == null || priorNetA == null ? -Infinity : netA - priorNetA,
+        netB == null || priorNetB == null ? -Infinity : netB - priorNetB,
       ],
     };
     const difference = sortKey === "team"
@@ -335,8 +356,11 @@ function PipelineMarkPanel({
         : values[sortKey][0] - values[sortKey][1];
     return sortAsc ? difference : -difference;
   });
-  const maxPayout = Math.max(1, ...status.valuations.map((valuation) => Number(valuation.expectedPayout)));
-  const minPayout = Math.min(...status.valuations.map((valuation) => Number(valuation.expectedPayout)));
+  const netPayouts = status.valuations
+    .map(currentNetPayout)
+    .filter((value): value is number => value != null);
+  const maxPayout = Math.max(0, ...netPayouts);
+  const minPayout = Math.min(0, ...netPayouts);
   const payoutRange = Math.max(1, maxPayout - minPayout);
   const maxMultiple = Math.max(1, ...status.valuations.map((valuation) => Number(valuation.mtmMultiple ?? 1)));
 
@@ -412,8 +436,10 @@ function PipelineMarkPanel({
           <div className="border-b border-border p-4">
             <div className="mb-3 flex flex-col gap-3 sm:flex-row sm:items-end sm:justify-between">
               <div>
-                <h3 className="font-mono text-xs font-bold uppercase tracking-widest">Expected payout by team</h3>
-                <p className="mt-1 text-xs text-muted-foreground">Current pipeline values from the latest complete mark.</p>
+                <h3 className="font-mono text-xs font-bold uppercase tracking-widest">Net payout history by team</h3>
+                <p className="mt-1 text-xs text-muted-foreground">
+                  Expected payout normalized to the auction pool, minus auction price. Dot size reflects auction price.
+                </p>
               </div>
               <label className="relative block sm:w-72">
                 <Search className="pointer-events-none absolute left-2.5 top-2.5 h-3.5 w-3.5 text-muted-foreground" />
@@ -427,25 +453,7 @@ function PipelineMarkPanel({
                 />
               </label>
             </div>
-            <div className="grid max-h-[28rem] gap-x-6 gap-y-2 overflow-y-auto pr-1 md:grid-cols-2">
-              {[...valuations]
-                .sort((a, b) => Number(b.expectedPayout) - Number(a.expectedPayout))
-                .map((valuation) => {
-                  const payout = Number(valuation.expectedPayout);
-                  return (
-                    <div key={valuation.entryId} className="grid grid-cols-[minmax(7rem,10rem)_1fr_5rem] items-center gap-2 text-xs">
-                      <span className="truncate font-semibold" title={valuation.teamName}>{valuation.teamName}</span>
-                      <div className="h-3 bg-muted/70">
-                        <div
-                          className="h-full bg-emerald-500"
-                          style={{ width: `${Math.max(2, (payout / maxPayout) * 100)}%` }}
-                        />
-                      </div>
-                      <span className="text-right font-mono">{formatCurrency(payout)}</span>
-                    </div>
-                  );
-                })}
-            </div>
+            <NetPayoutHistoryChart valuations={valuations} />
           </div>
 
           <div className="table-scroll">
@@ -456,7 +464,7 @@ function PipelineMarkPanel({
                 <th className="px-4 py-2 text-left"><SortButton label="Team" value="team" /></th>
                 <th className="px-3 py-2 text-left"><SortButton label="Consortium" value="owner" /></th>
                 <th className="px-3 py-2 text-right"><SortButton label="Expected pts" value="points" /></th>
-                <th className="px-3 py-2 text-right"><SortButton label="Expected payout" value="payout" /></th>
+                <th className="px-3 py-2 text-right"><SortButton label="Net payout" value="payout" /></th>
                 <th className="px-3 py-2 text-right"><SortButton label="Auction price" value="price" /></th>
                 <th className="px-3 py-2 text-right"><SortButton label="Multiple" value="multiple" /></th>
                 <th className="px-4 py-2 text-right"><SortButton label="Vs prior" value="prior" /></th>
@@ -464,14 +472,14 @@ function PipelineMarkPanel({
             </thead>
             <tbody className="divide-y divide-border">
               {valuations.map((valuation) => {
-                const payout = Number(valuation.expectedPayout);
                 const price = valuation.auctionPrice == null ? null : Number(valuation.auctionPrice);
-                const previousPayout = valuation.previousExpectedPayout == null
+                const payout = currentNetPayout(valuation);
+                const previousPayout = previousNetPayout(valuation);
+                const delta = payout == null || previousPayout == null
                   ? null
-                  : Number(valuation.previousExpectedPayout);
-                const delta = previousPayout == null ? null : payout - previousPayout;
+                  : payout - previousPayout;
                 const multiple = valuation.mtmMultiple == null ? null : Number(valuation.mtmMultiple);
-                const payoutIntensity = (payout - minPayout) / payoutRange;
+                const payoutIntensity = payout == null ? 0 : Math.abs(payout) / Math.max(1, Math.max(Math.abs(minPayout), Math.abs(maxPayout)));
                 const multipleIntensity = multiple == null
                   ? 0
                   : multiple < 1
@@ -486,9 +494,15 @@ function PipelineMarkPanel({
                     <td className="px-3 py-2 text-right font-mono">{Number(valuation.expectedPoints).toFixed(2)}</td>
                     <td
                       className="px-3 py-2 text-right font-mono font-semibold"
-                      style={{ backgroundColor: `rgba(16, 185, 129, ${0.06 + payoutIntensity * 0.42})` }}
+                      style={{
+                        backgroundColor: payout == null
+                          ? undefined
+                          : payout < 0
+                            ? `rgba(239, 68, 68, ${0.06 + payoutIntensity * 0.36})`
+                            : `rgba(16, 185, 129, ${0.06 + payoutIntensity * 0.36})`,
+                      }}
                     >
-                      {formatCurrency(payout)}
+                      {payout == null ? "—" : formatCurrency(payout)}
                     </td>
                     <td className="px-3 py-2 text-right font-mono">{price == null ? "—" : formatCurrency(price)}</td>
                     <td
@@ -523,6 +537,204 @@ function PipelineMarkPanel({
         </>
       )}
     </section>
+  );
+}
+
+function NetPayoutHistoryChart({
+  valuations,
+}: {
+  valuations: PipelineValuation[];
+}) {
+  const W = 820;
+  const H = 390;
+  const PAD = { top: 24, right: 28, bottom: 44, left: 74 };
+  const chartW = W - PAD.left - PAD.right;
+  const chartH = H - PAD.top - PAD.bottom;
+  const points = valuations.flatMap((valuation) =>
+    (valuation.history ?? [])
+      .filter((point) => point.netPayout != null)
+      .map((point) => ({ ...point, valuation })),
+  );
+  const labels = Array.from(
+    new Map(
+      valuations.flatMap((valuation) =>
+        (valuation.history ?? []).map((point) => [point.snapshotId, point.label] as const),
+      ),
+    ).entries(),
+  );
+  const values = points.map((point) => point.netPayout as number);
+  const rawMin = Math.min(0, ...values);
+  const rawMax = Math.max(0, ...values);
+  const rawRange = Math.max(1, rawMax - rawMin);
+  const padding = rawRange * 0.1;
+  const minValue = rawMin - padding;
+  const maxValue = rawMax + padding;
+  const valueRange = maxValue - minValue;
+  const prices = valuations
+    .map((valuation) => valuation.auctionPrice == null ? null : Number(valuation.auctionPrice))
+    .filter((price): price is number => price != null);
+  const minPrice = Math.min(...prices, 0);
+  const maxPrice = Math.max(...prices, 1);
+  const priceRange = Math.max(1, maxPrice - minPrice);
+  const currentTotal = valuations.reduce((sum, valuation) => {
+    const current = valuation.history?.[valuation.history.length - 1];
+    return current?.netPayout == null ? sum : sum + current.netPayout;
+  }, 0);
+
+  function xPos(index: number) {
+    if (labels.length <= 1) return PAD.left + chartW / 2;
+    return PAD.left + (index / (labels.length - 1)) * chartW;
+  }
+
+  function yPos(value: number) {
+    return PAD.top + chartH - ((value - minValue) / valueRange) * chartH;
+  }
+
+  function radius(price: number | null) {
+    if (price == null) return 3.5;
+    const normalized = Math.max(0, Math.min(1, (price - minPrice) / priceRange));
+    return 3.5 + Math.sqrt(normalized) * 7.5;
+  }
+
+  function color(index: number) {
+    return `hsl(${(index * 47 + 208) % 360} 72% 46%)`;
+  }
+
+  return (
+    <div className="mt-4">
+      <div className="mb-2 flex items-center justify-between gap-3 font-mono text-[10px] uppercase tracking-widest text-muted-foreground">
+        <span>{labels.length === 1 ? "Week 0 baseline" : `${labels.length} weekly marks`}</span>
+        <span>
+          Current net total{" "}
+          <strong className={cn(
+            "text-foreground",
+            Math.abs(currentTotal) > 0.01 && "text-amber-700 dark:text-amber-300",
+          )}>
+            {formatCurrency(currentTotal)}
+          </strong>
+        </span>
+      </div>
+      <div className="overflow-x-auto border border-border bg-background/40 p-2">
+        <svg
+          width="100%"
+          viewBox={`0 0 ${W} ${H}`}
+          preserveAspectRatio="xMinYMin meet"
+          className="min-w-[700px] font-mono"
+          role="img"
+          aria-label="Team net payout history by week"
+        >
+          <line
+            x1={PAD.left}
+            y1={yPos(0)}
+            x2={W - PAD.right}
+            y2={yPos(0)}
+            stroke="currentColor"
+            strokeOpacity={0.45}
+            strokeWidth={1.5}
+            strokeDasharray="5,5"
+          />
+
+          {[0, 0.25, 0.5, 0.75, 1].map((fraction) => {
+            const value = minValue + valueRange * fraction;
+            const y = yPos(value);
+            return (
+              <g key={fraction}>
+                <line
+                  x1={PAD.left}
+                  y1={y}
+                  x2={W - PAD.right}
+                  y2={y}
+                  stroke="currentColor"
+                  strokeOpacity={0.08}
+                />
+                <text
+                  x={PAD.left - 10}
+                  y={y + 4}
+                  textAnchor="end"
+                  fontSize={10}
+                  fill="currentColor"
+                  fillOpacity={0.62}
+                >
+                  {formatCurrency(value)}
+                </text>
+              </g>
+            );
+          })}
+
+          {labels.map(([snapshotId, label], index) => (
+            <g key={snapshotId}>
+              <line
+                x1={xPos(index)}
+                y1={PAD.top}
+                x2={xPos(index)}
+                y2={H - PAD.bottom}
+                stroke="currentColor"
+                strokeOpacity={0.07}
+              />
+              <text
+                x={xPos(index)}
+                y={H - 14}
+                textAnchor="middle"
+                fontSize={10}
+                fontWeight={700}
+                fill="currentColor"
+                fillOpacity={0.68}
+              >
+                {label}
+              </text>
+            </g>
+          ))}
+
+          {valuations.map((valuation, valuationIndex) => {
+            const history = (valuation.history ?? []).filter(
+              (point): point is typeof point & { netPayout: number } =>
+                point.netPayout != null,
+            );
+            const lineColor = color(valuationIndex);
+            const path = history
+              .map((point, pointIndex) => {
+                const labelIndex = labels.findIndex(([id]) => id === point.snapshotId);
+                return `${pointIndex === 0 ? "M" : "L"}${xPos(labelIndex)},${yPos(point.netPayout)}`;
+              })
+              .join(" ");
+            return (
+              <g key={valuation.entryId}>
+                {history.length > 1 && (
+                  <path
+                    d={path}
+                    fill="none"
+                    stroke={lineColor}
+                    strokeWidth={1.75}
+                    strokeOpacity={0.72}
+                    strokeLinejoin="round"
+                  />
+                )}
+                {history.map((point) => {
+                  const labelIndex = labels.findIndex(([id]) => id === point.snapshotId);
+                  const pointRadius = radius(point.auctionPrice);
+                  return (
+                    <circle
+                      key={point.snapshotId}
+                      cx={xPos(labelIndex)}
+                      cy={yPos(point.netPayout)}
+                      r={pointRadius}
+                      fill={lineColor}
+                      fillOpacity={0.82}
+                      stroke="white"
+                      strokeWidth={1.5}
+                    >
+                      <title>
+                        {valuation.teamName} · {point.label}: {formatCurrency(point.netPayout)} net · {point.auctionPrice == null ? "No auction price" : `${formatCurrency(point.auctionPrice)} auction price`}
+                      </title>
+                    </circle>
+                  );
+                })}
+              </g>
+            );
+          })}
+        </svg>
+      </div>
+    </div>
   );
 }
 

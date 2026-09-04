@@ -676,16 +676,18 @@ export async function getMtmPipelineStatus(seasonYear: number, calcuttaId?: numb
   if (!attempt) return null;
   const successfulRows = await db.select().from(mtmSnapshotTable)
     .where(and(eq(mtmSnapshotTable.poolId, selected[0].poolId), eq(mtmSnapshotTable.status, "ok")))
-    .orderBy(sql`${mtmSnapshotTable.createdAt} desc`).limit(2);
+    .orderBy(sql`${mtmSnapshotTable.createdAt} desc`);
   const current = successfulRows[0];
   const previous = successfulRows[1];
   const dataSnapshotId = current?.id ?? attempt.id;
-  const [projections, valuations, previousValuations, entryRows, ownership] = await Promise.all([
+  const successfulSnapshotIds = successfulRows.map((snapshot) => snapshot.id);
+  const [projections, valuations, historicalValuations, entryRows, ownership] = await Promise.all([
     db.select().from(mtmTeamProjectionTable).where(eq(mtmTeamProjectionTable.snapshotId, dataSnapshotId)),
     db.select().from(mtmEntryValuationTable).where(eq(mtmEntryValuationTable.snapshotId, dataSnapshotId)),
-    previous
-      ? db.select().from(mtmEntryValuationTable).where(eq(mtmEntryValuationTable.snapshotId, previous.id))
-      : Promise.resolve([]),
+    successfulSnapshotIds.length > 0
+      ? db.select().from(mtmEntryValuationTable)
+          .where(inArray(mtmEntryValuationTable.snapshotId, successfulSnapshotIds))
+      : Promise.resolve([] as Array<typeof mtmEntryValuationTable.$inferSelect>),
     db.select({
       entryId: calcuttaEntriesTable.id,
       teamId: calcuttaEntriesTable.teamId,
@@ -696,9 +698,34 @@ export async function getMtmPipelineStatus(seasonYear: number, calcuttaId?: numb
     loadSeasonOwnership(selected[0].seasonId, selected[0].poolId),
   ]);
   const entryById = new Map(entryRows.map((entry) => [entry.entryId, entry]));
-  const previousPayoutByEntry = new Map(
-    previousValuations.map((valuation) => [valuation.entryId, valuation.expectedPayout]),
+  const historicalValuationBySnapshotAndEntry = new Map(
+    historicalValuations.map((valuation) => [
+      `${valuation.snapshotId}:${valuation.entryId}`,
+      valuation,
+    ]),
   );
+  const historicalTotalsBySnapshot = new Map<number, {
+    expectedPayout: number;
+    auctionPrice: number;
+  }>();
+  for (const valuation of historicalValuations) {
+    if (valuation.auctionPrice == null) continue;
+    const totals = historicalTotalsBySnapshot.get(valuation.snapshotId) ?? {
+      expectedPayout: 0,
+      auctionPrice: 0,
+    };
+    totals.expectedPayout += asNumber(valuation.expectedPayout);
+    totals.auctionPrice += asNumber(valuation.auctionPrice);
+    historicalTotalsBySnapshot.set(valuation.snapshotId, totals);
+  }
+  const previousPayoutByEntry = new Map(
+    previous
+      ? historicalValuations
+          .filter((valuation) => valuation.snapshotId === previous.id)
+          .map((valuation) => [valuation.entryId, valuation.expectedPayout])
+      : [],
+  );
+  const chronologicalSnapshots = [...successfulRows].reverse();
   const enrichedValuations = valuations.map((valuation) => {
     const entry = entryById.get(valuation.entryId);
     const owners = entry
@@ -713,6 +740,30 @@ export async function getMtmPipelineStatus(seasonYear: number, calcuttaId?: numb
       teamId: entry?.teamId ?? null,
       teamName: entry?.teamName ?? `Entry ${valuation.entryId}`,
       previousExpectedPayout: previousPayoutByEntry.get(valuation.entryId) ?? null,
+      history: chronologicalSnapshots.flatMap((snapshot, index) => {
+        const historical = historicalValuationBySnapshotAndEntry.get(
+          `${snapshot.id}:${valuation.entryId}`,
+        );
+        if (!historical) return [];
+        const expectedPayout = asNumber(historical.expectedPayout);
+        const auctionPrice = historical.auctionPrice == null
+          ? null
+          : asNumber(historical.auctionPrice);
+        const totals = historicalTotalsBySnapshot.get(snapshot.id);
+        const payoutScale = totals && totals.expectedPayout !== 0
+          ? totals.auctionPrice / totals.expectedPayout
+          : null;
+        return [{
+          snapshotId: snapshot.id,
+          label: index === 0 ? "Week 0" : `Week ${index}`,
+          asOf: snapshot.asOf.toISOString(),
+          expectedPayout,
+          auctionPrice,
+          netPayout: auctionPrice == null || payoutScale == null
+            ? null
+            : expectedPayout * payoutScale - auctionPrice,
+        }];
+      }),
       owners,
     };
   });
