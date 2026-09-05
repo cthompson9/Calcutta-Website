@@ -35,6 +35,11 @@ export const releaseNotes: ReleaseNote[] = [
         description:
           "The former MTM Tracker now shows net team values that balance to zero, with weekly history, auction-price-sized dots, team primary colors, and one Week 0 point until the first completed weekly mark.",
       },
+      {
+        title: "More room for wide reports",
+        description:
+          "The desktop left menu now stays fixed while reports scroll horizontally and can be collapsed when you want more space. Your collapsed or expanded preference is remembered for the next visit.",
+      },
     ],
   },
   {
