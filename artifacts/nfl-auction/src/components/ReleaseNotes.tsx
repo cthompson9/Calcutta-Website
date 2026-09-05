@@ -13,6 +13,31 @@ export type ReleaseNote = {
 
 export const releaseNotes: ReleaseNote[] = [
   {
+    date: "September 4, 2026",
+    updates: [
+      {
+        title: "MTM answers now mean what you expect",
+        description:
+          "Connected assistants now treat an unspecified “MTM” request as net MTM, clearly separate gross MTM, cost basis, net MTM, and realized payout, and use the same current pipeline mark as the Live Tracker.",
+      },
+      {
+        title: "Market values are easier to audit",
+        description:
+          "MCP answers can now include the valuation snapshot, method, week, timestamp, formula, team projections, Super Bowl probabilities, and normalized Kalshi inputs with their source URLs and fetch times.",
+      },
+      {
+        title: "No MCP reconnection required",
+        description:
+          "Existing ChatGPT and Claude MCP connections remain authorized because the endpoint and OAuth setup did not change. If new tools do not appear immediately, start a new chat or refresh or temporarily disable and re-enable the connector; deleting and re-authorizing it should not be necessary.",
+      },
+      {
+        title: "The Live Tracker is clearer and zero-sum",
+        description:
+          "The former MTM Tracker now shows net team values that balance to zero, with weekly history, auction-price-sized dots, team primary colors, and one Week 0 point until the first completed weekly mark.",
+      },
+    ],
+  },
+  {
     date: "September 3, 2026",
     updates: [
       {
