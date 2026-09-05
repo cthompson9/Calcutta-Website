@@ -122,6 +122,52 @@ export default function Faq() {
           </div>
         </details>
 
+        <details className="group border border-border bg-background" data-testid="details-mcp-terms-faq">
+          <summary className="cursor-pointer list-none px-4 py-3 font-mono text-sm font-bold uppercase tracking-wide focus:outline-none focus:ring-2 focus:ring-primary focus:ring-inset">
+            <span className="flex items-center justify-between gap-3">
+              What do MTM and the other Calcutta terms mean?
+              <span className="text-lg leading-none text-muted-foreground transition-transform group-open:rotate-45">+</span>
+            </span>
+          </summary>
+          <div className="space-y-3 border-t border-border px-4 py-4 text-sm leading-relaxed text-muted-foreground">
+            <p>
+              If a request says only <strong className="text-foreground">MTM</strong>, interpret it as{" "}
+              <strong className="text-foreground">net MTM</strong>. Ask for gross MTM explicitly when you want
+              market-implied payout before cost.
+            </p>
+            <dl className="grid gap-3 text-xs md:grid-cols-2">
+              <div className="border border-border bg-muted/30 p-3">
+                <dt className="font-mono font-bold uppercase tracking-wide text-foreground">Gross MTM</dt>
+                <dd className="mt-1">Current market-implied payout before signed cost basis.</dd>
+              </div>
+              <div className="border border-border bg-muted/30 p-3">
+                <dt className="font-mono font-bold uppercase tracking-wide text-foreground">Net MTM</dt>
+                <dd className="mt-1">Gross MTM minus signed cost basis. This is the default meaning of “MTM.”</dd>
+              </div>
+              <div className="border border-border bg-muted/30 p-3">
+                <dt className="font-mono font-bold uppercase tracking-wide text-foreground">Realized payout</dt>
+                <dd className="mt-1">Payout earned from completed results. It must never be substituted for MTM.</dd>
+              </div>
+              <div className="border border-border bg-muted/30 p-3">
+                <dt className="font-mono font-bold uppercase tracking-wide text-foreground">WoW</dt>
+                <dd className="mt-1">Week-over-week change between two named MTM snapshots, not necessarily seven calendar days.</dd>
+              </div>
+              <div className="border border-border bg-muted/30 p-3">
+                <dt className="font-mono font-bold uppercase tracking-wide text-foreground">XBook</dt>
+                <dd className="mt-1">A cross-book portfolio wager or synthetic position. Read its recorded scope, factor, basis, and reference owner.</dd>
+              </div>
+              <div className="border border-border bg-muted/30 p-3">
+                <dt className="font-mono font-bold uppercase tracking-wide text-foreground">Lion King</dt>
+                <dd className="mt-1">An auction-lot-only basis used by some historical XBooks; trades are excluded unless the record says otherwise.</dd>
+              </div>
+            </dl>
+            <p className="text-xs">
+              Auditable MTM answers should include the snapshot ID, method version, week, timestamp, and each
+              market input&apos;s provider, source URL, ticker, and fetch timestamp.
+            </p>
+          </div>
+        </details>
+
         <details className="group border border-border bg-background" data-testid="details-mcp-prompts-faq">
           <summary className="cursor-pointer list-none px-4 py-3 font-mono text-sm font-bold uppercase tracking-wide focus:outline-none focus:ring-2 focus:ring-primary focus:ring-inset">
             <span className="flex items-center justify-between gap-3">

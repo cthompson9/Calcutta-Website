@@ -53,3 +53,15 @@ origin allowlists were still blocked despite the visible target matching.
 **How to apply:** Remove only `Content-Security-Policy` from GET/POST responses
 at the approval route. Keep all other Helmet headers there and full CSP on
 every other endpoint; keep the page script-free and escape rendered text.
+
+Unqualified “MTM” means net MTM. Gross MTM, realized payout, and net MTM must
+remain separately named; never substitute realized data when MTM is unavailable.
+Current MTM reads use the same successful pipeline snapshot as the Live Tracker.
+
+**Why:** Ambiguous scalar fields and split legacy/pipeline sources caused agents
+to report realized values or “no MTM” while the site displayed a live mark.
+
+**How to apply:** Prefer structured valuation responses with basis, gross value,
+signed cost, net value, snapshot ID, method, week, as-of time, and source.
+Evidence responses include provider URL and fetch time when persisted, and
+explicitly report provenance gaps instead of inventing a source.
