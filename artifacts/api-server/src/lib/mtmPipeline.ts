@@ -71,31 +71,81 @@ type RawMarketQuote = {
   series: string;
   team: string;
   market: Record<string, unknown>;
+  sourceUrl?: string;
+  fetchedAt?: Date;
+};
+
+type FetchedMarkets = {
+  markets: any[];
+  sourceUrl: string;
+  fetchedAt: Date;
+};
+
+type InputSource = {
+  provider: string;
+  source_url: string | null;
+  source_id: string;
+  fetched_at: string | null;
+};
+
+type MtmInputProvenance = {
+  schema_version: "1.0";
+  schedule: Array<InputSource & {
+    week: number;
+    home: string;
+    away: string;
+    marquee: boolean;
+  }>;
+  realized_results: Array<InputSource & {
+    week: number;
+    home: string;
+    away: string;
+    home_score: number;
+    away_score: number;
+  }>;
+  standings: Array<{
+    provider: "derived_nfl_game_ledger";
+    source_id: string;
+    team: string;
+    wins: number;
+    ties: number;
+    adjusted_point_differential: number;
+    fetched_at: string | null;
+    sources: InputSource[];
+  }>;
 };
 
 function mergeTeamQuoteResults(
   teamCode: string,
   series: { win_totals: string; stage_of_elimination: string },
-  winResult: PromiseSettledResult<any[]>,
-  stageResult: PromiseSettledResult<any[]>,
+  winResult: PromiseSettledResult<any[] | FetchedMarkets>,
+  stageResult: PromiseSettledResult<any[] | FetchedMarkets>,
 ): { raw: RawMarketQuote[]; errors: string[] } {
   const raw: RawMarketQuote[] = [];
   const errors: string[] = [];
   if (winResult.status === "fulfilled") {
-    raw.push(...winResult.value.map((market) => ({
+    const fetched = Array.isArray(winResult.value)
+      ? { markets: winResult.value, sourceUrl: undefined, fetchedAt: undefined }
+      : winResult.value;
+    raw.push(...fetched.markets.map((market) => ({
       series: series.win_totals, team: teamCode, market,
+      sourceUrl: fetched.sourceUrl, fetchedAt: fetched.fetchedAt,
     })));
-    if (winResult.value.length === 0) {
+    if (fetched.markets.length === 0) {
       errors.push(`${teamCode} win totals: no markets received`);
     }
   } else {
     errors.push(`${teamCode} win totals: ${String(winResult.reason)}`);
   }
   if (stageResult.status === "fulfilled") {
-    raw.push(...stageResult.value.map((market) => ({
+    const fetched = Array.isArray(stageResult.value)
+      ? { markets: stageResult.value, sourceUrl: undefined, fetchedAt: undefined }
+      : stageResult.value;
+    raw.push(...fetched.markets.map((market) => ({
       series: series.stage_of_elimination, team: teamCode, market,
+      sourceUrl: fetched.sourceUrl, fetchedAt: fetched.fetchedAt,
     })));
-    if (stageResult.value.length === 0) {
+    if (fetched.markets.length === 0) {
       errors.push(`${teamCode} stage of elimination: no markets received`);
     }
   } else {
@@ -160,14 +210,23 @@ async function loadConfig(): Promise<Record<string, any>> {
   return JSON.parse(await readFile(CONFIG_PATH, "utf8")) as Record<string, any>;
 }
 
-async function fetchKalshiEvent(baseUrl: string, ticker: string): Promise<any[]> {
+async function fetchKalshiEvent(baseUrl: string, ticker: string): Promise<FetchedMarkets> {
+  const sourceUrl = kalshiEventUrl(baseUrl, ticker);
   const response = await fetch(
-    `${baseUrl.replace(/\/$/, "")}/events/${encodeURIComponent(ticker)}?with_nested_markets=true`,
+    sourceUrl,
     { headers: { Accept: "application/json", "User-Agent": "calcutta-mtm/1.0" }, signal: AbortSignal.timeout(20_000) },
   );
   if (!response.ok) throw new Error(`Kalshi event ${ticker} returned HTTP ${response.status}.`);
   const body = await response.json() as { event?: { markets?: any[] } };
-  return body.event?.markets ?? [];
+  return {
+    markets: body.event?.markets ?? [],
+    sourceUrl,
+    fetchedAt: new Date(),
+  };
+}
+
+function kalshiEventUrl(baseUrl: string, ticker: string): string {
+  return `${baseUrl.replace(/\/$/, "")}/events/${encodeURIComponent(ticker)}?with_nested_markets=true`;
 }
 
 function quoteValue(market: any, field: string): number | null {
@@ -263,7 +322,12 @@ function deriveQuoteState(
   return { winLadders, elimination };
 }
 
-async function fetchEspnRemainingSchedule(seasonYear: number): Promise<MtmState["remaining_schedule"]> {
+async function fetchEspnRemainingSchedule(
+  seasonYear: number,
+): Promise<{
+  schedule: MtmState["remaining_schedule"];
+  provenance: MtmInputProvenance["schedule"];
+}> {
   const weeks = await Promise.all(Array.from({ length: 18 }, async (_, index) => {
     const week = index + 1;
     const url = new URL("https://site.api.espn.com/apis/site/v2/sports/football/nfl/scoreboard");
@@ -287,6 +351,7 @@ async function fetchEspnRemainingSchedule(seasonYear: number): Promise<MtmState[
         }>;
       }>;
     };
+    const fetchedAt = new Date();
     return (payload.events ?? []).flatMap((event) => {
       if (event.status?.type?.completed || !event.date) return [];
       const competitors = event.competitions?.[0]?.competitors ?? [];
@@ -297,6 +362,8 @@ async function fetchEspnRemainingSchedule(seasonYear: number): Promise<MtmState[
       const away = ESPN_TEAM_CODE[providerAway] ?? providerAway;
       return [{
         providerId: event.id ?? `${week}:${away}:${home}:${event.date}`,
+        sourceUrl: url.toString(),
+        fetchedAt,
         home,
         away,
         marquee: isNflMarqueeKickoff(event.date),
@@ -309,7 +376,19 @@ async function fetchEspnRemainingSchedule(seasonYear: number): Promise<MtmState[
   if (identities.size !== allGames.length) {
     throw new Error("ESPN returned duplicate NFL schedule events.");
   }
-  return allGames.map(({ providerId: _providerId, ...game }) => game);
+  return {
+    schedule: allGames.map(({ providerId: _providerId, sourceUrl: _sourceUrl, fetchedAt: _fetchedAt, ...game }) => game),
+    provenance: allGames.map((game) => ({
+      provider: "espn",
+      source_url: game.sourceUrl,
+      source_id: game.providerId,
+      fetched_at: game.fetchedAt.toISOString(),
+      week: game.week,
+      home: game.home,
+      away: game.away,
+      marquee: game.marquee,
+    })),
+  };
 }
 
 async function exportState(seasonYear: number, calcuttaId?: number): Promise<{
@@ -318,6 +397,7 @@ async function exportState(seasonYear: number, calcuttaId?: number): Promise<{
   rawQuotes: RawMarketQuote[];
   quoteErrors: string[];
   quoteTeams: Array<{ code: string; name: string }>;
+  inputProvenance: MtmInputProvenance;
 }> {
   const selected = await db
     .select({ poolId: calcuttasTable.id, seasonId: calcuttasTable.seasonId, year: seasonsTable.year })
@@ -348,6 +428,8 @@ async function exportState(seasonYear: number, calcuttaId?: number): Promise<{
     kickoff: nflGamesTable.actualKickoffAt, marquee: nflGamesTable.isMarquee,
     status: nflGamesTable.status, source: nflGamesTable.source,
     sourceGameId: nflGamesTable.sourceGameId,
+    sourceUrl: nflGamesTable.sourceUrl,
+    sourceFetchedAt: nflGamesTable.sourceFetchedAt,
     round: nflGamesTable.round,
   }).from(nflGamesTable).where(eq(nflGamesTable.seasonId, poolRow.seasonId));
   const teamNameById = new Map(entries.map((entry) => [entry.teamId, entry.name]));
@@ -363,7 +445,8 @@ async function exportState(seasonYear: number, calcuttaId?: number): Promise<{
     actualKickoffAt: game.kickoff,
     status: game.status,
   })));
-  const remainingSchedule = await fetchEspnRemainingSchedule(seasonYear);
+  const scheduleCapture = await fetchEspnRemainingSchedule(seasonYear);
+  const remainingSchedule = scheduleCapture.schedule;
   const completedGames = games.filter((game) =>
     game.period >= 1 &&
     game.period <= 18 &&
@@ -422,12 +505,59 @@ async function exportState(seasonYear: number, calcuttaId?: number): Promise<{
     win_ladders: {},
     elimination_quotes: {},
   };
+  const completedInputSources = completedGames.map((game) => {
+    const home = TEAM_CODE_BY_NAME[teamNameById.get(game.home) ?? ""];
+    const away = TEAM_CODE_BY_NAME[teamNameById.get(game.away) ?? ""];
+    const sourceId = game.sourceGameId;
+    return {
+      provider: game.source,
+      source_url: game.sourceUrl,
+      source_id: sourceId,
+      fetched_at: game.sourceFetchedAt?.toISOString() ?? null,
+      week: game.period,
+      home,
+      away,
+      home_score: asNumber(game.homeScore),
+      away_score: asNumber(game.awayScore),
+      homeTeamId: game.home,
+      awayTeamId: game.away,
+    };
+  });
+  const inputProvenance: MtmInputProvenance = {
+    schema_version: "1.0",
+    schedule: scheduleCapture.provenance,
+    realized_results: completedInputSources.map(({ homeTeamId: _home, awayTeamId: _away, ...game }) => game),
+    standings: entries.map((entry) => {
+      const team = TEAM_CODE_BY_NAME[entry.name];
+      const metrics = state.realized[team];
+      const sources = completedInputSources
+        .filter((game) => game.homeTeamId === entry.teamId || game.awayTeamId === entry.teamId)
+        .map(({ homeTeamId: _home, awayTeamId: _away, week: _week, home: _hc, away: _ac, home_score: _hs, away_score: _as, ...source }) => source);
+      return {
+        provider: "derived_nfl_game_ledger",
+        source_id: `nfl-standings:${seasonYear}:${team}`,
+        team,
+        wins: metrics.wins,
+        ties: metrics.ties,
+        adjusted_point_differential: metrics.adj_pt_diff,
+        fetched_at: sources.reduce<string | null>((latest, source) => {
+          if (!source.fetched_at) return latest;
+          return !latest || source.fetched_at > latest ? source.fetched_at : latest;
+        }, scheduleCapture.provenance.reduce<string | null>((latest, source) =>
+          !latest || (source.fetched_at != null && source.fetched_at > latest)
+            ? source.fetched_at
+            : latest, null)),
+        sources,
+      };
+    }),
+  };
   return {
     poolId: poolRow.poolId,
     state,
     rawQuotes: quotes.raw,
     quoteErrors: quotes.errors,
     quoteTeams: teams,
+    inputProvenance,
   };
 }
 
@@ -516,10 +646,14 @@ function quoteStrike(market: Record<string, unknown>): string | null {
 function buildMarketQuoteRows(
   snapshotId: number,
   rawQuotes: RawMarketQuote[],
-  fetchedAt: Date,
 ) {
-  return rawQuotes.map(({ series, team, market }) => ({
+  return rawQuotes.map(({ series, team, market, sourceUrl, fetchedAt }) => {
+    if (!sourceUrl || !fetchedAt) {
+      throw new Error(`Missing capture-time provenance for Kalshi market ${String(market.ticker)}.`);
+    }
+    return {
     snapshotId,
+    sourceUrl,
     series,
     marketTicker: String(market.ticker),
     team,
@@ -529,7 +663,8 @@ function buildMarketQuoteRows(
     volume: market.volume == null ? null : Math.trunc(asNumber(market.volume)),
     fetchedAt,
     rawQuote: market,
-  }));
+    };
+  });
 }
 
 async function withMtmLock<T>(
@@ -581,14 +716,15 @@ export async function runMtmPipeline(input: { seasonYear: number; calcuttaId?: n
       stale: true, staleReasons: [message], diagnostics, valuations: [], projections: {},
     };
   }
-  const { poolId, state, rawQuotes, quoteErrors, quoteTeams } = exported;
+  const { poolId, state, rawQuotes, quoteErrors, quoteTeams, inputProvenance } = exported;
   const snapshot = await db.insert(mtmSnapshotTable).values({
     poolId, asOf: now, asOfHour, trigger: input.trigger, status: "failed", methodVersion,
     stateJson: state,
+    inputProvenance,
   }).returning({ id: mtmSnapshotTable.id });
   const snapshotId = snapshot[0]!.id;
   if (rawQuotes.length) {
-    await db.insert(mtmMarketQuoteTable).values(buildMarketQuoteRows(snapshotId, rawQuotes, now));
+    await db.insert(mtmMarketQuoteTable).values(buildMarketQuoteRows(snapshotId, rawQuotes));
   }
   if (quoteErrors.length > 0) {
     const message = `Kalshi quote collection was incomplete: ${quoteErrors.join("; ")}`;
@@ -824,4 +960,6 @@ export const mtmPipelineTestUtils = {
   validateCompleteEngineSnapshot,
   mergeTeamQuoteResults,
   validateScheduleIdentitySets,
+  buildMarketQuoteRows,
+  kalshiEventUrl,
 };

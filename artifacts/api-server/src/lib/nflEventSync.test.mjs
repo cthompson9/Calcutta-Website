@@ -57,6 +57,29 @@ test("parses scheduled regular-season games and preserves TBD kickoff metadata",
   assert.equal(parsed[1].kickoffAt, null);
 });
 
+test("carries the exact scoreboard request provenance into every parsed game", () => {
+  const sourceUrl = "https://site.api.espn.com/apis/site/v2/sports/football/nfl/scoreboard?dates=20260801-20270228&limit=1000";
+  const fetchedAt = "2026-09-20T14:04:12.345Z";
+  const [parsed] = parseEspnRegularSeasonEvents({
+    provenance: { sourceUrl, fetchedAt },
+    events: [{
+      id: "401872954",
+      date: "2026-09-27T17:00Z",
+      season: { year: 2026, type: 2 },
+      week: { number: 3 },
+      competitions: [{
+        competitors: [
+          { homeAway: "home", score: "24", team: { abbreviation: "DET" } },
+          { homeAway: "away", score: "17", team: { abbreviation: "NYJ" } },
+        ],
+        status: { type: { state: "post", completed: true } },
+      }],
+    }],
+  }, 2026);
+  assert.equal(parsed.sourceUrl, sourceUrl);
+  assert.equal(parsed.sourceFetchedAt?.toISOString(), fetchedAt);
+});
+
 test("ignores preseason and postseason events", () => {
   const event = {
     id: "x", date: "2026-08-01T00:00Z", season: { year: 2026, type: 1 },

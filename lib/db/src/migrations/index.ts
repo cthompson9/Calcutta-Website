@@ -23,3 +23,6 @@ export { immutableMtmAttemptsMigration } from "./0027ImmutableMtmAttempts";
 export { consortiumTypoCorrectionMigration } from "./0028ConsortiumTypoCorrection";
 export { schemaConvergenceMigration } from "./0029SchemaConvergence";
 export { stableForeignKeyNamesMigration } from "./0030StableForeignKeyNames";
+export { mtmInputProvenanceMigration } from "./0031MtmInputProvenance";
+export { mtmMarketQuoteSourceUrlMigration } from "./0032MtmMarketQuoteSourceUrl";
+export { nflGameSourceProvenanceMigration } from "./0033NflGameSourceProvenance";

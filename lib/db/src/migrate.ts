@@ -26,6 +26,9 @@ import {
   consortiumTypoCorrectionMigration,
   schemaConvergenceMigration,
   stableForeignKeyNamesMigration,
+  mtmInputProvenanceMigration,
+  mtmMarketQuoteSourceUrlMigration,
+  nflGameSourceProvenanceMigration,
 } from "./migrations";
 
 const migrations = [
@@ -54,6 +57,9 @@ const migrations = [
   consortiumTypoCorrectionMigration,
   schemaConvergenceMigration,
   stableForeignKeyNamesMigration,
+  mtmInputProvenanceMigration,
+  mtmMarketQuoteSourceUrlMigration,
+  nflGameSourceProvenanceMigration,
 ] as const;
 
 /**

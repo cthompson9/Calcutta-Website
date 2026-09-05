@@ -572,10 +572,40 @@ function buildMcpServer(isAdmin: boolean) {
           .filter((entry: any) => selectedEntryIds.has(String(entry?.entry_id)))
           .map((entry: any) => String(entry.team)),
       );
-      const providerBaseUrl = "https://api.elections.kalshi.com/trade-api/v2";
+      const normalizedProvenance = snapshot.inputProvenance as Record<string, any> | null;
+      const normalizedSchedule = Array.isArray(normalizedProvenance?.schedule)
+        ? normalizedProvenance.schedule
+        : [];
+      const normalizedResults = Array.isArray(normalizedProvenance?.realized_results)
+        ? normalizedProvenance.realized_results
+        : [];
+      const normalizedStandings = Array.isArray(normalizedProvenance?.standings)
+        ? normalizedProvenance.standings
+        : [];
+      const normalizedSources = [
+        ...normalizedSchedule,
+        ...normalizedResults,
+        ...normalizedStandings.flatMap((standing: any) =>
+          Array.isArray(standing.sources) ? standing.sources : []),
+      ];
+      const normalizedProvenanceComplete = normalizedProvenance != null &&
+        normalizedSources.every((source: any) =>
+          typeof source.source_url === "string" &&
+          source.source_url.length > 0 &&
+          typeof source.source_id === "string" &&
+          source.source_id.length > 0 &&
+          typeof source.fetched_at === "string" &&
+          source.fetched_at.length > 0) &&
+        normalizedStandings.every((standing: any) =>
+          typeof standing.provider === "string" &&
+          standing.provider.length > 0 &&
+          typeof standing.source_id === "string" &&
+          standing.source_id.length > 0 &&
+          typeof standing.fetched_at === "string" &&
+          standing.fetched_at.length > 0);
       return text(JSON.stringify({
         available: true,
-        schema_version: "1.0",
+        schema_version: "1.1",
         snapshot: {
           id: snapshot.id,
           pool_id: snapshot.poolId,
@@ -604,14 +634,29 @@ function buildMcpServer(isAdmin: boolean) {
             source_and_url: "Included per market input below.",
             timestamp: "Each quote has its own fetched_at timestamp.",
           },
-          schedule_and_realized_state: {
-            source: "persisted_pipeline_state",
-            source_url: null,
-            captured_at: snapshot.asOf.toISOString(),
-            provenance_status: "partial",
-            note: "The exact upstream URL for each schedule/result fact was not persisted by this pipeline version and is therefore not invented here.",
-          },
+          normalized_inputs: normalizedProvenance
+            ? {
+                provenance_status: normalizedProvenanceComplete ? "available" : "partial",
+                note: normalizedProvenanceComplete
+                  ? "Provider request provenance was persisted with every normalized input at fetch time."
+                  : "Some normalized inputs predate complete provider request provenance; missing values remain unavailable.",
+              }
+            : {
+                provenance_status: "unavailable",
+                note: "This older snapshot did not persist normalized-input provenance; no source is inferred after the fact.",
+              },
         },
+        normalized_inputs: normalizedProvenance
+          ? {
+                schema_version: normalizedProvenance.schema_version ?? null,
+                schedule: normalizedSchedule.filter((input: any) =>
+                  !team || selectedTeamCodes.has(String(input.home)) || selectedTeamCodes.has(String(input.away))),
+                realized_results: normalizedResults.filter((input: any) =>
+                  !team || selectedTeamCodes.has(String(input.home)) || selectedTeamCodes.has(String(input.away))),
+                standings: normalizedStandings.filter((input: any) =>
+                  !team || selectedTeamCodes.has(String(input.team))),
+            }
+          : null,
         valuations: valuationRows,
         projections: projections
           .filter((row) => !team || selectedTeamCodes.has(row.team))
@@ -634,7 +679,8 @@ function buildMcpServer(isAdmin: boolean) {
           .slice(0, quoteLimit ?? 100)
           .map((quote) => ({
           provider: quote.source,
-          source_url: `${providerBaseUrl}/markets/${encodeURIComponent(quote.marketTicker)}`,
+          source_url: quote.sourceUrl,
+          provenance_status: quote.sourceUrl ? "available" : "unavailable",
           series: quote.series,
           ticker: quote.marketTicker,
           team_code: mtmQuoteTeamCode(quote.team, quote.marketTicker),

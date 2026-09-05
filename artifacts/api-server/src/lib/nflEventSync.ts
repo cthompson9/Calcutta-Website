@@ -59,7 +59,10 @@ type EspnEvent = {
   }>;
 };
 
-export type EspnScoreboardPayload = { events?: EspnEvent[] };
+export type EspnScoreboardPayload = {
+  events?: EspnEvent[];
+  provenance?: { sourceUrl: string; fetchedAt: string };
+};
 
 export type ParsedNflEvent = {
   sourceEventId: string;
@@ -74,6 +77,8 @@ export type ParsedNflEvent = {
   awayScore: number | null;
   homeScore: number | null;
   sourceData: Record<string, unknown>;
+  sourceUrl: string | null;
+  sourceFetchedAt: Date | null;
 };
 
 function newYorkDate(value: Date): string {
@@ -140,6 +145,10 @@ export function parseEspnRegularSeasonEvents(
         statusName: statusType?.name ?? null,
         kickoffTimeConfirmed: competition?.timeValid !== false,
       },
+      sourceUrl: payload.provenance?.sourceUrl ?? null,
+      sourceFetchedAt: payload.provenance?.fetchedAt
+        ? new Date(payload.provenance.fetchedAt)
+        : null,
     }];
   });
 }
@@ -175,8 +184,9 @@ export function validateEspnRegularSeasonEvents(
 }
 
 export async function fetchEspnNflEvents(seasonYear: number): Promise<EspnScoreboardPayload> {
+  const sourceUrl = `${ESPN_SCOREBOARD_URL}?dates=${seasonYear}0801-${seasonYear + 1}0228&limit=1000`;
   const response = await fetch(
-    `${ESPN_SCOREBOARD_URL}?dates=${seasonYear}0801-${seasonYear + 1}0228&limit=1000`,
+    sourceUrl,
     {
       headers: {
         Accept: "application/json",
@@ -186,7 +196,11 @@ export async function fetchEspnNflEvents(seasonYear: number): Promise<EspnScoreb
     },
   );
   if (!response.ok) throw new Error(`ESPN NFL scoreboard returned HTTP ${response.status}.`);
-  return await response.json() as EspnScoreboardPayload;
+  const payload = await response.json() as EspnScoreboardPayload;
+  return {
+    ...payload,
+    provenance: { sourceUrl, fetchedAt: new Date().toISOString() },
+  };
 }
 
 const REALIZED_METRICS = [
@@ -396,6 +410,8 @@ export async function syncNflEventsAndRealizedMetricsTx(
       ) {
         const gameRow = {
           seasonId, source: "espn", sourceGameId: event.sourceEventId,
+          sourceUrl: event.sourceUrl,
+          sourceFetchedAt: event.sourceFetchedAt,
           periodSequence: event.week, round: "regular", homeTeamId, awayTeamId,
           homeScore: event.homeScore, awayScore: event.awayScore,
           actualKickoffAt: event.kickoffAt,

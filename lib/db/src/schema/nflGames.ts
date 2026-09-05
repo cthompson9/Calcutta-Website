@@ -12,6 +12,8 @@ export const nflGamesTable = pgTable(
     seasonId: integer("season_id").notNull().references(() => seasonsTable.id, { onDelete: "cascade" }),
     source: text("source").notNull().default("manual"),
     sourceGameId: text("source_game_id").notNull(),
+    sourceUrl: text("source_url"),
+    sourceFetchedAt: timestamp("source_fetched_at", { withTimezone: true }),
     periodSequence: integer("period_sequence").notNull(),
     round: text("round").notNull().default("regular"),
     homeTeamId: integer("home_team_id").notNull().references(() => teamsTable.id),

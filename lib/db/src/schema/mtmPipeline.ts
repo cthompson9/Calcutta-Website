@@ -36,6 +36,7 @@ export const mtmSnapshotTable = pgTable(
     error: text("error"),
     diagnostics: jsonb("diagnostics").$type<Record<string, unknown> | null>(),
     stateJson: jsonb("state_json").$type<Record<string, unknown> | null>(),
+    inputProvenance: jsonb("input_provenance").$type<Record<string, unknown> | null>(),
     createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
   },
   (t) => [
@@ -53,6 +54,7 @@ export const mtmMarketQuoteTable = pgTable(
       .notNull()
       .references(() => mtmSnapshotTable.id, { onDelete: "cascade" }),
     source: text("source").notNull().default("kalshi"),
+    sourceUrl: text("source_url"),
     series: text("series").notNull(),
     marketTicker: text("market_ticker").notNull(),
     team: text("team"),

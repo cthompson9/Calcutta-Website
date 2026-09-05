@@ -20,6 +20,25 @@ test("normalizes Kalshi fixed-point and legacy cent quotes", () => {
   );
 });
 
+test("persists the exact Kalshi event request URL with every nested market", () => {
+  const originalUrl = mtmPipelineTestUtils.kalshiEventUrl(
+    "https://historical.example.test/trade-api/v2/",
+    "KXNFLWINS-27BUF",
+  );
+  const [row] = mtmPipelineTestUtils.buildMarketQuoteRows(17, [{
+    series: "KXNFLWINS",
+    team: "BUF",
+    market: { ticker: "KXNFLWINS-27BUF-W10", yes_bid: 42 },
+    sourceUrl: originalUrl,
+    fetchedAt: new Date("2026-09-20T14:04:00.000Z"),
+  }]);
+  assert.equal(
+    row.sourceUrl,
+    "https://historical.example.test/trade-api/v2/events/KXNFLWINS-27BUF?with_nested_markets=true",
+  );
+  assert.equal(row.fetchedAt.toISOString(), "2026-09-20T14:04:00.000Z");
+});
+
 test("maps every confirmed stage ticker suffix to the frozen engine contract", () => {
   const expected = {
     REG: "no_playoffs",
@@ -77,6 +96,25 @@ test("retains a fulfilled win-total response when the paired stage request fails
   assert.equal(merged.raw.length, 1);
   assert.equal(merged.raw[0].market.ticker, "KXNFLWINS-27BUF-10");
   assert.match(merged.errors[0], /stage of elimination.*timeout/);
+});
+
+test("keeps each Kalshi response URL and fetch time with its own markets", () => {
+  const fetchedAt = new Date("2026-09-20T14:04:12.345Z");
+  const merged = mtmPipelineTestUtils.mergeTeamQuoteResults(
+    "BUF",
+    { win_totals: "KXNFLWINS", stage_of_elimination: "KXNFLSTAGEOFELIM" },
+    {
+      status: "fulfilled",
+      value: {
+        markets: [{ ticker: "KXNFLWINS-27BUF-10" }],
+        sourceUrl: "https://historical.example/events/KXNFLWINS-27BUF?with_nested_markets=true",
+        fetchedAt,
+      },
+    },
+    { status: "rejected", reason: new Error("timeout") },
+  );
+  assert.equal(merged.raw[0].sourceUrl, "https://historical.example/events/KXNFLWINS-27BUF?with_nested_markets=true");
+  assert.equal(merged.raw[0].fetchedAt, fetchedAt);
 });
 
 test("treats an empty successful Kalshi response as missing market evidence", () => {
