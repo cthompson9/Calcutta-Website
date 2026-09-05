@@ -281,27 +281,16 @@ export default function Results() {
     return [...new Set([...teamReasons, ...ownerReasons])];
   }, [teamResults, ownerResults]);
 
-  const reportBasisLabel = prefersHistoricalResults
-    ? "Final normalized historical returns"
-    : tab === "byTeam"
-    ? "Realized team returns + latest MTM"
-    : "Latest net mark-to-market";
-  const selectedPeriodLabel = prefersHistoricalResults
-    ? "final imported results"
-    : period == null
-    ? "latest available period"
-    : periods?.find((item) => item.sequence === period)?.label ?? `Period ${period}`;
-
   return (
     <div className="md:p-8 space-y-4 md:space-y-6 max-w-[1400px] mx-auto pb-6">
       {/* Header */}
       <header className="flex flex-col gap-3 px-4 pt-4 md:flex-row md:items-end md:justify-between md:px-0 md:pt-0">
         <div>
           <h1 className="text-3xl md:text-5xl font-extrabold uppercase tracking-tighter mb-1" data-testid="text-report-title">
-            Calcutta Returns
+            NFL szn
           </h1>
-          <p className="text-muted-foreground font-mono text-xs md:text-sm uppercase tracking-widest" data-testid="text-report-subtitle">
-            {reportBasisLabel} · {selectedPeriodLabel} · {year} season
+          <p className="text-muted-foreground font-mono text-sm md:text-base uppercase tracking-widest" data-testid="text-report-subtitle">
+            We are so back
           </p>
         </div>
       </header>
