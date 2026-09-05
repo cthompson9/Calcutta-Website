@@ -361,7 +361,7 @@ function buildMcpServer(isAdmin: boolean) {
   const server = new McpServer({
     name: "nfl-auction",
     version: "1.0.0",
-    description: "NFL Calcutta Pool auction data: ownership, costs, realized payouts, and mark-to-market valuations. Realized means earned payout from completed results. Gross MTM is current market-implied payout; net MTM is gross MTM minus signed cost basis. An unqualified request for 'MTM' means net MTM. Never substitute realized value for requested MTM.",
+    description: "NFL Calcutta Pool auction data. Realized means earned payout; gross MTM is market-implied payout; net MTM is gross MTM minus signed cost basis. Unqualified 'MTM' means net MTM; never substitute realized value. For 'my update', 'latest update', 'refresh my teams', 'how are my teams doing', or 'what changed', resolve an unambiguous owner and call get_latest_portfolio_update. If owner identity is unclear, ask which bidder/owner they mean. Reproduce that tool's SMS/Slack-ready markdown without an introduction, conclusion, table, or methodology.",
   });
 
   // Shared input schema fragments
@@ -501,9 +501,13 @@ function buildMcpServer(isAdmin: boolean) {
     const holdings = [...(positions?.entries() ?? [])].map(([teamId, position]) => {
       const valuation = status.valuations.find((row) => row.teamId === teamId) as Record<string, any> | undefined;
       const point = valuation?.history?.at(-1);
+      const previousPoint = valuation?.history?.at(-2);
       const teamGross = point?.netPayout == null || point?.auctionPrice == null
         ? null
         : Number(point.netPayout) + Number(point.auctionPrice);
+      const previousTeamGross = previousPoint?.netPayout == null || previousPoint?.auctionPrice == null
+        ? null
+        : Number(previousPoint.netPayout) + Number(previousPoint.auctionPrice);
       const cost = position.originalCostBasis + position.tradePaid - position.tradeReceived;
       const teamCode = valuation ? teamCodeByEntryId.get(String(valuation.entryId)) ?? null : null;
       const projection = teamCode ? status.projections[teamCode] : null;
@@ -517,6 +521,22 @@ function buildMcpServer(isAdmin: boolean) {
         gross_mtm_share: teamGross == null ? null : teamGross * position.effectiveShare,
         signed_cost_basis: cost,
         net_mtm: teamGross == null ? null : teamGross * position.effectiveShare - cost,
+        previous_comparable_refresh: previousPoint ? {
+          snapshot_id: previousPoint.snapshotId,
+          week: previousPoint.label,
+          as_of: previousPoint.asOf,
+        } : null,
+        net_mtm_change_percentage: (() => {
+          if (teamGross == null || previousTeamGross == null) return null;
+          const currentNet = teamGross * position.effectiveShare - cost;
+          const previousNet = previousTeamGross * position.effectiveShare - cost;
+          return previousNet === 0
+            ? (currentNet === 0 ? 0 : null)
+            : ((currentNet - previousNet) / Math.abs(previousNet)) * 100;
+        })(),
+        signed_gross_mtm_change: teamGross == null || previousTeamGross == null
+          ? null
+          : (teamGross - previousTeamGross) * position.effectiveShare,
         projection_available: Boolean(projection),
         playoff_odds: projection ? {
           playoff_berth: projection.pBerth == null ? null : Number(projection.pBerth),
@@ -561,6 +581,117 @@ function buildMcpServer(isAdmin: boolean) {
     { ...ownerInput, ...requiredSeason, ...calcuttaInput },
     async ({ owner, season, calcuttaId }) =>
       text(JSON.stringify(await loadCurrentOwnerValuation(owner, season, calcuttaId), null, 2)),
+  );
+
+  function latestUpdateMarkdown(result: Awaited<ReturnType<typeof loadCurrentOwnerValuation>>): string {
+    if (!result.available || !("holdings" in result)) return JSON.stringify(result, null, 2);
+    const formatRefresh = (value: string | null) => {
+      if (!value) return "unavailable";
+      const parts = new Intl.DateTimeFormat("en-US", {
+        timeZone: "America/New_York",
+        month: "long",
+        day: "numeric",
+        year: "numeric",
+        hour: "numeric",
+        minute: "2-digit",
+        hour12: true,
+      }).formatToParts(new Date(value));
+      const part = (type: Intl.DateTimeFormatPartTypes) =>
+        parts.find((item) => item.type === type)?.value ?? "";
+      return `${part("month")} ${part("day")}, ${part("year")} at ${part("hour")}:${part("minute")} ${part("dayPeriod")}`;
+    };
+    const signedDollars = (value: number, alwaysSign = false) => {
+      const sign = value < 0 ? "−" : alwaysSign ? "+" : "";
+      return `${sign}$${Math.round(Math.abs(value)).toLocaleString("en-US")}`;
+    };
+    const signedPercent = (value: number) => {
+      const sign = value < 0 ? "−" : value > 0 ? "+" : "";
+      return `${sign}${Math.abs(value).toFixed(1)}%`;
+    };
+    const positionPercent = (value: number) => {
+      const percent = Math.round(value * 10_000) / 100;
+      const sign = percent < 0 ? "−" : "";
+      return `${sign}${Math.abs(percent).toLocaleString("en-US", { maximumFractionDigits: 2 })}%`;
+    };
+    const holdings = (Array.isArray(result.holdings) ? [...result.holdings] : []).sort(
+      (a, b) => (b.gross_mtm_share ?? Number.NEGATIVE_INFINITY) -
+        (a.gross_mtm_share ?? Number.NEGATIVE_INFINITY),
+    );
+    const lines = [`Last refresh: **${formatRefresh(result.as_of ?? null)} ET**`];
+    if (result.stale) lines.push("", "Market data unavailable as of this refresh.");
+    for (const holding of holdings) {
+      lines.push("", `- **${holding.team} (${positionPercent(holding.signed_share)})**`);
+      if (holding.gross_mtm_share == null || holding.net_mtm == null) {
+        lines.push("  - Current MTM unavailable");
+        lines.push("  - No material supported development since the prior refresh.");
+        continue;
+      }
+      const change = holding.net_mtm_change_percentage == null
+        ? "change unavailable (no prior comparable refresh)"
+        : `**${signedPercent(holding.net_mtm_change_percentage)}** net MTM since last refresh`;
+      lines.push(
+        `  - **${signedDollars(holding.gross_mtm_share)} MTM** (**${signedDollars(holding.net_mtm, true)} net**) · ${change}`,
+      );
+      if (holding.signed_gross_mtm_change == null) {
+        lines.push("  - No material supported development since the prior refresh.");
+      } else if (Math.round(holding.signed_gross_mtm_change) === 0) {
+        lines.push("  - The market-implied value of the signed stake was unchanged since the prior refresh.");
+      } else {
+        const direction = holding.signed_gross_mtm_change > 0 ? "rose" : "fell";
+        lines.push(
+          `  - The market-implied value of the signed stake ${direction} ${signedDollars(Math.abs(holding.signed_gross_mtm_change))} since the prior refresh.`,
+        );
+      }
+    }
+    return lines.join("\n");
+  }
+
+  server.tool(
+    "get_latest_portfolio_update",
+    "Use whenever a user asks for 'my update', 'latest update', 'what is the latest', 'refresh my teams', 'how are my teams doing', or 'what changed since the last refresh'. Requires an unambiguous bidder/owner; ask the user if identity is unclear. Returns the complete required SMS/Slack-ready response. Reproduce it verbatim with no introduction, conclusion, table, methodology, or extra labels.",
+    { ...ownerInput, ...requiredSeason, ...calcuttaInput },
+    async ({ owner, season, calcuttaId }) =>
+      text(latestUpdateMarkdown(await loadCurrentOwnerValuation(owner, season, calcuttaId))),
+  );
+
+  server.tool(
+    "get_latest_update_response_contract",
+    "Returns the universal response rules for NFL Calcutta current-portfolio update requests. Use this only to inspect the preset; use get_latest_portfolio_update to answer an actual update request.",
+    {},
+    async () => text(JSON.stringify({
+      trigger_phrases: [
+        "Give me my update.",
+        "What is my latest update?",
+        "What is the latest?",
+        "Refresh my teams.",
+        "How are my teams doing?",
+        "What changed since the last refresh?",
+      ],
+      identity: "Resolve an unambiguous bidder/owner. If identity cannot be resolved, ask which bidder/owner they mean.",
+      format: {
+        first_line: "Last refresh: **[Month D, YYYY at H:MM AM/PM ET]**",
+        body: "One top-level bullet per team; no table.",
+        team_header: "**Team (signed position%)**",
+        valuation_line: "**$signed gross MTM MTM** (**signed net MTM net**) · signed net-MTM percentage change since last refresh",
+        drivers: "One to three pithy supported bullets with no labels; omit unsupported claims.",
+        prohibited: ["introduction", "conclusion", "methodology", "generic commentary", "tables"],
+      },
+      economics: {
+        unqualified_mtm: "net_mtm",
+        gross_mtm: "Current market-implied value of the signed stake.",
+        net_mtm: "Signed gross MTM minus signed cost basis.",
+        shorts: "Negative ownership percentage and negative signed gross MTM.",
+        sort: "Descending signed gross current MTM.",
+        prior: "Immediately preceding comparable complete refresh from the same pool and valuation basis.",
+        missing_prior: "change unavailable (no prior comparable refresh)",
+        no_realized_substitution: true,
+      },
+      freshness: {
+        timestamp: "The actual snapshot used, converted to America/New_York.",
+        no_mixed_snapshots: true,
+        stale_message: "Market data unavailable as of this refresh.",
+      },
+    }, null, 2)),
   );
 
   server.tool(

@@ -1,0 +1,99 @@
+NFL Calcutta: “Latest Update” Response Contract
+
+Purpose
+
+Use this contract whenever a user asks for a current portfolio update in the NFL Calcutta, including requests such as:
+
+“Give me my update.”
+
+“What is my latest update?”
+
+“What is the latest?”
+
+“Refresh my teams.”
+
+“How are my teams doing?”
+
+“What changed since the last refresh?”
+
+These phrases mean: identify the requesting user, retrieve every current signed economic position in the active NFL Calcutta, compare the newest complete refresh with the immediately preceding comparable refresh, and return the portfolio in the exact format below.
+
+Required response format
+
+Last refresh: **[Month D, YYYY at H:MM AM/PM ET]**
+
+- **[Team] ([signed ownership percentage]%)**
+  - **$[gross MTM] MTM** ([$net MTM with explicit +/− sign] net) · **[+/-X.X%]** net MTM since last refresh
+  - [Pithy primary driver of the recent valuation change]
+  - [Optional second material driver]
+  - [Optional third material driver]
+
+- **[Next team] ([signed ownership percentage]%)**
+  - **$[gross MTM] MTM** ([$net MTM with explicit +/− sign] net) · **[+/-X.X%]** net MTM since last refresh
+  - [Pithy primary driver of the recent valuation change]
+
+Formatting rules
+
+Use one top-level bullet per team. Do not use a table.
+
+The team header must be exactly Team (position%) in bold.
+
+Include long and short positions. Display shorts with a negative ownership percentage and a negative signed gross MTM.
+
+Sort teams from highest to lowest by signed gross current MTM, not net MTM, cost basis, ROI, or realized return.
+
+The first nested bullet must show, in this order:
+
+Gross current MTM in dollars.
+
+Net MTM in parentheses.
+
+Percentage change in net MTM since the immediately preceding comparable refresh.
+
+Gross current MTM means the current market-implied value of the user’s signed stake. Net MTM means gross current MTM minus signed cost basis. Do not substitute realized payout for either field.
+
+Round dollar amounts to the nearest whole dollar unless cents are material. Use commas for thousands.
+
+Show an explicit + or − sign for net MTM and percentage changes. Use 0.0% when unchanged.
+
+After the valuation line, provide one to three pithy bullets explaining the most important recent valuation drivers. One bullet is preferred when only one development is material.
+
+Driver bullets may cover the team itself, injuries, signings, depth-chart changes, playoff positioning, an upcoming opponent, a division rival, betting-market movement, or another development that actually explains the valuation change.
+
+Do not add labels such as “Development,” “News,” “Analysis,” or “Drivers.”
+
+Keep the output SMS/Slack-friendly. No introduction, conclusion, methodology, generic commentary, or repeated field labels.
+
+Freshness and missing-data rules
+
+Last refresh must be the timestamp of the data snapshot actually used for the response, converted to Eastern Time. Do not use the current clock time, schedule-import time, or an unrelated endpoint timestamp.
+
+Use the newest complete normalized portfolio/market refresh. Do not silently mix teams from different snapshot times.
+
+Compare against the immediately preceding complete refresh from the same Calcutta, season, valuation basis, and ownership state.
+
+If no prior comparable refresh exists, replace the percentage-change phrase with change unavailable (no prior comparable refresh).
+
+If the current market snapshot is missing or stale, state this immediately after the refresh line: Market data unavailable as of this refresh. Do not present calculated placeholders or realized returns as current MTM.
+
+If a material news driver cannot be supported, omit the driver rather than inventing one. If no supported driver is available, write No material supported development since the prior refresh.
+
+If the requesting user cannot be resolved unambiguously, ask which bidder/owner they mean before returning portfolio data.
+
+Example
+
+Last refresh: **September 5, 2026 at 8:15 AM ET**
+
+- **Houston Texans (50%)**
+  - **$2,180 MTM** (**+$218 net**) · **+8.4%** net MTM since last refresh
+  - Stroud cleared for Week 1; playoff market strengthened after the divisional injury news.
+
+- **New York Jets (40%)**
+  - **$610 MTM** (**+$220 net**) · **+3.1%** net MTM since last refresh
+  - Week 1 win probability improved as the opponent’s starting tackle was ruled out.
+
+- **Arizona Cardinals (-50%)**
+  - **−$540 MTM** (**−$340 net**) · **−6.7%** net MTM since last refresh
+  - Arizona’s playoff price rose, increasing the liability on the short position.
+
+The example values and developments are illustrative only. Always retrieve live connector data.

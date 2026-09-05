@@ -248,6 +248,27 @@ describe("MCP Live Tracker valuation contract", { skip: !canRun }, () => {
     assert.match(glossary.terms.realized_payout, /not MTM/);
   });
 
+  test("applies the universal latest-update response preset", async () => {
+    const contract = JSON.parse(await mcpCall(baseUrl, 31, "get_latest_update_response_contract"));
+    assert.ok(contract.trigger_phrases.includes("Give me my update."));
+    assert.equal(contract.economics.unqualified_mtm, "net_mtm");
+    assert.equal(contract.economics.no_realized_substitution, true);
+    assert.equal(contract.format.body, "One top-level bullet per team; no table.");
+
+    const update = await mcpCall(baseUrl, 32, "get_latest_portfolio_update", {
+      owner: bidder.name,
+      season: years[0],
+      calcuttaId: livePool.id,
+    });
+    assert.match(update, /^Last refresh: \*\*August 1, 2099 at 11:00 AM ET\*\*/);
+    assert.match(update, /- \*\*Buffalo Bills \(100%\)\*\*/);
+    assert.match(update, /\*\*\$100 MTM\*\* \(\*\*\+\$0 net\*\*\)/);
+    assert.match(update, /change unavailable \(no prior comparable refresh\)/);
+    assert.match(update, /No material supported development since the prior refresh/);
+    assert.doesNotMatch(update, /\|/);
+    assert.doesNotMatch(update, /999|777/);
+  });
+
   test("structured and legacy team and owner tools share the Live Tracker net mark", async () => {
     const args = { season: years[0], calcuttaId: livePool.id };
     const teamValuation = JSON.parse(await mcpCall(baseUrl, 2, "get_current_team_valuation", {
