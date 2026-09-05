@@ -413,7 +413,7 @@ function buildMcpServer(isAdmin: boolean) {
 
   server.tool(
     "get_current_team_valuation",
-    "Returns the authoritative Live Tracker valuation for one team. An unqualified MTM request means net_mtm. The response always distinguishes gross MTM, auction cost, net MTM, source snapshot, method, week, and timestamp.",
+    "Returns the authoritative Live Tracker valuation and playoff probabilities for one team. An unqualified MTM request means net_mtm. The response distinguishes gross MTM, auction cost, net MTM, source snapshot, method, week, timestamp, and playoff/Super Bowl odds.",
     { ...teamInput, ...requiredSeason, ...calcuttaInput },
     async ({ team, season, calcuttaId }) => {
       const matchedTeam = await findTeam(team);
@@ -430,13 +430,20 @@ function buildMcpServer(isAdmin: boolean) {
           reason: status?.staleReasons?.[0] ?? "No complete Live Tracker pipeline mark is available.",
         }, null, 2));
       }
-      const [snapshot] = status.currentSnapshotId
+      const snapshotId = status.currentSnapshotId!;
+      const [snapshot] = snapshotId
         ? await db.select({
             methodVersion: mtmSnapshotTable.methodVersion,
-          }).from(mtmSnapshotTable).where(eq(mtmSnapshotTable.id, status.currentSnapshotId)).limit(1)
+          }).from(mtmSnapshotTable).where(eq(mtmSnapshotTable.id, snapshotId)).limit(1)
         : [];
       const netMtm = Number(current.netPayout);
       const costBasis = Number(current.auctionPrice);
+      const snapshotState = (await db.select({
+        stateJson: mtmSnapshotTable.stateJson,
+      }).from(mtmSnapshotTable).where(eq(mtmSnapshotTable.id, snapshotId)).limit(1))[0]?.stateJson;
+      const teamCode = (Array.isArray(snapshotState?.entries) ? snapshotState.entries : [])
+        .find((entry: any) => String(entry?.entry_id) === String(valuation.entryId))?.team;
+      const projection = teamCode ? status.projections[String(teamCode)] : null;
       return text(JSON.stringify({
         available: true,
         basis: "mtm",
@@ -447,78 +454,113 @@ function buildMcpServer(isAdmin: boolean) {
         net_mtm: netMtm,
         week: current.label,
         as_of: current.asOf,
-        snapshot_id: status.currentSnapshotId,
+        snapshot_id: snapshotId,
         method_version: snapshot?.methodVersion ?? null,
         source: "live_mtm_pipeline",
+        projection_available: Boolean(projection),
+        playoff_odds: projection ? {
+          playoff_berth: projection.pBerth == null ? null : Number(projection.pBerth),
+          divisional_round: projection.pDivisional == null ? null : Number(projection.pDivisional),
+          conference_championship: projection.pConf == null ? null : Number(projection.pConf),
+          super_bowl_berth: projection.pSbBerth == null ? null : Number(projection.pSbBerth),
+          super_bowl_win: projection.pSbWin == null ? null : Number(projection.pSbWin),
+        } : null,
         stale: status.stale,
         stale_reasons: status.staleReasons,
       }, null, 2));
     },
   );
 
-  server.tool(
-    "get_current_owner_valuation",
-    "Returns an owner's authoritative Live Tracker portfolio valuation. An unqualified MTM request means net_mtm. Gross MTM, signed cost basis, net MTM, holdings, snapshot, method, week, and timestamp are returned separately.",
-    { ...ownerInput, ...requiredSeason, ...calcuttaInput },
-    async ({ owner, season, calcuttaId }) => {
-      const bidder = await findBidder(owner);
-      if (!bidder) return text(JSON.stringify({ available: false, reason: `Owner not found: ${owner}` }));
-      const seasonId = await resolveSeasonId(season);
-      const status = await getMtmPipelineStatus(season, calcuttaId);
-      if (!seasonId || !status?.currentSnapshotId) {
-        return text(JSON.stringify({
-          available: false,
-          basis: "mtm",
-          default_measure: "net_mtm",
-          owner: bidder.name,
-          reason: status?.staleReasons?.[0] ?? "No complete Live Tracker pipeline mark is available.",
-        }, null, 2));
-      }
-      const ownership = await loadSeasonOwnership(seasonId, status.poolId);
-      const positions = ownership.byBidder.get(bidder.id);
-      const [snapshot] = await db.select({
-        methodVersion: mtmSnapshotTable.methodVersion,
-      }).from(mtmSnapshotTable).where(eq(mtmSnapshotTable.id, status.currentSnapshotId)).limit(1);
-      let grossMtm = 0;
-      let signedCostBasis = 0;
-      let complete = true;
-      const holdings = [...(positions?.entries() ?? [])].map(([teamId, position]) => {
-        const valuation = status.valuations.find((row) => row.teamId === teamId) as Record<string, any> | undefined;
-        const point = valuation?.history?.at(-1);
-        const teamGross = point?.netPayout == null || point?.auctionPrice == null
-          ? null
-          : Number(point.netPayout) + Number(point.auctionPrice);
-        const cost = position.originalCostBasis + position.tradePaid - position.tradeReceived;
-        signedCostBasis += cost;
-        if (teamGross == null) complete = false;
-        else grossMtm += teamGross * position.effectiveShare;
-        return {
-          team: valuation?.teamName ?? `Team ${teamId}`,
-          signed_share: position.effectiveShare,
-          gross_mtm_share: teamGross == null ? null : teamGross * position.effectiveShare,
-          signed_cost_basis: cost,
-          net_mtm: teamGross == null ? null : teamGross * position.effectiveShare - cost,
-        };
-      });
-      const latestPoint = (status.valuations[0] as Record<string, any> | undefined)?.history?.at(-1);
-      return text(JSON.stringify({
-        available: complete,
+  const loadCurrentOwnerValuation = async (owner: string, season: number, calcuttaId?: number) => {
+    const bidder = await findBidder(owner);
+    if (!bidder) return { available: false, reason: `Owner not found: ${owner}` };
+    const seasonId = await resolveSeasonId(season);
+    const status = await getMtmPipelineStatus(season, calcuttaId);
+    if (!seasonId || !status?.currentSnapshotId) {
+      return {
+        available: false,
         basis: "mtm",
         default_measure: "net_mtm",
         owner: bidder.name,
-        gross_mtm: complete ? grossMtm : null,
-        signed_cost_basis: signedCostBasis,
-        net_mtm: complete ? grossMtm - signedCostBasis : null,
-        holdings,
-        week: latestPoint?.label ?? null,
-        as_of: status.currentAsOf,
-        snapshot_id: status.currentSnapshotId,
-        method_version: snapshot?.methodVersion ?? null,
-        source: "live_mtm_pipeline",
-        stale: status.stale,
-        stale_reasons: status.staleReasons,
-      }, null, 2));
-    },
+        reason: status?.staleReasons?.[0] ?? "No complete Live Tracker pipeline mark is available.",
+      };
+    }
+    const ownership = await loadSeasonOwnership(seasonId, status.poolId);
+    const positions = ownership.byBidder.get(bidder.id);
+    const [snapshot] = await db.select({
+      methodVersion: mtmSnapshotTable.methodVersion,
+      stateJson: mtmSnapshotTable.stateJson,
+    }).from(mtmSnapshotTable).where(eq(mtmSnapshotTable.id, status.currentSnapshotId)).limit(1);
+    const teamCodeByEntryId = new Map(
+      (Array.isArray(snapshot?.stateJson?.entries) ? snapshot.stateJson.entries : [])
+        .map((entry: any) => [String(entry?.entry_id), String(entry?.team)]),
+    );
+    let grossMtm = 0;
+    let signedCostBasis = 0;
+    let complete = true;
+    const holdings = [...(positions?.entries() ?? [])].map(([teamId, position]) => {
+      const valuation = status.valuations.find((row) => row.teamId === teamId) as Record<string, any> | undefined;
+      const point = valuation?.history?.at(-1);
+      const teamGross = point?.netPayout == null || point?.auctionPrice == null
+        ? null
+        : Number(point.netPayout) + Number(point.auctionPrice);
+      const cost = position.originalCostBasis + position.tradePaid - position.tradeReceived;
+      const teamCode = valuation ? teamCodeByEntryId.get(String(valuation.entryId)) ?? null : null;
+      const projection = teamCode ? status.projections[teamCode] : null;
+      signedCostBasis += cost;
+      if (teamGross == null) complete = false;
+      else grossMtm += teamGross * position.effectiveShare;
+      return {
+        team: valuation?.teamName ?? `Team ${teamId}`,
+        team_code: teamCode,
+        signed_share: position.effectiveShare,
+        gross_mtm_share: teamGross == null ? null : teamGross * position.effectiveShare,
+        signed_cost_basis: cost,
+        net_mtm: teamGross == null ? null : teamGross * position.effectiveShare - cost,
+        projection_available: Boolean(projection),
+        playoff_odds: projection ? {
+          playoff_berth: projection.pBerth == null ? null : Number(projection.pBerth),
+          divisional_round: projection.pDivisional == null ? null : Number(projection.pDivisional),
+          conference_championship: projection.pConf == null ? null : Number(projection.pConf),
+          super_bowl_berth: projection.pSbBerth == null ? null : Number(projection.pSbBerth),
+          super_bowl_win: projection.pSbWin == null ? null : Number(projection.pSbWin),
+        } : null,
+      };
+    });
+    const latestPoint = (status.valuations[0] as Record<string, any> | undefined)?.history?.at(-1);
+    return {
+      available: complete,
+      basis: "mtm",
+      default_measure: "net_mtm",
+      owner: bidder.name,
+      gross_mtm: complete ? grossMtm : null,
+      signed_cost_basis: signedCostBasis,
+      net_mtm: complete ? grossMtm - signedCostBasis : null,
+      holdings,
+      week: latestPoint?.label ?? null,
+      as_of: status.currentAsOf,
+      snapshot_id: status.currentSnapshotId,
+      method_version: snapshot?.methodVersion ?? null,
+      source: "live_mtm_pipeline",
+      stale: status.stale,
+      stale_reasons: status.staleReasons,
+    };
+  };
+
+  server.tool(
+    "get_current_owner_valuation",
+    "Returns an owner's authoritative Live Tracker portfolio valuation and playoff probabilities for every signed holding, including shorts. Use this—not get_owner_portfolio—when asked for current MTM, playoff odds, Super Bowl odds, or current projections. An unqualified MTM request means net_mtm.",
+    { ...ownerInput, ...requiredSeason, ...calcuttaInput },
+    async ({ owner, season, calcuttaId }) =>
+      text(JSON.stringify(await loadCurrentOwnerValuation(owner, season, calcuttaId), null, 2)),
+  );
+
+  server.tool(
+    "get_owner_playoff_odds",
+    "Returns current Live Tracker playoff and Super Bowl probabilities for every team in an owner's signed portfolio, including shorts, together with ownership share, net MTM, snapshot ID, method, and timestamp. Use this tool for questions like 'what are the playoff odds for my positions?'",
+    { ...ownerInput, ...requiredSeason, ...calcuttaInput },
+    async ({ owner, season, calcuttaId }) =>
+      text(JSON.stringify(await loadCurrentOwnerValuation(owner, season, calcuttaId), null, 2)),
   );
 
   server.tool(
@@ -698,7 +740,7 @@ function buildMcpServer(isAdmin: boolean) {
 
   server.tool(
     "get_owner_portfolio",
-    "Returns every signed economic position for one owner in one NFL Calcutta. Set basis='mtm' for a current mark-to-market request and use current_mtm/net_mtm; set basis='realized' only for earned-payout requests and use realized_return/net_return. The response includes both named fields for comparison, but total_return and ROI always follow the required basis.",
+    "Returns normalized historical/current economic positions. Do not use this tool for Live Tracker playoff odds or current projections; use get_owner_playoff_odds or get_current_owner_valuation instead. For value reports, basis is required and realized must never substitute for MTM.",
     { ...ownerInput, ...requiredSeason, ...calcuttaInput, ...basisInput },
     async ({ owner, season, calcuttaId, basis, period }) =>
       jsonText(await getOwnerPortfolio({ owner, season, calcuttaId, basis, period })),

@@ -258,6 +258,10 @@ describe("MCP Live Tracker valuation contract", { skip: !canRun }, () => {
       ...args,
       owner: bidder.name,
     }));
+    const ownerPlayoffOdds = JSON.parse(await mcpCall(baseUrl, 30, "get_owner_playoff_odds", {
+      ...args,
+      owner: bidder.name,
+    }));
     const legacyTeam = Number(await mcpCall(baseUrl, 4, "get_team_mtm", {
       ...args,
       team: team.name,
@@ -278,6 +282,11 @@ describe("MCP Live Tracker valuation contract", { skip: !canRun }, () => {
     assert.equal(ownerValuation.gross_mtm, 100);
     assert.equal(ownerValuation.signed_cost_basis, 100);
     assert.equal(ownerValuation.net_mtm, 0);
+    assert.equal(ownerValuation.holdings[0].team_code, "BUF");
+    assert.equal(ownerValuation.holdings[0].projection_available, true);
+    assert.equal(ownerValuation.holdings[0].playoff_odds.playoff_berth, 0.72);
+    assert.equal(ownerValuation.holdings[0].playoff_odds.super_bowl_win, 0.0625);
+    assert.deepEqual(ownerPlayoffOdds, ownerValuation);
     assert.equal(legacyTeam, teamValuation.net_mtm);
     assert.equal(legacyOwner, ownerValuation.net_mtm);
     assert.notEqual(teamValuation.net_mtm, 999, "realized return must not be substituted");
