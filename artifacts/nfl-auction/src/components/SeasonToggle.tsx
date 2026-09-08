@@ -1,6 +1,7 @@
 import { cn } from "@/lib/utils";
 import { formatCalcuttaLabel, useSeason } from "@/hooks/useSeason";
 import { ChevronDown } from "lucide-react";
+import { trackEvent } from "@/lib/analytics";
 
 export function SeasonToggle({ testId }: { testId?: string }) {
   const { selectedCalcutta, setCalcutta, calcuttas, isLoading } = useSeason();
@@ -11,7 +12,16 @@ export function SeasonToggle({ testId }: { testId?: string }) {
         data-testid={testId}
         aria-label="Global Calcutta filter"
         value={selectedCalcutta?.id.toString() ?? ""}
-        onChange={(event) => setCalcutta(Number(event.target.value))}
+        onChange={(event) => {
+          const nextId = Number(event.target.value);
+          const next = calcuttas.find((calcutta) => calcutta.id === nextId);
+          trackEvent("calcutta_selected", {
+            sport: next?.sport ?? "unknown",
+            year: next?.year ?? 0,
+            surface: testId?.includes("mobile") ? "mobile_header" : "desktop_sidebar",
+          });
+          setCalcutta(nextId);
+        }}
         disabled={isLoading && calcuttas.length === 0}
         className={cn(
           "h-10 w-full min-w-0 max-w-full appearance-none bg-muted/50 border border-border/60 rounded-md pl-3 pr-10 text-[10px] md:text-xs font-mono font-bold uppercase tracking-[0.08em] text-foreground outline-none transition-colors",

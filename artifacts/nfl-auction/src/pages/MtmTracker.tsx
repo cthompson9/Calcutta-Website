@@ -13,6 +13,7 @@ import { useQuery } from "@tanstack/react-query";
 import { formatCurrency } from "@/lib/utils";
 import { cn } from "@/lib/utils";
 import { useSeason } from "@/hooks/useSeason";
+import { trackEvent } from "@/lib/analytics";
 import { TrendingUp, TrendingDown, Lock, Unlock, Plus, X, ChevronDown, ChevronUp, Activity, AlertTriangle, ShieldCheck, Zap, Info, ServerOff, RefreshCw, Search, ListFilter } from "lucide-react";
 import { toast } from "sonner";
 import {
@@ -250,9 +251,17 @@ export default function MtmTracker() {
       });
       const payload = await response.json().catch(() => null) as { error?: string } | null;
       if (!response.ok) throw new Error(payload?.error ?? "MTM recalculation failed.");
+      trackEvent("live_tracker_recalculated", {
+        outcome: "success",
+        year,
+      });
       toast.success("In-season MTM mark recalculated.");
       await loadPipelineStatus();
     } catch (error) {
+      trackEvent("live_tracker_recalculated", {
+        outcome: "failed",
+        year,
+      });
       toast.error(error instanceof Error ? error.message : "MTM recalculation failed.");
       await loadPipelineStatus();
     } finally {
@@ -1895,7 +1904,14 @@ function MtmEvidenceInspector({
                return (
                  <button
                    key={a.id}
-                   onClick={() => setAttemptId(a.id)}
+                    onClick={() => {
+                      trackEvent("mtm_evidence_attempt_opened", {
+                        status: a.status,
+                        trigger: a.trigger,
+                        year,
+                      });
+                      setAttemptId(a.id);
+                    }}
                    className={cn(
                      "w-full text-left p-3 border transition-colors text-sm rounded-sm",
                       isSelected

@@ -13,6 +13,7 @@ import { cn } from "@/lib/utils";
 import { ReactNode, useEffect, useState } from "react";
 import { SeasonToggle } from "@/components/SeasonToggle";
 import { useSeason } from "@/hooks/useSeason";
+import { trackEvent } from "@/lib/analytics";
 
 interface ShellProps {
   children: ReactNode;
@@ -85,7 +86,14 @@ export function Shell({ children }: ShellProps) {
               location === item.href ||
               (item.href !== "/" && location.startsWith(item.href));
             return (
-              <Link key={item.href} href={item.href}>
+              <Link
+                key={item.href}
+                href={item.href}
+                onClick={() => trackEvent("navigation_selected", {
+                  destination: item.label,
+                  surface: "desktop_sidebar",
+                })}
+              >
                 <div
                   className={cn(
                     "flex items-center gap-3 px-3 py-2.5 cursor-pointer transition-colors font-medium text-sm rounded-md",
@@ -106,7 +114,14 @@ export function Shell({ children }: ShellProps) {
                 location === item.href ||
                 location.startsWith(item.href);
               return (
-                <Link key={item.href} href={item.href}>
+                <Link
+                  key={item.href}
+                  href={item.href}
+                  onClick={() => trackEvent("navigation_selected", {
+                    destination: item.label,
+                    surface: "desktop_sidebar",
+                  })}
+                >
                   <div
                     className={cn(
                       "flex items-center gap-3 px-3 py-2.5 cursor-pointer transition-colors font-medium text-sm rounded-md",
@@ -127,7 +142,11 @@ export function Shell({ children }: ShellProps) {
 
       <button
         type="button"
-        onClick={() => setSidebarCollapsed((collapsed) => !collapsed)}
+        onClick={() => setSidebarCollapsed((collapsed) => {
+          const next = !collapsed;
+          trackEvent("sidebar_toggled", { state: next ? "collapsed" : "expanded" });
+          return next;
+        })}
         className={cn(
           "fixed top-20 z-50 hidden h-9 w-9 items-center justify-center rounded-md border border-border bg-background text-muted-foreground shadow-sm transition-[left,color,background-color] duration-200 hover:bg-muted hover:text-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring md:flex",
           sidebarCollapsed ? "left-3" : "left-[calc(18rem-1.125rem)]",
@@ -194,6 +213,10 @@ export function Shell({ children }: ShellProps) {
             <Link
               key={item.href}
               href={item.href}
+              onClick={() => trackEvent("navigation_selected", {
+                destination: item.label,
+                surface: "mobile_tab_bar",
+              })}
               data-testid={`nav-mobile-${item.label.toLowerCase().replace(/[^a-z0-9]+/g, '-')}`}
               className={cn(
                 "flex flex-col items-center justify-center w-full h-full gap-1 px-1 transition-colors",

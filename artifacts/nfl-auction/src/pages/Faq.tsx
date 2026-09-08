@@ -1,4 +1,5 @@
 import { CircleHelp, ExternalLink } from "lucide-react";
+import { trackEvent } from "@/lib/analytics";
 
 const claudeSetupSteps = [
   {
@@ -65,7 +66,14 @@ export default function Faq() {
           </h2>
         </div>
 
-        <details open className="group border border-border bg-background" data-testid="details-mcp-api-faq">
+        <details
+          open
+          className="group border border-border bg-background"
+          data-testid="details-mcp-api-faq"
+          onToggle={(event) => {
+            if (event.currentTarget.open) trackEvent("mcp_help_opened", { section: "connection_setup" });
+          }}
+        >
           <summary className="cursor-pointer list-none px-4 py-3 font-mono text-sm font-bold uppercase tracking-wide focus:outline-none focus:ring-2 focus:ring-primary focus:ring-inset">
             <span className="flex items-center justify-between gap-3">
               How do I connect MCP/API?
@@ -115,14 +123,25 @@ export default function Faq() {
               <code className="border border-border bg-muted px-1.5 py-0.5 font-mono text-xs text-foreground">/api/...</code>{" "}
               route and follow that route&apos;s authentication requirements.
             </p>
-            <a href="/api/mcp" className="inline-flex items-center gap-1.5 font-mono text-xs font-bold uppercase tracking-widest text-primary hover:underline" data-testid="link-open-mcp-endpoint">
+            <a
+              href="/api/mcp"
+              onClick={() => trackEvent("mcp_endpoint_opened", { location: "faq" })}
+              className="inline-flex items-center gap-1.5 font-mono text-xs font-bold uppercase tracking-widest text-primary hover:underline"
+              data-testid="link-open-mcp-endpoint"
+            >
               Open MCP endpoint
               <ExternalLink className="h-3.5 w-3.5" aria-hidden="true" />
             </a>
           </div>
         </details>
 
-        <details className="group border border-border bg-background" data-testid="details-mcp-terms-faq">
+        <details
+          className="group border border-border bg-background"
+          data-testid="details-mcp-terms-faq"
+          onToggle={(event) => {
+            if (event.currentTarget.open) trackEvent("mcp_help_opened", { section: "terminology" });
+          }}
+        >
           <summary className="cursor-pointer list-none px-4 py-3 font-mono text-sm font-bold uppercase tracking-wide focus:outline-none focus:ring-2 focus:ring-primary focus:ring-inset">
             <span className="flex items-center justify-between gap-3">
               What do MTM and the other Calcutta terms mean?
@@ -168,7 +187,13 @@ export default function Faq() {
           </div>
         </details>
 
-        <details className="group border border-border bg-background" data-testid="details-mcp-prompts-faq">
+        <details
+          className="group border border-border bg-background"
+          data-testid="details-mcp-prompts-faq"
+          onToggle={(event) => {
+            if (event.currentTarget.open) trackEvent("mcp_help_opened", { section: "prompt_examples" });
+          }}
+        >
           <summary className="cursor-pointer list-none px-4 py-3 font-mono text-sm font-bold uppercase tracking-wide focus:outline-none focus:ring-2 focus:ring-primary focus:ring-inset">
             <span className="flex items-center justify-between gap-3">
               What can I ask Claude?

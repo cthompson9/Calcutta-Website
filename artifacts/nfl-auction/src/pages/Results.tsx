@@ -64,6 +64,7 @@ import {
 } from "@/lib/tradeGroups";
 import { ReleaseNotes } from "@/components/ReleaseNotes";
 import { HistoricalResultsView } from "@/components/HistoricalResultsView";
+import { trackEvent } from "@/lib/analytics";
 
 type TabId = "byOwner" | "byTeam" | "historicalTrades" | "compare";
 
@@ -308,7 +309,15 @@ export default function Results() {
               <select
                 data-testid="select-period"
                 value={period ?? ""}
-                onChange={(event) => setPeriod(event.target.value === "" ? undefined : Number(event.target.value))}
+                onChange={(event) => {
+                  const nextPeriod = event.target.value === "" ? undefined : Number(event.target.value);
+                  trackEvent("results_period_selected", {
+                    period: nextPeriod ?? "latest",
+                    view: tab,
+                    year,
+                  });
+                  setPeriod(nextPeriod);
+                }}
                 className="w-full sm:w-auto appearance-none rounded-sm border border-border/60 bg-muted/30 px-3 py-1.5 pr-8 text-foreground outline-none focus:border-primary focus:ring-1 focus:ring-primary text-xs"
               >
                 <option value="">Latest available</option>
@@ -328,7 +337,10 @@ export default function Results() {
               {(["consortium", "bidder"] as const).map((value) => (
                 <button
                   key={value}
-                  onClick={() => setCompareGroupBy(value)}
+                  onClick={() => {
+                    trackEvent("results_compare_grouped", { group_by: value, year });
+                    setCompareGroupBy(value);
+                  }}
                   className={cn(
                     "flex-1 sm:flex-none rounded-sm px-3 py-1.5 text-[10px] md:text-xs font-mono font-bold uppercase tracking-widest transition-colors",
                     compareGroupBy === value
@@ -359,6 +371,11 @@ export default function Results() {
                   key={s.id}
                   disabled={disabled}
                   onClick={() => {
+                    trackEvent("results_compare_season_toggled", {
+                      action: isSelected ? "removed" : "added",
+                      season: s.year,
+                      selected_count: isSelected ? compareSeasons.length - 1 : compareSeasons.length + 1,
+                    });
                     setCompareSeasons((prev) =>
                       isSelected
                         ? prev.filter((y) => y !== s.year)
@@ -390,7 +407,14 @@ export default function Results() {
           <button
             key={t}
             data-testid={`tab-${t}`}
-            onClick={() => setTab(t)}
+            onClick={() => {
+              trackEvent("results_view_selected", {
+                view: t,
+                report_type: prefersHistoricalResults ? "historical" : "live",
+                year,
+              });
+              setTab(t);
+            }}
             className={cn(
               "whitespace-nowrap px-4 md:px-5 py-3 text-[11px] md:text-sm font-mono font-bold uppercase tracking-widest transition-colors border-b-2 -mb-px",
               tab === t
