@@ -13,6 +13,21 @@ export type ReleaseNote = {
 
 export const releaseNotes: ReleaseNote[] = [
   {
+    date: "September 10, 2026",
+    updates: [
+      {
+        title: "Auction scoring is visible at a glance",
+        description:
+          "The Auction Results tab now shows the pool’s dollars-per-point value and the complete points rubric, including starting points, regular-season scoring, playoff bonuses, and marquee-game weighting.",
+      },
+      {
+        title: "Results by Team is faster to read and filter",
+        description:
+          "Team ownership now uses compact signed position chips with full roster, percentage, auction, and trade details on hover or focus. The default view follows NFL conference and division order, consortium-row filtering is precise, and source backlinks return to the exact team detail you opened.",
+      },
+    ],
+  },
+  {
     date: "September 4, 2026",
     updates: [
       {
