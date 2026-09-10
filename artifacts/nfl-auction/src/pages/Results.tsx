@@ -1618,6 +1618,9 @@ function leadOwnerName(roster: string): string {
 function OwnershipPositionChips({
   segments,
   owners,
+  teamId,
+  teamName,
+  seasonYear,
   consortiumByBidderId,
   ambiguousLeadNames,
 }: {
@@ -1627,6 +1630,9 @@ function OwnershipPositionChips({
     bidderName: string;
     ownershipShare: number;
   }>;
+  teamId: number;
+  teamName: string;
+  seasonYear: number;
   consortiumByBidderId: Map<number, string>;
   ambiguousLeadNames: Set<string>;
 }) {
@@ -1661,6 +1667,7 @@ function OwnershipPositionChips({
           : firstName,
         auctionStake,
         tradedDelta,
+        ownerSegments,
         affectedByTrades: ownerSegments.some(
           (segment) => segment.source === "trade",
         ),
@@ -1679,6 +1686,18 @@ function OwnershipPositionChips({
   }: {
     position: (typeof positions)[number];
   }) {
+    const sourceSegments =
+      position.ownerSegments.length > 0
+        ? position.ownerSegments
+        : [
+            {
+              bidderId: position.bidderId,
+              bidderName: position.bidderName,
+              ownershipShare: position.ownershipShare,
+              source: "primary" as const,
+            },
+          ];
+
     return (
       <div className="space-y-1">
         <div className="whitespace-normal font-sans font-semibold text-foreground">
@@ -1693,6 +1712,46 @@ function OwnershipPositionChips({
             </span>
           </div>
         )}
+        <div className="space-y-1 border-t border-border/50 pt-2">
+          {sourceSegments.map((segment, index) => {
+            const isTrade = segment.source === "trade";
+            const hasTradeSource = isTrade && segment.tradeId != null;
+            const href = hasTradeSource
+              ? tradeHref(seasonYear, segment.tradeId!)
+              : auctionResultHref(seasonYear, teamId);
+            const label = isTrade
+              ? `Trade${segment.tradeId != null ? ` #${segment.tradeId}` : ""}`
+              : "Auction";
+            const description = hasTradeSource
+              ? `View trade #${segment.tradeId} for ${teamName}`
+              : isTrade
+                ? `Trade source unavailable; view original auction result for ${teamName}`
+                : `View original auction result for ${teamName}`;
+
+            return (
+              <Link
+                key={`${segment.source}-${segment.tradeId ?? "auction"}-${index}`}
+                href={href}
+                aria-label={description}
+                title={description}
+                className="flex items-center justify-between gap-3 rounded px-1 py-1 text-primary hover:bg-muted focus:outline-none focus:ring-2 focus:ring-primary"
+              >
+                <span className="flex items-center gap-1">
+                  {label}
+                  <ExternalLink className="h-3 w-3" aria-hidden="true" />
+                </span>
+                <span
+                  className={cn(
+                    "shrink-0 font-bold",
+                    isTrade && "text-sky-600 dark:text-sky-400",
+                  )}
+                >
+                  {formatExactOwnershipPercent(segment.ownershipShare)}
+                </span>
+              </Link>
+            );
+          })}
+        </div>
       </div>
     );
   }
@@ -1709,13 +1768,17 @@ function OwnershipPositionChips({
             className="relative min-w-0"
             onMouseEnter={() => setOpenChip(key)}
             onMouseLeave={() => setOpenChip(null)}
+            onBlur={(event) => {
+              if (!event.currentTarget.contains(event.relatedTarget)) {
+                setOpenChip(null);
+              }
+            }}
           >
             <button
               type="button"
               aria-expanded={isOpen}
               aria-label={`${position.roster}, ${formatExactOwnershipPercent(position.ownershipShare)}`}
               onFocus={() => setOpenChip(key)}
-              onBlur={() => setOpenChip(null)}
               className={cn(
                 "block max-w-[64px] truncate rounded-full border px-2 py-1 text-[10px] font-bold leading-none focus:outline-none focus:ring-2 focus:ring-primary",
                 isLong
@@ -1739,13 +1802,17 @@ function OwnershipPositionChips({
           className="relative shrink-0"
           onMouseEnter={() => setOpenChip("more")}
           onMouseLeave={() => setOpenChip(null)}
+          onBlur={(event) => {
+            if (!event.currentTarget.contains(event.relatedTarget)) {
+              setOpenChip(null);
+            }
+          }}
         >
           <button
             type="button"
             aria-expanded={openChip === "more"}
             aria-label={`Show all ${positions.length} ownership positions`}
             onFocus={() => setOpenChip("more")}
-            onBlur={() => setOpenChip(null)}
             className="rounded-full border border-border bg-muted px-2 py-1 text-[10px] font-bold leading-none text-muted-foreground focus:outline-none focus:ring-2 focus:ring-primary"
           >
             +{hiddenCount}
@@ -1755,12 +1822,9 @@ function OwnershipPositionChips({
               {positions.map((position) => (
                 <div
                   key={position.bidderId}
-                  className="flex justify-between gap-3 border-b border-border/40 pb-1 last:border-0 last:pb-0"
+                  className="border-b border-border/40 pb-2 last:border-0 last:pb-0"
                 >
-                  <span className="whitespace-normal">{position.roster}</span>
-                  <span className="shrink-0 font-bold">
-                    {formatExactOwnershipPercent(position.ownershipShare)}
-                  </span>
+                  <PositionCard position={position} />
                 </div>
               ))}
             </div>
@@ -2584,6 +2648,9 @@ function ByTeamView({
                          <OwnershipPositionChips
                           segments={row.ownershipSegments}
                           owners={row.owners}
+                           teamId={row.teamId}
+                           teamName={row.teamName}
+                           seasonYear={seasonYear}
                           consortiumByBidderId={consortiumByBidderId}
                            ambiguousLeadNames={ambiguousLeadNames}
                         />
