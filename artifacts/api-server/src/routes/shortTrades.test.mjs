@@ -787,6 +787,32 @@ describe("short trades and new trade participants", { skip: !canRun }, () => {
     });
     const pendingTrade = await createResponse.json();
     assert.equal(createResponse.status, 201, JSON.stringify(pendingTrade));
+    const [mcpTeam] = await db.select({ id: teamsTable.id, name: teamsTable.name })
+      .from(teamsTable)
+      .where(eq(teamsTable.id, teamId));
+
+    const listedPending = await callMcpTool("list_trades", {
+      status: "pending",
+      season: seasonYear,
+    });
+    const pendingPayload = JSON.parse(listedPending.result.content[0].text);
+    const listedTrade = pendingPayload.trades.find((trade) => trade.tradeId === pendingTrade.id);
+    assert.ok(listedTrade, "pending trade is discoverable through MCP");
+    assert.deepEqual(listedTrade.team, mcpTeam);
+    assert.deepEqual(listedTrade.fromOwner, { id: mcpSeller.id, name: mcpSeller.name });
+    assert.deepEqual(listedTrade.toOwner, { id: mcpBuyer.id, name: mcpBuyer.name });
+    assert.equal(listedTrade.status, "pending");
+    assert.equal(listedTrade.percentage, 10);
+    assert.equal(listedTrade.price, 10);
+
+    const pendingStatus = await callMcpTool("get_trade_status", {
+      tradeId: pendingTrade.id,
+    });
+    const pendingStatusPayload = JSON.parse(pendingStatus.result.content[0].text);
+    assert.deepEqual(pendingStatusPayload.team, mcpTeam);
+    assert.equal(pendingStatusPayload.fromOwner.name, mcpSeller.name);
+    assert.equal(pendingStatusPayload.toOwner.name, mcpBuyer.name);
+    assert.equal(pendingStatusPayload.status, "pending");
 
     const missingConfirmation = await callMcpTool("set_trade_status", {
       tradeId: pendingTrade.id,

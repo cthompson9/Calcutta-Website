@@ -9,7 +9,7 @@
 import { McpServer } from "@modelcontextprotocol/sdk/server/mcp.js";
 import { StreamableHTTPServerTransport } from "@modelcontextprotocol/sdk/server/streamableHttp.js";
 import { z } from "zod";
-import { ilike, eq, and, asc, isNull, sql } from "drizzle-orm";
+import { ilike, eq, and, asc, desc, isNull, sql } from "drizzle-orm";
 import {
   db,
   teamsTable,
@@ -1499,6 +1499,80 @@ function buildMcpServer(isAdmin: boolean) {
 
   // ── Trade tools ───────────────────────────────────────────────────────────
 
+  async function loadTradeDetails(filters: {
+    tradeId?: number;
+    status?: "pending" | "approved" | "rejected" | "voided";
+    seasonYear?: number;
+    calcuttaId?: number;
+  }) {
+    const seasonId = filters.seasonYear == null
+      ? null
+      : await resolveSeasonId(filters.seasonYear);
+    if (filters.seasonYear != null && seasonId == null) return [];
+
+    const conditions = [
+      filters.tradeId == null ? undefined : eq(tradesTable.id, filters.tradeId),
+      filters.status == null ? undefined : eq(tradesTable.status, filters.status),
+      seasonId == null ? undefined : eq(tradesTable.seasonId, seasonId),
+      filters.calcuttaId == null ? undefined : eq(calcuttaEntriesTable.calcuttaId, filters.calcuttaId),
+    ].filter((condition): condition is NonNullable<typeof condition> => condition != null);
+
+    const rows = await db.select({
+      id: tradesTable.id,
+      seasonId: tradesTable.seasonId,
+      calcuttaId: calcuttaEntriesTable.calcuttaId,
+      teamId: tradesTable.teamId,
+      teamName: teamsTable.name,
+      fromBidderId: tradesTable.fromBidderId,
+      toBidderId: tradesTable.toBidderId,
+      price: tradesTable.price,
+      percentage: tradesTable.percentage,
+      tradeDate: tradesTable.tradeDate,
+      status: tradesTable.status,
+      notes: tradesTable.notes,
+      decisionAt: tradesTable.decisionAt,
+      decisionSource: tradesTable.decisionSource,
+      voidedAt: tradesTable.voidedAt,
+      voidedSource: tradesTable.voidedSource,
+      voidReason: tradesTable.voidReason,
+    })
+      .from(tradesTable)
+      .innerJoin(teamsTable, eq(teamsTable.id, tradesTable.teamId))
+      .innerJoin(calcuttaEntriesTable, eq(calcuttaEntriesTable.id, tradesTable.entryId))
+      .where(conditions.length ? and(...conditions) : undefined)
+      .orderBy(desc(tradesTable.tradeDate), desc(tradesTable.id));
+
+    const [bidders, seasons] = await Promise.all([
+      db.select({ id: biddersTable.id, name: biddersTable.name }).from(biddersTable),
+      db.select({ id: seasonsTable.id, year: seasonsTable.year }).from(seasonsTable),
+    ]);
+    const bidderNames = new Map(bidders.map((bidder) => [bidder.id, bidder.name]));
+    const seasonYears = new Map(seasons.map((season) => [season.id, season.year]));
+
+    return rows.map((row) => ({
+      tradeId: row.id,
+      season: seasonYears.get(row.seasonId) ?? null,
+      calcuttaId: row.calcuttaId,
+      team: { id: row.teamId, name: row.teamName },
+      fromOwner: { id: row.fromBidderId, name: bidderNames.get(row.fromBidderId) ?? "Unknown" },
+      toOwner: { id: row.toBidderId, name: bidderNames.get(row.toBidderId) ?? "Unknown" },
+      percentage: Number(row.percentage),
+      price: Number(row.price),
+      tradeDate: row.tradeDate,
+      status: row.status,
+      notes: row.notes,
+      decision: row.decisionAt ? {
+        at: row.decisionAt.toISOString(),
+        source: row.decisionSource,
+      } : null,
+      void: row.voidedAt ? {
+        at: row.voidedAt.toISOString(),
+        source: row.voidedSource,
+        reason: row.voidReason,
+      } : null,
+    }));
+  }
+
   server.tool(
     "create_trade",
     "Submit a trade proposal between existing bidders for an existing, unambiguously identified team. Sales may create a short position. Any authenticated MCP client may submit a proposal. Every trade starts PENDING and requires commissioner approval before it affects standings.",
@@ -1554,43 +1628,40 @@ function buildMcpServer(isAdmin: boolean) {
   );
 
   server.tool(
-    "get_trade_status",
-    "Returns the current approval status of a trade by its ID (pending, approved, or rejected).",
-    { tradeId: z.number().describe("Trade ID returned by create_trade") },
-    async ({ tradeId }) => {
-      const rows = await db
-        .select({
-          id: tradesTable.id,
-          status: tradesTable.status,
-          teamId: tradesTable.teamId,
-          fromBidderId: tradesTable.fromBidderId,
-          toBidderId: tradesTable.toBidderId,
-          price: tradesTable.price,
-          percentage: tradesTable.percentage,
-          decisionAt: tradesTable.decisionAt,
-          decisionSource: tradesTable.decisionSource,
-          voidedAt: tradesTable.voidedAt,
-          voidedSource: tradesTable.voidedSource,
-          voidReason: tradesTable.voidReason,
-          tradeDate: tradesTable.tradeDate,
-        })
-        .from(tradesTable)
-        .where(eq(tradesTable.id, tradeId))
-        .limit(1);
+    "list_trades",
+    "List trades with the team, seller, buyer, price, percentage, date, and current workflow status. Use this for questions such as 'what trades are pending?'. Defaults to pending trades in the active season; filters can list approved, rejected, voided, or all trades.",
+    {
+      status: z.enum(["pending", "approved", "rejected", "voided", "all"]).optional()
+        .describe("Trade workflow status. Defaults to pending. Use all to include every status."),
+      season: z.number().int().optional()
+        .describe("Season year. Defaults to the current active season."),
+      calcuttaId: z.number().int().positive().optional()
+        .describe("Optional Calcutta pool ID."),
+    },
+    async ({ status = "pending", season, calcuttaId }) => {
+      const seasonYear = season ?? await resolveWritableSeasonYear();
+      const trades = await loadTradeDetails({
+        status: status === "all" ? undefined : status,
+        seasonYear,
+        calcuttaId,
+      });
+      return text(JSON.stringify({
+        season: seasonYear,
+        status: status === "all" ? null : status,
+        count: trades.length,
+        trades,
+      }, null, 2));
+    },
+  );
 
-      if (!rows[0]) return text(`Trade #${tradeId} not found`);
-      const r = rows[0];
-      const decisionAudit = r.decisionAt
-        ? ` Decision recorded ${r.decisionAt.toISOString()} via ${r.decisionSource ?? "unknown channel"}.`
-        : r.status === "pending"
-          ? ""
-          : " Historical decision; audit details are unavailable.";
-      const voidAudit = r.voidedAt
-        ? ` Void recorded ${r.voidedAt.toISOString()} via ${r.voidedSource ?? "unknown channel"}${r.voidReason ? `: ${r.voidReason}` : "."}`
-        : "";
-      return text(
-        `Trade #${r.id}: ${r.percentage}% stake for $${r.price} on ${r.tradeDate} — Status: ${r.status.toUpperCase()}.${decisionAudit}${voidAudit}`,
-      );
+  server.tool(
+    "get_trade_status",
+    "Return a trade's team, seller, buyer, price, percentage, date, current status, and decision/void audit details by trade ID.",
+    { tradeId: z.number().int().positive().describe("Trade ID returned by create_trade or list_trades") },
+    async ({ tradeId }) => {
+      const [trade] = await loadTradeDetails({ tradeId });
+      if (!trade) return text(`Trade #${tradeId} not found`);
+      return text(JSON.stringify(trade, null, 2));
     },
   );
 
