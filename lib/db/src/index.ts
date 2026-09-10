@@ -44,6 +44,7 @@ export async function closeDatabasePool(): Promise<void> {
 }
 
 export * from "./schema/index";
+export * from "./domain/calcuttaCalendar";
 export * from "./ownerPositions";
 export * from "./migrate";
 export * from "./loadHistoricalCalcuttas";

@@ -75,6 +75,7 @@ export const GetTeamsResponseItem = zod.object({
   "ownershipShare": zod.number()
 }))
 })
+// End of generated schemas.
 export const GetTeamsResponse = zod.array(GetTeamsResponseItem)
 
 
@@ -113,7 +114,6 @@ export const CreateTeamResponse = zod.object({
   "ownershipShare": zod.number()
 }))
 })
-
 /**
  * @summary Get a single team
  */
@@ -133,7 +133,6 @@ export const GetTeamResponse = zod.object({
   "ownershipShare": zod.number()
 }))
 })
-
 
 /**
  * @summary Update a team entry
@@ -245,6 +244,173 @@ export const GetCalcuttasResponseItem = zod.object({
   "isCanonical": zod.boolean()
 })
 export const GetCalcuttasResponse = zod.array(GetCalcuttasResponseItem)
+
+
+/**
+ * @summary List read-only Calcutta calendars
+ */
+
+
+
+export const GetCalendarsQueryParams = zod.object({
+  "calcuttaId": zod.coerce.number().int().min(1).optional()
+})
+
+export const GetCalendarsResponseItem = zod.object({
+  "id": zod.number(),
+  "calcuttaId": zod.number(),
+  "format": zod.string(),
+  "scheduleState": zod.enum(['not_applicable', 'not_loaded', 'loaded']),
+  "scheduleAbsentReason": zod.string().nullable(),
+  "participants": zod.array(zod.object({
+  "id": zod.number(),
+  "teamId": zod.number(),
+  "teamName": zod.string(),
+  "seed": zod.number().nullable(),
+  "designation": zod.union([zod.literal('home'),zod.literal('away'),zod.literal(null)]).nullable()
+})),
+  "rounds": zod.array(zod.object({
+  "id": zod.number(),
+  "sequence": zod.number(),
+  "name": zod.string(),
+  "kind": zod.string(),
+  "slots": zod.array(zod.object({
+  "id": zod.number(),
+  "slotNumber": zod.number(),
+  "home": zod.object({
+  "participantId": zod.number().nullable(),
+  "sourceSlotId": zod.number().nullable(),
+  "seed": zod.number().nullable(),
+  "designation": zod.union([zod.literal('home'),zod.literal('away'),zod.literal(null)]).nullable()
+}).nullable(),
+  "away": zod.object({
+  "participantId": zod.number().nullable(),
+  "sourceSlotId": zod.number().nullable(),
+  "seed": zod.number().nullable(),
+  "designation": zod.union([zod.literal('home'),zod.literal('away'),zod.literal(null)]).nullable()
+}).nullable(),
+  "seriesBestOf": zod.number().nullable(),
+  "games": zod.array(zod.object({
+  "id": zod.number(),
+  "gameNumber": zod.number(),
+  "neutralSite": zod.boolean(),
+  "homeParticipantId": zod.number().nullable(),
+  "awayParticipantId": zod.number().nullable(),
+  "contingent": zod.array(zod.object({
+  "prerequisiteSlotId": zod.number(),
+  "outcome": zod.string()
+}))
+})),
+  "projection": zod.object({
+  "status": zod.enum(['available', 'unavailable']),
+  "reason": zod.string().nullable(),
+  "candidates": zod.array(zod.object({
+  "participantId": zod.number(),
+  "teamName": zod.string(),
+  "probability": zod.number(),
+  "exactSlotClinched": zod.boolean()
+}))
+}).nullable()
+}))
+})),
+  "economics": zod.array(zod.object({
+  "key": zod.string(),
+  "value": zod.number()
+})),
+  "rubric": zod.array(zod.object({
+  "label": zod.string(),
+  "points": zod.number()
+})),
+  "currentProjection": zod.object({
+  "mtmSnapshotId": zod.number(),
+  "status": zod.enum(['available', 'unavailable']),
+  "reason": zod.string().nullable()
+}).nullable()
+})
+export const GetCalendarsResponse = zod.array(GetCalendarsResponseItem)
+
+
+/**
+ * @summary Get a read-only Calcutta calendar
+ */
+
+
+
+export const GetCalendarParams = zod.object({
+  "id": zod.coerce.number().int().min(1)
+})
+
+export const GetCalendarResponse = zod.object({
+  "id": zod.number(),
+  "calcuttaId": zod.number(),
+  "format": zod.string(),
+  "scheduleState": zod.enum(['not_applicable', 'not_loaded', 'loaded']),
+  "scheduleAbsentReason": zod.string().nullable(),
+  "participants": zod.array(zod.object({
+  "id": zod.number(),
+  "teamId": zod.number(),
+  "teamName": zod.string(),
+  "seed": zod.number().nullable(),
+  "designation": zod.union([zod.literal('home'),zod.literal('away'),zod.literal(null)]).nullable()
+})),
+  "rounds": zod.array(zod.object({
+  "id": zod.number(),
+  "sequence": zod.number(),
+  "name": zod.string(),
+  "kind": zod.string(),
+  "slots": zod.array(zod.object({
+  "id": zod.number(),
+  "slotNumber": zod.number(),
+  "home": zod.object({
+  "participantId": zod.number().nullable(),
+  "sourceSlotId": zod.number().nullable(),
+  "seed": zod.number().nullable(),
+  "designation": zod.union([zod.literal('home'),zod.literal('away'),zod.literal(null)]).nullable()
+}).nullable(),
+  "away": zod.object({
+  "participantId": zod.number().nullable(),
+  "sourceSlotId": zod.number().nullable(),
+  "seed": zod.number().nullable(),
+  "designation": zod.union([zod.literal('home'),zod.literal('away'),zod.literal(null)]).nullable()
+}).nullable(),
+  "seriesBestOf": zod.number().nullable(),
+  "games": zod.array(zod.object({
+  "id": zod.number(),
+  "gameNumber": zod.number(),
+  "neutralSite": zod.boolean(),
+  "homeParticipantId": zod.number().nullable(),
+  "awayParticipantId": zod.number().nullable(),
+  "contingent": zod.array(zod.object({
+  "prerequisiteSlotId": zod.number(),
+  "outcome": zod.string()
+}))
+})),
+  "projection": zod.object({
+  "status": zod.enum(['available', 'unavailable']),
+  "reason": zod.string().nullable(),
+  "candidates": zod.array(zod.object({
+  "participantId": zod.number(),
+  "teamName": zod.string(),
+  "probability": zod.number(),
+  "exactSlotClinched": zod.boolean()
+}))
+}).nullable()
+}))
+})),
+  "economics": zod.array(zod.object({
+  "key": zod.string(),
+  "value": zod.number()
+})),
+  "rubric": zod.array(zod.object({
+  "label": zod.string(),
+  "points": zod.number()
+})),
+  "currentProjection": zod.object({
+  "mtmSnapshotId": zod.number(),
+  "status": zod.enum(['available', 'unavailable']),
+  "reason": zod.string().nullable()
+}).nullable()
+})
 
 
 /**
@@ -1897,3 +2063,4 @@ export const GetConsortiumLeaderboardV2Response = zod.object({
 }))
 })
 // End of generated schemas.
+// Generated by Orval.

@@ -29,6 +29,12 @@ import {
   mtmInputProvenanceMigration,
   mtmMarketQuoteSourceUrlMigration,
   nflGameSourceProvenanceMigration,
+  calcuttaCalendarMigration,
+  calcuttaCalendarHardeningMigration,
+  calendarProjectionSetGuardMigration,
+  calendarProjectionCandidateIdentityMigration,
+  calendarProjectionParticipantIdentityMigration,
+  calendarIntegrityGuardDispatchMigration,
 } from "./migrations";
 
 const migrations = [
@@ -60,6 +66,12 @@ const migrations = [
   mtmInputProvenanceMigration,
   mtmMarketQuoteSourceUrlMigration,
   nflGameSourceProvenanceMigration,
+  calcuttaCalendarMigration,
+  calcuttaCalendarHardeningMigration,
+  calendarProjectionSetGuardMigration,
+  calendarProjectionCandidateIdentityMigration,
+  calendarProjectionParticipantIdentityMigration,
+  calendarIntegrityGuardDispatchMigration,
 ] as const;
 
 /**

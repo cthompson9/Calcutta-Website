@@ -202,6 +202,12 @@ describe(
         })
         .returning();
       testCalcuttaId = calcutta.id;
+      // A prior interrupted run may have left pipeline-ledger rows behind.
+      // This fixture owns the disposable 9999 pool, so reset that ledger
+      // before creating assertions whose ordering depends on a clean history.
+      await db
+        .delete(mtmSnapshotTable)
+        .where(eq(mtmSnapshotTable.poolId, testCalcuttaId));
       const entries = await db
         .insert(calcuttaEntriesTable)
         .values(testTeamIds.map((teamId) => ({ calcuttaId: calcutta.id, teamId })))
@@ -242,6 +248,14 @@ describe(
       await stopServer(server);
 
       // Delete only records that belong to the test season, identified by ID
+      // The pipeline ledger is separate from the legacy mtm_snapshots table.
+      // Clean it by pool as well, otherwise a failed run can become the
+      // "latest attempt" in the next run and contaminate status/history tests.
+      if (testCalcuttaId != null) {
+        await db
+          .delete(mtmSnapshotTable)
+          .where(eq(mtmSnapshotTable.poolId, testCalcuttaId));
+      }
       await db
         .delete(mtmSnapshotsTable)
         .where(eq(mtmSnapshotsTable.seasonId, testSeasonId));
@@ -385,6 +399,12 @@ describe(
       await db
         .delete(mtmSnapshotTable)
         .where(inArray(mtmSnapshotTable.id, ids));
+    }
+
+    async function resetPipelineLedger() {
+      await db
+        .delete(mtmSnapshotTable)
+        .where(eq(mtmSnapshotTable.poolId, testCalcuttaId));
     }
 
     async function mtmMetricRowsForEntries(entryIds) {
@@ -893,12 +913,13 @@ describe(
     test(
       "Results fail closed when the latest pipeline attempt fails despite an older successful snapshot",
       async () => {
+        await resetPipelineLedger();
         const teamId = testTeamIds[0];
         const legacyMetric = await setLegacyCalculatedMtm(teamId, 100);
         let pipelineSnapshotIds = [];
         try {
-          const priorAsOf = new Date("2026-08-30T10:00:00.000Z");
-          const latestAsOf = new Date("2026-08-30T11:00:00.000Z");
+          const priorAsOf = new Date(Date.now() - 60_000);
+          const latestAsOf = new Date(Date.now());
           const [prior] = await db
             .insert(mtmSnapshotTable)
             .values({
@@ -975,6 +996,7 @@ describe(
         } finally {
           await restoreLegacyCalculatedMtm(legacyMetric);
           await deletePipelineSnapshotsByIds(pipelineSnapshotIds);
+          await resetPipelineLedger();
         }
       },
     );
@@ -1045,6 +1067,7 @@ describe(
     test(
       "pipeline status keeps successful weekly history ordered and zero-sum while excluding a failed retry",
       async () => {
+        await resetPipelineLedger();
         const entryIds = [...entryIdByTeam.values()];
         const weekZeroAt = new Date("2026-08-25T12:00:00.000Z");
         const weekZeroRetryAt = new Date("2026-08-26T12:00:00.000Z");
@@ -1177,6 +1200,7 @@ describe(
           }
         } finally {
           await deletePipelineSnapshotsByIds(pipelineSnapshotIds);
+          await resetPipelineLedger();
         }
       },
     );

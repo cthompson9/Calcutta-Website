@@ -80,6 +80,7 @@ import {
   getSchedule,
   getTeamSchedule,
 } from "./routes/v2Agent";
+import { readCalendar } from "./routes/calendars";
 
 // ─── DB helpers ─────────────────────────────────────────────────────────────
 const CONSORTIUM_MEMBERSHIP_LOCK_NAMESPACE = 841204;
@@ -369,6 +370,38 @@ function buildMcpServer(isAdmin: boolean) {
   const ownerInput = { owner: z.string().describe("Full or partial owner name, e.g. 'Zachary Long' or 'Zachary'") };
   const seasonInput = { season: z.number().optional().describe("Season year (e.g. 2025). Defaults to most recent completed season.") };
   const calcuttaInput = { calcuttaId: z.number().int().positive().optional().describe("Selected NFL Calcutta ID. Defaults to the season's canonical NFL Calcutta.") };
+
+  server.tool(
+    "get_calcutta_calendar",
+    "Read a Calcutta tournament calendar and its current bracket projection. Projections are coupled to the successful current Live Tracker MTM snapshot; a failed or stale refresh is never published as current, and exact-slot probabilities may be explicitly unavailable because the current MTM engine does not provide them.",
+    { calendarId: z.number().int().positive().describe("Calendar ID") },
+    async ({ calendarId }) => {
+      const calendar = await readCalendar(calendarId);
+      if (!calendar) {
+        return {
+          content: [{ type: "text" as const, text: JSON.stringify({ error: "Calendar not found", calendarId }) }],
+          isError: true,
+        };
+      }
+      return text(JSON.stringify(calendar, null, 2));
+    },
+  );
+
+  server.tool(
+    "get_current_bracket_projection",
+    "Read the current MTM-coupled bracket projection for a calendar. This is read-only and never triggers a refresh; unavailable means no successful current MTM snapshot or the engine lacks exact-slot probabilities.",
+    { calendarId: z.number().int().positive().describe("Calendar ID") },
+    async ({ calendarId }) => {
+      const calendar = await readCalendar(calendarId);
+      if (!calendar) {
+        return {
+          content: [{ type: "text" as const, text: JSON.stringify({ error: "Calendar not found", calendarId }) }],
+          isError: true,
+        };
+      }
+      return text(JSON.stringify({ calendarId, currentProjection: calendar.currentProjection, rounds: calendar.rounds }, null, 2));
+    },
+  );
 
   // ── V2.1 agent tools ──────────────────────────────────────────────────────
 

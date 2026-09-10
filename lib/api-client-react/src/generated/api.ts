@@ -36,11 +36,13 @@ import type {
   BidderInput,
   BidderSummary,
   BidderUpdate,
+  CalcuttaCalendar,
   CalcuttaComparisonResponse,
   CalcuttaOption,
   ErrorResponse,
   GetAuctionSummaryParams,
   GetBiddersParams,
+  GetCalendarsParams,
   GetConsortiumLeaderboardV2Params,
   GetGameV2Params,
   GetMtmPipelineEvidenceParams,
@@ -195,6 +197,7 @@ export function useHealthCheck<TData = Awaited<ReturnType<typeof healthCheck>>, 
 
   return withQueryKey(query, queryOptions.queryKey);
 }
+
 export const getGetSeasonsUrl = () => {
 
 
@@ -265,6 +268,9 @@ export function useGetSeasons<TData = Awaited<ReturnType<typeof getSeasons>>, TE
 
   return withQueryKey(query, queryOptions.queryKey);
 }
+
+
+
 
 
 
@@ -417,6 +423,13 @@ export function useGetTeams<TData = Awaited<ReturnType<typeof getTeams>>, TError
 
   return withQueryKey(query, queryOptions.queryKey);
 }
+
+
+
+
+
+
+
 export const getCreateTeamUrl = () => {
 
 
@@ -558,6 +571,13 @@ export function useGetTeam<TData = Awaited<ReturnType<typeof getTeam>>, TError =
 
   return withQueryKey(query, queryOptions.queryKey);
 }
+
+
+
+
+
+
+
 export const getUpdateTeamUrl = (id: number,) => {
 
 
@@ -778,6 +798,13 @@ export function useGetBidders<TData = Awaited<ReturnType<typeof getBidders>>, TE
 
   return withQueryKey(query, queryOptions.queryKey);
 }
+
+
+
+
+
+
+
 export const getCreateBidderUrl = () => {
 
 
@@ -914,6 +941,167 @@ export function useGetCalcuttas<TData = Awaited<ReturnType<typeof getCalcuttas>>
  ):  UseQueryResult<TData, TError> & { queryKey: QueryKey } {
 
   const queryOptions = getGetCalcuttasQueryOptions(options)
+
+  const query = useQuery(queryOptions) as  UseQueryResult<TData, TError> & { queryKey: QueryKey };
+
+  return withQueryKey(query, queryOptions.queryKey);
+}
+
+
+
+
+
+
+
+export const getGetCalendarsUrl = (params?: GetCalendarsParams,) => {
+  const normalizedParams = new URLSearchParams();
+
+  Object.entries(params || {}).forEach(([key, value]) => {
+
+    if (value !== undefined) {
+      normalizedParams.append(key, value === null ? 'null' : String(value))
+    }
+  });
+
+  const stringifiedParams = normalizedParams.toString();
+
+  return stringifiedParams.length > 0 ? `/api/calendars?${stringifiedParams}` : `/api/calendars`
+}
+
+/**
+ * @summary List read-only Calcutta calendars
+ */
+export const getCalendars = async (params?: GetCalendarsParams, options?: Parameters<typeof customFetch>[1]): Promise<CalcuttaCalendar[]> => {
+
+  return customFetch<CalcuttaCalendar[]>(getGetCalendarsUrl(params),
+  {
+    ...options,
+    method: 'GET'
+
+
+  }
+);}
+
+
+
+
+
+export const getGetCalendarsQueryKey = (params?: GetCalendarsParams,) => {
+    return [
+    `/api/calendars`, ...(params ? [params] : [])
+    ] as const;
+    }
+
+
+export const getGetCalendarsQueryOptions = <TData = Awaited<ReturnType<typeof getCalendars>>, TError = ErrorType<unknown>>(params?: GetCalendarsParams, options?: { query?:UseQueryOptions<Awaited<ReturnType<typeof getCalendars>>, TError, TData>, request?: SecondParameter<typeof customFetch>}
+) => {
+
+const {query: queryOptions, request: requestOptions} = options ?? {};
+
+  const queryKey =  queryOptions?.queryKey ?? getGetCalendarsQueryKey(params);
+
+
+
+    const queryFn: QueryFunction<Awaited<ReturnType<typeof getCalendars>>> = ({ signal }) => getCalendars(params, { signal, ...requestOptions });
+
+
+
+
+
+   return  { queryKey, queryFn, ...queryOptions} as UseQueryOptions<Awaited<ReturnType<typeof getCalendars>>, TError, TData> & { queryKey: QueryKey }
+}
+
+export type GetCalendarsQueryResult = NonNullable<Awaited<ReturnType<typeof getCalendars>>>
+export type GetCalendarsQueryError = ErrorType<unknown>
+
+
+/**
+ * @summary List read-only Calcutta calendars
+ */
+
+export function useGetCalendars<TData = Awaited<ReturnType<typeof getCalendars>>, TError = ErrorType<unknown>>(
+ params?: GetCalendarsParams, options?: { query?:UseQueryOptions<Awaited<ReturnType<typeof getCalendars>>, TError, TData>, request?: SecondParameter<typeof customFetch>}
+
+ ):  UseQueryResult<TData, TError> & { queryKey: QueryKey } {
+
+  const queryOptions = getGetCalendarsQueryOptions(params,options)
+
+  const query = useQuery(queryOptions) as  UseQueryResult<TData, TError> & { queryKey: QueryKey };
+
+  return withQueryKey(query, queryOptions.queryKey);
+}
+
+
+
+
+
+
+
+export const getGetCalendarUrl = (id: number,) => {
+
+
+
+
+  return `/api/calendars/${id}`
+}
+
+/**
+ * @summary Get a read-only Calcutta calendar
+ */
+export const getCalendar = async (id: number, options?: Parameters<typeof customFetch>[1]): Promise<CalcuttaCalendar> => {
+
+  return customFetch<CalcuttaCalendar>(getGetCalendarUrl(id),
+  {
+    ...options,
+    method: 'GET'
+
+
+  }
+);}
+
+
+
+
+
+export const getGetCalendarQueryKey = (id: number,) => {
+    return [
+    `/api/calendars/${id}`
+    ] as const;
+    }
+
+
+export const getGetCalendarQueryOptions = <TData = Awaited<ReturnType<typeof getCalendar>>, TError = ErrorType<ErrorResponse>>(id: number, options?: { query?:UseQueryOptions<Awaited<ReturnType<typeof getCalendar>>, TError, TData>, request?: SecondParameter<typeof customFetch>}
+) => {
+
+const {query: queryOptions, request: requestOptions} = options ?? {};
+
+  const queryKey =  queryOptions?.queryKey ?? getGetCalendarQueryKey(id);
+
+
+
+    const queryFn: QueryFunction<Awaited<ReturnType<typeof getCalendar>>> = ({ signal }) => getCalendar(id, { signal, ...requestOptions });
+
+
+
+
+
+   return  { queryKey, queryFn, enabled: id !== null && id !== undefined, ...queryOptions} as UseQueryOptions<Awaited<ReturnType<typeof getCalendar>>, TError, TData> & { queryKey: QueryKey }
+}
+
+export type GetCalendarQueryResult = NonNullable<Awaited<ReturnType<typeof getCalendar>>>
+export type GetCalendarQueryError = ErrorType<ErrorResponse>
+
+
+/**
+ * @summary Get a read-only Calcutta calendar
+ */
+
+export function useGetCalendar<TData = Awaited<ReturnType<typeof getCalendar>>, TError = ErrorType<ErrorResponse>>(
+ id: number, options?: { query?:UseQueryOptions<Awaited<ReturnType<typeof getCalendar>>, TError, TData>, request?: SecondParameter<typeof customFetch>}
+
+ ):  UseQueryResult<TData, TError> & { queryKey: QueryKey } {
+
+  const queryOptions = getGetCalendarQueryOptions(id,options)
 
   const query = useQuery(queryOptions) as  UseQueryResult<TData, TError> & { queryKey: QueryKey };
 

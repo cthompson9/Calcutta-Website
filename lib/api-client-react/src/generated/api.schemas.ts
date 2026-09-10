@@ -1840,6 +1840,154 @@ export interface AuctionImportResult {
   source: string;
 }
 
+export type CalcuttaCalendarScheduleState = typeof CalcuttaCalendarScheduleState[keyof typeof CalcuttaCalendarScheduleState];
+
+
+export const CalcuttaCalendarScheduleState = {
+  not_applicable: 'not_applicable',
+  not_loaded: 'not_loaded',
+  loaded: 'loaded',
+} as const;
+
+export type CalcuttaCalendarCurrentProjectionStatus = typeof CalcuttaCalendarCurrentProjectionStatus[keyof typeof CalcuttaCalendarCurrentProjectionStatus];
+
+
+export const CalcuttaCalendarCurrentProjectionStatus = {
+  available: 'available',
+  unavailable: 'unavailable',
+} as const;
+
+export type CalcuttaCalendarCurrentProjection = {
+  mtmSnapshotId: number;
+  status: CalcuttaCalendarCurrentProjectionStatus;
+  /** @nullable */
+  reason: string | null;
+} | null;
+
+/**
+ * @nullable
+ */
+export type CalendarParticipantDesignation = typeof CalendarParticipantDesignation[keyof typeof CalendarParticipantDesignation] | null;
+
+
+export const CalendarParticipantDesignation = {
+  home: 'home',
+  away: 'away',
+} as const;
+
+export interface CalendarParticipant {
+  id: number;
+  teamId: number;
+  teamName: string;
+  /** @nullable */
+  seed: number | null;
+  /** @nullable */
+  designation: CalendarParticipantDesignation;
+}
+
+/**
+ * @nullable
+ */
+export type CalendarSlotCandidateDesignation = typeof CalendarSlotCandidateDesignation[keyof typeof CalendarSlotCandidateDesignation] | null;
+
+
+export const CalendarSlotCandidateDesignation = {
+  home: 'home',
+  away: 'away',
+} as const;
+
+export interface CalendarSlotCandidate {
+  /** @nullable */
+  participantId: number | null;
+  /** @nullable */
+  sourceSlotId: number | null;
+  /** @nullable */
+  seed: number | null;
+  /** @nullable */
+  designation: CalendarSlotCandidateDesignation;
+}
+
+export type CalendarSlotProjectionStatus = typeof CalendarSlotProjectionStatus[keyof typeof CalendarSlotProjectionStatus];
+
+
+export const CalendarSlotProjectionStatus = {
+  available: 'available',
+  unavailable: 'unavailable',
+} as const;
+
+export type CalendarSlotGamesItemContingentItem = {
+  prerequisiteSlotId: number;
+  outcome: string;
+};
+
+export type CalendarSlotGamesItem = {
+  id: number;
+  gameNumber: number;
+  neutralSite: boolean;
+  /** @nullable */
+  homeParticipantId: number | null;
+  /** @nullable */
+  awayParticipantId: number | null;
+  contingent: CalendarSlotGamesItemContingentItem[];
+};
+
+export type CalendarSlotProjectionCandidatesItem = {
+  participantId: number;
+  teamName: string;
+  probability: number;
+  exactSlotClinched: boolean;
+};
+
+export type CalendarSlotProjection = {
+  status: CalendarSlotProjectionStatus;
+  /** @nullable */
+  reason: string | null;
+  candidates: CalendarSlotProjectionCandidatesItem[];
+} | null;
+
+export interface CalendarSlot {
+  id: number;
+  slotNumber: number;
+  home: CalendarSlotCandidate | null;
+  away: CalendarSlotCandidate | null;
+  /** @nullable */
+  seriesBestOf: number | null;
+  games: CalendarSlotGamesItem[];
+  projection: CalendarSlotProjection;
+}
+
+export interface CalendarRound {
+  id: number;
+  sequence: number;
+  name: string;
+  kind: string;
+  slots: CalendarSlot[];
+}
+
+export interface CalendarValue {
+  key: string;
+  value: number;
+}
+
+export interface CalendarRubricValue {
+  label: string;
+  points: number;
+}
+
+export interface CalcuttaCalendar {
+  id: number;
+  calcuttaId: number;
+  format: string;
+  scheduleState: CalcuttaCalendarScheduleState;
+  /** @nullable */
+  scheduleAbsentReason: string | null;
+  participants: CalendarParticipant[];
+  rounds: CalendarRound[];
+  economics: CalendarValue[];
+  rubric: CalendarRubricValue[];
+  currentProjection: CalcuttaCalendarCurrentProjection;
+}
+
 /**
  * Invalid or unresolved agent request
  */
@@ -1943,6 +2091,13 @@ season?: number | null;
  * @nullable
  */
 calcuttaId?: number | null;
+};
+
+export type GetCalendarsParams = {
+/**
+ * @minimum 1
+ */
+calcuttaId?: number;
 };
 
 export type GetResultsParams = {

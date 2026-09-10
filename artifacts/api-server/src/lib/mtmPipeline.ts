@@ -13,6 +13,10 @@ import {
   mtmMarketQuoteTable,
   mtmSnapshotTable,
   mtmTeamProjectionTable,
+  calcuttaCalendarsTable,
+  calendarRoundsTable,
+  calendarSlotsTable,
+  calendarProjectionSnapshotsTable,
   nflGamesTable,
   positionsTable,
   seasonsTable,
@@ -789,9 +793,27 @@ export async function runMtmPipeline(input: { seasonYear: number; calcuttaId?: n
         mtmMultiple: valuation.mtm_multiple == null ? null : String(asNumber(valuation.mtm_multiple)),
       }));
       if (valuations.length) await tx.insert(mtmEntryValuationTable).values(valuations);
+      // Calendar projection parents are guarded by a database trigger that
+      // requires the referenced MTM snapshot to already be successful. Keep
+      // this status transition and projection publication in this transaction.
       await tx.update(mtmSnapshotTable).set({
         status: "ok", error: null, diagnostics: engine.diagnostics ?? null,
       }).where(eq(mtmSnapshotTable.id, snapshotId));
+      const calendars = await tx.select({ calendarId: calcuttaCalendarsTable.id })
+        .from(calcuttaCalendarsTable).where(eq(calcuttaCalendarsTable.calcuttaId, poolId));
+      for (const calendar of calendars) {
+        const calendarSlots = await tx.select({ id: calendarSlotsTable.id })
+          .from(calendarSlotsTable).innerJoin(calendarRoundsTable, eq(calendarRoundsTable.id, calendarSlotsTable.roundId))
+          .where(eq(calendarRoundsTable.calendarId, calendar.calendarId));
+        if (calendarSlots.length) {
+          await tx.insert(calendarProjectionSnapshotsTable).values(calendarSlots.map((slot) => ({
+            slotId: slot.id,
+            mtmSnapshotId: snapshotId,
+            status: "unavailable" as const,
+            unavailableReason: "The current MTM engine does not provide exact-slot probabilities.",
+          })));
+        }
+      }
     });
   } catch (error) {
     const message = `MTM persistence failed: ${error instanceof Error ? error.message : String(error)}`;

@@ -20,6 +20,7 @@ tags:
   - name: auction
   - name: jobs
   - name: agent
+  - name: calendars
 
 paths:
   /healthz:
@@ -278,6 +279,52 @@ paths:
                 type: array
                 items:
                   $ref: "#/components/schemas/CalcuttaOption"
+
+  /calendars:
+    get:
+      operationId: getCalendars
+      tags: [calendars]
+      summary: List read-only Calcutta calendars
+      parameters:
+        - name: calcuttaId
+          in: query
+          schema:
+            type: integer
+            minimum: 1
+      responses:
+        "200":
+          description: Calendar schedule and current MTM-coupled projections
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: "#/components/schemas/CalcuttaCalendar"
+  /calendars/{id}:
+    get:
+      operationId: getCalendar
+      tags: [calendars]
+      summary: Get a read-only Calcutta calendar
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: integer
+            minimum: 1
+      responses:
+        "200":
+          description: Calendar schedule and current MTM-coupled projections
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/CalcuttaCalendar"
+        "404":
+          description: Calendar not found
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
 
   /bidders/{id}:
     patch:
@@ -3883,3 +3930,124 @@ components:
         source:
           type: string
       required: [seasonYear, importedTeams, importedOwners, source]
+
+    CalcuttaCalendar:
+      type: object
+      properties:
+        id: { type: number }
+        calcuttaId: { type: number }
+        format: { type: string }
+        scheduleState:
+          type: string
+          enum: [not_applicable, not_loaded, loaded]
+        scheduleAbsentReason: { type: [string, "null"] }
+        participants:
+          type: array
+          items: { $ref: "#/components/schemas/CalendarParticipant" }
+        rounds:
+          type: array
+          items: { $ref: "#/components/schemas/CalendarRound" }
+        economics:
+          type: array
+          items: { $ref: "#/components/schemas/CalendarValue" }
+        rubric:
+          type: array
+          items: { $ref: "#/components/schemas/CalendarRubricValue" }
+        currentProjection:
+          type: object
+          nullable: true
+          properties:
+            mtmSnapshotId: { type: number }
+            status: { type: string, enum: [available, unavailable] }
+            reason: { type: [string, "null"] }
+          required: [mtmSnapshotId, status, reason]
+      required: [id, calcuttaId, format, scheduleState, scheduleAbsentReason, participants, rounds, economics, rubric, currentProjection]
+    CalendarParticipant:
+      type: object
+      properties:
+        id: { type: number }
+        teamId: { type: number }
+        teamName: { type: string }
+        seed: { type: [number, "null"] }
+        designation: { type: [string, "null"], enum: [home, away, null] }
+      required: [id, teamId, teamName, seed, designation]
+    CalendarRound:
+      type: object
+      properties:
+        id: { type: number }
+        sequence: { type: number }
+        name: { type: string }
+        kind: { type: string }
+        slots:
+          type: array
+          items: { $ref: "#/components/schemas/CalendarSlot" }
+      required: [id, sequence, name, kind, slots]
+    CalendarSlot:
+      type: object
+      properties:
+        id: { type: number }
+        slotNumber: { type: number }
+        home:
+          nullable: true
+          allOf: [{ $ref: "#/components/schemas/CalendarSlotCandidate" }]
+        away:
+          nullable: true
+          allOf: [{ $ref: "#/components/schemas/CalendarSlotCandidate" }]
+        seriesBestOf: { type: [number, "null"] }
+        games:
+          type: array
+          items:
+            type: object
+            properties:
+              id: { type: number }
+              gameNumber: { type: number }
+              neutralSite: { type: boolean }
+              homeParticipantId: { type: [number, "null"] }
+              awayParticipantId: { type: [number, "null"] }
+              contingent:
+                type: array
+                items:
+                  type: object
+                  properties:
+                    prerequisiteSlotId: { type: number }
+                    outcome: { type: string }
+                  required: [prerequisiteSlotId, outcome]
+            required: [id, gameNumber, neutralSite, homeParticipantId, awayParticipantId, contingent]
+        projection:
+          type: object
+          nullable: true
+          properties:
+            status: { type: string, enum: [available, unavailable] }
+            reason: { type: [string, "null"] }
+            candidates:
+              type: array
+              items:
+                type: object
+                properties:
+                  participantId: { type: number }
+                  teamName: { type: string }
+                  probability: { type: number }
+                  exactSlotClinched: { type: boolean }
+                required: [participantId, teamName, probability, exactSlotClinched]
+          required: [status, reason, candidates]
+      required: [id, slotNumber, home, away, seriesBestOf, games, projection]
+    CalendarValue:
+      type: object
+      properties:
+        key: { type: string }
+        value: { type: number }
+      required: [key, value]
+    CalendarSlotCandidate:
+      type: object
+      properties:
+        participantId: { type: [number, "null"] }
+        sourceSlotId: { type: [number, "null"] }
+        seed: { type: [number, "null"] }
+        designation: { type: [string, "null"], enum: [home, away, null] }
+      required: [participantId, sourceSlotId, seed, designation]
+    CalendarRubricValue:
+      type: object
+      properties:
+        label: { type: string }
+        points: { type: number }
+      required: [label, points]
