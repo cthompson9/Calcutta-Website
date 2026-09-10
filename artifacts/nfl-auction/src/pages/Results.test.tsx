@@ -168,6 +168,66 @@ const liveOwnerRows = [
   },
 ];
 
+const liveTeamRows = [
+  {
+    teamId: 31,
+    teamName: "Buffalo Bills",
+    conference: "AFC",
+    division: "East",
+    seed: null,
+    owners: [
+      {
+        bidderId: 80,
+        bidderName: "Live Owner",
+        ownershipShare: 0.5,
+        cost: 500,
+        realizedGross: 0,
+        net: -500,
+        mtmNet: 100,
+        ptsToBreakeven: null,
+      },
+      {
+        bidderId: 81,
+        bidderName: "Sam Owner",
+        ownershipShare: 0.5,
+        cost: 500,
+        realizedGross: 0,
+        net: -500,
+        mtmNet: 100,
+        ptsToBreakeven: null,
+      },
+    ],
+    ownershipSegments: [
+      {
+        bidderId: 80,
+        bidderName: "Live Owner",
+        ownershipShare: 0.5,
+        source: "primary",
+      },
+      {
+        bidderId: 81,
+        bidderName: "Sam Owner",
+        ownershipShare: 0.5,
+        source: "primary",
+      },
+    ],
+    wins: 0,
+    losses: 0,
+    ties: 0,
+    ptDiff: 0,
+    playoffBerth: false,
+    sbBerth: false,
+    winSuperBowl: false,
+    cost: 1_000,
+    realizedReturn: 0,
+    netReturn: -1_000,
+    netMtm: 200,
+    ptsToBreakeven: null,
+    marketStatus: "fresh",
+    marketStatusReasons: [],
+  },
+];
+
 vi.mock("@workspace/api-client-react", () => {
   const queryKey = (...args: unknown[]) => args;
   const emptyQuery = () => ({ data: [], isLoading: false });
@@ -187,9 +247,15 @@ vi.mock("@workspace/api-client-react", () => {
       data: historicalTrades[poolId as keyof typeof historicalTrades] ?? [],
       isLoading: false,
     }),
-    useGetResults: emptyQuery,
+    useGetResults: () => ({ data: liveTeamRows, isLoading: false }),
     useGetResultsByOwner: () => ({ data: liveOwnerRows, isLoading: false }),
-    useGetBidders: emptyQuery,
+    useGetBidders: () => ({
+      data: [
+        { id: 80, name: "Live Owner", consortium: "Zach L. / Greg K." },
+        { id: 81, name: "Sam Owner", consortium: "Sam R." },
+      ],
+      isLoading: false,
+    }),
     useGetSportPeriods: emptyQuery,
     useGetSeasons: emptyQuery,
     useGetResultsCompare: () => ({ data: undefined, isLoading: false }),
@@ -224,6 +290,7 @@ function renderResults() {
 describe("Results Calcutta data source", () => {
   beforeEach(() => {
     localStorage.clear();
+    window.history.replaceState(null, "", "/");
   });
 
   it("renders normalized consortium and team rows for Calcutta III without zero-filling nulls", async () => {
@@ -270,5 +337,47 @@ describe("Results Calcutta data source", () => {
 
     expect(screen.getByText("Results command center · 2025")).toBeInTheDocument();
     expect(screen.queryByTestId("historical-results-notice")).not.toBeInTheDocument();
+  });
+
+  it("restores the By Team tab and originating ownership disclosure", async () => {
+    window.history.replaceState(
+      null,
+      "",
+      "/?resultsView=byTeam&returnTeamId=31&returnBidderId=80",
+    );
+
+    renderResults();
+
+    expect(screen.getByTestId("tab-byTeam")).toHaveClass("text-primary");
+    expect(
+      await screen.findByRole("button", {
+        name: "Zach L. / Greg K., +50.0%",
+      }),
+    ).toHaveAttribute("aria-expanded", "true");
+    expect(
+      screen.getByRole("link", {
+        name: "View original auction result for Buffalo Bills",
+      }),
+    ).toBeInTheDocument();
+  });
+
+  it("filters consortium rows without retaining non-matching co-owners", async () => {
+    const user = userEvent.setup();
+    window.history.replaceState(null, "", "/?resultsView=byTeam");
+    renderResults();
+
+    await user.click(
+      screen.getByRole("button", { name: "One row per consortium" }),
+    );
+    await user.type(
+      screen.getByPlaceholderText(
+        "Filter by team, consortium, conference, division…",
+      ),
+      "Sam R",
+    );
+
+    expect(screen.getByText("Sam R.")).toBeInTheDocument();
+    expect(screen.queryByText("Zach L. / Greg K.")).not.toBeInTheDocument();
+    expect(screen.getByText("Buffalo Bills")).toBeInTheDocument();
   });
 });

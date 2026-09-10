@@ -68,6 +68,34 @@ import { trackEvent } from "@/lib/analytics";
 
 type TabId = "byOwner" | "byTeam" | "historicalTrades" | "compare";
 
+function readResultsReturnState(): {
+  tab: TabId;
+  teamId: number | null;
+  bidderId: number | null;
+} {
+  if (typeof window === "undefined") {
+    return { tab: "byOwner", teamId: null, bidderId: null };
+  }
+  const params = new URLSearchParams(window.location.search);
+  const tab = params.get("resultsView") === "byTeam" ? "byTeam" : "byOwner";
+  const teamId = Number.parseInt(params.get("returnTeamId") ?? "", 10);
+  const bidderId = Number.parseInt(params.get("returnBidderId") ?? "", 10);
+  return {
+    tab,
+    teamId: Number.isInteger(teamId) && teamId > 0 ? teamId : null,
+    bidderId: Number.isInteger(bidderId) && bidderId > 0 ? bidderId : null,
+  };
+}
+
+function clearResultsReturnState(): void {
+  if (typeof window === "undefined") return;
+  const url = new URL(window.location.href);
+  url.searchParams.delete("resultsView");
+  url.searchParams.delete("returnTeamId");
+  url.searchParams.delete("returnBidderId");
+  window.history.replaceState(window.history.state, "", url);
+}
+
 export default function Results() {
   const { year, selectedCalcutta } = useSeason();
   const isNflCalcutta = selectedCalcutta?.sport === "NFL";
@@ -76,7 +104,8 @@ export default function Results() {
   const prefersHistoricalResults =
     selectedCalcutta != null && !usesLiveResults;
   const calcuttaId = usesLiveResults ? selectedCalcutta.id : undefined;
-  const [tab, setTab] = useState<TabId>("byOwner");
+  const [returnState, setReturnState] = useState(readResultsReturnState);
+  const [tab, setTab] = useState<TabId>(returnState.tab);
   const [expandedOwner, setExpandedOwner] = useState<number | null>(null);
   const [period, setPeriod] = useState<number | undefined>(undefined);
   const [compareSeasons, setCompareSeasons] = useState<number[]>([]);
@@ -413,6 +442,8 @@ export default function Results() {
                 report_type: prefersHistoricalResults ? "historical" : "live",
                 year,
               });
+              clearResultsReturnState();
+              setReturnState({ tab: t, teamId: null, bidderId: null });
               setTab(t);
             }}
             className={cn(
@@ -510,6 +541,8 @@ export default function Results() {
             rows={teamResults ?? []}
             consortiumByBidderId={consortiumByBidderId}
             seasonYear={year}
+            returnTeamId={returnState.teamId}
+            returnBidderId={returnState.bidderId}
           />
         )}
       </div>
@@ -1623,6 +1656,7 @@ function OwnershipPositionChips({
   seasonYear,
   consortiumByBidderId,
   ambiguousLeadNames,
+  restoreBidderId,
 }: {
   segments: OwnershipSegment[];
   owners: Array<{
@@ -1635,8 +1669,11 @@ function OwnershipPositionChips({
   seasonYear: number;
   consortiumByBidderId: Map<number, string>;
   ambiguousLeadNames: Set<string>;
+  restoreBidderId: number | null;
 }) {
-  const [openChip, setOpenChip] = useState<string | null>(null);
+  const [openChip, setOpenChip] = useState<string | null>(() =>
+    restoreBidderId != null ? String(restoreBidderId) : null,
+  );
   const positions = owners
     .map((owner) => {
       const roster = ownerLabelById(
@@ -1734,6 +1771,16 @@ function OwnershipPositionChips({
                 href={href}
                 aria-label={description}
                 title={description}
+                onClick={() => {
+                  const url = new URL(window.location.href);
+                  url.searchParams.set("resultsView", "byTeam");
+                  url.searchParams.set("returnTeamId", String(teamId));
+                  url.searchParams.set(
+                    "returnBidderId",
+                    String(position.bidderId),
+                  );
+                  window.history.replaceState(window.history.state, "", url);
+                }}
                 className="flex items-center justify-between gap-3 rounded px-1 py-1 text-primary hover:bg-muted focus:outline-none focus:ring-2 focus:ring-primary"
               >
                 <span className="flex items-center gap-1">
@@ -2159,10 +2206,14 @@ function ByTeamView({
   rows,
   consortiumByBidderId,
   seasonYear,
+  returnTeamId,
+  returnBidderId,
 }: {
   rows: TeamResultRow[];
   consortiumByBidderId: Map<number, string>;
   seasonYear: number;
+  returnTeamId: number | null;
+  returnBidderId: number | null;
 }) {
   const [splitByOwner, setSplitByOwner] = useState(false);
   const [sortKey, setSortKey] = useState<BTSortKey>("cost");
@@ -2392,18 +2443,30 @@ function ByTeamView({
   // OWNER MODE — one row per owner-team (expanded)
   // ══════════════════════════════════════════════════════════════════════════
   const expandedSeeds = new Map(
-    baseFiltered.map((r) => [
+    rows.map((r) => [
       r.teamId,
       r.seed ?? computedSeeds.get(r.teamId) ?? null,
     ]),
   );
   const expanded = expandTeams(
-    baseFiltered,
+    rows,
     expandedSeeds,
     consortiumByBidderId,
   );
+  const ownerFiltered = q
+    ? expanded.filter(
+        (row) =>
+          row.teamName.toLowerCase().includes(q) ||
+          row.conference.toLowerCase().includes(q) ||
+          row.division.toLowerCase().includes(q) ||
+          row.ownerName.toLowerCase().includes(q) ||
+          row.owners.some((owner) =>
+            owner.bidderName.toLowerCase().includes(q),
+          ),
+      )
+    : expanded;
 
-  const ownerSorted = [...expanded].sort((a, b) => {
+  const ownerSorted = [...ownerFiltered].sort((a, b) => {
     let diff = 0;
     switch (sortKey) {
       case "team":
@@ -2653,6 +2716,9 @@ function ByTeamView({
                            seasonYear={seasonYear}
                           consortiumByBidderId={consortiumByBidderId}
                            ambiguousLeadNames={ambiguousLeadNames}
+                           restoreBidderId={
+                             returnTeamId === row.teamId ? returnBidderId : null
+                           }
                         />
                       </td>
                       <td className="px-3 py-3 text-center font-mono text-xs">

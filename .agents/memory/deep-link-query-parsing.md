@@ -14,3 +14,9 @@ When a source link opens an expandable destination, expand the matching disclosu
 **Why:** Source navigation should reveal the destination without overriding a user's later disclosure choice.
 
 **How to apply:** Reapply automatic expansion only after the source target changes or disappears.
+
+Before navigating from a transient Results view to a source record, encode the originating tab and disclosure identity into the current history entry.
+
+**Why:** Browser back or the Ctrl+[ shortcut remounts Results; component-only state resets to the default tab and loses the disclosure that launched the backlink.
+
+**How to apply:** Replace the current Results URL with return-state parameters immediately before source navigation, restore them on mount, and clear them after deliberate tab changes.
