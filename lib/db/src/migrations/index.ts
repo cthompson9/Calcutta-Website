@@ -32,3 +32,4 @@ export { calendarProjectionSetGuardMigration } from "./0036CalendarProjectionSet
 export { calendarProjectionCandidateIdentityMigration } from "./0037CalendarProjectionCandidateIdentity";
 export { calendarProjectionParticipantIdentityMigration } from "./0038CalendarProjectionParticipantIdentity";
 export { calendarIntegrityGuardDispatchMigration } from "./0039CalendarIntegrityGuardDispatch";
+export { refreshJobObservabilityMigration } from "./0040RefreshJobObservability";

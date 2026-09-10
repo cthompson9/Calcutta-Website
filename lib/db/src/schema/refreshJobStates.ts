@@ -18,7 +18,11 @@ export const refreshJobStatesTable = pgTable(
     scheduleCache: jsonb("schedule_cache").$type<unknown>(),
     scheduleFetchedAt: timestamp("schedule_fetched_at", { withTimezone: true }),
     lastGameStatusSignature: text("last_game_status_signature"),
+    lastAttemptedAt: timestamp("last_attempted_at", { withTimezone: true }),
     lastSucceededAt: timestamp("last_succeeded_at", { withTimezone: true }),
+    lastFailedAt: timestamp("last_failed_at", { withTimezone: true }),
+    lastError: text("last_error"),
+    lastResult: jsonb("last_result").$type<unknown>(),
     updatedAt: timestamp("updated_at", { withTimezone: true }).notNull().defaultNow(),
   },
   (t) => [

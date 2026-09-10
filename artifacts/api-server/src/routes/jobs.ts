@@ -5,7 +5,6 @@ import { Router, type IRouter, type Request } from "express";
 import { and, eq } from "drizzle-orm";
 import { z } from "zod/v4";
 import { db, pool, refreshJobStatesTable } from "@workspace/db";
-import { runMtmPipeline, withMtmLock } from "../lib/mtmPipeline";
 import {
   resolveNflStandingsRefreshSeasonYear,
   runNflStandingsRefresh,
@@ -41,7 +40,7 @@ const JOB_LOCK_KEY = 64;
 
 const RefreshJobBody = z
   .object({
-    job: z.enum(["standings", "mtm"]).default("standings"),
+    job: z.literal("standings").default("standings"),
     force: z.boolean().optional().default(false),
     sport: z.enum([NFL_SPORT, CFB_SPORT]).optional().default(NFL_SPORT),
     competition: z.string().trim().min(1).max(80).optional(),
@@ -76,7 +75,11 @@ async function loadRefreshJobState(scope: RefreshScope) {
       scheduleCache: refreshJobStatesTable.scheduleCache,
       scheduleFetchedAt: refreshJobStatesTable.scheduleFetchedAt,
       lastGameStatusSignature: refreshJobStatesTable.lastGameStatusSignature,
+      lastAttemptedAt: refreshJobStatesTable.lastAttemptedAt,
       lastSucceededAt: refreshJobStatesTable.lastSucceededAt,
+      lastFailedAt: refreshJobStatesTable.lastFailedAt,
+      lastError: refreshJobStatesTable.lastError,
+      lastResult: refreshJobStatesTable.lastResult,
     })
     .from(refreshJobStatesTable)
     .where(
@@ -131,7 +134,9 @@ async function recordSuccessfulStandingsRefresh(scope: RefreshScope): Promise<vo
       sport: scope.sport,
       competition: scope.competition,
       job: "standings",
+      lastAttemptedAt: now,
       lastSucceededAt: now,
+      lastError: null,
       updatedAt: now,
     })
     .onConflictDoUpdate({
@@ -142,10 +147,90 @@ async function recordSuccessfulStandingsRefresh(scope: RefreshScope): Promise<vo
         refreshJobStatesTable.job,
       ],
       set: {
+        lastAttemptedAt: now,
         lastSucceededAt: now,
+        lastError: null,
         updatedAt: now,
       },
     });
+}
+
+async function recordRefreshAttempt(scope: RefreshScope): Promise<void> {
+  const now = new Date();
+  await db
+    .insert(refreshJobStatesTable)
+    .values({
+      seasonId: scope.seasonId,
+      sport: scope.sport,
+      competition: scope.competition,
+      job: "standings",
+      lastAttemptedAt: now,
+      updatedAt: now,
+    })
+    .onConflictDoUpdate({
+      target: [
+        refreshJobStatesTable.seasonId,
+        refreshJobStatesTable.sport,
+        refreshJobStatesTable.competition,
+        refreshJobStatesTable.job,
+      ],
+      set: { lastAttemptedAt: now, updatedAt: now },
+    });
+}
+
+async function recordFailedRefresh(
+  scope: RefreshScope,
+  error: unknown,
+): Promise<void> {
+  const now = new Date();
+  const message = error instanceof Error ? error.message : String(error);
+  await db
+    .insert(refreshJobStatesTable)
+    .values({
+      seasonId: scope.seasonId,
+      sport: scope.sport,
+      competition: scope.competition,
+      job: "standings",
+      lastAttemptedAt: now,
+      lastFailedAt: now,
+      lastError: message,
+      lastResult: { status: "failed", error: message },
+      updatedAt: now,
+    })
+    .onConflictDoUpdate({
+      target: [
+        refreshJobStatesTable.seasonId,
+        refreshJobStatesTable.sport,
+        refreshJobStatesTable.competition,
+        refreshJobStatesTable.job,
+      ],
+      set: {
+        lastAttemptedAt: now,
+        lastFailedAt: now,
+        lastError: message,
+        lastResult: { status: "failed", error: message },
+        updatedAt: now,
+      },
+    });
+}
+
+async function recordRefreshResult(
+  scope: RefreshScope,
+  result: Record<string, unknown>,
+): Promise<void> {
+  const now = new Date();
+  await db
+    .update(refreshJobStatesTable)
+    .set({
+      lastResult: result,
+      updatedAt: now,
+    })
+    .where(and(
+      eq(refreshJobStatesTable.seasonId, scope.seasonId),
+      eq(refreshJobStatesTable.sport, scope.sport),
+      eq(refreshJobStatesTable.competition, scope.competition),
+      eq(refreshJobStatesTable.job, "standings"),
+    ));
 }
 
 async function recordObservedGameStatus(
@@ -231,6 +316,7 @@ router.post("/jobs/refresh", async (req, res): Promise<void> => {
 
   const startedAtMs = Date.now();
   const job = parsed.data.job;
+  let scope: RefreshScope | null = null;
   try {
     const sport = parsed.data.sport;
     const competition = parsed.data.competition ??
@@ -243,10 +329,6 @@ router.post("/jobs/refresh", async (req, res): Promise<void> => {
       }, 400);
       return;
     }
-    if (sport === CFB_SPORT && job === "mtm") {
-      sendParsedJson(res, ErrorResponse, { error: "CFB MTM refresh is not supported by this job." }, 400);
-      return;
-    }
     const seasonYear = parsed.data.seasonYear ??
       (sport === CFB_SPORT
         ? await resolveCfbRefreshSeasonYear()
@@ -255,42 +337,17 @@ router.post("/jobs/refresh", async (req, res): Promise<void> => {
     if (seasonId == null) {
       throw new Error(`Season ${seasonYear} has no canonical ${sport} Calcutta.`);
     }
-    const scope: RefreshScope = { seasonId, sport, competition };
+    const resolvedScope: RefreshScope = { seasonId, sport, competition };
+    scope = resolvedScope;
+    await recordRefreshAttempt(resolvedScope);
 
     const locked = await withRefreshJobLock(async () => {
-      if (job === "mtm") {
-        const mtmLocked = await withMtmLock(
-          { seasonYear },
-          () => runMtmPipeline({
-            seasonYear,
-            trigger: "scheduled",
-          }),
-        );
-        if (!mtmLocked.acquired) {
-          return {
-            job,
-            ran: false,
-            reason: "already-running" as const,
-            durationMs: Date.now() - startedAtMs,
-          };
-        }
-        const result = mtmLocked.value;
-        return {
-          job,
-          ran: result.status === "ok",
-          snapshotId: result.id,
-          status: result.status,
-          error: result.error ?? undefined,
-          durationMs: Date.now() - startedAtMs,
-        };
-      }
-
       if (sport === CFB_SPORT) {
         const result = await runCfbEventRefresh({
           seasonId,
           seasonYear,
         });
-        await recordSuccessfulStandingsRefresh(scope);
+        await recordSuccessfulStandingsRefresh(resolvedScope);
         return {
           job: "standings" as const,
           sport,
@@ -301,7 +358,7 @@ router.post("/jobs/refresh", async (req, res): Promise<void> => {
         };
       }
 
-      const refreshState = await loadRefreshJobState(scope);
+      const refreshState = await loadRefreshJobState(resolvedScope);
       let cachedGames = parsed.data.force
         ? []
         : parseCachedNflSchedule(refreshState?.scheduleCache);
@@ -315,7 +372,7 @@ router.post("/jobs/refresh", async (req, res): Promise<void> => {
           ))
       ) {
         cachedGames = await fetchNflSchedule(seasonYear);
-        await saveScheduleCache(scope, cachedGames);
+        await saveScheduleCache(resolvedScope, cachedGames);
         refreshedSchedule = true;
       }
       const freshStatusGames =
@@ -341,7 +398,7 @@ router.post("/jobs/refresh", async (req, res): Promise<void> => {
         })
       ) {
         if (statusSignature !== null) {
-          await recordObservedGameStatus(scope, statusSignature, false);
+          await recordObservedGameStatus(resolvedScope, statusSignature, false);
         }
         return {
           job: "standings" as const,
@@ -357,9 +414,9 @@ router.post("/jobs/refresh", async (req, res): Promise<void> => {
         seasonYear,
       });
       if (statusSignature !== null) {
-        await recordObservedGameStatus(scope, statusSignature, true);
+        await recordObservedGameStatus(resolvedScope, statusSignature, true);
       } else {
-        await recordSuccessfulStandingsRefresh(scope);
+        await recordSuccessfulStandingsRefresh(resolvedScope);
       }
       return {
         job: "standings" as const,
@@ -368,7 +425,7 @@ router.post("/jobs/refresh", async (req, res): Promise<void> => {
         teamsUpdated: result.importedTeams,
         durationMs: Date.now() - startedAtMs,
       };
-    }, scope);
+    }, resolvedScope);
 
     if (!locked.acquired) {
       sendParsedJson(res, RefreshNflStandingsJobResponse, {
@@ -380,12 +437,17 @@ router.post("/jobs/refresh", async (req, res): Promise<void> => {
       return;
     }
 
-    if (job === "mtm") {
-      res.json(locked.value);
-      return;
-    }
+    await recordRefreshResult(resolvedScope, locked.value);
     sendParsedJson(res, RefreshNflStandingsJobResponse, locked.value);
   } catch (error) {
+    if (scope) {
+      await recordFailedRefresh(scope, error).catch((recordError) => {
+        req.log.error(
+          { error: recordError instanceof Error ? recordError.message : String(recordError) },
+          "Failed to persist external refresh failure",
+        );
+      });
+    }
     req.log.error(
       { error: error instanceof Error ? error.message : String(error) },
       "External refresh job failed",

@@ -78,6 +78,34 @@ test("job endpoint rejects unknown work before touching refresh state", async ()
   }
 });
 
+test("job endpoint rejects scheduled MTM work", async () => {
+  const savedSecret = process.env.JOB_RUNNER_SECRET;
+  process.env.JOB_RUNNER_SECRET = "job-test-secret";
+  const server = http.createServer(app);
+  await new Promise((resolve) => server.listen(0, "127.0.0.1", resolve));
+  try {
+    const { port } = server.address();
+    const response = await fetch(
+      `http://127.0.0.1:${port}/api/jobs/refresh`,
+      {
+        method: "POST",
+        headers: {
+          Authorization: "Bearer job-test-secret",
+          "Content-Type": "application/json",
+        },
+        body: JSON.stringify({ job: "mtm", sport: "NFL" }),
+      },
+    );
+    assert.equal(response.status, 400);
+  } finally {
+    await new Promise((resolve, reject) =>
+      server.close((error) => (error ? reject(error) : resolve())),
+    );
+    if (savedSecret === undefined) delete process.env.JOB_RUNNER_SECRET;
+    else process.env.JOB_RUNNER_SECRET = savedSecret;
+  }
+});
+
 test("canonical marks use the latest fully covered realized NFL period", () => {
   const rows = Array.from({ length: 32 }, (_, entryId) => ({
     entryId,

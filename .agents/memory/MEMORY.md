@@ -37,3 +37,4 @@
 - [Zero-sum live marks](zero-sum-live-marks.md) — normalize each pipeline week to its auction pool before calculating team net payouts.
 - [Live mark week boundaries](live-mark-week-boundaries.md) — bucket pipeline captures by completed NFL week; retries replace the same point instead of advancing history.
 - [Polymorphic trigger dispatch](postgresql-polymorphic-trigger-dispatch.md) — select the trigger table before accessing table-specific NEW/OLD fields.
+- [Numeric update authority](numeric-update-authority.md) — results ingest automatically, but MTM and bracket forecasts update only from explicit commissioner recalculation.

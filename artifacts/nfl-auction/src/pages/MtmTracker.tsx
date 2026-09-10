@@ -467,7 +467,9 @@ function PipelineMarkPanel({
         <div className="border-b border-amber-500/30 bg-amber-500/10 px-4 py-3 text-sm text-amber-800">
           <p className="flex items-center gap-2 font-semibold">
             <AlertTriangle className="h-4 w-4 shrink-0" />
-            The latest attempt did not replace the prior successful mark.
+            {status.status === "failed"
+              ? "The latest attempt did not replace the prior successful mark."
+              : "The current successful mark is stale."}
           </p>
           <ul className="mt-1 list-disc pl-6 text-xs">
             {status.staleReasons.map((reason) => <li key={reason}>{reason}</li>)}

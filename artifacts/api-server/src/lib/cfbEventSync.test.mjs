@@ -208,6 +208,24 @@ test(
         assert.equal(rows.length, 2);
         assert.equal(rows.find((row) => row.sport === NFL_SPORT)?.homeScore, null);
         assert.equal(rows.find((row) => row.sport === CFB_SPORT)?.homeScore, 34);
+
+        const noLongerFinal = structuredClone(corrected);
+        noLongerFinal.events[0].status = {
+          type: { state: "pre", completed: false },
+        };
+        noLongerFinal.events[0].competitions[0].status = {
+          type: { state: "pre", completed: false },
+        };
+        await syncCfbEventsTx(tx, season.id, 2198, noLongerFinal);
+        const realizedAfterCorrection = await tx
+          .select({ id: snapshotMetricsTable.id })
+          .from(snapshotMetricsTable)
+          .where(and(
+            eq(snapshotMetricsTable.calcuttaId, calcutta.id),
+            eq(snapshotMetricsTable.basis, "realized"),
+            eq(snapshotMetricsTable.source, "events"),
+          ));
+        assert.equal(realizedAfterCorrection.length, 0);
         throw rollback;
       }),
       (error) => error === rollback,

@@ -379,11 +379,9 @@ async function rebuildCfbRealizedMetrics(
   );
   const finalPeriods = [...new Set(finals.map((event) => event.week))]
     .sort((left, right) => left - right);
-  if (finalPeriods.length === 0) return 0;
   const periods = await tx.select().from(sportPeriodsTable).where(and(
     eq(sportPeriodsTable.sport, CFB_SPORT),
     eq(sportPeriodsTable.competition, CFB_REGULAR_SEASON),
-    inArray(sportPeriodsTable.sequence, finalPeriods),
   ));
   const periodIdBySequence = new Map(periods.map((period) => [
     period.sequence,
@@ -406,6 +404,15 @@ async function rebuildCfbRealizedMetrics(
       eq(calcuttasTable.competitionFormat, CFB_REGULAR_SEASON),
     ));
   if (entries.length === 0) return 0;
+  if (periods.length > 0) {
+    await tx.delete(snapshotMetricsTable).where(and(
+      inArray(snapshotMetricsTable.entryId, entries.map((entry) => entry.entryId)),
+      inArray(snapshotMetricsTable.periodId, periods.map((period) => period.id)),
+      eq(snapshotMetricsTable.basis, "realized"),
+      eq(snapshotMetricsTable.source, "events"),
+    ));
+  }
+  if (finalPeriods.length === 0) return 0;
 
   let metricsUpserted = 0;
   for (const throughPeriod of finalPeriods) {
