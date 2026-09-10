@@ -1,11 +1,13 @@
 import { useEffect, useState, type ReactNode } from "react";
 import {
   useGetAuctionSummary,
+  useGetPointsRubricV2,
   importDraftOrder,
   getGetAuctionSummaryQueryKey,
+  getGetPointsRubricV2QueryKey,
 } from "@workspace/api-client-react";
 import { formatCurrency } from "@/lib/utils";
-import { DollarSign, Activity, Download, Lock, Unlock, Loader2, ReceiptText } from "lucide-react";
+import { DollarSign, Activity, Download, Lock, Unlock, Loader2 } from "lucide-react";
 import { useSeason } from "@/hooks/useSeason";
 import { useBacklinkBackShortcut } from "@/hooks/useBacklinkBackShortcut";
 import { useQueryClient } from "@tanstack/react-query";
@@ -21,6 +23,36 @@ import {
   AlertDialogHeader,
   AlertDialogTitle,
 } from "@/components/ui/alert-dialog";
+
+function rubricRuleText(
+  metric: string,
+  value: number,
+  multiplier: number | null,
+): string {
+  const points = `${value} ${value === 1 ? "point" : "points"}`;
+  switch (metric) {
+    case "win":
+      return `${points} per regular-season win.`;
+    case "tie":
+      return `${points} per regular-season tie.`;
+    case "pt_diff":
+      return `${points} per point of adjusted point differential.`;
+    case "playoff_berth":
+      return `${points} for making the playoffs.`;
+    case "div_round":
+      return `${points} for reaching the divisional round.`;
+    case "conf_round":
+      return `${points} for reaching the conference championship.`;
+    case "sb_berth":
+      return `${points} for reaching the Super Bowl.`;
+    case "win_super_bowl":
+      return `${points} for winning the Super Bowl.`;
+    case "marquee_pt_diff":
+      return `Point differential counts ${multiplier ?? value}× for games outside Sunday 1:00–7:00 PM Eastern.`;
+    default:
+      return `${points}: ${metric.replaceAll("_", " ")}.`;
+  }
+}
 
 // ── Admin key panel (reused from Trades pattern) ──────────────────────────────
 
@@ -103,6 +135,15 @@ export default function Dashboard() {
   const { data: summary, isLoading: loadingSummary, refetch } = useGetAuctionSummary(
     summaryParams,
     { query: { enabled: isNflCalcutta, queryKey: getGetAuctionSummaryQueryKey(summaryParams) } },
+  );
+  const { data: pointsRubric } = useGetPointsRubricV2(
+    { season: year, calcuttaId },
+    {
+      query: {
+        enabled: isNflCalcutta && calcuttaId != null,
+        queryKey: getGetPointsRubricV2QueryKey({ season: year, calcuttaId }),
+      },
+    },
   );
   const sourceTarget = parseResultSourceTarget(
     typeof window === "undefined" ? location : window.location.href,
@@ -243,17 +284,29 @@ export default function Dashboard() {
          <StatCard title="Total Pot" value={formatCurrency(summary.potSize)} icon={DollarSign} className="border-b md:border-b-0 md:border-r" />
          <StatCard title="Avg Bid / Team" value={formatCurrency(summary.avgBidPerTeam)} icon={Activity} className="border-b md:border-b-0 md:border-r" />
          <StatCard
-           title="Most Expensive"
-           value={summary.mostExpensiveTeam
-              ? <>
-                  <span className="truncate">{summary.mostExpensiveTeam.name}</span>
-                  <span className="shrink-0"> · {formatCurrency(summary.mostExpensiveTeam.bidAmount)}</span>
-                </>
-             : "—"}
-           icon={ReceiptText}
-            valueClassName="flex min-w-0 items-baseline text-base md:text-lg"
+            title="$ Per Point"
+            value={`$${summary.dollarsPerPoint.toFixed(2)}`}
+            icon={DollarSign}
          />
       </div>
+
+      {pointsRubric && (
+        <section className="rounded-md border border-border bg-card p-5">
+          <h2 className="font-mono text-sm font-bold uppercase tracking-widest">
+            Points Rubric
+          </h2>
+          <ul className="mt-3 list-disc space-y-1.5 pl-5 text-sm text-muted-foreground">
+            <li>Every team starts with {pointsRubric.starting_points} points.</li>
+            {pointsRubric.rules
+              .filter((rule) => rule.value != null)
+              .map((rule) => (
+                <li key={rule.metric}>
+                  {rubricRuleText(rule.metric, rule.value!, rule.multiplier)}
+                </li>
+              ))}
+          </ul>
+        </section>
+      )}
 
       <div className="grid md:grid-cols-3 gap-8 items-start">
          {/* Auction results */}

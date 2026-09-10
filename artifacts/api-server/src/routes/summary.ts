@@ -14,6 +14,7 @@ import { GetAuctionSummaryQueryParams, GetAuctionSummaryResponse } from "@worksp
 import { loadSeasonOwnership } from "../lib/seasonOwnership";
 import { buildAuctionResults } from "../lib/auctionResults";
 import { resolveCalcuttaId } from "../lib/calcuttaContext";
+import { LEAGUE_POINT_TOTAL } from "../lib/weekZeroValuation";
 
 const router: IRouter = Router();
 
@@ -38,6 +39,7 @@ router.get("/summary", async (req, res): Promise<void> => {
       potSize: 0,
       teamsAuctioned: 0,
       avgBidPerTeam: 0,
+      dollarsPerPoint: 0,
       mostExpensiveTeam: null,
       auctionResults: [],
       conferenceBreakdown: [],
@@ -146,6 +148,7 @@ router.get("/summary", async (req, res): Promise<void> => {
     potSize: Math.round(potSize * 100) / 100,
     teamsAuctioned,
     avgBidPerTeam: Math.round(avgBidPerTeam * 100) / 100,
+    dollarsPerPoint: Math.round((potSize / LEAGUE_POINT_TOTAL) * 100) / 100,
     mostExpensiveTeam: mostExpensive
       ? {
           name: mostExpensive.teamName,

@@ -3850,6 +3850,9 @@ components:
           type: number
         avgBidPerTeam:
           type: number
+        dollarsPerPoint:
+          type: number
+          description: Auction pot divided by the fixed NFL final-season point inventory.
         mostExpensiveTeam:
           nullable: true
           allOf:
@@ -3866,6 +3869,7 @@ components:
         - potSize
         - teamsAuctioned
         - avgBidPerTeam
+        - dollarsPerPoint
         - mostExpensiveTeam
         - auctionResults
         - conferenceBreakdown

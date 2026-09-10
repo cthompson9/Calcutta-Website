@@ -13,6 +13,8 @@ export interface AuctionSummary {
   potSize: number;
   teamsAuctioned: number;
   avgBidPerTeam: number;
+  /** Auction pot divided by the fixed NFL final-season point inventory. */
+  dollarsPerPoint: number;
   mostExpensiveTeam: MostExpensiveTeam | null;
   auctionResults: AuctionResult[];
   conferenceBreakdown: ConferenceBreakdown[];

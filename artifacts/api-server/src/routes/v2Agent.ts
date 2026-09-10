@@ -28,6 +28,7 @@ import {
 } from "@workspace/api-zod";
 import {
   NFL_MARQUEE_MULTIPLIER,
+  NFL_PAYOUT_RULES,
   NFL_STARTING_POINTS,
   RETURN_METRICS,
   hasConfiguredPayoutRulesForCalcutta,
@@ -785,12 +786,15 @@ export async function getPointsRubric(args: z.input<typeof rubricQuery>) {
   if (!isContext(context)) return { status: context.status, body: { error: context.error } };
   const rules = await db.select().from(payoutRulesTable)
     .where(eq(payoutRulesTable.calcuttaId, context.calcuttaId));
-  const validRules = validateNflPayoutRules(rules.map((rule) => ({
-    metric: rule.metric,
-    dollarsPerUnit: Number(rule.dollarsPerUnit),
-    playoffMultiplier: Number(rule.playoffMultiplier),
-  }))).ok;
-  const byMetric = new Map(rules.map((rule) => [rule.metric, rule]));
+  const effectiveRules = rules.length > 0
+    ? rules.map((rule) => ({
+        metric: rule.metric,
+        dollarsPerUnit: Number(rule.dollarsPerUnit),
+        playoffMultiplier: Number(rule.playoffMultiplier),
+      }))
+    : NFL_PAYOUT_RULES.map((rule) => ({ ...rule }));
+  const validRules = validateNflPayoutRules(effectiveRules).ok;
+  const byMetric = new Map(effectiveRules.map((rule) => [rule.metric, rule]));
   const pointsRules: Array<{
     rule_name: string;
     metric: string;
