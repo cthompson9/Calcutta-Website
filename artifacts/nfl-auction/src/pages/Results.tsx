@@ -1605,6 +1605,172 @@ function formatOwnershipPercent(share: number, showPlus = false): string {
   return `${sign}${percentage}%`;
 }
 
+function formatExactOwnershipPercent(share: number): string {
+  const percentage = share * 100;
+  const sign = percentage > 0 ? "+" : percentage < 0 ? "−" : "";
+  return `${sign}${Math.abs(percentage).toFixed(1)}%`;
+}
+
+function leadOwnerName(roster: string): string {
+  return roster.split("/")[0]?.trim().split(/\s+/)[0] || roster;
+}
+
+function OwnershipPositionChips({
+  segments,
+  owners,
+  consortiumByBidderId,
+  ambiguousLeadNames,
+}: {
+  segments: OwnershipSegment[];
+  owners: Array<{
+    bidderId: number;
+    bidderName: string;
+    ownershipShare: number;
+  }>;
+  consortiumByBidderId: Map<number, string>;
+  ambiguousLeadNames: Set<string>;
+}) {
+  const [openChip, setOpenChip] = useState<string | null>(null);
+  const positions = owners
+    .map((owner) => {
+      const roster = ownerLabelById(
+        owner.bidderId,
+        owner.bidderName,
+        consortiumByBidderId,
+      );
+      const lead = roster.split("/")[0]?.trim() || roster;
+      const firstName = leadOwnerName(roster);
+      const leadParts = lead.split(/\s+/);
+      const lastInitial =
+        leadParts.length > 1 ? `${leadParts[leadParts.length - 1][0]}.` : "";
+      const ownerSegments = segments.filter(
+        (segment) => segment.bidderId === owner.bidderId,
+      );
+      const auctionStake = ownerSegments
+        .filter((segment) => segment.source !== "trade")
+        .reduce((sum, segment) => sum + segment.ownershipShare, 0);
+      const tradedDelta = ownerSegments
+        .filter((segment) => segment.source === "trade")
+        .reduce((sum, segment) => sum + segment.ownershipShare, 0);
+
+      return {
+        ...owner,
+        roster,
+        label: ambiguousLeadNames.has(firstName)
+          ? `${firstName}${lastInitial ? ` ${lastInitial}` : ""}`
+          : firstName,
+        auctionStake,
+        tradedDelta,
+        affectedByTrades: ownerSegments.some(
+          (segment) => segment.source === "trade",
+        ),
+      };
+    })
+    .sort(
+      (a, b) =>
+        Math.abs(b.ownershipShare) - Math.abs(a.ownershipShare) ||
+        a.roster.localeCompare(b.roster),
+    );
+  const visible = positions.slice(0, 3);
+  const hiddenCount = Math.max(0, positions.length - visible.length);
+
+  function PositionCard({
+    position,
+  }: {
+    position: (typeof positions)[number];
+  }) {
+    return (
+      <div className="space-y-1">
+        <div className="whitespace-normal font-sans font-semibold text-foreground">
+          {position.roster}
+        </div>
+        <div>{formatExactOwnershipPercent(position.ownershipShare)}</div>
+        {position.affectedByTrades && (
+          <div className="flex gap-3 border-t border-border/50 pt-1">
+            <span>Auction {formatExactOwnershipPercent(position.auctionStake)}</span>
+            <span className="text-sky-600 dark:text-sky-400">
+              Trade {formatExactOwnershipPercent(position.tradedDelta)}
+            </span>
+          </div>
+        )}
+      </div>
+    );
+  }
+
+  return (
+    <div className="flex h-7 w-[220px] items-center gap-1 overflow-visible whitespace-nowrap">
+      {visible.map((position) => {
+        const key = String(position.bidderId);
+        const isOpen = openChip === key;
+        const isLong = position.ownershipShare > 0;
+        return (
+          <div
+            key={key}
+            className="relative min-w-0"
+            onMouseEnter={() => setOpenChip(key)}
+            onMouseLeave={() => setOpenChip(null)}
+          >
+            <button
+              type="button"
+              aria-expanded={isOpen}
+              aria-label={`${position.roster}, ${formatExactOwnershipPercent(position.ownershipShare)}`}
+              onFocus={() => setOpenChip(key)}
+              onBlur={() => setOpenChip(null)}
+              className={cn(
+                "block max-w-[64px] truncate rounded-full border px-2 py-1 text-[10px] font-bold leading-none focus:outline-none focus:ring-2 focus:ring-primary",
+                isLong
+                  ? "border-emerald-300 bg-emerald-100 text-emerald-800 dark:border-emerald-800 dark:bg-emerald-950 dark:text-emerald-300"
+                  : "border-rose-300 bg-rose-100 text-rose-800 dark:border-rose-800 dark:bg-rose-950 dark:text-rose-300",
+              )}
+            >
+              {isLong ? "+" : "−"}
+              {position.label}
+            </button>
+            {isOpen && (
+              <div className="absolute left-0 top-full z-30 mt-1 w-64 rounded-md border border-border bg-popover p-3 font-mono text-xs text-popover-foreground shadow-lg">
+                <PositionCard position={position} />
+              </div>
+            )}
+          </div>
+        );
+      })}
+      {hiddenCount > 0 && (
+        <div
+          className="relative shrink-0"
+          onMouseEnter={() => setOpenChip("more")}
+          onMouseLeave={() => setOpenChip(null)}
+        >
+          <button
+            type="button"
+            aria-expanded={openChip === "more"}
+            aria-label={`Show all ${positions.length} ownership positions`}
+            onFocus={() => setOpenChip("more")}
+            onBlur={() => setOpenChip(null)}
+            className="rounded-full border border-border bg-muted px-2 py-1 text-[10px] font-bold leading-none text-muted-foreground focus:outline-none focus:ring-2 focus:ring-primary"
+          >
+            +{hiddenCount}
+          </button>
+          {openChip === "more" && (
+            <div className="absolute right-0 top-full z-30 mt-1 w-72 space-y-2 rounded-md border border-border bg-popover p-3 font-mono text-xs text-popover-foreground shadow-lg">
+              {positions.map((position) => (
+                <div
+                  key={position.bidderId}
+                  className="flex justify-between gap-3 border-b border-border/40 pb-1 last:border-0 last:pb-0"
+                >
+                  <span className="whitespace-normal">{position.roster}</span>
+                  <span className="shrink-0 font-bold">
+                    {formatExactOwnershipPercent(position.ownershipShare)}
+                  </span>
+                </div>
+              ))}
+            </div>
+          )}
+        </div>
+      )}
+    </div>
+  );
+}
+
 function OwnershipBreakdown({
   segments,
   owners,
@@ -1934,9 +2100,10 @@ function ByTeamView({
   consortiumByBidderId: Map<number, string>;
   seasonYear: number;
 }) {
-  const [splitByOwner, setSplitByOwner] = useState(true);
-  const [sortKey, setSortKey] = useState<BTSortKey>("net");
+  const [splitByOwner, setSplitByOwner] = useState(false);
+  const [sortKey, setSortKey] = useState<BTSortKey>("cost");
   const [sortAsc, setSortAsc] = useState(false);
+  const [hasCustomSort, setHasCustomSort] = useState(false);
   const [search, setSearch] = useState("");
 
   if (!rows.length) return <Empty />;
@@ -1947,6 +2114,7 @@ function ByTeamView({
     row.seed ?? computedSeeds.get(row.teamId) ?? null;
 
   function handleSort(key: BTSortKey) {
+    setHasCustomSort(true);
     if (sortKey === key) setSortAsc((v) => !v);
     else {
       setSortKey(key);
@@ -2059,6 +2227,30 @@ function ByTeamView({
       )
     : rows;
 
+  const ambiguousLeadNames = (() => {
+    const rosters = new Set(
+      rows.flatMap((row) =>
+        row.owners.map((owner) =>
+          ownerLabelById(
+            owner.bidderId,
+            owner.bidderName,
+            consortiumByBidderId,
+          ),
+        ),
+      ),
+    );
+    const counts = new Map<string, number>();
+    for (const roster of rosters) {
+      const firstName = leadOwnerName(roster);
+      counts.set(firstName, (counts.get(firstName) ?? 0) + 1);
+    }
+    return new Set(
+      [...counts.entries()]
+        .filter(([, count]) => count > 1)
+        .map(([name]) => name),
+    );
+  })();
+
   // ── Seed sort helper (nulls always to bottom regardless of direction) ───────
   function seedCmp(a: number | null, b: number | null, asc: boolean): number {
     if (a == null && b == null) return 0;
@@ -2071,6 +2263,15 @@ function ByTeamView({
   // TEAM MODE — one row per team, owners listed inline
   // ══════════════════════════════════════════════════════════════════════════
   const teamSorted = [...baseFiltered].sort((a, b) => {
+    if (!hasCustomSort) {
+      const conferenceDiff = a.conference.localeCompare(b.conference);
+      if (conferenceDiff !== 0) return conferenceDiff;
+      const divisionOrder = ["East", "North", "South", "West"];
+      const divisionDiff =
+        divisionOrder.indexOf(a.division) - divisionOrder.indexOf(b.division);
+      if (divisionDiff !== 0) return divisionDiff;
+      return b.cost - a.cost || a.teamName.localeCompare(b.teamName);
+    }
     const sa = getSeed(a),
       sb = getSeed(b);
     let diff = 0;
@@ -2204,7 +2405,7 @@ function ByTeamView({
               : "border-border/60 bg-card text-muted-foreground hover:bg-muted/50 hover:text-foreground",
           )}
         >
-          Split by Consortium
+          One row per consortium
         </button>
       </div>
       {/* Table */}
@@ -2227,7 +2428,7 @@ function ByTeamView({
               </th>
               <th className="px-4 py-3 text-left">
                 <SH
-                   label={splitByOwner ? "Consortium" : "Consortium(s)"}
+                   label={splitByOwner ? "Consortium" : "Owned by"}
                   k="owner"
                   align="left"
                 />
@@ -2266,7 +2467,7 @@ function ByTeamView({
                   <tr
                     key={`${row.teamId}-${row.bidderId}`}
                     className={cn(
-                      "border-b border-border/60 last:border-0 hover:bg-muted/30 transition-colors",
+                      "h-14 border-b border-border/60 last:border-0 hover:bg-muted/30 transition-colors",
                       row.winSuperBowl &&
                         "bg-yellow-50/40 dark:bg-yellow-900/10",
                     )}
@@ -2292,15 +2493,8 @@ function ByTeamView({
                     <td className="px-3 py-3 text-center">
                       <SeedCell seed={row.seed} />
                     </td>
-                    <td className="px-4 py-3 text-sm min-w-[220px]">
-                      <OwnershipBreakdown
-                        segments={row.ownershipSegments}
-                        owners={row.owners}
-                        teamId={row.teamId}
-                        teamName={row.teamName}
-                        seasonYear={seasonYear}
-                        consortiumByBidderId={consortiumByBidderId}
-                      />
+                    <td className="w-[220px] px-4 py-2 text-sm">
+                      <ConsortiumLabel label={row.ownerName} />
                     </td>
                     <td
                       className={cn(
@@ -2358,8 +2552,8 @@ function ByTeamView({
                   return (
                     <tr
                       key={row.teamId}
-                      className={cn(
-                        "border-b border-border/60 last:border-0 hover:bg-muted/30 transition-colors",
+                       className={cn(
+                         "h-14 border-b border-border/60 last:border-0 hover:bg-muted/30 transition-colors",
                         row.winSuperBowl &&
                           "bg-yellow-50/40 dark:bg-yellow-900/10",
                       )}
@@ -2386,14 +2580,12 @@ function ByTeamView({
                       <td className="px-3 py-3 text-center">
                         <SeedCell seed={seed} />
                       </td>
-                      <td className="px-4 py-3 text-sm min-w-[260px]">
-                        <OwnershipBreakdown
+                       <td className="w-[252px] min-w-[252px] max-w-[252px] px-4 py-2 text-sm">
+                         <OwnershipPositionChips
                           segments={row.ownershipSegments}
                           owners={row.owners}
-                          teamId={row.teamId}
-                          teamName={row.teamName}
-                          seasonYear={seasonYear}
                           consortiumByBidderId={consortiumByBidderId}
+                           ambiguousLeadNames={ambiguousLeadNames}
                         />
                       </td>
                       <td className="px-3 py-3 text-center font-mono text-xs">
@@ -2448,6 +2640,19 @@ function ByTeamView({
         </table>
       </div>
 
+      {!splitByOwner && (
+        <div className="flex flex-wrap items-center gap-x-4 gap-y-1 px-1 text-xs text-muted-foreground">
+          <span>
+            <strong className="text-emerald-700 dark:text-emerald-400">+</strong>{" "}
+            Long
+          </span>
+          <span>
+            <strong className="text-rose-700 dark:text-rose-400">−</strong>{" "}
+            Short
+          </span>
+          <span>Hover or focus a chip to see the exact position.</span>
+        </div>
+      )}
       <p className="text-[10px] md:text-xs text-muted-foreground font-mono">
         {rowCount} {splitByOwner ? "owner-team rows" : "teams"} ·{" "}
          Realized columns and points to breakeven use realized snapshots; net MTM uses the latest complete mark.

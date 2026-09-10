@@ -1,0 +1,14 @@
+Rework the ownership column on Results → By Team (Split by consortium unchecked).
+
+Today each row lists every consortium that holds the team as full slash-joined roster text ("Craig T. / Damon H. / Yishi Z.") plus labels like "primary", "trade in", "trade out". With many owners this wraps to several lines, so row heights vary wildly and the column dominates the table. Replace it as follows.
+
+Header: rename the column from "Consortium" to "Owned by". Keep "Consortium" only in the split view, where a row genuinely is one consortium. Also reword the checkbox from "Split by consortium" to "One row per consortium" — it changes row granularity, not a split.
+Cell contents: render each holder as a compact chip instead of roster text. The chip label is the lead owner's first name only ("Zach", not "Zach L. / Greg K."). If two consortiums in the same league share a lead first name, fall back to first name + last initial ("Zach L.") for both so chips are never ambiguous.
+Direction by color + sign: chip fill is green for a net long position (>0) and red for a net short (<0), with a leading + or − glyph before the name so direction survives colorblindness and greyscale. Do not print the percentage on the chip, and remove the "primary / trade in / trade out" words entirely — the sign of the number already conveys in vs out.
+Ordering: sort holders by absolute size of position, largest first, regardless of direction. A −250% short ranks above a +100% long. Show the first 3 chips on one line; collapse the rest into a +N chip.
+Disclosure on hover/focus: hovering or keyboard-focusing a chip opens a small card with the full roster, the exact signed percentage (e.g. −250.0%), and — when the position was affected by trades — the split between the auction stake and the traded delta (render the traded delta in blue, signed, with no "in/out" wording). The +N chip opens a card listing every position for that team with roster and signed percentage.
+Row height must be constant across all rows regardless of owner count — no wrapping in this column. Fix the column to a set width and truncate chip labels with ellipsis if needed.
+Add a one-time legend below the table: + Long, − Short, and a hint that hovering a chip shows the exact position.
+Accessibility: chips are real <button>s, focusable, with aria-expanded and an aria-label carrying the roster and signed percentage so screen readers get the value the visual encodes.
+
+Do not add a proportional stacked share bar for the split — shorts make it invalid, since long positions sum past 100% whenever anyone is short.
