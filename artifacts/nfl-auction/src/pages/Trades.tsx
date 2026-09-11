@@ -188,12 +188,14 @@ function TradeActions({
   adminKey,
   onStatusChange,
   showDelete = true,
+  showDecisions = true,
 }: {
   trade: TradeRow;
   onDelete: (id: number) => void;
   adminKey: string | null;
   onStatusChange: () => void;
   showDelete?: boolean;
+  showDecisions?: boolean;
 }) {
   const { selectedCalcutta } = useSeason();
   const calcuttaId = selectedCalcutta?.sport === "NFL" ? selectedCalcutta.id : undefined;
@@ -251,7 +253,7 @@ function TradeActions({
         </button>
       )}
 
-      {adminKey && (trade.status === "pending" || trade.status === "approved") && (
+      {showDecisions && adminKey && (trade.status === "pending" || trade.status === "approved") && (
         <div className="border-t border-border pt-2 flex items-center gap-2 flex-wrap basis-full">
           <span className="text-xs font-mono text-muted-foreground uppercase tracking-widest">Admin:</span>
           {trade.status === "pending" ? (
@@ -272,22 +274,13 @@ function TradeActions({
               </button>
             </>
           ) : (
-            <>
-              <button
-                onClick={() => handleStatus("rejected")}
-                disabled={acting}
-                className="flex items-center gap-1.5 px-3 py-1 bg-red-600 text-white text-xs font-mono font-bold uppercase tracking-wider hover:bg-red-700 disabled:opacity-50 transition-colors"
-              >
-                <Ban className="w-3 h-3" /> Reject
-              </button>
-              <button
-                onClick={() => handleStatus("voided")}
-                disabled={acting}
-                className="flex items-center gap-1.5 px-3 py-1 bg-slate-700 text-white text-xs font-mono font-bold uppercase tracking-wider hover:bg-slate-800 disabled:opacity-50 transition-colors"
-              >
-                <Ban className="w-3 h-3" /> Void trade
-              </button>
-            </>
+            <button
+              onClick={() => handleStatus("voided")}
+              disabled={acting}
+              className="flex items-center gap-1.5 px-3 py-1 bg-slate-700 text-white text-xs font-mono font-bold uppercase tracking-wider hover:bg-slate-800 disabled:opacity-50 transition-colors"
+            >
+              <Ban className="w-3 h-3" /> Void trade
+            </button>
           )}
           {adminError && <span className="text-xs text-destructive font-mono">{adminError}</span>}
         </div>
@@ -369,6 +362,7 @@ function TradeCard({
             adminKey={adminKey}
             onStatusChange={onStatusChange}
             showDelete={trade.status === "pending"}
+            showDecisions={false}
           />
         </div>
       </div>
@@ -453,6 +447,7 @@ function TradeLeg({
             adminKey={adminKey}
             onStatusChange={onStatusChange}
             showDelete={trade.status === "pending"}
+            showDecisions={false}
           />
         </div>
       </div>
