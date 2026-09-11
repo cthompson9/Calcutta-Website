@@ -111,11 +111,27 @@ describe("UpcomingEvSwings", () => {
 
     expect(screen.getByText("Weeks 3, 4, 5")).toBeInTheDocument();
     expect(screen.queryByText("Late Away @ Late Home")).not.toBeInTheDocument();
+    expect(screen.getByRole("group", { name: "Week 3" })).toBeInTheDocument();
+    expect(screen.getByRole("group", { name: "Week 4" })).toBeInTheDocument();
+    expect(screen.getByRole("group", { name: "Week 5" })).toBeInTheDocument();
+    expect(screen.getAllByRole("heading", { level: 4 }).map((heading) => heading.textContent)).toEqual([
+      "Week 3",
+      "Week 4",
+      "Week 5",
+    ]);
     const weekFour = screen.getByTestId("ev-swing-week-4");
     const games = within(weekFour).getAllByTestId("ev-swing-game");
+    expect(within(weekFour).getByRole("article", { name: "Alpha Away @ Other Home" })).toBe(games[0]);
+    expect(within(weekFour).getByRole("article", { name: "Zulu Away @ Home Four" })).toBe(games[1]);
+    expect(within(weekFour).getAllByRole("heading", { level: 5 }).map((heading) => heading.textContent)).toEqual([
+      "Alpha Away @ Other Home",
+      "Zulu Away @ Home Four",
+    ]);
     expect(games[0]).toHaveTextContent("Alpha Away @ Other Home");
     expect(games[1]).toHaveTextContent("Zulu Away @ Home Four");
     expect(within(screen.getByTestId("ev-swing-week-3")).getAllByText("$55 swing")).toHaveLength(2);
+    expect(within(screen.getByTestId("ev-swing-week-3")).getAllByText("Benefit of win")).toHaveLength(2);
+    expect(within(screen.getByTestId("ev-swing-week-3")).getAllByText("Cost of loss")).toHaveLength(2);
     expect(screen.getAllByText("+$30").length).toBeGreaterThan(0);
     expect(screen.getAllByText("$25").length).toBeGreaterThan(0);
   });

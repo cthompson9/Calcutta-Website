@@ -819,19 +819,36 @@ export function UpcomingEvSwings({ games }: { games: MtmGameEvSwing[] }) {
       </div>
       <div className="mt-4 space-y-5">
         {weeks.map((week) => (
-          <div key={week} data-testid={`ev-swing-week-${week}`}>
-            <p className="mb-2 font-mono text-[10px] font-extrabold uppercase tracking-[0.18em] text-primary">
+          <div
+            key={week}
+            role="group"
+            aria-labelledby={`ev-swing-week-${week}-heading`}
+            data-testid={`ev-swing-week-${week}`}
+          >
+            <h4
+              id={`ev-swing-week-${week}-heading`}
+              className="mb-2 font-mono text-[10px] font-extrabold uppercase tracking-[0.18em] text-primary"
+            >
               Week {week}
-            </p>
+            </h4>
             <div className="grid gap-3 md:grid-cols-2">
               {visible.filter((game) => game.week === week).map((game) => {
                 const away = game.teams.find((team) => team.teamId === game.awayTeamId);
                 const home = game.teams.find((team) => team.teamId === game.homeTeamId);
+                const gameHeadingId = `ev-swing-week-${week}-game-${game.eventId}-heading`;
                 return (
-                  <article key={game.eventId} className="border border-border bg-background px-3" data-testid="ev-swing-game">
-                    <p className="border-b border-border py-2 font-mono text-[10px] font-bold uppercase tracking-wider text-muted-foreground">
+                  <article
+                    key={game.eventId}
+                    aria-labelledby={gameHeadingId}
+                    className="border border-border bg-background px-3"
+                    data-testid="ev-swing-game"
+                  >
+                    <h5
+                      id={gameHeadingId}
+                      className="border-b border-border py-2 font-mono text-[10px] font-bold uppercase tracking-wider text-muted-foreground"
+                    >
                       {away?.teamName ?? "Away"} @ {home?.teamName ?? "Home"}
-                    </p>
+                    </h5>
                     {view === "team" ? (
                       <>
                         {away && <SwingTeamRow swing={away} />}
