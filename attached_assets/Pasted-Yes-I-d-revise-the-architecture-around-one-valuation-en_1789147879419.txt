@@ -1,0 +1,861 @@
+Yes. I’d revise the architecture around one valuation engine, not two.
+
+The clean model is:
+
+Kalshi/market data → calibrated simulation → apply Calcutta rubric to every simulation path → mean payout = MTM.
+
+Then the same simulation paths give you game EV conditionals essentially for free. The “live” system should mainly be a way to interpolate/condition between fresh simulation runs, not a separate fundamental valuation system.
+
+The important missing piece is that checking Kalshi and running the sim are two separate operations. Kalshi can be checked frequently and cheaply; you only need to re-sim when reality has moved enough that the existing path distribution is stale.
+
+Revised MTM Architecture — Market-Calibrated Simulation + Conditional EV
+
+Core principle
+
+There should be one authoritative valuation methodology:
+
+Latest real-world state
+        +
+Latest market probabilities / Kalshi
+        ↓
+Calibrated season simulation
+        ↓
+Apply Calcutta rubric to every simulation path
+        ↓
+Expected payout across paths
+        ↓
+MTM
+
+Do not create a separate heuristic “live MTM model” that can drift away from the simulation.
+
+Instead, treat every simulation run as a timestamped valuation surface that can also be queried conditionally.
+
+⸻
+
+1. What a simulation run should produce
+
+Assume we run N season simulations.
+
+Each simulation path contains:
+
+game outcomes
+game margins
+regular-season records
+point differential
+playoff qualification
+playoff seed
+playoff results
+Super Bowl result
+
+Then apply the exact Calcutta rubric to every team in every path.
+
+For team i and simulation s:
+
+Value[i,s] = Calcutta payout implied by that simulation path
+
+The team’s MTM is simply:
+
+MTM[i] = mean(Value[i,s])
+
+This should be the canonical definition of MTM everywhere in the application.
+
+No separate valuation formula.
+
+⸻
+
+2. Grounding the simulation in Kalshi / reality
+
+Every full simulation run should begin by ingesting:
+
+actual completed results
+current standings
+current point differential
+injuries / state already included in the forecasting model
+latest market probabilities
+latest Kalshi prices
+
+The simulation inputs should then be calibrated so that simulated future probabilities approximately reproduce the current external market.
+
+Example:
+
+                          Kalshi      Simulated
+Rams make playoffs         41%           41%
+Rams win NFC West          22%           22%
+Rams win Super Bowl         4%            4%
+
+They do not need to match every market perfectly, but the simulator should explicitly measure the difference.
+
+Every simulation run should therefore store:
+
+market_snapshot_id
+market_timestamp
+simulation_timestamp
+market_probability
+simulated_probability
+calibration_error
+
+for each market used in calibration.
+
+This gives us an auditable answer to:
+
+“How grounded was this MTM in the actual betting market?”
+
+⸻
+
+3. Separate “check market” from “rerun simulation”
+
+Kalshi can be checked much more frequently than simulations are run.
+
+For example:
+
+Kalshi refresh:
+every 10–30 minutes during active NFL windows
+Simulation:
+only when triggered
+
+After each Kalshi refresh, compare current market prices with the prices underlying the latest simulation.
+
+Example:
+
+Latest simulation:
+LAR playoffs 47%
+LAR Super Bowl 5.2%
+Current Kalshi:
+LAR playoffs 46%
+LAR Super Bowl 5.0%
+
+No need to rerun.
+
+But:
+
+Latest simulation:
+LAR playoffs 47%
+Current Kalshi:
+LAR playoffs 36%
+
+the simulation is now materially stale and should be refreshed.
+
+The system should calculate a market_drift_score.
+
+Possible triggers:
+
+max probability movement > X percentage points
+OR
+weighted aggregate market drift > Y
+OR
+a major game becomes final
+OR
+manual commissioner request
+
+Exact thresholds should be configurable.
+
+This is the main cost-control mechanism.
+
+⸻
+
+4. Simulation cadence
+
+Recommended default:
+
+Hard scheduled simulations
+
+Run a fresh simulation:
+
+before Thursday games
+after Thursday final
+before Sunday games
+after Sunday early-game block
+after Sunday late-game block
+after SNF
+after MNF
+
+This could later be reduced if it proves unnecessarily expensive.
+
+Event-driven simulation
+
+Additionally rerun whenever:
+
+market_drift_score exceeds threshold
+major injury/model input changes
+commissioner manually requests refresh
+
+Weekly canonical simulation
+
+One simulation is explicitly marked:
+
+canonical_period = Week X
+
+after that NFL week is complete and all relevant markets have settled/refreshed.
+
+All other runs are valid timestamped MTMs, but are not the official weekly snapshot.
+
+⸻
+
+5. Game EV should come directly from conditional simulation paths
+
+This is the biggest architectural opportunity.
+
+Do NOT rerun the simulation to determine the impact of one upcoming game.
+
+Suppose the current simulation contains 100,000 paths.
+
+For:
+
+NYG @ LAR
+
+partition those paths into:
+
+LAR win paths
+LAR loss paths
+LAR tie paths
+
+Then calculate:
+
+EV(LAR | LAR win)
+EV(LAR | LAR loss)
+EV(LAR | tie)
+
+where EV is simply the mean Calcutta payout in that subset of simulations.
+
+So:
+
+EV Swing =
+EV(LAR | win)
+-
+EV(LAR | loss)
+
+This is exactly the economic meaning we care about.
+
+⸻
+
+6. Example
+
+Assume the latest simulation says:
+
+Current LAR MTM       $1,300
+P(win)                   60%
+P(loss)                  39%
+P(tie)                    1%
+
+Conditional simulation results:
+
+EV | Win              $1,500
+EV | Loss               $990
+EV | Tie              $1,180
+
+Then:
+
+Win/Loss EV Swing = $510
+
+And the current MTM reconciles approximately to:
+
+60% × $1,500
++
+39% × $990
++
+1% × $1,180
+≈ $1,300
+
+subject only to rounding / simulation noise.
+
+That reconciliation is useful as a validation check.
+
+⸻
+
+7. This should work for EVERY team’s value, not just the teams playing
+
+For each game, calculate conditional value for all 32 teams.
+
+For:
+
+SEA vs SF
+
+we should be able to calculate:
+
+EV(LAR | SEA wins)
+EV(LAR | SF wins)
+EV(ARI | SEA wins)
+EV(ARI | SF wins)
+etc.
+
+because those outcomes can affect:
+
+division odds
+wild-card odds
+seeding
+future playoff opponents
+Super Bowl probability
+
+Therefore the simulation output for a game is conceptually:
+
+Game
+×
+Outcome
+×
+32 Teams
+
+This is inexpensive because we are only aggregating simulations that already exist.
+
+⸻
+
+8. Portfolio EV becomes trivial
+
+For every simulation path, we can also calculate each owner’s portfolio value.
+
+For owner o:
+
+PortfolioValue[o,s]
+=
+Σ signed_ownership[o,i] × Value[i,s]
+
+Then:
+
+Portfolio EV | LAR win
+=
+mean portfolio value among LAR-win simulations
+
+and:
+
+Portfolio EV | LAR loss
+=
+mean portfolio value among LAR-loss simulations
+
+Therefore:
+
+Owner EV Swing =
+Portfolio EV | Win
+-
+Portfolio EV | Loss
+
+This properly handles:
+
+long positions
+short positions
+cross-team effects
+division rivals
+multiple ownership positions
+
+This is the correct engine for:
+
+“What game matters most to me this week?”
+
+⸻
+
+9. Important distinction: EV swing vs expected MTM move
+
+These are different outputs and should both exist.
+
+Suppose:
+
+EV | Win       $1,500
+EV | Loss        $990
+Current MTM     $1,300
+
+Then:
+
+Total EV Swing:
++$510
+
+But the expected moves relative to today’s MTM are:
+
+Win impact:
++$200
+Loss impact:
+-$310
+
+Those are more useful for UI.
+
+Expose all three.
+
+⸻
+
+10. Upcoming game endpoint
+
+Add something like:
+
+get_game_ev_impact
+
+Return:
+
+{
+  "game": "NYG @ LAR",
+  "simulation_as_of": "...",
+  "market_as_of": "...",
+  "probabilities": {
+    "win": 0.60,
+    "loss": 0.39,
+    "tie": 0.01
+  },
+  "team": {
+    "current_mtm": 1300,
+    "ev_if_win": 1500,
+    "ev_if_loss": 990,
+    "ev_if_tie": 1180,
+    "win_delta": 200,
+    "loss_delta": -310,
+    "win_loss_swing": 510
+  }
+}
+
+If an owner is supplied:
+
+{
+  "owner": {
+    "current_mtm": 4600,
+    "ev_if_win": 4710,
+    "ev_if_loss": 4380,
+    "win_loss_swing": 330
+  }
+}
+
+⸻
+
+11. How live games should work
+
+A game that is underway creates an interesting distinction.
+
+The latest full simulation still contains:
+
+EV | Win
+EV | Loss
+EV | Tie
+
+But the probability of those outcomes changes during the game.
+
+If we can obtain a current live win probability:
+
+P_live(win)
+P_live(loss)
+P_live(tie)
+
+then an inexpensive approximate live value is:
+
+Live MTM ≈
+P_live(win) × EV|Win
++
+P_live(loss) × EV|Loss
++
+P_live(tie) × EV|Tie
+
+This requires no resimulation.
+
+It is simply reweighting conditional values from the latest simulation.
+
+⸻
+
+12. Point differential means Win/Loss alone is not enough for perfect live pricing
+
+The NFL rubric includes point differential, including 2x marquee differential.
+
+Therefore:
+
+EV | Win
+
+contains a distribution of possible winning margins.
+
+If LAR is currently winning by 30, that information matters beyond merely increasing P(win).
+
+Longer term, conditional simulation aggregation should also support final-margin buckets.
+
+For example:
+
+Loss by 15+
+Loss by 8–14
+Loss by 1–7
+Tie
+Win by 1–7
+Win by 8–14
+Win by 15+
+
+Then precompute:
+
+EV | outcome bucket
+
+During a game, a live model can reweight these buckets.
+
+This gives much better pseudo-live MTM while still avoiding resimulation.
+
+However, this should be V2.
+
+V1 can use Win/Loss/Tie conditional EV plus exact realized point-differential handling when a game becomes final.
+
+⸻
+
+13. When a game becomes final
+
+Once LAR actually loses:
+
+P(loss) = 100%
+
+So the old simulation immediately tells us:
+
+Provisional postgame MTM = EV | LAR loss
+
+That gives the instant gratification.
+
+But it should be labelled:
+
+PROVISIONAL MTM
+conditioned on latest simulation
+
+Then the next actual simulation:
+
+1. incorporates the game permanently;
+2. pulls fresh Kalshi markets;
+3. recalibrates the remainder of the season;
+4. produces the new true simulation MTM.
+
+That new simulated value replaces the provisional conditional estimate.
+
+⸻
+
+14. This creates a clean reconciliation loop
+
+Example:
+
+THURSDAY 7 PM
+Full simulation:
+LAR MTM = $1,300
+Conditional:
+Win = $1,500
+Loss = $990
+
+Game happens.
+
+THURSDAY 11:30 PM
+LAR loses.
+Immediate provisional MTM:
+$990
+
+No simulation required.
+
+Then markets reopen / update.
+
+FRIDAY 1 AM
+Kalshi now implies a slightly worse Rams outlook
+than the old conditional simulation expected.
+
+Next sim runs with:
+
+actual loss
+actual -20 margin
+new standings
+new Kalshi probabilities
+
+New simulated MTM:
+
+$930
+
+Therefore:
+
+Pre-game true MTM       $1,300
+Immediate conditional     $990
+Next grounded MTM          $930
+
+The difference:
+
+-$310 game-outcome effect
+-$60 subsequent market/reforecast effect
+
+This decomposition is extremely useful.
+
+⸻
+
+15. Store both values
+
+Every timestamped MTM record should identify its source:
+
+SIMULATED
+CONDITIONAL
+LIVE_REWEIGHTED
+
+Example:
+
+2026-09-10 19:00
+SIMULATED
+$1,300
+2026-09-10 22:14
+LIVE_REWEIGHTED
+$1,105
+2026-09-10 23:36
+CONDITIONAL_FINAL
+$990
+2026-09-11 01:15
+SIMULATED
+$930
+
+All belong on the chart.
+
+But only SIMULATED values are true model MTMs.
+
+⸻
+
+16. Canonical vs latest simulated vs current live
+
+Keep these separate.
+
+canonical_mtm
+
+The official weekly simulation snapshot.
+
+Used for week-over-week historical reporting.
+
+latest_simulated_mtm
+
+Most recent full simulation grounded against then-current market data.
+
+This is the current authoritative model valuation.
+
+current_mtm
+
+Best currently available mark:
+
+latest live reweighting
+or
+conditional-final mark
+or
+latest simulated MTM
+
+This is what the user sees by default.
+
+Every response needs:
+
+type
+timestamp
+simulation_anchor
+market_anchor
+
+so MCP cannot accidentally report a conditional estimate as a fresh simulation.
+
+⸻
+
+17. Cost model
+
+This approach gives us three computational tiers.
+
+Very cheap
+
+Run essentially continuously:
+
+score refreshes
+Kalshi price checks
+conditional EV queries
+portfolio EV queries
+live probability reweighting
+
+These require database aggregation / arithmetic only.
+
+Medium
+
+Post-process simulation output:
+
+conditional EV by game
+conditional EV by team
+conditional EV by owner
+margin buckets
+
+Do this once per simulation run and cache results.
+
+Expensive
+
+Full season simulation + market calibration.
+
+Only run when:
+
+scheduled refresh occurs
+game block finishes
+market drift threshold is exceeded
+commissioner manually triggers it
+
+⸻
+
+18. Very important implementation detail
+
+Do not calculate conditional game EV by launching separate simulations.
+
+After the main simulation finishes, perform aggregation over the paths.
+
+For each upcoming game g:
+
+for each team i:
+    EV[i | home win]
+    EV[i | away win]
+    EV[i | tie]
+
+Likewise for every owner.
+
+The expensive work has already happened.
+
+Conditional EV is a GROUP BY over simulation outcomes.
+
+⸻
+
+19. Save enough information to audit the simulation
+
+Every simulation run should persist:
+
+simulation_run_id
+timestamp
+number_of_paths
+random_seed / model version
+actuals_snapshot_id
+market_snapshot_id
+input probabilities
+simulated probabilities
+market calibration errors
+team MTMs
+
+And ideally either:
+
+A) simulation paths
+
+or, if path storage is too large:
+
+B) pre-aggregated conditional outputs
+
+Option B is probably preferable for production.
+
+We do not need to retain millions of path-level records indefinitely if all downstream questions can be answered from aggregated scenario tables.
+
+⸻
+
+20. Proposed data tables
+
+simulation_runs
+
+id
+calcutta_id
+started_at
+completed_at
+model_version
+num_paths
+actuals_snapshot_id
+market_snapshot_id
+is_weekly_canonical
+period
+market_drift_at_start
+
+simulation_team_values
+
+simulation_run_id
+team_id
+mean_value
+p05_value
+p25_value
+p50_value
+p75_value
+p95_value
+playoff_probability
+division_probability
+conference_probability
+super_bowl_probability
+
+simulation_game_conditionals
+
+simulation_run_id
+game_id
+team_id
+baseline_ev
+ev_if_home_win
+ev_if_away_win
+ev_if_tie
+home_win_delta
+away_win_delta
+win_loss_swing
+
+Potential V2:
+
+ev_if_home_1_7
+ev_if_home_8_14
+ev_if_home_15_plus
+...
+
+market_snapshots
+
+id
+timestamp
+provider
+market
+team
+probability
+price
+
+mtm_observations
+
+timestamp
+team_id
+value
+type:
+SIMULATED
+LIVE_REWEIGHTED
+CONDITIONAL_FINAL
+simulation_anchor_id
+market_snapshot_id
+
+⸻
+
+21. Reconciliation / QA tests
+
+A simulation run should fail validation or warn if conditional EVs do not reconcile to baseline MTM.
+
+For each game:
+
+MTM
+≈
+P(Home Win) × EV|Home Win
++
+P(Away Win) × EV|Away Win
++
+P(Tie) × EV|Tie
+
+The difference should be within Monte Carlo tolerance.
+
+Also validate market calibration:
+
+Simulated playoff probability
+vs
+Kalshi playoff probability
+
+and equivalent markets.
+
+Store the residual.
+
+If it exceeds configured tolerance:
+
+simulation_status = calibration_warning
+
+This makes model drift visible rather than silent.
+
+⸻
+
+22. The conceptual model
+
+The application should think of a simulation run not as:
+
+“Here are 32 MTM numbers.”
+
+but as:
+
+“Here is our current probability distribution over the remainder of the NFL season.”
+
+From that distribution we can derive:
+
+current MTM
+game EV
+portfolio EV
+upside/downside
+percentiles
+trade outcomes
+conditional scenarios
+
+without rerunning the model.
+
+Then periodically we throw that distribution away, ingest the new real world + market, and generate a fresh one.
+
+The reconciliation loop is the key:
+
+Sim → conditional estimate when reality arrives → fresh Kalshi prices → new sim → reconcile.
+
+So with yesterday’s Rams game, the ideal system would have known before kickoff something like EV|win = $X and EV|loss = $Y. At 27–7 final, it could instantly move the Rams to the loss-conditional valuation. Then the next simulation would ingest the actual 27–7 result plus the newly updated Kalshi landscape, and maybe say the real grounded MTM is a little higher or lower than that conditional estimate.
+
+That also gives you a really valuable diagnostic: postgame fresh sim − pregame EV|loss tells you how much the market/model learned beyond merely knowing that the Rams lost. That is probably the cleanest possible answer to “what did yesterday actually do to my trade?”
