@@ -67,6 +67,52 @@
   mix-blend-mode: multiply;
 }
 
+.unified-preview header:has(
+    [data-testid="text-report-title"],
+    [data-testid="text-mtm-title"],
+    [data-testid="text-trades-title"]
+  ) {
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  text-align: center;
+}
+
+.unified-preview header:has(
+    [data-testid="text-report-title"],
+    [data-testid="text-mtm-title"],
+    [data-testid="text-trades-title"]
+  ) > * {
+  align-items: center;
+  justify-content: center;
+  text-align: center;
+}
+
+.unified-preview header:has(
+    [data-testid="text-report-title"],
+    [data-testid="text-mtm-title"],
+    [data-testid="text-trades-title"]
+  ) h1 {
+  font-family: "Newsreader", Georgia, serif;
+  font-weight: 500;
+  letter-spacing: -0.035em;
+  text-transform: none;
+}
+
+.unified-preview header:has(
+    [data-testid="text-mtm-title"],
+    [data-testid="text-trades-title"]
+  ) p {
+  font-family: "Inter", sans-serif;
+  font-weight: 600;
+  letter-spacing: 0.08em;
+}
+
+.unified-preview header:has([data-testid="text-report-title"]) .text-right {
+  padding-bottom: 0;
+  text-align: center;
+}
+
 @media (max-width: 767px) {
   .unified-preview-page-crest {
     padding-top: 1.25rem;
