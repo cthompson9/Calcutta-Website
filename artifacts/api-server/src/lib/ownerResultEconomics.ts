@@ -29,8 +29,11 @@ export function calculateOwnerResultEconomics(args: {
     net: money(net),
     mtmGross: money(mtmGross),
     mtmNet: money(mtmGross - cost),
-    ptsToBreakeven: args.dollarsPerPoint != null && args.dollarsPerPoint > 0
-      ? Math.round(net / args.dollarsPerPoint)
+    ptsToBreakeven:
+      args.dollarsPerPoint != null &&
+      args.dollarsPerPoint > 0 &&
+      Math.abs(args.effectiveShare) > 0.00005
+      ? Math.round(net / (args.dollarsPerPoint * args.effectiveShare))
       : null,
   };
 }

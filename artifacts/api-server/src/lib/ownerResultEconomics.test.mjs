@@ -22,9 +22,23 @@ test("owner result economics allocate trade-aware gross and net values", () => {
     dollarsPerPoint: 10,
   });
   assert.deepEqual(seller, {
-    cost: 100, realizedGross: 300, net: 200, mtmGross: 300, mtmNet: 200, ptsToBreakeven: 20,
+    cost: 100, realizedGross: 300, net: 200, mtmGross: 300, mtmNet: 200, ptsToBreakeven: 40,
   });
   assert.deepEqual(buyer, {
-    cost: 400, realizedGross: 300, net: -100, mtmGross: 300, mtmNet: -100, ptsToBreakeven: -10,
+    cost: 400, realizedGross: 300, net: -100, mtmGross: 300, mtmNet: -100, ptsToBreakeven: -20,
   });
+});
+
+test("owner breakeven converts position dollars through the ownership share", () => {
+  const oneThirdOwner = calculateOwnerResultEconomics({
+    effectiveShare: 1 / 3,
+    originalCostBasis: 1_000,
+    tradePaid: 0,
+    tradeReceived: 0,
+    realizedTeamGross: 0,
+    mtmTeamGross: 0,
+    dollarsPerPoint: 10,
+  });
+
+  assert.equal(oneThirdOwner.ptsToBreakeven, -300);
 });

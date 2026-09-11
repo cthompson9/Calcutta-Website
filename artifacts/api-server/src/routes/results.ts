@@ -523,8 +523,10 @@ function buildOwnerTeamResult(
   const realizedMultiple = ownerCost > 0 ? realizedReturn / ownerCost : 0;
   const netPctReturn = ownerCost > 0 ? netReturn / ownerCost : 0;
   const ptsToBreakeven =
-    result.dollarsPerPoint != null && result.dollarsPerPoint > 0
-      ? Math.round(netReturn / result.dollarsPerPoint)
+    result.dollarsPerPoint != null &&
+    result.dollarsPerPoint > 0 &&
+    Math.abs(effectiveShare) > 0.00005
+      ? Math.round(netReturn / (result.dollarsPerPoint * effectiveShare))
       : null;
   const record = result.isProjectedRecord
     ? { wins: Number(result.wins), losses: Number(result.losses), ties: Number(result.ties) }
