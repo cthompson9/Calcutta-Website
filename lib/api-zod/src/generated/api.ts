@@ -1551,6 +1551,24 @@ export const GetMtmValuationResponse = zod.object({
   "sampleShare": zod.number().nullable(),
   "effectiveSampleSize": zod.number().nullable(),
   "standardError": zod.number().nullable()
+})),
+  "owners": zod.array(zod.object({
+  "bidderId": zod.number(),
+  "bidderName": zod.string(),
+  "holdings": zod.array(zod.object({
+  "teamId": zod.number().nullable(),
+  "teamName": zod.string().nullable(),
+  "signedShare": zod.number(),
+  "available": zod.boolean(),
+  "qualityStatus": zod.enum(['good', 'warning', 'insufficient']),
+  "baselineOwnedExpectedPayout": zod.number().nullable(),
+  "winOwnedExpectedPayout": zod.number().nullable(),
+  "lossOwnedExpectedPayout": zod.number().nullable(),
+  "benefitOfWin": zod.number().nullable(),
+  "costOfLoss": zod.number().nullable(),
+  "totalEvSwing": zod.number().nullable(),
+  "effectiveSampleSize": zod.number().nullable()
+}))
 }))
 })),
   "diagnostics": zod.object({

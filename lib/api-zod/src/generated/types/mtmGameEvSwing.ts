@@ -5,6 +5,7 @@
  * NFL Auction Manager API
  * OpenAPI spec version: 0.1.0
  */
+import type { MtmOwnerGameExposure } from './mtmOwnerGameExposure';
 import type { MtmTeamEvSwing } from './mtmTeamEvSwing';
 
 export interface MtmGameEvSwing {
@@ -16,4 +17,5 @@ export interface MtmGameEvSwing {
   /** @nullable */
   awayTeamId: number | null;
   teams: MtmTeamEvSwing[];
+  owners: MtmOwnerGameExposure[];
 }

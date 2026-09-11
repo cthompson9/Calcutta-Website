@@ -1889,6 +1889,45 @@ export interface MtmTeamEvSwing {
   standardError: number | null;
 }
 
+export type MtmOwnerTeamEvSwingQualityStatus = typeof MtmOwnerTeamEvSwingQualityStatus[keyof typeof MtmOwnerTeamEvSwingQualityStatus];
+
+
+export const MtmOwnerTeamEvSwingQualityStatus = {
+  good: 'good',
+  warning: 'warning',
+  insufficient: 'insufficient',
+} as const;
+
+export interface MtmOwnerTeamEvSwing {
+  /** @nullable */
+  teamId: number | null;
+  /** @nullable */
+  teamName: string | null;
+  signedShare: number;
+  available: boolean;
+  qualityStatus: MtmOwnerTeamEvSwingQualityStatus;
+  /** @nullable */
+  baselineOwnedExpectedPayout: number | null;
+  /** @nullable */
+  winOwnedExpectedPayout: number | null;
+  /** @nullable */
+  lossOwnedExpectedPayout: number | null;
+  /** @nullable */
+  benefitOfWin: number | null;
+  /** @nullable */
+  costOfLoss: number | null;
+  /** @nullable */
+  totalEvSwing: number | null;
+  /** @nullable */
+  effectiveSampleSize: number | null;
+}
+
+export interface MtmOwnerGameExposure {
+  bidderId: number;
+  bidderName: string;
+  holdings: MtmOwnerTeamEvSwing[];
+}
+
 export interface MtmGameEvSwing {
   eventId: number;
   /** @nullable */
@@ -1898,6 +1937,7 @@ export interface MtmGameEvSwing {
   /** @nullable */
   awayTeamId: number | null;
   teams: MtmTeamEvSwing[];
+  owners: MtmOwnerGameExposure[];
 }
 
 export interface MtmValuation {

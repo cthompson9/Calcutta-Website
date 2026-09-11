@@ -1,4 +1,5 @@
 import { render, screen, within } from "@testing-library/react";
+import userEvent from "@testing-library/user-event";
 import { describe, expect, it } from "vitest";
 import type { MtmGameEvSwing, MtmTeamEvSwing } from "@workspace/api-client-react";
 import { NetPayoutHistoryChart, UpcomingEvSwings } from "./MtmTracker";
@@ -32,6 +33,24 @@ function game(eventId: number, week: number, awayName: string, homeName: string,
       swing(eventId * 2, awayName, available),
       swing(eventId * 2 + 1, homeName),
     ],
+    owners: [{
+      bidderId: 1,
+      bidderName: "Alpha Consortium",
+      holdings: [{
+        teamId: eventId * 2,
+        teamName: awayName,
+        signedShare: -0.25,
+        available,
+        qualityStatus: available ? "good" : "insufficient",
+        baselineOwnedExpectedPayout: available ? -25 : null,
+        winOwnedExpectedPayout: available ? -32.5 : null,
+        lossOwnedExpectedPayout: available ? -18.75 : null,
+        benefitOfWin: available ? -7.5 : null,
+        costOfLoss: available ? -6.25 : null,
+        totalEvSwing: available ? -13.75 : null,
+        effectiveSampleSize: available ? 400 : 12,
+      }],
+    }],
   };
 }
 
@@ -107,5 +126,22 @@ describe("UpcomingEvSwings", () => {
     expect(within(billsRow).getByText("Unavailable")).toBeInTheDocument();
     expect(within(billsRow).getByText(/insufficient conditional quality · ESS 12/i)).toBeInTheDocument();
     expect(within(billsRow).queryByText("$0.00 swing")).not.toBeInTheDocument();
+  });
+
+  it("shows signed consortium exposure and carries through unavailable quality", async () => {
+    const user = userEvent.setup();
+    render(<UpcomingEvSwings games={[game(3, 3, "Bills", "Jets")]} />);
+    await user.click(screen.getByRole("button", { name: "Owned consortium exposure" }));
+    const owner = screen.getByTestId("ev-swing-owner");
+    expect(owner).toHaveTextContent("Alpha Consortium");
+    expect(owner).toHaveTextContent("Short 25%");
+    expect(owner).toHaveTextContent("−$14 owned swing");
+    expect(owner).toHaveTextContent("−$8");
+
+    render(<UpcomingEvSwings games={[game(4, 4, "Weak Team", "Other", false)]} />);
+    await user.click(screen.getAllByRole("button", { name: "Owned consortium exposure" })[1]);
+    const holdings = screen.getAllByTestId("ev-swing-owner-holding");
+    expect(holdings.at(-1)).toHaveTextContent("Unavailable");
+    expect(holdings.at(-1)).not.toHaveTextContent("$0.00");
   });
 });

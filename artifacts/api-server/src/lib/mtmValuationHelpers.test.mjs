@@ -7,6 +7,7 @@ import {
   calculateSignedOwnerValue,
   calculateMidpointDrift,
   deriveGameEvSwings,
+  deriveOwnerGameEvSwings,
 } from "./mtmValuationHelpers.ts";
 
 test("flattens nested conditional outcomes for every team", () => {
@@ -87,4 +88,39 @@ test("derives home and away EV swings and gates weak pairs", () => {
   assert.equal(weakGame.teams[0].totalEvSwing, null);
   assert.equal(weakGame.teams[0].effectiveSampleSize, 20);
   assert.equal(weakGame.teams[1].qualityStatus, "insufficient");
+});
+
+test("applies signed owner shares to game swings and preserves unavailable quality", () => {
+  const games = [{
+    eventId: 9,
+    week: 4,
+    homeTeamId: 1,
+    awayTeamId: 2,
+    teams: [
+      {
+        teamId: 1, teamName: "Home", available: true, qualityStatus: "good",
+        baselineGrossExpectedPayout: 100, winGrossExpectedPayout: 130,
+        lossGrossExpectedPayout: 70, benefitOfWin: 30, costOfLoss: 30,
+        totalEvSwing: 60, sampleCount: 300, sampleShare: 0.45,
+        effectiveSampleSize: 200, standardError: 2,
+      },
+      {
+        teamId: 2, teamName: "Away", available: false, qualityStatus: "insufficient",
+        baselineGrossExpectedPayout: null, winGrossExpectedPayout: null,
+        lossGrossExpectedPayout: null, benefitOfWin: null, costOfLoss: null,
+        totalEvSwing: null, sampleCount: 10, sampleShare: 0.1,
+        effectiveSampleSize: 8, standardError: 8,
+      },
+    ],
+  }];
+  const [game] = deriveOwnerGameEvSwings(games, [{
+    bidderId: 7,
+    bidderName: "Split & Short",
+    positions: new Map([[1, { effectiveShare: 0.25 }], [2, { effectiveShare: -0.5 }]]),
+  }]);
+  assert.equal(game.owners[0].holdings[0].benefitOfWin, 7.5);
+  assert.equal(game.owners[0].holdings[0].totalEvSwing, 15);
+  assert.equal(game.owners[0].holdings[1].signedShare, -0.5);
+  assert.equal(game.owners[0].holdings[1].available, false);
+  assert.equal(game.owners[0].holdings[1].totalEvSwing, null);
 });

@@ -3859,7 +3859,55 @@ components:
           type: array
           items:
             $ref: "#/components/schemas/MtmTeamEvSwing"
-      required: [eventId, week, homeTeamId, awayTeamId, teams]
+        owners:
+          type: array
+          items:
+            $ref: "#/components/schemas/MtmOwnerGameExposure"
+      required: [eventId, week, homeTeamId, awayTeamId, teams, owners]
+
+    MtmOwnerGameExposure:
+      type: object
+      properties:
+        bidderId: { type: number }
+        bidderName: { type: string }
+        holdings:
+          type: array
+          items:
+            $ref: "#/components/schemas/MtmOwnerTeamEvSwing"
+      required: [bidderId, bidderName, holdings]
+
+    MtmOwnerTeamEvSwing:
+      type: object
+      properties:
+        teamId: { type: ["number", "null"] }
+        teamName: { type: ["string", "null"] }
+        signedShare: { type: number }
+        available: { type: boolean }
+        qualityStatus:
+          type: string
+          enum: [good, warning, insufficient]
+        baselineOwnedExpectedPayout: { type: ["number", "null"] }
+        winOwnedExpectedPayout: { type: ["number", "null"] }
+        lossOwnedExpectedPayout: { type: ["number", "null"] }
+        benefitOfWin: { type: ["number", "null"] }
+        costOfLoss: { type: ["number", "null"] }
+        totalEvSwing: { type: ["number", "null"] }
+        effectiveSampleSize: { type: ["number", "null"] }
+      required:
+        [
+          teamId,
+          teamName,
+          signedShare,
+          available,
+          qualityStatus,
+          baselineOwnedExpectedPayout,
+          winOwnedExpectedPayout,
+          lossOwnedExpectedPayout,
+          benefitOfWin,
+          costOfLoss,
+          totalEvSwing,
+          effectiveSampleSize,
+        ]
 
     MtmTeamEvSwing:
       type: object

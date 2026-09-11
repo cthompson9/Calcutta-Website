@@ -14,6 +14,7 @@ import type {
   MtmValuationTeamsItem,
   MtmGameEvSwing,
   MtmTeamEvSwing,
+  MtmOwnerTeamEvSwing,
 } from "@workspace/api-client-react";
 import { useQuery } from "@tanstack/react-query";
 import { formatCurrency } from "@/lib/utils";
@@ -717,7 +718,44 @@ function SwingTeamRow({ swing }: { swing: MtmTeamEvSwing }) {
   );
 }
 
+function OwnerSwingRow({ swing }: { swing: MtmOwnerTeamEvSwing }) {
+  const share = `${swing.signedShare < 0 ? "Short " : ""}${Math.abs(swing.signedShare * 100).toFixed(1).replace(/\.0$/, "")}%`;
+  if (!swing.available) {
+    return (
+      <div className="border-t border-border/60 py-3 first:border-t-0" data-testid="ev-swing-owner-holding">
+        <div className="flex items-center justify-between gap-3">
+          <span className="font-semibold">{swing.teamName ?? "Unknown team"} <span className="font-mono text-[10px] text-muted-foreground">· {share}</span></span>
+          <span className="font-mono text-[10px] font-bold uppercase text-amber-700 dark:text-amber-300">Unavailable</span>
+        </div>
+        <p className="mt-1 text-[11px] text-muted-foreground">
+          {swing.qualityStatus.replaceAll("_", " ")} team conditional quality
+          {swing.effectiveSampleSize == null ? "" : ` · ESS ${Math.round(swing.effectiveSampleSize)}`}
+        </p>
+      </div>
+    );
+  }
+  return (
+    <div className="border-t border-border/60 py-3 first:border-t-0" data-testid="ev-swing-owner-holding">
+      <div className="mb-2 flex items-center justify-between gap-3">
+        <span className="font-semibold">{swing.teamName ?? "Unknown team"} <span className="font-mono text-[10px] text-muted-foreground">· {share}</span></span>
+        <span className="font-mono text-sm font-extrabold text-primary">{signedCurrency(swing.totalEvSwing ?? 0)} owned swing</span>
+      </div>
+      <div className="grid grid-cols-2 gap-2 text-[11px]">
+        <div className="border border-emerald-500/25 bg-emerald-500/10 px-2 py-1.5">
+          <p className="font-mono text-[9px] font-bold uppercase tracking-wider text-emerald-700 dark:text-emerald-300">Benefit of team win</p>
+          <p className="mt-0.5 font-mono font-bold text-emerald-700 dark:text-emerald-300">{signedCurrency(swing.benefitOfWin ?? 0)}</p>
+        </div>
+        <div className="border border-red-500/25 bg-red-500/10 px-2 py-1.5 text-right">
+          <p className="font-mono text-[9px] font-bold uppercase tracking-wider text-red-700 dark:text-red-300">Cost of team loss</p>
+          <p className="mt-0.5 font-mono font-bold text-red-700 dark:text-red-300">{signedCurrency(swing.costOfLoss ?? 0)}</p>
+        </div>
+      </div>
+    </div>
+  );
+}
+
 export function UpcomingEvSwings({ games }: { games: MtmGameEvSwing[] }) {
+  const [view, setView] = useState<"team" | "owner">("team");
   const weeks = [...new Set(
     games.map((game) => game.week).filter((week): week is number => week != null),
   )].sort((a, b) => a - b).slice(0, 3);
@@ -747,9 +785,13 @@ export function UpcomingEvSwings({ games }: { games: MtmGameEvSwing[] }) {
             Benefit of a win plus cost of a loss · next three available weeks
           </p>
         </div>
-        <p className="font-mono text-[10px] uppercase tracking-wider text-muted-foreground">
-          Weeks {weeks.join(", ")}
-        </p>
+        <div className="flex items-center gap-3">
+          <div className="flex border border-border bg-background p-0.5" aria-label="Exposure view">
+            <button type="button" onClick={() => setView("team")} aria-pressed={view === "team"} className={cn("px-2 py-1 font-mono text-[9px] font-bold uppercase tracking-wider", view === "team" ? "bg-primary text-primary-foreground" : "text-muted-foreground")}>Gross team exposure</button>
+            <button type="button" onClick={() => setView("owner")} aria-pressed={view === "owner"} className={cn("px-2 py-1 font-mono text-[9px] font-bold uppercase tracking-wider", view === "owner" ? "bg-primary text-primary-foreground" : "text-muted-foreground")}>Owned consortium exposure</button>
+          </div>
+          <p className="font-mono text-[10px] uppercase tracking-wider text-muted-foreground">Weeks {weeks.join(", ")}</p>
+        </div>
       </div>
       <div className="mt-4 space-y-5">
         {weeks.map((week) => (
@@ -766,8 +808,21 @@ export function UpcomingEvSwings({ games }: { games: MtmGameEvSwing[] }) {
                     <p className="border-b border-border py-2 font-mono text-[10px] font-bold uppercase tracking-wider text-muted-foreground">
                       {away?.teamName ?? "Away"} @ {home?.teamName ?? "Home"}
                     </p>
-                    {away && <SwingTeamRow swing={away} />}
-                    {home && <SwingTeamRow swing={home} />}
+                    {view === "team" ? (
+                      <>
+                        {away && <SwingTeamRow swing={away} />}
+                        {home && <SwingTeamRow swing={home} />}
+                      </>
+                    ) : game.owners.length ? (
+                      game.owners.map((owner) => (
+                        <div key={owner.bidderId} className="border-t border-border py-2 first:border-t-0" data-testid="ev-swing-owner">
+                          <p className="font-mono text-[10px] font-extrabold uppercase tracking-wider text-primary">{owner.bidderName}</p>
+                          {owner.holdings.map((holding) => <OwnerSwingRow key={holding.teamId ?? "unknown"} swing={holding} />)}
+                        </div>
+                      ))
+                    ) : (
+                      <p className="py-3 text-xs text-muted-foreground">No consortium owns a position in this game.</p>
+                    )}
                   </article>
                 );
               })}

@@ -27,6 +27,47 @@ type SwingConditionalEvent = {
   }>>;
 };
 
+type GameEvSwing = ReturnType<typeof deriveGameEvSwings>[number];
+
+export function deriveOwnerGameEvSwings(
+  games: GameEvSwing[],
+  owners: Array<{
+    bidderId: number;
+    bidderName: string;
+    positions: Map<number, { effectiveShare: number }>;
+  }>,
+) {
+  return games.map((game) => ({
+    ...game,
+    owners: owners.flatMap((owner) => {
+      const holdings = game.teams.flatMap((team) => {
+        const position = team.teamId == null ? undefined : owner.positions.get(team.teamId);
+        if (!position || position.effectiveShare === 0) return [];
+        const owned = (value: number | null) => value == null ? null : value * position.effectiveShare;
+        return [{
+          teamId: team.teamId,
+          teamName: team.teamName,
+          signedShare: position.effectiveShare,
+          available: team.available,
+          qualityStatus: team.qualityStatus,
+          baselineOwnedExpectedPayout: owned(team.baselineGrossExpectedPayout),
+          winOwnedExpectedPayout: owned(team.winGrossExpectedPayout),
+          lossOwnedExpectedPayout: owned(team.lossGrossExpectedPayout),
+          benefitOfWin: owned(team.benefitOfWin),
+          costOfLoss: owned(team.costOfLoss),
+          totalEvSwing: owned(team.totalEvSwing),
+          effectiveSampleSize: team.effectiveSampleSize,
+        }];
+      });
+      return holdings.length ? [{
+        bidderId: owner.bidderId,
+        bidderName: owner.bidderName,
+        holdings,
+      }] : [];
+    }),
+  }));
+}
+
 function minNullable(values: Array<number | null | undefined>) {
   const present = values.filter((value): value is number => value != null);
   return present.length ? Math.min(...present) : null;

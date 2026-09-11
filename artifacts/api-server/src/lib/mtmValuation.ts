@@ -20,6 +20,7 @@ import {
   chooseProvisionalOutcome,
   computeValuationInvariants,
   deriveGameEvSwings,
+  deriveOwnerGameEvSwings,
 } from "./mtmValuationHelpers";
 
 export type MtmMarkType = "authoritative" | "latest" | "canonical" | "provisional";
@@ -220,9 +221,16 @@ export async function getNormalizedMtmValuation(args: {
       }));
     }
   }
-  const gameEvSwings = deriveGameEvSwings(
-    Object.values(conditionalPayouts),
-    new Map(entries.map((entry) => [entry.teamId, entry.teamName])),
+  const gameEvSwings = deriveOwnerGameEvSwings(
+    deriveGameEvSwings(
+      Object.values(conditionalPayouts),
+      new Map(entries.map((entry) => [entry.teamId, entry.teamName])),
+    ),
+    [...ownership.byBidder.entries()].map(([bidderId, positions]) => ({
+      bidderId,
+      bidderName: ownership.bidderNames.get(bidderId) ?? "Unknown",
+      positions,
+    })),
   );
   const owners = buildOwners();
   const expectedPot = Number((snapshot.stateJson as Record<string, unknown> | null)?.pot ?? 0);
