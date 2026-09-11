@@ -237,10 +237,35 @@ export default function Dashboard() {
 
   return (
     <div className="space-y-5 px-4 pb-6 pt-4 md:space-y-8 md:p-8 max-w-7xl mx-auto">
-      <header className="flex flex-col gap-4 md:flex-row md:items-end justify-between">
-        <div>
-          <h1 className="text-3xl md:text-5xl font-extrabold uppercase tracking-tighter mb-2" data-testid="text-auction-title">Auction Results</h1>
-          {!isPreview && (
+      <header className={cn(
+        "flex flex-col gap-4",
+        isPreview ? "items-center text-center" : "md:flex-row md:items-end justify-between",
+      )}>
+        <div className={cn(isPreview && "flex flex-col items-center")}>
+          {isPreview && (
+            <img
+              src="/crest-transparent.png"
+              alt=""
+              aria-hidden="true"
+              className="mb-5 h-auto w-20 object-contain mix-blend-multiply md:w-28"
+            />
+          )}
+          <h1
+            className={cn(
+              "mb-2 text-3xl md:text-5xl",
+              isPreview
+                ? "font-serif font-medium tracking-[-0.035em]"
+                : "font-extrabold uppercase tracking-tighter",
+            )}
+            data-testid="text-auction-title"
+          >
+            {isPreview ? "Auction results" : "Auction Results"}
+          </h1>
+          {isPreview ? (
+            <p className="font-sans text-xs font-semibold uppercase tracking-[0.08em] text-muted-foreground md:text-sm">
+              {year} auction results
+            </p>
+          ) : (
             <p className="text-muted-foreground font-mono text-xs md:text-sm uppercase tracking-widest">
               {year} auction results
             </p>
@@ -248,7 +273,7 @@ export default function Dashboard() {
         </div>
 
         {/* Admin controls */}
-        <div className="flex items-center gap-3 flex-wrap">
+        <div className={cn("flex items-center gap-3 flex-wrap", isPreview && "justify-center")}>
           <AdminPanel adminKey={adminKey} onSetKey={saveAdminKey} onClearKey={clearAdminKey} />
           {adminKey && (
             <button

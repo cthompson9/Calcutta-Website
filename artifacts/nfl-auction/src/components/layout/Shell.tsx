@@ -87,8 +87,8 @@ export function Shell({ children, isPreview }: ShellProps) {
         <div className={cn("flex min-w-72 items-center border-b border-sidebar-border", isPreview ? "p-6" : "gap-3 p-5")}>
           {isPreview ? (
             <div className="flex items-center gap-4">
-              <div className="flex h-14 w-14 shrink-0 items-center justify-center bg-[#efede7] p-2">
-                <img src="/crest.png" alt="" aria-hidden="true" className="h-full w-full object-contain" />
+              <div className="flex h-14 w-14 shrink-0 items-center justify-center">
+                <img src="/crest-transparent.png" alt="" aria-hidden="true" className="h-full w-full object-contain mix-blend-multiply" />
               </div>
               <div className="flex flex-col">
                 <strong className="font-serif text-2xl font-medium tracking-tight text-foreground leading-none mb-1">
@@ -242,8 +242,8 @@ export function Shell({ children, isPreview }: ShellProps) {
         <div className="md:hidden sticky top-0 z-40 flex items-center gap-2 border-b border-border/60 bg-background/95 px-4 py-2.5 backdrop-blur">
           {isPreview ? (
             <div className="flex min-w-0 items-center gap-2">
-              <div className="flex h-8 w-8 shrink-0 items-center justify-center bg-[#efede7] p-1.5">
-                <img src="/crest.png" alt="" aria-hidden="true" className="h-full w-full object-contain" />
+              <div className="flex h-8 w-8 shrink-0 items-center justify-center">
+                <img src="/crest-transparent.png" alt="" aria-hidden="true" className="h-full w-full object-contain mix-blend-multiply" />
               </div>
               <div className="hidden min-[360px]:block min-w-0">
                 <p className="truncate text-sm font-serif font-medium tracking-tight leading-none">
@@ -292,9 +292,9 @@ export function Shell({ children, isPreview }: ShellProps) {
             </span>
           )}
         </div>
-        {isPreview && (
+        {isPreview && location !== "/dashboard" && (
           <div className="unified-preview-page-crest" aria-hidden="true">
-            <img src="/crest.png" alt="" />
+            <img src="/crest-transparent.png" alt="" />
           </div>
         )}
         {unsupportedSport ? (
