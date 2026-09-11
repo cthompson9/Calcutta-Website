@@ -1,0 +1,2081 @@
+```index.tsx
+import "./index.css";
+import React from "react";
+import ReactDOM from "react-dom/client";
+import { App } from "./App";
+
+const rootEl = document.getElementById("root");
+if (rootEl) {
+  ReactDOM.createRoot(rootEl).render(<App />);
+}
+
+```
+```App.tsx
+import React from 'react'
+import { BrowserRouter } from 'react-router-dom'
+import { Shell } from './components/Shell'
+import { BrandProvider } from './contexts/BrandContext'
+
+interface AppProps {
+  /** Single accent used across the whole system — brass (default) or evergreen. */
+  accent?: 'brass' | 'evergreen'
+  /** Row rhythm. Comfortable for weekly check-ins, compact for auction night. */
+  density?: 'comfortable' | 'compact'
+  /** Display serif. All three are low-contrast faces drawn for screens. */
+  displayFace?: 'source-serif' | 'literata' | 'newsreader'
+  /** Lion on its own, or set inside the club shield. */
+  logo?: 'mark' | 'shield'
+}
+
+export function App({
+  accent = 'evergreen',
+  density = 'compact',
+  displayFace = 'newsreader',
+  logo = 'shield',
+}: AppProps) {
+  return (
+    <BrowserRouter>
+      <BrandProvider logo={logo}>
+        <div
+          data-accent={accent}
+          data-density={density}
+          data-display={displayFace}
+          className="flex min-h-full w-full bg-paper font-sans text-ink antialiased"
+        >
+          <Shell />
+        </div>
+      </BrandProvider>
+    </BrowserRouter>
+  )
+}
+
+```
+```package.json
+{
+  "name": "magic-patterns-project",
+  "private": true,
+  "dependencies": {
+    "react": "18.3.1",
+    "react-dom": "18.3.1",
+    "react-router-dom": "6.30.2",
+    "lucide-react": "0.577.0",
+    "framer-motion": "11.18.2",
+    "@radix-ui/react-icons": "1.3.2",
+    "date-fns": "4.1.0",
+    "tailwind-merge": "2.6.1"
+  }
+}
+
+```
+```index.css
+/* @import url() FONT IMPORTS MUST ALWAYS BE AT THE VERY TOP OF THIS FILE, ABOVE THE TAILWIND IMPORTS — DO NOT DELETE THIS COMMENT */
+@import url('https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600&family=Literata:ital,opsz,wght@0,7..72,400..700;1,7..72,400..600&family=Newsreader:ital,opsz,wght@0,6..72,400..700;1,6..72,400..600&family=Source+Serif+4:ital,opsz,wght@0,8..60,400..700;1,8..60,400..600&display=swap');
+
+/* CRITICAL: THE FOLLOWING TAILWIND IMPORTS MUST NEVER BE DELETED OR REORDERED — DO NOT DELETE THIS COMMENT */
+@import 'tailwindcss/base';
+@import 'tailwindcss/components';
+@import 'tailwindcss/utilities';
+
+/* END TAILWIND IMPORTS — ALL OTHER CSS MUST GO BELOW THIS LINE */
+
+:root {
+  --accent: #9a8148;
+  --accent-soft: #f4efe3;
+  /* Source Serif 4: low stroke contrast, open apertures, drawn for screens. */
+  --font-display: 'Source Serif 4';
+}
+[data-display='literata'] {
+  --font-display: 'Literata';
+}
+[data-display='newsreader'] {
+  --font-display: 'Newsreader';
+}
+[data-accent='evergreen'] {
+  --accent: #1f4435;
+  --accent-soft: #e9efeb;
+}
+html,
+body,
+#root {
+  height: 100%;
+}
+body {
+  background-color: #fbfaf7;
+  font-optical-sizing: auto;
+}
+/* Tabular figures are the one place monospaced behaviour is earned. */
+.nums {
+  font-variant-numeric: tabular-nums;
+  font-feature-settings: 'tnum' 1;
+}
+/* Small caps label tier — the only all-caps text in the system. */
+.eyebrow {
+  font-size: 0.625rem;
+  line-height: 1;
+  letter-spacing: 0.18em;
+  text-transform: uppercase;
+  font-weight: 600;
+}
+.row-y {
+  padding-top: 0.9375rem;
+  padding-bottom: 0.9375rem;
+}
+[data-density='compact'] .row-y {
+  padding-top: 0.5rem;
+  padding-bottom: 0.5rem;
+}
+/* Only applied at display sizes, where tight tracking still reads cleanly. */
+.display-tight {
+  letter-spacing: -0.015em;
+}
+@media (prefers-reduced-motion: reduce) {
+  *,
+  *::before,
+  *::after {
+    animation-duration: 0.01ms !important;
+    transition-duration: 0.01ms !important;
+  }
+}
+
+```
+```tailwind.config.js
+export default {
+  content: ['./**/*.{ts,tsx,html}'],
+  theme: {
+    extend: {
+      colors: {
+        paper: '#fbfaf7',
+        surface: '#ffffff',
+        ink: '#14261f',
+        'ink-muted': '#5b6862',
+        'ink-faint': '#8d9691',
+        rule: '#e4e1d8',
+        'rule-strong': '#c9c4b6',
+        accent: 'var(--accent)',
+        'accent-soft': 'var(--accent-soft)',
+        gain: '#2f6b4f',
+        loss: '#9b3b2f',
+      },
+      fontFamily: {
+        display: ['var(--font-display)', 'Georgia', 'serif'],
+        sans: ['Inter', 'system-ui', 'sans-serif'],
+      },
+      maxWidth: {
+        page: '1180px',
+      },
+      transitionTimingFunction: {
+        club: 'cubic-bezier(0.23, 1, 0.32, 1)',
+      },
+    },
+  },
+  plugins: [],
+}
+
+```
+```types/pool.ts
+export interface Team {
+  id: string
+  abbr: string
+  city: string
+  name: string
+  consortiumId: string
+  price: number
+  points: number
+  wins: number
+  losses: number
+  weekDelta: number
+}
+
+export interface Consortium {
+  id: string
+  name: string
+  members: [string, string]
+  note: string
+}
+
+export interface ConsortiumStanding {
+  consortium: Consortium
+  teams: Team[]
+  spend: number
+  points: number
+  value: number
+  net: number
+  weekDelta: number
+  rank: number
+}
+
+export interface LiveGame {
+  id: string
+  kickoff: string
+  status: 'in-progress' | 'final' | 'upcoming'
+  clock: string
+  awayId: string
+  homeId: string
+  awayScore: number
+  homeScore: number
+}
+
+export interface Trade {
+  id: string
+  date: string
+  fromId: string
+  toId: string
+  teamIds: string[]
+  cash: number
+  status: 'settled' | 'pending' | 'vetoed'
+  note: string
+}
+
+```
+```data/pool.ts
+import type { Consortium, LiveGame, Team, Trade } from '../types/pool'
+
+export const seasonLabel = 'Calcutta XII · NFL 2026'
+export const throughLabel = 'Through Week 3'
+
+export const consortiums: Consortium[] = [
+  {
+    id: 'fairway',
+    name: 'Fairway & Sons',
+    members: ['R. Ellingham', 'T. Boyd'],
+    note: 'Bid drunk, sober up in first place.',
+  },
+  {
+    id: 'bengal',
+    name: 'Bengal Trust',
+    members: ['A. Sen', 'M. Duquesne'],
+    note: 'Overpaid on principle.',
+  },
+  {
+    id: 'nawab',
+    name: 'Nawab Holdings',
+    members: ['V. Rao', 'J. Whitlock'],
+    note: 'One great team and two acts of charity.',
+  },
+  {
+    id: 'ballot',
+    name: 'Second Ballot',
+    members: ['C. Marsh', 'D. Okoye'],
+    note: 'Waited out the room. Mostly worked.',
+  },
+  {
+    id: 'provisionals',
+    name: 'The Provisionals',
+    members: ['H. Reyes', 'S. Kearns'],
+    note: 'Paid a premium for January.',
+  },
+  {
+    id: 'lastcall',
+    name: 'Last Call Capital',
+    members: ['P. Amari', 'G. Fenn'],
+    note: 'Every bid placed after 11pm.',
+  },
+  {
+    id: 'handicappers',
+    name: 'The Handicappers',
+    members: ['B. Sloane', 'E. Ng'],
+    note: 'A spreadsheet, and yet.',
+  },
+  {
+    id: 'brahmin',
+    name: 'Brahmin Bros',
+    members: ['W. Cabot', 'F. Tuckerman'],
+    note: 'Currently funding everyone else.',
+  },
+]
+
+export const teams: Team[] = [
+  { id: 'kc', abbr: 'KC', city: 'Kansas City', name: 'Chiefs', consortiumId: 'nawab', price: 1450, points: 38, wins: 3, losses: 0, weekDelta: 14 },
+  { id: 'buf', abbr: 'BUF', city: 'Buffalo', name: 'Bills', consortiumId: 'provisionals', price: 1300, points: 30, wins: 2, losses: 1, weekDelta: 6 },
+  { id: 'sf', abbr: 'SF', city: 'San Francisco', name: '49ers', consortiumId: 'lastcall', price: 1275, points: 26, wins: 2, losses: 1, weekDelta: 12 },
+  { id: 'phi', abbr: 'PHI', city: 'Philadelphia', name: 'Eagles', consortiumId: 'fairway', price: 1150, points: 34, wins: 3, losses: 0, weekDelta: 10 },
+  { id: 'bal', abbr: 'BAL', city: 'Baltimore', name: 'Ravens', consortiumId: 'bengal', price: 1100, points: 22, wins: 2, losses: 1, weekDelta: 8 },
+  { id: 'det', abbr: 'DET', city: 'Detroit', name: 'Lions', consortiumId: 'ballot', price: 1050, points: 28, wins: 2, losses: 1, weekDelta: 12 },
+  { id: 'dal', abbr: 'DAL', city: 'Dallas', name: 'Cowboys', consortiumId: 'handicappers', price: 975, points: 12, wins: 1, losses: 2, weekDelta: -4 },
+  { id: 'cin', abbr: 'CIN', city: 'Cincinnati', name: 'Bengals', consortiumId: 'bengal', price: 900, points: 16, wins: 1, losses: 2, weekDelta: 2 },
+  { id: 'gb', abbr: 'GB', city: 'Green Bay', name: 'Packers', consortiumId: 'handicappers', price: 850, points: 24, wins: 2, losses: 1, weekDelta: 10 },
+  { id: 'hou', abbr: 'HOU', city: 'Houston', name: 'Texans', consortiumId: 'brahmin', price: 800, points: 20, wins: 2, losses: 1, weekDelta: 6 },
+  { id: 'mia', abbr: 'MIA', city: 'Miami', name: 'Dolphins', consortiumId: 'nawab', price: 725, points: 10, wins: 1, losses: 2, weekDelta: 0 },
+  { id: 'nyj', abbr: 'NYJ', city: 'New York', name: 'Jets', consortiumId: 'brahmin', price: 650, points: 6, wins: 0, losses: 3, weekDelta: -6 },
+  { id: 'lar', abbr: 'LAR', city: 'Los Angeles', name: 'Rams', consortiumId: 'fairway', price: 600, points: 18, wins: 2, losses: 1, weekDelta: 8 },
+  { id: 'min', abbr: 'MIN', city: 'Minnesota', name: 'Vikings', consortiumId: 'lastcall', price: 575, points: 14, wins: 1, losses: 2, weekDelta: 4 },
+  { id: 'lac', abbr: 'LAC', city: 'Los Angeles', name: 'Chargers', consortiumId: 'ballot', price: 525, points: 16, wins: 2, losses: 1, weekDelta: 6 },
+  { id: 'sea', abbr: 'SEA', city: 'Seattle', name: 'Seahawks', consortiumId: 'provisionals', price: 500, points: 12, wins: 1, losses: 2, weekDelta: 2 },
+  { id: 'tb', abbr: 'TB', city: 'Tampa Bay', name: 'Buccaneers', consortiumId: 'bengal', price: 475, points: 20, wins: 2, losses: 1, weekDelta: 8 },
+  { id: 'pit', abbr: 'PIT', city: 'Pittsburgh', name: 'Steelers', consortiumId: 'handicappers', price: 450, points: 14, wins: 2, losses: 1, weekDelta: 4 },
+  { id: 'atl', abbr: 'ATL', city: 'Atlanta', name: 'Falcons', consortiumId: 'lastcall', price: 400, points: 8, wins: 1, losses: 2, weekDelta: -2 },
+  { id: 'chi', abbr: 'CHI', city: 'Chicago', name: 'Bears', consortiumId: 'ballot', price: 350, points: 10, wins: 1, losses: 2, weekDelta: 4 },
+  { id: 'ind', abbr: 'IND', city: 'Indianapolis', name: 'Colts', consortiumId: 'nawab', price: 325, points: 8, wins: 1, losses: 2, weekDelta: 2 },
+  { id: 'no', abbr: 'NO', city: 'New Orleans', name: 'Saints', consortiumId: 'fairway', price: 275, points: 12, wins: 1, losses: 2, weekDelta: 6 },
+  { id: 'den', abbr: 'DEN', city: 'Denver', name: 'Broncos', consortiumId: 'provisionals', price: 250, points: 6, wins: 1, losses: 2, weekDelta: 0 },
+  { id: 'car', abbr: 'CAR', city: 'Carolina', name: 'Panthers', consortiumId: 'brahmin', price: 200, points: 2, wins: 0, losses: 3, weekDelta: -2 },
+]
+
+export const liveGames: LiveGame[] = [
+  { id: 'g1', kickoff: '1:00 PM', status: 'in-progress', clock: 'Q3 · 7:42', awayId: 'kc', homeId: 'dal', awayScore: 21, homeScore: 17 },
+  { id: 'g2', kickoff: '1:00 PM', status: 'in-progress', clock: 'Q2 · 2:11', awayId: 'phi', homeId: 'nyj', awayScore: 13, homeScore: 3 },
+  { id: 'g3', kickoff: '1:00 PM', status: 'final', clock: 'Final', awayId: 'gb', homeId: 'chi', awayScore: 27, homeScore: 24 },
+  { id: 'g4', kickoff: '4:05 PM', status: 'upcoming', clock: 'Kick 4:05', awayId: 'sf', homeId: 'sea', awayScore: 0, homeScore: 0 },
+  { id: 'g5', kickoff: '4:25 PM', status: 'upcoming', clock: 'Kick 4:25', awayId: 'bal', homeId: 'cin', awayScore: 0, homeScore: 0 },
+  { id: 'g6', kickoff: '8:20 PM', status: 'upcoming', clock: 'Kick 8:20', awayId: 'det', homeId: 'tb', awayScore: 0, homeScore: 0 },
+]
+
+export const trades: Trade[] = [
+  { id: 't1', date: 'Sep 8', fromId: 'brahmin', toId: 'ballot', teamIds: ['hou'], cash: 240, status: 'settled', note: 'Cash considerations, paid in full at the bar.' },
+  { id: 't2', date: 'Sep 6', fromId: 'lastcall', toId: 'handicappers', teamIds: ['atl'], cash: 0, status: 'settled', note: 'Straight swap of regrets.' },
+  { id: 't3', date: 'Sep 5', fromId: 'nawab', toId: 'provisionals', teamIds: ['ind'], cash: 120, status: 'pending', note: 'Awaiting a second signature.' },
+  { id: 't4', date: 'Sep 2', fromId: 'bengal', toId: 'brahmin', teamIds: ['cin', 'tb'], cash: 400, status: 'vetoed', note: 'Commissioner unamused.' },
+]
+
+```
+```utils/pool.ts
+import { consortiums, teams } from '../data/pool'
+import type { ConsortiumStanding, Team } from '../types/pool'
+
+export function formatCurrency(value: number, options?: { signed?: boolean; cents?: boolean }): string {
+  const { signed = false, cents = false } = options ?? {}
+  const abs = Math.abs(value)
+  const body = abs.toLocaleString('en-US', {
+    minimumFractionDigits: cents ? 2 : 0,
+    maximumFractionDigits: cents ? 2 : 0,
+  })
+  const sign = value < 0 ? '−' : signed ? '+' : ''
+  return `${sign}$${body}`
+}
+
+export function formatSigned(value: number): string {
+  if (value === 0) return '—'
+  return `${value > 0 ? '+' : '−'}${Math.abs(value)}`
+}
+
+export function ordinal(n: number): string {
+  const s = ['th', 'st', 'nd', 'rd']
+  const v = n % 100
+  return `${n}${s[(v - 20) % 10] ?? s[v] ?? s[0]}`
+}
+
+export const pot = teams.reduce((sum, team) => sum + team.price, 0)
+export const totalPoints = teams.reduce((sum, team) => sum + team.points, 0)
+export const dollarsPerPoint = pot / totalPoints
+
+export function teamById(id: string): Team {
+  const found = teams.find((team) => team.id === id)
+  if (!found) throw new Error(`Unknown team: ${id}`)
+  return found
+}
+
+export function consortiumName(id: string): string {
+  return consortiums.find((c) => c.id === id)?.name ?? id
+}
+
+export function buildStandings(): ConsortiumStanding[] {
+  const rows = consortiums.map((consortium) => {
+    const owned = teams
+      .filter((team) => team.consortiumId === consortium.id)
+      .sort((a, b) => b.points - a.points)
+    const spend = owned.reduce((sum, team) => sum + team.price, 0)
+    const points = owned.reduce((sum, team) => sum + team.points, 0)
+    const weekDelta = owned.reduce((sum, team) => sum + team.weekDelta, 0)
+    const value = points * dollarsPerPoint
+    return {
+      consortium,
+      teams: owned,
+      spend,
+      points,
+      value,
+      net: value - spend,
+      weekDelta,
+      rank: 0,
+    }
+  })
+
+  return rows
+    .sort((a, b) => b.points - a.points || b.net - a.net)
+    .map((row, index) => ({ ...row, rank: index + 1 }))
+}
+
+export function teamsByValue(): Team[] {
+  return [...teams].sort((a, b) => b.points * dollarsPerPoint - b.price - (a.points * dollarsPerPoint - a.price))
+}
+
+```
+```components/Crest.tsx
+import React from 'react'
+import { useLogoVariant, type LogoVariant } from '../contexts/BrandContext'
+
+interface CrestProps {
+  className?: string
+  /** Overrides the app-level logo variant. */
+  variant?: LogoVariant
+}
+
+/**
+ * Geometric lion mark: a 12-point mane ring cut from a single path so the
+ * background reads through, with a constructed face inside. Drawn on one
+ * radial grid (outer r30 / inner r21) rather than illustrated, so it stays
+ * crisp at 24px in the sidebar and at 96px on auction night.
+ */
+const MANE =
+  'M32 2 L37.4 11.7 L47 6 L46.9 17.2 L58 17 L52.3 26.6 L62 32 L52.3 37.4 ' +
+  'L58 47 L46.9 46.8 L47 58 L37.4 52.3 L32 62 L26.6 52.3 L17 58 L17.2 46.8 ' +
+  'L6 47 L11.7 37.4 L2 32 L11.7 26.6 L6 17 L17.2 17.2 L17 6 L26.6 11.7 Z ' +
+  'M32 15.5 A16.5 16.5 0 1 0 32 48.5 A16.5 16.5 0 1 0 32 15.5 Z'
+
+function LionFace() {
+  return (
+    <g fill="currentColor">
+      {/* Brow and eyes — angled wedges keep the expression level, not cute. */}
+      <path d="M21.6 26.2 L29 28.2 L27.4 31.4 L21 29.1 Z" />
+      <path d="M42.4 26.2 L35 28.2 L36.6 31.4 L43 29.1 Z" />
+      {/* Muzzle */}
+      <path d="M32 33.2 L36.4 36.6 L32 40.4 L27.6 36.6 Z" />
+      <path
+        d="M32 40.8 V43.4"
+        stroke="currentColor"
+        strokeWidth="1.6"
+        strokeLinecap="round"
+      />
+      <path
+        d="M32 43.4 C32 45.3 30.2 46.4 28.2 46.2 M32 43.4 C32 45.3 33.8 46.4 35.8 46.2"
+        fill="none"
+        stroke="currentColor"
+        strokeWidth="1.6"
+        strokeLinecap="round"
+      />
+    </g>
+  )
+}
+
+export function Crest({ className = 'h-9 w-9', variant }: CrestProps) {
+  const contextVariant = useLogoVariant()
+  const resolved = variant ?? contextVariant
+
+  if (resolved === 'shield') {
+    return (
+      <svg viewBox="0 0 64 72" fill="none" className={className} role="img" aria-label="The Calcutta crest">
+        <path
+          d="M32 2.5 61.5 11v27.5C61.5 54 48.7 65 32 69.5 15.3 65 2.5 54 2.5 38.5V11L32 2.5Z"
+          stroke="currentColor"
+          strokeWidth="2.2"
+        />
+        <path
+          d="M32 8 56 15v23c0 12.6-10.5 21.8-24 25.8C18.5 59.8 8 50.6 8 38V15L32 8Z"
+          stroke="currentColor"
+          strokeWidth="0.8"
+          opacity="0.45"
+        />
+        <g transform="translate(13 12) scale(0.594)">
+          <path d={MANE} fill="currentColor" fillRule="evenodd" clipRule="evenodd" />
+          <LionFace />
+        </g>
+      </svg>
+    )
+  }
+
+  return (
+    <svg viewBox="0 0 64 64" fill="none" className={className} role="img" aria-label="The Calcutta lion">
+      <path d={MANE} fill="currentColor" fillRule="evenodd" clipRule="evenodd" />
+      <LionFace />
+    </svg>
+  )
+}
+
+```
+```components/Masthead.tsx
+import React from 'react'
+import { Crest } from './Crest'
+
+interface MastheadProps {
+  size?: 'sm' | 'lg'
+}
+
+/**
+ * The wordmark, reset in the app's own display face so the identity and the
+ * interface finally speak the same language.
+ */
+export function Masthead({ size = 'sm' }: MastheadProps) {
+  const isLarge = size === 'lg'
+  return (
+    <div className="flex items-center gap-3">
+      <Crest className={isLarge ? 'h-12 w-12 text-ink' : 'h-8 w-8 text-ink'} />
+      <div className="min-w-0">
+        <div
+          className={`eyebrow text-accent ${isLarge ? 'text-[11px]' : ''}`}
+          aria-hidden="true"
+        >
+          Est. 2015
+        </div>
+        <div
+          className={`font-display display-tight font-semibold text-ink ${
+            isLarge ? 'text-3xl' : 'text-xl'
+          } leading-none mt-1`}
+        >
+          The Calcutta
+        </div>
+      </div>
+    </div>
+  )
+}
+
+```
+```components/Sidebar.tsx
+import React from 'react'
+import { NavLink } from 'react-router-dom'
+import { ChevronDownIcon } from 'lucide-react'
+import { Masthead } from './Masthead'
+import { seasonLabel } from '../data/pool'
+
+const primaryNav = [
+  { to: '/', label: 'Standings', end: true },
+  { to: '/live', label: 'Live tracker', end: false },
+  { to: '/trades', label: 'Trades', end: false },
+  { to: '/auction', label: 'Auction night', end: false },
+]
+
+const secondaryNav = [
+  { to: '/notes', label: 'Design notes' },
+  { to: '/handoff', label: 'Style guide' },
+]
+
+export function Sidebar() {
+  return (
+    <aside className="hidden md:flex w-64 shrink-0 flex-col border-r border-rule bg-paper">
+      <div className="px-6 pt-7 pb-6">
+        <Masthead />
+      </div>
+
+      <div className="px-6">
+        <button
+          type="button"
+          className="group flex w-full items-center justify-between border-y border-rule py-3 text-left transition-colors duration-150 ease-club hover:border-rule-strong"
+        >
+          <span className="text-[15px] font-medium text-ink">{seasonLabel}</span>
+          <ChevronDownIcon className="h-4 w-4 text-ink-faint transition-colors duration-150 ease-club group-hover:text-ink" />
+        </button>
+      </div>
+
+      <nav className="mt-6 px-3 flex-1" aria-label="Primary">
+        <ul className="space-y-0.5">
+          {primaryNav.map((item) => (
+            <li key={item.to}>
+              <NavLink
+                to={item.to}
+                end={item.end}
+                className={({ isActive }) =>
+                  [
+                    'relative block rounded-sm px-3 py-2 text-[15px] transition-colors duration-150 ease-club',
+                    isActive
+                      ? 'bg-accent-soft font-medium text-ink'
+                      : 'text-ink-muted hover:bg-accent-soft/60 hover:text-ink',
+                  ].join(' ')
+                }
+              >
+                {({ isActive }) => (
+                  <>
+                    <span
+                      aria-hidden="true"
+                      className={`absolute left-0 top-1.5 bottom-1.5 w-[2px] bg-accent transition-opacity duration-150 ease-club ${
+                        isActive ? 'opacity-100' : 'opacity-0'
+                      }`}
+                    />
+                    {item.label}
+                  </>
+                )}
+              </NavLink>
+            </li>
+          ))}
+        </ul>
+      </nav>
+
+      <div className="border-t border-rule px-6 py-5">
+        <ul className="space-y-2">
+          {secondaryNav.map((item) => (
+            <li key={item.to}>
+              <NavLink
+                to={item.to}
+                className={({ isActive }) =>
+                  `text-sm transition-colors duration-150 ease-club ${
+                    isActive ? 'text-ink' : 'text-ink-faint hover:text-ink'
+                  }`
+                }
+              >
+                {item.label}
+              </NavLink>
+            </li>
+          ))}
+          <li>
+            <a
+              href="#faq"
+              className="text-sm text-ink-faint transition-colors duration-150 ease-club hover:text-ink"
+            >
+              House rules
+            </a>
+          </li>
+        </ul>
+      </div>
+    </aside>
+  )
+}
+
+```
+```components/MobileNav.tsx
+import React from 'react'
+import { NavLink } from 'react-router-dom'
+import { Crest } from './Crest'
+
+const items = [
+  { to: '/', label: 'Standings', end: true },
+  { to: '/live', label: 'Live', end: false },
+  { to: '/trades', label: 'Trades', end: false },
+  { to: '/auction', label: 'Auction', end: false },
+  { to: '/notes', label: 'Notes', end: false },
+  { to: '/handoff', label: 'Style guide', end: false },
+]
+
+export function MobileNav() {
+  return (
+    <div className="md:hidden sticky top-0 z-20 border-b border-rule bg-paper/95 backdrop-blur">
+      <div className="flex items-center gap-2 px-4 pt-3">
+        <Crest className="h-6 w-6 text-ink" />
+        <span className="font-display display-tight text-lg font-semibold text-ink">The Calcutta</span>
+      </div>
+      <nav aria-label="Primary" className="flex gap-5 overflow-x-auto px-4 pt-2">
+        {items.map((item) => (
+          <NavLink
+            key={item.to}
+            to={item.to}
+            end={item.end}
+            className={({ isActive }) =>
+              [
+                'whitespace-nowrap border-b-2 pb-2 text-sm transition-colors duration-150 ease-club',
+                isActive ? 'border-accent text-ink' : 'border-transparent text-ink-faint hover:text-ink',
+              ].join(' ')
+            }
+          >
+            {item.label}
+          </NavLink>
+        ))}
+      </nav>
+    </div>
+  )
+}
+
+```
+```components/PageHeader.tsx
+import React from 'react'
+
+interface PageHeaderProps {
+  eyebrow: string
+  title: string
+  lede: string
+  aside?: React.ReactNode
+}
+
+/**
+ * One header pattern for every screen: brass eyebrow, display title, serif
+ * italic lede. This is where the voice lives, so nowhere else has to shout.
+ */
+export function PageHeader({ eyebrow, title, lede, aside }: PageHeaderProps) {
+  return (
+    <header className="flex flex-col gap-6 border-b border-rule pb-6 lg:flex-row lg:items-end lg:justify-between">
+      <div className="max-w-2xl">
+        <p className="eyebrow text-accent">{eyebrow}</p>
+        <h1 className="mt-3 font-display display-tight text-[2.5rem] font-semibold leading-[1.05] text-ink sm:text-5xl">
+          {title}
+        </h1>
+        <p className="mt-3 font-display text-[17px] italic leading-snug text-ink-muted">{lede}</p>
+      </div>
+      {aside ? <div className="lg:pb-1">{aside}</div> : null}
+    </header>
+  )
+}
+
+```
+```components/Shell.tsx
+import React from 'react'
+import { Route, Routes, useLocation } from 'react-router-dom'
+import { AnimatePresence, motion } from 'framer-motion'
+import { Sidebar } from './Sidebar'
+import { MobileNav } from './MobileNav'
+import { Standings } from '../pages/Standings'
+import { LiveTracker } from '../pages/LiveTracker'
+import { TradeDesk } from '../pages/TradeDesk'
+import { AuctionNight } from '../pages/AuctionNight'
+import { DesignNotes } from '../pages/DesignNotes'
+import { Handoff } from '../pages/Handoff'
+
+export function Shell() {
+  const location = useLocation()
+
+  return (
+    <>
+      <Sidebar />
+      <div className="flex min-w-0 flex-1 flex-col">
+        <MobileNav />
+        <main className="min-w-0 flex-1">
+          <AnimatePresence mode="wait" initial={false}>
+            <motion.div
+              key={location.pathname}
+              initial={{ opacity: 0, y: 6 }}
+              animate={{ opacity: 1, y: 0 }}
+              exit={{ opacity: 0 }}
+              transition={{ duration: 0.18, ease: [0.23, 1, 0.32, 1] }}
+              className="mx-auto w-full max-w-page px-5 py-8 sm:px-8 lg:px-12 lg:py-12"
+            >
+              <Routes location={location}>
+                <Route path="/" element={<Standings />} />
+                <Route path="/live" element={<LiveTracker />} />
+                <Route path="/trades" element={<TradeDesk />} />
+                <Route path="/auction" element={<AuctionNight />} />
+                <Route path="/notes" element={<DesignNotes />} />
+                <Route path="/handoff" element={<Handoff />} />
+              </Routes>
+            </motion.div>
+          </AnimatePresence>
+        </main>
+      </div>
+    </>
+  )
+}
+
+```
+```components/ViewBar.tsx
+import React from 'react'
+import { ChevronDownIcon } from 'lucide-react'
+
+interface ViewBarProps<T extends string> {
+  tabs: readonly { id: T; label: string }[]
+  active: T
+  onChange: (id: T) => void
+  filterLabel?: string
+  filterValue?: string
+  filterOptions?: readonly string[]
+  onFilterChange?: (value: string) => void
+}
+
+/**
+ * Tabs and the period filter share one hairline row — the old layout gave the
+ * filter a card of its own and pushed the data a full screen down.
+ */
+export function ViewBar<T extends string>({
+  tabs,
+  active,
+  onChange,
+  filterLabel,
+  filterValue,
+  filterOptions,
+  onFilterChange,
+}: ViewBarProps<T>) {
+  return (
+    <div className="flex flex-wrap items-end justify-between gap-x-8 gap-y-3 border-b border-rule">
+      <div role="tablist" aria-label="View" className="flex gap-6">
+        {tabs.map((tab) => {
+          const isActive = tab.id === active
+          return (
+            <button
+              key={tab.id}
+              role="tab"
+              type="button"
+              aria-selected={isActive}
+              onClick={() => onChange(tab.id)}
+              className={[
+                '-mb-px border-b-2 pb-3 text-[15px] transition-colors duration-150 ease-club',
+                isActive
+                  ? 'border-accent font-medium text-ink'
+                  : 'border-transparent text-ink-faint hover:text-ink',
+              ].join(' ')}
+            >
+              {tab.label}
+            </button>
+          )
+        })}
+      </div>
+
+      {filterOptions && filterLabel ? (
+        <label className="flex items-center gap-2 pb-2.5">
+          <span className="text-sm text-ink-faint">{filterLabel}</span>
+          <span className="relative">
+            <select
+              value={filterValue}
+              onChange={(event) => onFilterChange?.(event.target.value)}
+              className="appearance-none rounded-sm border border-rule bg-surface py-1 pl-2.5 pr-7 text-sm text-ink transition-colors duration-150 ease-club hover:border-rule-strong focus:border-accent focus:outline-none"
+            >
+              {filterOptions.map((option) => (
+                <option key={option} value={option}>
+                  {option}
+                </option>
+              ))}
+            </select>
+            <ChevronDownIcon
+              aria-hidden="true"
+              className="pointer-events-none absolute right-2 top-1/2 h-3.5 w-3.5 -translate-y-1/2 text-ink-faint"
+            />
+          </span>
+        </label>
+      ) : null}
+    </div>
+  )
+}
+
+```
+```components/LeaderPanel.tsx
+import React from 'react'
+import type { ConsortiumStanding } from '../types/pool'
+import { formatCurrency, formatSigned } from '../utils/pool'
+
+interface LeaderPanelProps {
+  standing: ConsortiumStanding
+}
+
+/**
+ * The leader is the one thing anyone opens this screen to see, so it gets
+ * scale and air instead of a card identical to the seven below it.
+ */
+export function LeaderPanel({ standing }: LeaderPanelProps) {
+  const { consortium, teams, points, spend, value, net, weekDelta } = standing
+
+  return (
+    <section aria-label="Current leader" className="border-b border-ink pb-8">
+      <div className="flex flex-col gap-8 lg:flex-row lg:items-end lg:justify-between">
+        <div>
+          <p className="eyebrow text-accent">First position</p>
+          <h2 className="mt-2 font-display display-tight text-4xl font-semibold text-ink sm:text-[2.75rem]">
+            {consortium.name}
+          </h2>
+          <p className="mt-2 text-sm text-ink-muted">
+            {consortium.members.join(' & ')} · {teams.map((team) => team.abbr).join(' · ')}
+          </p>
+          <p className="mt-3 font-display text-[15px] italic text-ink-faint">{consortium.note}</p>
+        </div>
+
+        <dl className="grid grid-cols-2 gap-x-10 gap-y-5 sm:grid-cols-4 lg:gap-x-12">
+          <div>
+            <dt className="eyebrow text-ink-faint">Points</dt>
+            <dd className="nums mt-1.5 font-display text-3xl font-semibold text-ink">{points}</dd>
+          </div>
+          <div>
+            <dt className="eyebrow text-ink-faint">Week</dt>
+            <dd className="nums mt-1.5 font-display text-3xl font-semibold text-gain">
+              {formatSigned(weekDelta)}
+            </dd>
+          </div>
+          <div>
+            <dt className="eyebrow text-ink-faint">Spent</dt>
+            <dd className="nums mt-1.5 font-display text-3xl font-semibold text-ink">
+              {formatCurrency(spend)}
+            </dd>
+          </div>
+          <div>
+            <dt className="eyebrow text-ink-faint">Position</dt>
+            <dd
+              className={`nums mt-1.5 font-display text-3xl font-semibold ${
+                net >= 0 ? 'text-gain' : 'text-loss'
+              }`}
+            >
+              {formatCurrency(net, { signed: true })}
+            </dd>
+          </div>
+        </dl>
+      </div>
+
+      <p className="mt-6 text-sm text-ink-faint">
+        Holdings valued at {formatCurrency(value)} against {formatCurrency(spend)} committed.
+      </p>
+    </section>
+  )
+}
+
+```
+```components/StandingsTable.tsx
+import React from 'react'
+import type { ConsortiumStanding } from '../types/pool'
+import { formatCurrency, formatSigned, ordinal } from '../utils/pool'
+
+interface StandingsTableProps {
+  rows: ConsortiumStanding[]
+}
+
+export function StandingsTable({ rows }: StandingsTableProps) {
+  return (
+    <table className="w-full text-left">
+      <caption className="sr-only">Consortium standings</caption>
+      <thead>
+        <tr className="border-b border-rule">
+          <th scope="col" className="eyebrow py-2.5 text-ink-faint">
+            Consortium
+          </th>
+          <th scope="col" className="eyebrow hidden py-2.5 text-right text-ink-faint sm:table-cell">
+            Holdings
+          </th>
+          <th scope="col" className="eyebrow py-2.5 text-right text-ink-faint">
+            Pts
+          </th>
+          <th scope="col" className="eyebrow py-2.5 text-right text-ink-faint">
+            Wk
+          </th>
+          <th scope="col" className="eyebrow hidden py-2.5 text-right text-ink-faint md:table-cell">
+            Spent
+          </th>
+          <th scope="col" className="eyebrow py-2.5 text-right text-ink-faint">
+            Position
+          </th>
+        </tr>
+      </thead>
+      <tbody>
+        {rows.map((row) => (
+          <tr
+            key={row.consortium.id}
+            className="border-b border-rule transition-colors duration-150 ease-club hover:bg-accent-soft/50"
+          >
+            <th scope="row" className="row-y pr-4 font-normal">
+              <div className="flex items-baseline gap-3">
+                <span className="nums w-8 shrink-0 text-sm text-ink-faint">{ordinal(row.rank)}</span>
+                <span>
+                  <span className="block text-[15px] font-medium text-ink">
+                    {row.consortium.name}
+                  </span>
+                  <span className="block text-[13px] text-ink-faint">
+                    {row.consortium.members.join(' & ')}
+                  </span>
+                </span>
+              </div>
+            </th>
+            <td className="row-y hidden text-right text-[13px] text-ink-muted sm:table-cell">
+              {row.teams.map((team) => team.abbr).join(' · ')}
+            </td>
+            <td className="nums row-y text-right text-[15px] font-semibold text-ink">{row.points}</td>
+            <td
+              className={`nums row-y text-right text-[15px] ${
+                row.weekDelta > 0 ? 'text-gain' : row.weekDelta < 0 ? 'text-loss' : 'text-ink-faint'
+              }`}
+            >
+              {formatSigned(row.weekDelta)}
+            </td>
+            <td className="nums row-y hidden text-right text-[15px] text-ink-muted md:table-cell">
+              {formatCurrency(row.spend)}
+            </td>
+            <td
+              className={`nums row-y text-right text-[15px] font-semibold ${
+                row.net >= 0 ? 'text-gain' : 'text-loss'
+              }`}
+            >
+              {formatCurrency(Math.round(row.net), { signed: true })}
+            </td>
+          </tr>
+        ))}
+      </tbody>
+    </table>
+  )
+}
+
+```
+```components/TeamLedger.tsx
+import React from 'react'
+import { teams } from '../data/pool'
+import { consortiumName, dollarsPerPoint, formatCurrency, formatSigned } from '../utils/pool'
+
+export function TeamLedger() {
+  const rows = [...teams].sort((a, b) => b.points - a.points)
+
+  return (
+    <table className="w-full text-left">
+      <caption className="sr-only">Lots by points scored</caption>
+      <thead>
+        <tr className="border-b border-rule">
+          <th scope="col" className="eyebrow py-2.5 text-ink-faint">Lot</th>
+          <th scope="col" className="eyebrow hidden py-2.5 text-ink-faint sm:table-cell">Held by</th>
+          <th scope="col" className="eyebrow py-2.5 text-right text-ink-faint">Rec</th>
+          <th scope="col" className="eyebrow py-2.5 text-right text-ink-faint">Pts</th>
+          <th scope="col" className="eyebrow py-2.5 text-right text-ink-faint">Wk</th>
+          <th scope="col" className="eyebrow hidden py-2.5 text-right text-ink-faint md:table-cell">Paid</th>
+          <th scope="col" className="eyebrow py-2.5 text-right text-ink-faint">Position</th>
+        </tr>
+      </thead>
+      <tbody>
+        {rows.map((team) => {
+          const net = team.points * dollarsPerPoint - team.price
+          return (
+            <tr
+              key={team.id}
+              className="border-b border-rule transition-colors duration-150 ease-club hover:bg-accent-soft/50"
+            >
+              <th scope="row" className="row-y pr-4 font-normal">
+                <span className="flex items-baseline gap-3">
+                  <span className="nums w-9 shrink-0 text-sm text-ink-faint">{team.abbr}</span>
+                  <span className="text-[15px] font-medium text-ink">
+                    {team.city} {team.name}
+                  </span>
+                </span>
+              </th>
+              <td className="row-y hidden text-[13px] text-ink-muted sm:table-cell">
+                {consortiumName(team.consortiumId)}
+              </td>
+              <td className="nums row-y text-right text-[15px] text-ink-muted">
+                {team.wins}–{team.losses}
+              </td>
+              <td className="nums row-y text-right text-[15px] font-semibold text-ink">{team.points}</td>
+              <td
+                className={`nums row-y text-right text-[15px] ${
+                  team.weekDelta > 0 ? 'text-gain' : team.weekDelta < 0 ? 'text-loss' : 'text-ink-faint'
+                }`}
+              >
+                {formatSigned(team.weekDelta)}
+              </td>
+              <td className="nums row-y hidden text-right text-[15px] text-ink-muted md:table-cell">
+                {formatCurrency(team.price)}
+              </td>
+              <td
+                className={`nums row-y text-right text-[15px] font-semibold ${
+                  net >= 0 ? 'text-gain' : 'text-loss'
+                }`}
+              >
+                {formatCurrency(Math.round(net), { signed: true })}
+              </td>
+            </tr>
+          )
+        })}
+      </tbody>
+    </table>
+  )
+}
+
+```
+```components/CompareView.tsx
+import React, { useState } from 'react'
+import type { ConsortiumStanding } from '../types/pool'
+import { formatCurrency, formatSigned } from '../utils/pool'
+
+interface CompareViewProps {
+  rows: ConsortiumStanding[]
+}
+
+function Picker({
+  label,
+  value,
+  rows,
+  onChange,
+}: {
+  label: string
+  value: string
+  rows: ConsortiumStanding[]
+  onChange: (id: string) => void
+}) {
+  return (
+    <label className="block">
+      <span className="eyebrow block text-ink-faint">{label}</span>
+      <select
+        value={value}
+        onChange={(event) => onChange(event.target.value)}
+        className="mt-2 w-full appearance-none border-b border-rule bg-transparent pb-2 font-display text-2xl font-semibold text-ink transition-colors duration-150 ease-club hover:border-rule-strong focus:border-accent focus:outline-none"
+      >
+        {rows.map((row) => (
+          <option key={row.consortium.id} value={row.consortium.id}>
+            {row.consortium.name}
+          </option>
+        ))}
+      </select>
+    </label>
+  )
+}
+
+export function CompareView({ rows }: CompareViewProps) {
+  const [leftId, setLeftId] = useState(rows[0]?.consortium.id ?? '')
+  const [rightId, setRightId] = useState(rows[1]?.consortium.id ?? '')
+
+  const left = rows.find((row) => row.consortium.id === leftId) ?? rows[0]
+  const right = rows.find((row) => row.consortium.id === rightId) ?? rows[1]
+
+  if (!left || !right) return null
+
+  const lines: { label: string; left: string; right: string; leftWins: boolean }[] = [
+    { label: 'Points', left: String(left.points), right: String(right.points), leftWins: left.points >= right.points },
+    { label: 'This week', left: formatSigned(left.weekDelta), right: formatSigned(right.weekDelta), leftWins: left.weekDelta >= right.weekDelta },
+    { label: 'Committed', left: formatCurrency(left.spend), right: formatCurrency(right.spend), leftWins: left.spend <= right.spend },
+    { label: 'Holdings value', left: formatCurrency(Math.round(left.value)), right: formatCurrency(Math.round(right.value)), leftWins: left.value >= right.value },
+    { label: 'Net position', left: formatCurrency(Math.round(left.net), { signed: true }), right: formatCurrency(Math.round(right.net), { signed: true }), leftWins: left.net >= right.net },
+  ]
+
+  return (
+    <div>
+      <div className="grid grid-cols-1 gap-8 sm:grid-cols-2">
+        <Picker label="Challenger" value={left.consortium.id} rows={rows} onChange={setLeftId} />
+        <Picker label="Opponent" value={right.consortium.id} rows={rows} onChange={setRightId} />
+      </div>
+
+      <dl className="mt-8">
+        {lines.map((line) => (
+          <div key={line.label} className="grid grid-cols-3 items-baseline border-b border-rule">
+            <dd
+              className={`nums row-y text-lg ${
+                line.leftWins ? 'font-semibold text-ink' : 'text-ink-faint'
+              }`}
+            >
+              {line.left}
+            </dd>
+            <dt className="row-y text-center text-[13px] text-ink-muted">{line.label}</dt>
+            <dd
+              className={`nums row-y text-right text-lg ${
+                line.leftWins ? 'text-ink-faint' : 'font-semibold text-ink'
+              }`}
+            >
+              {line.right}
+            </dd>
+          </div>
+        ))}
+      </dl>
+
+      <p className="mt-5 font-display text-[15px] italic text-ink-faint">
+        {left.points === right.points
+          ? 'Dead level. Settle it at the bar.'
+          : `${left.points > right.points ? left.consortium.name : right.consortium.name} by ${Math.abs(
+              left.points - right.points,
+            )} points — a lead, not a legacy.`}
+      </p>
+    </div>
+  )
+}
+
+```
+```pages/Standings.tsx
+import React, { useMemo, useState } from 'react'
+import { ArrowRightIcon } from 'lucide-react'
+import { PageHeader } from '../components/PageHeader'
+import { ViewBar } from '../components/ViewBar'
+import { LeaderPanel } from '../components/LeaderPanel'
+import { StandingsTable } from '../components/StandingsTable'
+import { TeamLedger } from '../components/TeamLedger'
+import { CompareView } from '../components/CompareView'
+import { seasonLabel, throughLabel } from '../data/pool'
+import { buildStandings, dollarsPerPoint, formatCurrency, pot } from '../utils/pool'
+
+type View = 'consortium' | 'team' | 'compare'
+
+const tabs = [
+  { id: 'consortium', label: 'By consortium' },
+  { id: 'team', label: 'By lot' },
+  { id: 'compare', label: 'Head to head' },
+] as const
+
+const periods = ['Latest available', 'Week 3', 'Week 2', 'Week 1'] as const
+
+export function Standings() {
+  const [view, setView] = useState<View>('consortium')
+  const [period, setPeriod] = useState<string>(periods[0])
+  const rows = useMemo(() => buildStandings(), [])
+  const [leader, ...rest] = rows
+
+  return (
+    <div className="space-y-10">
+      <PageHeader
+        eyebrow={seasonLabel}
+        title="Standings"
+        lede="Even Rory farts on the walk to the tee. Three weeks in, everyone is still walking."
+        aside={
+          <dl className="flex gap-10 border-l border-rule pl-6 lg:justify-end">
+            <div>
+              <dt className="eyebrow text-ink-faint">The pot</dt>
+              <dd className="nums mt-1.5 font-display text-2xl font-semibold text-ink">
+                {formatCurrency(pot)}
+              </dd>
+            </div>
+            <div>
+              <dt className="eyebrow text-ink-faint">Per point</dt>
+              <dd className="nums mt-1.5 font-display text-2xl font-semibold text-ink">
+                {formatCurrency(dollarsPerPoint, { cents: true })}
+              </dd>
+            </div>
+          </dl>
+        }
+      />
+
+      <a
+        href="#whats-new"
+        className="group flex items-baseline gap-3 text-sm text-ink-muted transition-colors duration-150 ease-club hover:text-ink"
+      >
+        <span className="eyebrow text-accent">New</span>
+        <span>Auction results now show dollars-per-point at a glance.</span>
+        <ArrowRightIcon className="h-3.5 w-3.5 shrink-0 translate-y-0.5 text-ink-faint transition-transform duration-150 ease-club group-hover:translate-x-0.5" />
+      </a>
+
+      {leader ? <LeaderPanel standing={leader} /> : null}
+
+      <div className="space-y-6">
+        <ViewBar
+          tabs={tabs}
+          active={view}
+          onChange={setView}
+          filterLabel="Through"
+          filterValue={period}
+          filterOptions={periods}
+          onFilterChange={setPeriod}
+        />
+
+        {view === 'consortium' ? <StandingsTable rows={rest} /> : null}
+        {view === 'team' ? <TeamLedger /> : null}
+        {view === 'compare' ? <CompareView rows={rows} /> : null}
+
+        {view === 'consortium' ? (
+          <p className="text-sm text-ink-faint">
+            Position is holdings value less the sum committed at auction. {throughLabel}.
+          </p>
+        ) : null}
+      </div>
+    </div>
+  )
+}
+
+```
+```pages/LiveTracker.tsx
+import React from 'react'
+import { PageHeader } from '../components/PageHeader'
+import { liveGames } from '../data/pool'
+import { buildStandings, consortiumName, formatSigned, teamById } from '../utils/pool'
+
+const statusCopy: Record<string, string> = {
+  'in-progress': 'Live',
+  final: 'Final',
+  upcoming: 'Upcoming',
+}
+
+export function LiveTracker() {
+  const movers = buildStandings()
+    .slice()
+    .sort((a, b) => b.weekDelta - a.weekDelta)
+    .slice(0, 4)
+
+  return (
+    <div className="space-y-10">
+      <PageHeader
+        eyebrow="Sunday, week 4"
+        title="Live tracker"
+        lede="Six lots on the board and one consortium already pacing the kitchen."
+      />
+
+      <div className="grid grid-cols-1 gap-10 lg:grid-cols-[minmax(0,1fr)_260px]">
+        <section aria-label="Games">
+          <h2 className="eyebrow border-b border-ink pb-2.5 text-ink">The board</h2>
+          <ul>
+            {liveGames.map((game) => {
+              const away = teamById(game.awayId)
+              const home = teamById(game.homeId)
+              const isLive = game.status === 'in-progress'
+              return (
+                <li
+                  key={game.id}
+                  className="row-y flex items-center justify-between gap-4 border-b border-rule"
+                >
+                  <div className="min-w-0">
+                    <p className="text-[15px] font-medium text-ink">
+                      {away.abbr} <span className="font-normal text-ink-faint">at</span> {home.abbr}
+                    </p>
+                    <p className="mt-0.5 truncate text-[13px] text-ink-faint">
+                      {consortiumName(away.consortiumId)} vs {consortiumName(home.consortiumId)}
+                    </p>
+                  </div>
+                  <div className="flex items-center gap-6">
+                    <span
+                      className={`nums text-lg font-semibold ${
+                        game.status === 'upcoming' ? 'text-ink-faint' : 'text-ink'
+                      }`}
+                    >
+                      {game.status === 'upcoming' ? '—' : `${game.awayScore}–${game.homeScore}`}
+                    </span>
+                    <span className="flex w-24 items-center justify-end gap-2 text-[13px] text-ink-muted">
+                      {isLive ? (
+                        <span
+                          aria-hidden="true"
+                          className="h-1.5 w-1.5 shrink-0 rounded-full bg-loss"
+                        />
+                      ) : null}
+                      <span className="nums">{game.clock}</span>
+                      <span className="sr-only">{statusCopy[game.status]}</span>
+                    </span>
+                  </div>
+                </li>
+              )
+            })}
+          </ul>
+        </section>
+
+        <aside aria-label="Movers">
+          <h2 className="eyebrow border-b border-ink pb-2.5 text-ink">Moving today</h2>
+          <ul>
+            {movers.map((row) => (
+              <li key={row.consortium.id} className="row-y flex items-baseline justify-between border-b border-rule">
+                <span className="pr-3 text-[15px] text-ink">{row.consortium.name}</span>
+                <span
+                  className={`nums text-[15px] font-semibold ${
+                    row.weekDelta > 0 ? 'text-gain' : row.weekDelta < 0 ? 'text-loss' : 'text-ink-faint'
+                  }`}
+                >
+                  {formatSigned(row.weekDelta)}
+                </span>
+              </li>
+            ))}
+          </ul>
+          <p className="mt-4 font-display text-[15px] italic text-ink-faint">
+            Nobody has won anything. Several have already lost composure.
+          </p>
+        </aside>
+      </div>
+    </div>
+  )
+}
+
+```
+```pages/TradeDesk.tsx
+import React from 'react'
+import { PageHeader } from '../components/PageHeader'
+import { trades } from '../data/pool'
+import { consortiumName, formatCurrency, teamById } from '../utils/pool'
+
+const statusStyles: Record<string, string> = {
+  settled: 'border-rule text-ink-muted',
+  pending: 'border-accent text-accent',
+  vetoed: 'border-loss text-loss',
+}
+
+export function TradeDesk() {
+  return (
+    <div className="space-y-10">
+      <PageHeader
+        eyebrow="Season ledger"
+        title="Trades"
+        lede="Every deal recorded, including the ones the commissioner regrets allowing."
+      />
+
+      <section aria-label="Recorded trades">
+        <ul>
+          {trades.map((trade) => (
+            <li key={trade.id} className="row-y border-b border-rule">
+              <div className="flex flex-wrap items-baseline justify-between gap-x-6 gap-y-2">
+                <div className="min-w-0">
+                  <p className="text-[17px] font-medium text-ink">
+                    {consortiumName(trade.fromId)}
+                    <span className="px-2 text-ink-faint">→</span>
+                    {consortiumName(trade.toId)}
+                  </p>
+                  <p className="mt-1 text-sm text-ink-muted">
+                    {trade.teamIds.map((id) => teamById(id).abbr).join(', ')}
+                    {trade.cash > 0 ? ` · ${formatCurrency(trade.cash)} cash` : ' · no cash'}
+                  </p>
+                  <p className="mt-1.5 font-display text-[15px] italic text-ink-faint">{trade.note}</p>
+                </div>
+                <div className="flex items-center gap-4">
+                  <span className="nums text-sm text-ink-faint">{trade.date}</span>
+                  <span
+                    className={`eyebrow rounded-sm border px-2 py-1 ${statusStyles[trade.status]}`}
+                  >
+                    {trade.status}
+                  </span>
+                </div>
+              </div>
+            </li>
+          ))}
+        </ul>
+      </section>
+
+      <p className="text-sm text-ink-faint">
+        Trades lock at the Week 10 kickoff. After that, you are married to your mistakes.
+      </p>
+    </div>
+  )
+}
+
+```
+```pages/AuctionNight.tsx
+import React from 'react'
+import { Crest } from '../components/Crest'
+import { teams } from '../data/pool'
+import { consortiumName, dollarsPerPoint, formatCurrency, pot, totalPoints } from '../utils/pool'
+
+/**
+ * Auction night is the other mode: a ledger, not a dashboard. Denser rows,
+ * ruled columns, figures aligned, and the crest given room because this is the
+ * one night of the year the room is looking at the screen together.
+ */
+export function AuctionNight() {
+  const lots = [...teams].sort((a, b) => b.price - a.price)
+  const bestValue = [...teams].sort(
+    (a, b) => b.points * dollarsPerPoint - b.price - (a.points * dollarsPerPoint - a.price),
+  )[0]
+
+  return (
+    <div className="space-y-10">
+      <header className="border-b-2 border-ink pb-8 text-center">
+        <Crest className="mx-auto h-16 w-16 text-ink" />
+        <p className="eyebrow mt-4 text-accent">Calcutta XII · Auction night</p>
+        <h1 className="mt-3 font-display display-tight text-5xl font-semibold text-ink sm:text-6xl">
+          The Book
+        </h1>
+        <p className="mx-auto mt-3 max-w-xl font-display text-[17px] italic text-ink-muted">
+          Twenty-four lots, eight consortiums, one gentleman who bid on Carolina.
+        </p>
+      </header>
+
+      <dl className="grid grid-cols-2 gap-x-8 gap-y-6 border-b border-rule pb-8 sm:grid-cols-4">
+        <div>
+          <dt className="eyebrow text-ink-faint">Pot</dt>
+          <dd className="nums mt-2 font-display text-3xl font-semibold text-ink">{formatCurrency(pot)}</dd>
+        </div>
+        <div>
+          <dt className="eyebrow text-ink-faint">Lots sold</dt>
+          <dd className="nums mt-2 font-display text-3xl font-semibold text-ink">{lots.length}</dd>
+        </div>
+        <div>
+          <dt className="eyebrow text-ink-faint">Per point</dt>
+          <dd className="nums mt-2 font-display text-3xl font-semibold text-ink">
+            {formatCurrency(dollarsPerPoint, { cents: true })}
+          </dd>
+        </div>
+        <div>
+          <dt className="eyebrow text-ink-faint">Buy of the night</dt>
+          <dd className="mt-2 font-display text-3xl font-semibold text-accent">{bestValue.abbr}</dd>
+        </div>
+      </dl>
+
+      <section aria-label="Lots by hammer price">
+        <table className="w-full text-left">
+          <caption className="sr-only">Auction lots ordered by hammer price</caption>
+          <thead>
+            <tr className="border-b border-ink">
+              <th scope="col" className="eyebrow py-2.5 text-ink">Lot</th>
+              <th scope="col" className="eyebrow py-2.5 text-ink">Bought by</th>
+              <th scope="col" className="eyebrow py-2.5 text-right text-ink">Hammer</th>
+              <th scope="col" className="eyebrow hidden py-2.5 text-right text-ink sm:table-cell">Pts</th>
+              <th scope="col" className="eyebrow py-2.5 text-right text-ink">$ / pt</th>
+            </tr>
+          </thead>
+          <tbody>
+            {lots.map((team, index) => {
+              const perPoint = team.points > 0 ? team.price / team.points : null
+              return (
+                <tr
+                  key={team.id}
+                  className="border-b border-rule transition-colors duration-150 ease-club hover:bg-accent-soft/50"
+                >
+                  <th scope="row" className="row-y pr-4 font-normal">
+                    <span className="flex items-baseline gap-3">
+                      <span className="nums w-6 shrink-0 text-[13px] text-ink-faint">{index + 1}</span>
+                      <span className="text-[15px] font-medium text-ink">
+                        {team.city} {team.name}
+                      </span>
+                    </span>
+                  </th>
+                  <td className="row-y pr-4 text-sm text-ink-muted">{consortiumName(team.consortiumId)}</td>
+                  <td className="nums row-y text-right text-[15px] font-semibold text-ink">
+                    {formatCurrency(team.price)}
+                  </td>
+                  <td className="nums row-y hidden text-right text-[15px] text-ink-muted sm:table-cell">
+                    {team.points}
+                  </td>
+                  <td
+                    className={`nums row-y text-right text-[15px] ${
+                      perPoint !== null && perPoint < dollarsPerPoint ? 'text-gain' : 'text-ink-muted'
+                    }`}
+                  >
+                    {perPoint === null ? '—' : formatCurrency(perPoint, { cents: true })}
+                  </td>
+                </tr>
+              )
+            })}
+          </tbody>
+        </table>
+      </section>
+
+      <p className="text-sm text-ink-faint">
+        Anything under {formatCurrency(dollarsPerPoint, { cents: true })} per point is currently
+        earning its keep.
+      </p>
+    </div>
+  )
+}
+
+```
+```pages/DesignNotes.tsx
+import React from 'react'
+import { PageHeader } from '../components/PageHeader'
+
+interface Note {
+  before: string
+  after: string
+}
+
+const typeNotes: Note[] = [
+  {
+    before: 'Four unrelated faces: blackletter masthead, condensed grotesk title, monospace labels, UI sans body.',
+    after: 'Two: Source Serif 4 for display, Inter for everything else. A low-contrast serif drawn for screens — no hairline strokes to fall apart at 15px. The wordmark is reset in it so the crest and the app finally match.',
+  },
+  {
+    before: 'Serif carrying titles, ledes, table names, and every figure — handsome in a specimen, tiring in a table.',
+    after: 'Serif is display-only: nothing below 20px is set in it. Table names, scores, and money are Inter with tabular figures, which is what holds up at row size.',
+  },
+  {
+    before: 'Monospace on labels and tabs, proportional figures on money.',
+    after: 'Monospace retired. Numerals use tabular figures everywhere, so columns align without a third family.',
+  },
+  {
+    before: 'Four competing case rules — sentence-case nav, caps tabs, caps labels, caps title.',
+    after: 'Sentence case everywhere, with one small-caps tier reserved for column heads and eyebrows.',
+  },
+  {
+    before: 'Monochrome UI plus one saturated blue button.',
+    after: 'Ink, paper, hairline rule, and a single brass accent that marks the active state and nothing else.',
+  },
+]
+
+const formatNotes: Note[] = [
+  {
+    before: 'Banner, filter card, and tab strip stacked above the data — the results were the fourth thing on screen.',
+    after: 'The leader is the first thing on screen. The filter shares one hairline row with the tabs; "what\'s new" is a single quiet line.',
+  },
+  {
+    before: 'Every group in an identical rounded bordered card.',
+    after: 'Hairline rules and whitespace group content. Cards are gone; the leader earns scale instead of a border.',
+  },
+  {
+    before: '290px sidebar holding four links and a void.',
+    after: 'Narrower sidebar, crest-forward, carrying the season selector and house rules.',
+  },
+  {
+    before: 'One layout doing double duty for weekly check-ins and auction night.',
+    after: 'Two modes. Standings is comfortable and glanceable; Auction Night is a centred ledger built for a room watching one screen.',
+  },
+]
+
+function NoteList({ title, notes }: { title: string; notes: Note[] }) {
+  return (
+    <section>
+      <h2 className="eyebrow border-b border-ink pb-2.5 text-ink">{title}</h2>
+      <dl>
+        {notes.map((note) => (
+          <div key={note.before} className="row-y grid grid-cols-1 gap-3 border-b border-rule sm:grid-cols-2 sm:gap-10">
+            <dt className="text-[15px] text-ink-faint line-through decoration-loss/40">{note.before}</dt>
+            <dd className="text-[15px] text-ink">{note.after}</dd>
+          </div>
+        ))}
+      </dl>
+    </section>
+  )
+}
+
+export function DesignNotes() {
+  return (
+    <div className="space-y-10">
+      <PageHeader
+        eyebrow="Review"
+        title="Design notes"
+        lede="What changed, and the rule behind each change — so the next screen writes itself."
+      />
+
+      <section>
+        <h2 className="eyebrow border-b border-ink pb-2.5 text-ink">The scale</h2>
+        <ul className="divide-y divide-rule">
+          <li className="row-y flex flex-wrap items-baseline justify-between gap-4">
+            <span className="font-display display-tight text-5xl font-semibold text-ink">Standings</span>
+            <span className="text-sm text-ink-faint">Display · Source Serif 4 Semibold · 48/50</span>
+          </li>
+          <li className="row-y flex flex-wrap items-baseline justify-between gap-4">
+            <span className="font-display text-[19px] italic text-ink-muted">A lead, not a legacy.</span>
+            <span className="text-sm text-ink-faint">Lede · Source Serif 4 Italic · 17/24</span>
+          </li>
+          <li className="row-y flex flex-wrap items-baseline justify-between gap-4">
+            <span className="nums font-display text-3xl font-semibold text-ink">$17,150</span>
+            <span className="text-sm text-ink-faint">Headline figure · Serif · 30 · tabular</span>
+          </li>
+          <li className="row-y flex flex-wrap items-baseline justify-between gap-4">
+            <span className="nums text-[15px] font-semibold text-ink">$1,284</span>
+            <span className="text-sm text-ink-faint">Table figure · Inter Semibold · 15 · tabular</span>
+          </li>
+          <li className="row-y flex flex-wrap items-baseline justify-between gap-4">
+            <span className="text-[15px] text-ink">Interface text, nav, table body</span>
+            <span className="text-sm text-ink-faint">Inter Regular/Medium · 15/22</span>
+          </li>
+          <li className="row-y flex flex-wrap items-baseline justify-between gap-4">
+            <span className="eyebrow text-accent">Column head</span>
+            <span className="text-sm text-ink-faint">Inter Semibold · 10 · 0.18em · caps</span>
+          </li>
+        </ul>
+      </section>
+
+      <NoteList title="Typefacing" notes={typeNotes} />
+      <NoteList title="Format" notes={formatNotes} />
+
+      <section>
+        <h2 className="eyebrow border-b border-ink pb-2.5 text-ink">House rules</h2>
+        <ol className="mt-4 space-y-3 text-[15px] text-ink-muted">
+          <li>1. Two families. A third needs a reason stronger than mood.</li>
+          <li>2. Serif above 20px only. Below that, Inter.</li>
+          <li>3. Caps only in the small-caps label tier. Nowhere else.</li>
+          <li>4. Every figure is tabular. Money and points align down the column.</li>
+          <li>5. Rules and space before borders and boxes.</li>
+          <li>6. One accent. Brass marks what is active; green and red mark gain and loss only.</li>
+          <li>7. The joke goes in the lede, never in the labels.</li>
+        </ol>
+      </section>
+    </div>
+  )
+}
+
+```
+```contexts/BrandContext.tsx
+import React, { createContext, useContext } from 'react'
+
+export type LogoVariant = 'mark' | 'shield'
+
+const BrandContext = createContext<LogoVariant>('mark')
+
+export function BrandProvider({
+  logo,
+  children,
+}: {
+  logo: LogoVariant
+  children: React.ReactNode
+}) {
+  return <BrandContext.Provider value={logo}>{children}</BrandContext.Provider>
+}
+
+export function useLogoVariant(): LogoVariant {
+  return useContext(BrandContext)
+}
+
+```
+```data/styleGuide.ts
+/**
+ * Single source of truth for the handoff document. Rendered on /handoff and
+ * exported as THE-CALCUTTA-STYLE-GUIDE.md.
+ */
+export const styleGuide = `# The Calcutta — Design System & Style Guide
+
+Written for an implementing agent. Follow it literally. Where this document and
+your defaults disagree, this document wins.
+
+---
+
+## 0. What we are building
+
+A private Calcutta auction pool for NFL seasons. Eight consortiums buy teams at
+a live auction, then track standings across the season.
+
+**Positioning:** private club, not sportsbook. Elevated, exclusive, annual —
+with dry humor and bravado. Think engraved club stationery and a ledger kept in
+good handwriting, not a trading terminal.
+
+**Two modes, deliberately different:**
+- *Season mode* (standings, live tracker, trades) — comfortable, glanceable,
+  checked weekly on a phone.
+- *Auction night* — a centred ledger, denser rows, crest given room. One night a
+  year a whole room looks at this screen together.
+
+---
+
+## 1. Non-negotiables
+
+DO:
+- Use exactly two typefaces: Source Serif 4 (display) and Inter (everything else).
+- Set serif ONLY at 20px and above. Below 20px, always Inter.
+- Give every numeral tabular figures (\`font-variant-numeric: tabular-nums\`).
+- Group content with hairline rules and whitespace.
+- Use ONE accent (brass). Green and red are reserved for gain and loss only.
+- Put the personality in the lede line under the page title. Nowhere else.
+- Sentence case everywhere, except the one small-caps label tier.
+
+DO NOT:
+- Add a third typeface, or any monospace. Tabular figures replace it.
+- Wrap sections in rounded bordered cards. No card grids.
+- Use gradients, glows, blurred blobs, or decorative shapes.
+- Use all-caps outside the small-caps label tier.
+- Introduce a second accent color, or any saturated blue.
+- Put jokes in buttons, labels, tabs, or column heads.
+- Use \`transition-all\`, or any transition longer than 300ms.
+
+---
+
+## 2. Typefaces
+
+Google Fonts, loaded at the very top of the stylesheet, above the Tailwind imports:
+
+\`\`\`css
+@import url('https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600&family=Source+Serif+4:ital,opsz,wght@0,8..60,400..700;1,8..60,400..600&display=swap');
+\`\`\`
+
+- **Source Serif 4** — display. Low stroke contrast, open apertures, drawn for
+  screens. Weights 400/600, plus italic for ledes.
+- **Inter** — interface. Weights 400/500/600.
+
+Set \`font-optical-sizing: auto\` on \`body\`.
+
+Optional alternates if the client ever wants a warmer or more editorial display
+face: **Literata** (sturdier, annual-report) or **Newsreader** (more newspaper
+lineage). Swap one variable; never run two display faces at once.
+
+---
+
+## 3. Type scale
+
+| Role | Family | Size / line | Weight | Notes |
+|---|---|---|---|---|
+| Page title | Source Serif 4 | 40–48 / 1.05 | 600 | \`letter-spacing: -0.015em\` |
+| Auction night title | Source Serif 4 | 56–60 / 1.0 | 600 | centred, only on /auction |
+| Section / leader name | Source Serif 4 | 30–44 | 600 | |
+| Headline figure | Source Serif 4 | 30 | 600 | tabular |
+| Lede | Source Serif 4 italic | 17 / 1.35 | 400 | the voice lives here |
+| Body & table text | Inter | 15 / 1.45 | 400 | |
+| Emphasised row text | Inter | 15 | 500 | names, labels |
+| Table figures | Inter | 15 | 600 | tabular |
+| Secondary text | Inter | 13 | 400 | \`ink-faint\` |
+| Label tier ("eyebrow") | Inter | 10 | 600 | uppercase, \`letter-spacing: 0.18em\` |
+
+The label tier is the ONLY uppercase text in the product. It is used for column
+heads, eyebrows above page titles, and stat labels. Never for nav, tabs, or buttons.
+
+---
+
+## 4. Color
+
+| Token | Value | Use |
+|---|---|---|
+| \`paper\` | #FBFAF7 | app background |
+| \`surface\` | #FFFFFF | inputs, raised fields |
+| \`ink\` | #14261F | primary text, heavy rules |
+| \`ink-muted\` | #5B6862 | secondary text |
+| \`ink-faint\` | #8D9691 | tertiary text, inactive nav |
+| \`rule\` | #E4E1D8 | hairline dividers, borders |
+| \`rule-strong\` | #C9C4B6 | hover state on borders |
+| \`accent\` (brass) | #9A8148 | active state, eyebrows, one highlight per screen |
+| \`accent-soft\` | #F4EFE3 | active nav background, row hover |
+| \`gain\` | #2F6B4F | positive figures only |
+| \`loss\` | #9B3B2F | negative figures, live indicator |
+
+Optional alternate accent (evergreen): \`#1F4435\` with soft \`#E9EFEB\`.
+
+Rules: brass marks what is active and nothing else. Gain/loss never appear on
+text that is not a figure. There is no blue in this product.
+
+---
+
+## 5. Tokens — drop-in code
+
+\`index.css\` (order matters: font import, then Tailwind imports, then everything else):
+
+\`\`\`css
+@import url('https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600&family=Source+Serif+4:ital,opsz,wght@0,8..60,400..700;1,8..60,400..600&display=swap');
+
+@import 'tailwindcss/base';
+@import 'tailwindcss/components';
+@import 'tailwindcss/utilities';
+
+:root {
+  --accent: #9a8148;
+  --accent-soft: #f4efe3;
+  --font-display: 'Source Serif 4';
+}
+
+body {
+  background-color: #fbfaf7;
+  font-optical-sizing: auto;
+}
+
+/* Tabular figures replace the need for a monospace family. */
+.nums {
+  font-variant-numeric: tabular-nums;
+  font-feature-settings: 'tnum' 1;
+}
+
+/* The only all-caps tier in the system. */
+.eyebrow {
+  font-size: 0.625rem;
+  line-height: 1;
+  letter-spacing: 0.18em;
+  text-transform: uppercase;
+  font-weight: 600;
+}
+
+/* Row rhythm. Compact is auction night. */
+.row-y { padding-top: 0.9375rem; padding-bottom: 0.9375rem; }
+[data-density='compact'] .row-y { padding-top: 0.5rem; padding-bottom: 0.5rem; }
+
+.display-tight { letter-spacing: -0.015em; }
+
+@media (prefers-reduced-motion: reduce) {
+  *, *::before, *::after {
+    animation-duration: 0.01ms !important;
+    transition-duration: 0.01ms !important;
+  }
+}
+\`\`\`
+
+\`tailwind.config.js\`:
+
+\`\`\`js
+export default {
+  content: ['./**/*.{ts,tsx,html}'],
+  theme: {
+    extend: {
+      colors: {
+        paper: '#fbfaf7',
+        surface: '#ffffff',
+        ink: '#14261f',
+        'ink-muted': '#5b6862',
+        'ink-faint': '#8d9691',
+        rule: '#e4e1d8',
+        'rule-strong': '#c9c4b6',
+        accent: 'var(--accent)',
+        'accent-soft': 'var(--accent-soft)',
+        gain: '#2f6b4f',
+        loss: '#9b3b2f',
+      },
+      fontFamily: {
+        display: ['var(--font-display)', 'Georgia', 'serif'],
+        sans: ['Inter', 'system-ui', 'sans-serif'],
+      },
+      maxWidth: { page: '1180px' },
+      transitionTimingFunction: { club: 'cubic-bezier(0.23, 1, 0.32, 1)' },
+    },
+  },
+  plugins: [],
+}
+\`\`\`
+
+---
+
+## 6. Layout
+
+- Content column: \`max-width: 1180px\`, centred. Padding 20px mobile / 32px sm / 48px lg.
+- Sidebar: 256px, \`border-right: 1px solid rule\`, paper background. Hidden below
+  \`md\`; replaced by a sticky top bar with horizontally scrolling nav.
+- Vertical rhythm between major sections: 40px.
+- Hairline \`rule\` divides rows. Solid \`ink\` divides a section from its heading,
+  and closes the leader panel.
+- No cards. If something needs separating, use space first, then a rule.
+
+---
+
+## 7. Components
+
+**Page header** — every screen uses this, no exceptions.
+1. Eyebrow: label tier, brass. (e.g. "Calcutta XII · NFL 2026")
+2. Title: serif 40–48, semibold, tight tracking.
+3. Lede: serif italic 17, \`ink-muted\`. One sentence. This is where the humor goes.
+4. Optional right-aligned stat pair, separated by a left hairline rule.
+5. Whole header closes with a \`rule\` bottom border, 24px below.
+
+**View bar** — tabs and any filter share ONE hairline row. Never give a filter
+its own container. Active tab: 2px brass bottom border, ink text, medium weight.
+Inactive: \`ink-faint\`, transparent border. Sentence case.
+
+**Tables** — the primary display format.
+- Head row: label tier, \`ink-faint\` (or \`ink\` on auction night), \`rule\` bottom border.
+- Body rows: \`rule\` bottom border, \`.row-y\` padding, hover \`accent-soft/50\`.
+- First cell is a \`<th scope="row">\`, name in Inter 15 medium, secondary line in 13 \`ink-faint\`.
+- All figures right-aligned, Inter 15 semibold, \`.nums\`.
+- Drop non-essential columns at \`sm\` and \`md\` rather than shrinking type.
+
+**Leader / hero panel** — one per screen at most. The single most important
+record gets serif at 30–44px, a stat row in serif 30, and a solid \`ink\` bottom
+border. Everything else on the screen is a table row. Never repeat this treatment.
+
+**Nav item** — sentence case, 15px. Active: \`accent-soft\` background, ink text,
+2px brass bar flush left. Inactive: \`ink-faint\`, hover \`accent-soft/60\`.
+
+**Select / input** — \`surface\` background, 1px \`rule\` border, 2px radius, 14px
+text. Hover \`rule-strong\`, focus \`accent\`. Chevron in \`ink-faint\`, 14px.
+
+**Status pill** — label tier inside a 1px border, 2px radius, 8px/4px padding.
+Settled: \`rule\` border, \`ink-muted\`. Pending: brass. Vetoed: \`loss\`. Never filled.
+
+**Radius** — 2px on controls and pills. Everything else is square. No pill shapes
+except the live dot.
+
+---
+
+## 8. Logo
+
+Geometric lion: a 12-point mane ring on one radial grid (outer r30, inner r21,
+15° steps), cut with \`fill-rule="evenodd"\` so the background reads through, with
+a constructed face inside. One color, inherits \`currentColor\`, no light/dark
+variants needed. Two lockups: the mark alone (default, better small) and the mark
+set inside the club shield (formal — auction night, sign-in, print).
+
+\`\`\`tsx
+export function Lion({ className = 'h-8 w-8' }: { className?: string }) {
+  return (
+    <svg viewBox="0 0 64 64" fill="none" className={className} role="img" aria-label="The Calcutta lion">
+      <path
+        fillRule="evenodd"
+        fill="currentColor"
+        d="M32 2 L37.4 11.7 L47 6 L46.9 17.2 L58 17 L52.3 26.6 L62 32 L52.3 37.4
+           L58 47 L46.9 46.8 L47 58 L37.4 52.3 L32 62 L26.6 52.3 L17 58 L17.2 46.8
+           L6 47 L11.7 37.4 L2 32 L11.7 26.6 L6 17 L17.2 17.2 L17 6 L26.6 11.7 Z
+           M32 15.5 A16.5 16.5 0 1 0 32 48.5 A16.5 16.5 0 1 0 32 15.5 Z"
+      />
+      <g fill="currentColor">
+        <path d="M21.6 26.2 L29 28.2 L27.4 31.4 L21 29.1 Z" />
+        <path d="M42.4 26.2 L35 28.2 L36.6 31.4 L43 29.1 Z" />
+        <path d="M32 33.2 L36.4 36.6 L32 40.4 L27.6 36.6 Z" />
+        <path d="M32 40.8 V43.4" stroke="currentColor" strokeWidth="1.6" strokeLinecap="round" />
+        <path d="M32 43.4 C32 45.3 30.2 46.4 28.2 46.2 M32 43.4 C32 45.3 33.8 46.4 35.8 46.2"
+              fill="none" stroke="currentColor" strokeWidth="1.6" strokeLinecap="round" />
+      </g>
+    </svg>
+  )
+}
+\`\`\`
+
+Wordmark: "The Calcutta" in Source Serif 4 semibold, tight tracking, with a brass
+label-tier line above it ("Est. 2015"). Never set the wordmark in Inter. Minimum
+mark size 24px. Clear space equal to half the mark's width on all sides.
+
+---
+
+## 9. Motion
+
+- Library: framer-motion. Always honor \`prefers-reduced-motion\`.
+- Easing: \`cubic-bezier(0.23, 1, 0.32, 1)\`. Never \`ease-in\` on UI.
+- Durations: press 100–160ms, tooltips 125–200ms, dropdowns 150–250ms, modals and
+  route changes 180–300ms. 300ms is a hard ceiling per element.
+- Route change: opacity 0→1 with a 6px upward translate, 180ms.
+- Never animate every section of a page in on load. Never \`transition-all\` —
+  name the properties (\`transition-colors\`, \`transition-transform\`).
+- Hover states belong only on interactive things. Never on static containers.
+
+---
+
+## 10. Voice
+
+Refined and confident, with dry wit — "even Rory farts on the walk to the tee."
+Bravado is welcome; cuteness is not.
+
+- Jokes live in the page lede and in per-record notes. Nowhere else.
+- Buttons, labels, tabs, column heads, and errors are plain and literal.
+- Club vocabulary: consortium, lot, hammer, position, holdings, the pot, house rules.
+- Numbers are never decorated: \`$17,150\`, \`$42.24\`, \`+14\`, \`—\` for zero or empty.
+- Use \`·\` as the separator in meta lines, \`–\` in score and record pairs.
+
+---
+
+## 11. Accessibility
+
+- Semantic landmarks: \`main\`, \`nav\` (with \`aria-label\`), \`aside\`, real \`table\`
+  markup with \`<caption class="sr-only">\` and \`scope\` on every header cell.
+- One \`h1\` per screen (the page title); section headings are \`h2\`.
+- Never encode meaning in color alone — gain/loss always carry a + or − sign.
+- Visible focus on every interactive element; focus border uses \`accent\`.
+- Body text contrast: \`ink\` and \`ink-muted\` on \`paper\` only. \`ink-faint\` is for
+  13px secondary text and never for anything essential.
+
+---
+
+## 12. Ship checklist
+
+- [ ] No serif below 20px anywhere.
+- [ ] Every figure uses \`.nums\` and is right-aligned in tables.
+- [ ] Exactly one hero/leader treatment per screen.
+- [ ] No bordered card grids; grouping is rules and space.
+- [ ] Only the label tier is uppercase.
+- [ ] Brass appears on active states and eyebrows only; no blue anywhere.
+- [ ] No labels, buttons, or nav items wrap to two lines at target width.
+- [ ] Sibling rows share baselines; footers pinned with \`mt-auto\`.
+- [ ] Every transition names its properties and is ≤300ms.
+- [ ] Desktop uses its width — not a stacked mobile layout that happens to fit.
+`
+
+```
+```pages/Handoff.tsx
+import React, { useState } from 'react'
+import { CheckIcon, CopyIcon, DownloadIcon } from 'lucide-react'
+import { PageHeader } from '../components/PageHeader'
+import { styleGuide } from '../data/styleGuide'
+
+const FILE_NAME = 'THE-CALCUTTA-STYLE-GUIDE.md'
+
+export function Handoff() {
+  const [copied, setCopied] = useState(false)
+
+  const handleCopy = async () => {
+    try {
+      await navigator.clipboard.writeText(styleGuide)
+      setCopied(true)
+      window.setTimeout(() => setCopied(false), 2000)
+    } catch {
+      setCopied(false)
+    }
+  }
+
+  const handleDownload = () => {
+    const blob = new Blob([styleGuide], { type: 'text/markdown;charset=utf-8' })
+    const url = URL.createObjectURL(blob)
+    const link = document.createElement('a')
+    link.href = url
+    link.download = FILE_NAME
+    document.body.appendChild(link)
+    link.click()
+    document.body.removeChild(link)
+    URL.revokeObjectURL(url)
+  }
+
+  const lineCount = styleGuide.split('\n').length
+
+  return (
+    <div className="space-y-10">
+      <PageHeader
+        eyebrow="Handoff"
+        title="Style guide"
+        lede="Everything an implementing agent needs, and nothing it can misread as a suggestion."
+        aside={
+          <div className="flex gap-2">
+            <button
+              type="button"
+              onClick={handleCopy}
+              className="flex items-center gap-2 rounded-sm border border-ink bg-ink px-3.5 py-2 text-sm font-medium text-paper transition-colors duration-150 ease-club hover:bg-ink/90"
+            >
+              {copied ? <CheckIcon className="h-4 w-4" /> : <CopyIcon className="h-4 w-4" />}
+              {copied ? 'Copied' : 'Copy markdown'}
+            </button>
+            <button
+              type="button"
+              onClick={handleDownload}
+              className="flex items-center gap-2 rounded-sm border border-rule bg-surface px-3.5 py-2 text-sm text-ink transition-colors duration-150 ease-club hover:border-rule-strong"
+            >
+              <DownloadIcon className="h-4 w-4" />
+              Download .md
+            </button>
+          </div>
+        }
+      />
+
+      <section aria-label="How to use this">
+        <h2 className="eyebrow border-b border-ink pb-2.5 text-ink">How to hand it over</h2>
+        <ol className="mt-4 space-y-2.5 text-[15px] text-ink-muted">
+          <li>
+            1. Copy the markdown, or download it as <span className="text-ink">{FILE_NAME}</span>.
+          </li>
+          <li>
+            2. In Replit, save it to the repo root and tell the agent: “Read
+            {' '}{FILE_NAME} and follow it exactly for all UI work. Where it conflicts with your
+            defaults, it wins.”
+          </li>
+          <li>
+            3. Sections 5 and 8 are drop-in code — the agent should paste the tokens and the logo
+            verbatim rather than reinterpreting them.
+          </li>
+          <li>
+            4. Section 12 is the review checklist. Ask the agent to run it before every handback.
+          </li>
+        </ol>
+      </section>
+
+      <section aria-label="Style guide source">
+        <div className="flex items-baseline justify-between border-b border-ink pb-2.5">
+          <h2 className="eyebrow text-ink">The document</h2>
+          <span className="nums text-[13px] text-ink-faint">{lineCount} lines · markdown</span>
+        </div>
+        <pre className="mt-5 max-h-[620px] overflow-auto whitespace-pre-wrap break-words border border-rule bg-surface p-6 text-[13px] leading-relaxed text-ink-muted">
+          {styleGuide}
+        </pre>
+      </section>
+    </div>
+  )
+}
+
+```
