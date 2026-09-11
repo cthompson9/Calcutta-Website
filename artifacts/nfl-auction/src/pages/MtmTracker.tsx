@@ -531,6 +531,8 @@ function PipelineMarkPanel({
         </button>
       </div>
 
+      <PipelineFailureNotice status={status} />
+
       {(valuation.mark.stale || valuation.mark.selectionReason || valuation.mark.provisionalSuppressionReason) && !isPreview && (
         <div className="border-b border-amber-500/30 bg-amber-500/10 px-4 py-3 text-sm text-amber-800">
           <p className="flex items-center gap-2 font-semibold">
@@ -665,6 +667,28 @@ function PipelineMarkPanel({
         </>
       )}
     </section>
+  );
+}
+
+export function PipelineFailureNotice({ status }: { status: PipelineStatus | null }) {
+  if (status?.status !== "failed" || !status.error) return null;
+  return (
+    <div
+      role="alert"
+      className="border-b border-red-500/30 bg-red-500/10 px-4 py-3 text-sm text-red-900 dark:text-red-200"
+      data-testid="pipeline-failure-notice"
+    >
+      <p className="flex items-center gap-2 font-semibold">
+        <AlertTriangle className="h-4 w-4 shrink-0" />
+        Latest recalculation failed
+      </p>
+      <p className="mt-1 break-words text-xs">{status.error}</p>
+      {status.currentAsOf && (
+        <p className="mt-1 text-xs opacity-80">
+          Live Tracker is still showing the last successful mark.
+        </p>
+      )}
+    </div>
   );
 }
 

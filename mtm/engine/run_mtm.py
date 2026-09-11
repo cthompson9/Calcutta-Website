@@ -93,6 +93,10 @@ def build_snapshot(config: dict, state: dict) -> dict:
     # audit comparison.
     schedule = [simulate.Game(**g) for g in state["remaining_schedule"]]
     seed = simcfg.get("seed", 20260829)
+    fitted_total_wins = simulate.implied_total_wins(
+        fit["ratings"], schedule,
+        {t: state["realized"][t]["wins"] for t in teams},
+        hfa=simcfg["hfa_points"], margin_sd=simcfg["margin_sd"])
     mc = simulate.monte_carlo(
         fit["ratings"], schedule,
         {t: state["realized"][t]["wins"] for t in teams},
@@ -101,7 +105,9 @@ def build_snapshot(config: dict, state: dict) -> dict:
         seed=seed, rubric=rubric, pot=state["pot"],
         realized_stats=state["realized"], stage_targets=norm["probs"],
         calibration_tolerance=simcfg.get("calibration_tolerance", 0.03),
-        calibration_iters=simcfg.get("calibration_iters", 500))
+        calibration_iters=simcfg.get("calibration_iters", 500),
+        support_runs_per_team=simcfg.get("support_runs_per_team", 0),
+        support_prior_weight=simcfg.get("support_prior_weight", 0.01))
     if not mc.get("calibration_converged", False):
         worst = max((abs(value) for value in mc.get("calibration_residuals", {}).values()),
                     default=float("inf"))
@@ -124,7 +130,9 @@ def build_snapshot(config: dict, state: dict) -> dict:
     for t in teams:
         n_games = sum(1 for g in schedule if g.home == t or g.away == t)
         target = target_remaining[t] / n_games if n_games else 0.0
-        simulated = ((mc.get("win_sum", {}).get(t, 0.0) / mc["runs"])
+        simulated = ((fitted_total_wins[t] - state["realized"][t].get("wins", 0))
+                     / n_games) if n_games else 0.0
+        posterior = ((mc.get("win_sum", {}).get(t, 0.0) / mc["runs"])
                      - state["realized"][t].get("wins", 0)) / n_games if n_games else 0.0
         calibration.append({"metric": "remaining_win_probability", "team": t,
                             "target_probability": target,
@@ -133,6 +141,11 @@ def build_snapshot(config: dict, state: dict) -> dict:
                             "tolerance": tolerance, "sample_count": mc["runs"],
                             "sample_share": 1.0,
                             "effective_sample_size": mc["runs"],
+                            "sample_metadata": {
+                                "posterior_probability": posterior,
+                                "posterior_shift": posterior - simulated,
+                                "calibration_basis": "schedule_feasible_rating_fit",
+                            },
                             "quality_status": "good" if abs(simulated-target) <= tolerance else "warning"})
     for stage in playoffs.STAGES:
         target_total = config["stage_targets"][stage]
@@ -174,6 +187,7 @@ def build_snapshot(config: dict, state: dict) -> dict:
             "rating_fit_max_win_error": fit["max_abs_win_error"],
             **valued["diagnostics"],
             "simulation": sim_valued["diagnostics"],
+            "support_sampling": mc.get("support_sampling", {}),
             "market_calibration": {"metrics": calibration,
                 "status": "good" if all(v["quality_status"] == "good"
                                         for v in calibration) else "warning",

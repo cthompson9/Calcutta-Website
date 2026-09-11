@@ -102,6 +102,22 @@ def expected_remaining_diff(ratings: dict[str, float],
     return {t: {k: round(v, 2) for k, v in d.items()} for t, d in out.items()}
 
 
+def implied_total_wins(ratings: dict[str, float],
+                       remaining: list[Game],
+                       realized_wins: dict[str, float],
+                       hfa: float = 1.6,
+                       margin_sd: float = 13.5) -> dict[str, float]:
+    """Feasible fitted win totals implied by the shared rating model."""
+    totals = {t: float(realized_wins.get(t, 0.0)) for t in ratings}
+    for game in remaining:
+        p_home = _phi(
+            (ratings[game.home] - ratings[game.away] + hfa) / margin_sd
+        )
+        totals[game.home] += p_home
+        totals[game.away] += 1.0 - p_home
+    return totals
+
+
 def monte_carlo(ratings: dict[str, float],
                 remaining: list[Game],
                 realized_wins: dict[str, float],
@@ -115,7 +131,9 @@ def monte_carlo(ratings: dict[str, float],
                  realized_stats: dict | None = None,
                  stage_targets: dict[str, dict[str, float]] | None = None,
                  calibration_tolerance: float = 0.03,
-                 calibration_iters: int = 500) -> dict:
+                 calibration_iters: int = 500,
+                 support_runs_per_team: int = 0,
+                 support_prior_weight: float = 0.01) -> dict:
     """Joint season simulator. Simplified seeding: division winners by wins
     (random tiebreak), wildcards by wins. Playoff games decided by Phi on
     neutral-adjusted ratings (home field to better seed until SB, SB neutral).
@@ -143,6 +161,21 @@ def monte_carlo(ratings: dict[str, float],
     path_outcomes = []
     path_wins = []
     hit_indices = {(t, s): [] for t in teams for s in stages}
+    eligible_support_teams = sorted([
+        t for t in teams
+        if stage_targets and any(
+            0.0 < float(stage_targets[t][s]) < 1.0 for s in stages
+        )
+    ])
+    support_budget = min(
+        runs, support_runs_per_team * len(eligible_support_teams)
+    )
+    ordinary_runs = runs - support_budget
+    support_teams = []
+    regular_support_teams = set()
+    support_indices = set()
+    proposal_weights = []
+    current_support_team: str | None = None
 
     conf_of = {}
     for conf, divs in divisions.items():
@@ -152,13 +185,57 @@ def monte_carlo(ratings: dict[str, float],
         for t in ts:
             conf_of[t] = conf
 
-    def play(a: str, b: str, home: str | None) -> tuple[str, float]:
+    def play(a: str, b: str, home: str | None,
+             allow_support: bool = False) -> tuple[str, float]:
         adv = hfa if home == a else (-hfa if home == b else 0.0)
         mean = ratings[a] - ratings[b] + adv
         margin = rng.gauss(mean, margin_sd)
+        # Proposal strata preserve feasible joint paths while ensuring that
+        # long shots can appear in the finite path library. Reflecting the
+        # sampled margin keeps magnitudes plausible; it never inserts a team
+        # into a game or bracket it could not reach by winning its games.
+        if allow_support and current_support_team == a:
+            margin = abs(margin)
+        elif allow_support and current_support_team == b:
+            margin = -max(abs(margin), 1e-12)
         return (a, margin) if margin >= 0 else (b, -margin)
 
     for run_index in range(runs):
+        if run_index == ordinary_runs and support_budget:
+            ordinary_denominator = max(ordinary_runs, 1)
+            support_deficits = {
+                t: max(
+                    float(stage_targets[t][s])
+                    - len(hit_indices[(t, s)]) / ordinary_denominator
+                    for s in stages
+                    if 0.0 < float(stage_targets[t][s]) < 1.0
+                )
+                for t in eligible_support_teams
+            }
+            support_teams = [
+                t for t, deficit in sorted(
+                    support_deficits.items(),
+                    key=lambda item: (-item[1], item[0]),
+                )
+            ]
+            regular_support_teams = {
+                t for t in support_teams
+                if any(
+                    0.0 < float(stage_targets[t][s]) < 1.0
+                    and not hit_indices[(t, s)]
+                    for s in stages
+                )
+            }
+        support_offset = run_index - ordinary_runs
+        current_support_team = (
+            support_teams[support_offset % len(support_teams)]
+            if support_offset >= 0 and support_teams else None
+        )
+        if current_support_team is not None:
+            support_indices.add(run_index)
+        proposal_weights.append(
+            support_prior_weight if current_support_team is not None else 1.0
+        )
         wins = {t: (v.get("wins", 0) if isinstance(v, dict) else v)
                 for t, v in (realized_stats or realized_wins).items()}
         ties = {t: (v.get("ties", 0) if isinstance(v, dict) else 0)
@@ -168,7 +245,10 @@ def monte_carlo(ratings: dict[str, float],
         diff = {t: 0.0 for t in teams}
         outcomes = []
         for gi, g in enumerate(remaining):
-            winner, margin = play(g.home, g.away, g.home)
+            winner, margin = play(
+                g.home, g.away, g.home,
+                allow_support=current_support_team in regular_support_teams,
+            )
             wins[winner] = wins.get(winner, 0) + 1
             sgn = 1 if winner == g.home else -1
             adjusted_margin = margin * (2 if g.marquee else 1)
@@ -198,26 +278,26 @@ def monte_carlo(ratings: dict[str, float],
             # wild card round: 2v7 3v6 4v5, 1 bye
             wc_winners = [seeds[0]]
             for hi, lo in [(1, 6), (2, 5), (3, 4)]:
-                w, _ = play(seeds[hi], seeds[lo], seeds[hi])
+                w, _ = play(seeds[hi], seeds[lo], seeds[hi], allow_support=True)
                 wc_winners.append(w)
             for t in wc_winners:
                 stage_hits[t]["divisional"] += 1
                 path_stage[t]["divisional"] = 1
             wc_winners.sort(key=lambda t: seeds.index(t))
-            w1, _ = play(wc_winners[0], wc_winners[3], wc_winners[0])
-            w2, _ = play(wc_winners[1], wc_winners[2], wc_winners[1])
+            w1, _ = play(wc_winners[0], wc_winners[3], wc_winners[0], allow_support=True)
+            w2, _ = play(wc_winners[1], wc_winners[2], wc_winners[1], allow_support=True)
             finalists = sorted([w1, w2], key=lambda t: seeds.index(t))
             for t in finalists:
                 stage_hits[t]["conference"] += 1
                 path_stage[t]["conference"] = 1
-            cw, _ = play(finalists[0], finalists[1], finalists[0])
+            cw, _ = play(finalists[0], finalists[1], finalists[0], allow_support=True)
             stage_hits[cw]["sb_berth"] += 1
             path_stage[cw]["sb_berth"] = 1
             if conf == sorted({c for c in conf_of.values()})[0]:
                 sb_a = cw
             else:
                 sb_b = cw
-        sb_winner, _ = play(sb_a, sb_b, None)
+        sb_winner, _ = play(sb_a, sb_b, None, allow_support=True)
         stage_hits[sb_winner]["sb_win"] += 1
         path_stage[sb_winner]["sb_win"] = 1
 
@@ -244,10 +324,19 @@ def monte_carlo(ratings: dict[str, float],
                 if path_stage[t][s]:
                     hit_indices[(t, s)].append(run_index)
 
-    weights = [1.0] * runs
+    weights = proposal_weights
     calibration_residuals = {}
     calibration_converged = True
+    recovered_targets = []
+    unresolved_targets = []
     if stage_targets and weights:
+        calibration_anchor_candidates = {
+            s: sorted(
+                t for t in teams
+                if 0.0 < float(stage_targets[t][s]) < 1.0
+            )
+            for s in stages
+        }
         # Settled contracts are hard constraints, not ordinary calibration
         # targets. Remove impossible paths before fitting open probabilities;
         # later multiplicative updates cannot revive a zero-weight path.
@@ -270,21 +359,27 @@ def monte_carlo(ratings: dict[str, float],
         scale = runs / sum(weights)
         weights = [w * scale for w in weights]
 
-        for _ in range(calibration_iters):
+        for calibration_iteration in range(calibration_iters):
             total_weight = sum(weights)
             for t in teams:
                 for s in stages:
                     original_target = float(stage_targets[t][s])
-                    if original_target in (0.0, 1.0):
+                    anchors = calibration_anchor_candidates[s]
+                    rotating_anchor = (
+                        anchors[calibration_iteration % len(anchors)]
+                        if anchors else None
+                    )
+                    if original_target in (0.0, 1.0) or t == rotating_anchor:
                         continue
                     target = min(max(original_target, 1e-7), 1 - 1e-7)
                     indices = hit_indices[(t, s)]
                     hit_weight = sum(weights[i] for i in indices)
                     current = hit_weight / total_weight if total_weight else 0.0
                     if not indices or current <= 0:
+                        unresolved_targets.append(f"{t}:{s}")
                         raise ValueError(f"no simulated support for positive playoff target {t}:{s}")
                     current = min(max(current, 1e-12), 1 - 1e-12)
-                    odds_ratio = ((target / (1 - target)) / (current / (1 - current))) ** 0.5
+                    odds_ratio = (target / (1 - target)) / (current / (1 - current))
                     for i in indices:
                         weights[i] *= odds_ratio
                     total_weight = sum(weights)
@@ -295,11 +390,24 @@ def monte_carlo(ratings: dict[str, float],
                 - float(stage_targets[t][s])
                 for t in teams for s in stages
             }
-            if max(abs(value) for value in calibration_residuals.values()) <= calibration_tolerance:
+            playoff_ok = max(
+                (abs(value) for value in calibration_residuals.values()),
+                default=0.0,
+            ) <= calibration_tolerance
+            if playoff_ok:
                 break
-        calibration_converged = max(
-            (abs(value) for value in calibration_residuals.values()), default=0.0
-        ) <= calibration_tolerance
+        calibration_converged = (
+            max(
+                (abs(value) for value in calibration_residuals.values()),
+                default=0.0,
+            ) <= calibration_tolerance
+        )
+        recovered_targets = [
+            f"{t}:{s}" for t in teams for s in stages
+            if 0.0 < float(stage_targets[t][s]) < 1.0
+            and any(i in support_indices for i in hit_indices[(t, s)])
+            and not any(i not in support_indices for i in hit_indices[(t, s)])
+        ]
 
     weighted_stage_hits = {
         t: {s: sum(weights[i] for i in hit_indices[(t, s)]) for s in stages}
@@ -331,7 +439,19 @@ def monte_carlo(ratings: dict[str, float],
     out = {"stage_probs": probs, "diff_samples": diff_samples, "runs": runs,
            "effective_sample_size": effective_sample_size,
            "calibration_converged": calibration_converged,
-           "calibration_residuals": calibration_residuals}
+           "calibration_residuals": calibration_residuals,
+           "support_sampling": {
+               "enabled": bool(support_indices),
+               "reserved_path_count": support_budget,
+               "path_count": len(support_indices),
+               "runs_per_team": support_runs_per_team,
+               "prior_weight": support_prior_weight,
+               "targeted_teams": support_teams,
+               "regular_season_targeted_teams": sorted(regular_support_teams),
+               "recovered_targets": recovered_targets,
+               "unresolved_targets": unresolved_targets,
+               "calibration_anchor_policy": "rotating_redundant_constraint",
+           }}
     if rubric is not None and pot:
         out["payout_sum"] = payout_sum
         out["payout_sq_sum"] = payout_sq_sum

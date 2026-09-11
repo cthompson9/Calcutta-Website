@@ -2,7 +2,7 @@ import { render, screen, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { describe, expect, it } from "vitest";
 import type { MtmGameEvSwing, MtmTeamEvSwing } from "@workspace/api-client-react";
-import { NetPayoutHistoryChart, UpcomingEvSwings } from "./MtmTracker";
+import { NetPayoutHistoryChart, PipelineFailureNotice, UpcomingEvSwings } from "./MtmTracker";
 
 function swing(teamId: number, teamName: string, available = true): MtmTeamEvSwing {
   return {
@@ -143,5 +143,41 @@ describe("UpcomingEvSwings", () => {
     const holdings = screen.getAllByTestId("ev-swing-owner-holding");
     expect(holdings.at(-1)).toHaveTextContent("Unavailable");
     expect(holdings.at(-1)).not.toHaveTextContent("$0.00");
+  });
+});
+
+describe("PipelineFailureNotice", () => {
+  it("keeps the latest recalculation error visible while the prior mark remains selected", () => {
+    render(<PipelineFailureNotice status={{
+      id: 279,
+      currentSnapshotId: 227,
+      asOf: "2026-09-11T19:46:59.452Z",
+      currentAsOf: "2026-09-01T14:20:33.303Z",
+      status: "failed",
+      error: "no simulated support for positive playoff target ARI:sb_berth",
+      stale: true,
+      staleReasons: [],
+      diagnostics: null,
+      valuations: [],
+    }} />);
+    expect(screen.getByRole("alert")).toHaveTextContent("Latest recalculation failed");
+    expect(screen.getByRole("alert")).toHaveTextContent("ARI:sb_berth");
+    expect(screen.getByRole("alert")).toHaveTextContent("still showing the last successful mark");
+  });
+
+  it("clears after a successful recalculation", () => {
+    const { container } = render(<PipelineFailureNotice status={{
+      id: 280,
+      currentSnapshotId: 280,
+      asOf: "2026-09-11T20:00:00.000Z",
+      currentAsOf: "2026-09-11T20:00:00.000Z",
+      status: "ok",
+      error: null,
+      stale: false,
+      staleReasons: [],
+      diagnostics: null,
+      valuations: [],
+    }} />);
+    expect(container).toBeEmptyDOMElement();
   });
 });

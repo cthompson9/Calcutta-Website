@@ -351,6 +351,67 @@ def test_conditional_quality_uses_effective_sample_size():
     assert bucket["quality_status"] == "insufficient"
 
 
+def _longshot_fixture(mathematically_eliminated=False):
+    teams = [f"{c}{d}{i}" for c in ["A", "N"] for d in range(4) for i in range(4)]
+    divisions = {f"{'AFC' if c == 'A' else 'NFC'} D{d}": [f"{c}{d}{i}" for i in range(4)]
+                 for c in ["A", "N"] for d in range(4)}
+    longshot = "A00"
+    ratings = {t: 0.0 for t in teams}
+    schedule = []
+    if mathematically_eliminated:
+        realized = {t: (0 if t == longshot else 10) for t in teams}
+    else:
+        realized = {t: 0 for t in teams}
+    inventory = {
+        "berth": 14, "divisional": 8, "conference": 4,
+        "sb_berth": 2, "sb_win": 1,
+    }
+    targets = {
+        t: {stage: total / len(teams) for stage, total in inventory.items()}
+        for t in teams
+    }
+    return teams, divisions, ratings, schedule, realized, targets, longshot
+
+
+def test_support_strata_recover_feasible_positive_longshot_deterministically():
+    teams, divisions, ratings, schedule, realized, targets, longshot = _longshot_fixture()
+    try:
+        simulate.monte_carlo(
+            ratings, schedule, realized, divisions, runs=1, seed=41,
+            stage_targets=targets, calibration_tolerance=.03)
+        assert False, "ordinary finite sampling should have no longshot support"
+    except ValueError as error:
+        assert "no simulated support for positive playoff target" in str(error)
+
+    kwargs = dict(
+        ratings=ratings, remaining=schedule, realized_wins=realized,
+        divisions=divisions, runs=416, seed=41, stage_targets=targets,
+        calibration_tolerance=.03, support_runs_per_team=13,
+        support_prior_weight=.01)
+    first = simulate.monte_carlo(**kwargs)
+    second = simulate.monte_carlo(**kwargs)
+    assert first["calibration_converged"]
+    assert first["stage_probs"] == second["stage_probs"]
+    assert first["support_sampling"] == second["support_sampling"]
+    assert first["support_sampling"]["enabled"]
+    assert any(item.startswith(f"{longshot}:")
+               for item in first["support_sampling"]["recovered_targets"])
+    assert first["effective_sample_size"] == second["effective_sample_size"]
+
+
+def test_support_strata_do_not_revive_mathematically_eliminated_team():
+    _, divisions, ratings, schedule, realized, targets, longshot = _longshot_fixture(
+        mathematically_eliminated=True)
+    try:
+        simulate.monte_carlo(
+            ratings, schedule, realized, divisions, runs=416, seed=41,
+            stage_targets=targets, calibration_tolerance=.03,
+            support_runs_per_team=13, support_prior_weight=.01)
+        assert False, "an eliminated team must remain unsupported"
+    except ValueError as error:
+        assert f"{longshot}:berth" in str(error)
+
+
 if __name__ == "__main__":
     test_wins_ladder()
     test_playoff_normalization()
@@ -365,4 +426,6 @@ if __name__ == "__main__":
     test_zero_settled_target_needs_no_simulated_support()
     test_settled_targets_remove_impossible_weighted_paths()
     test_conditional_quality_uses_effective_sample_size()
-    print("\nall 13 smoke tests passed")
+    test_support_strata_recover_feasible_positive_longshot_deterministically()
+    test_support_strata_do_not_revive_mathematically_eliminated_team()
+    print("\nall 15 smoke tests passed")

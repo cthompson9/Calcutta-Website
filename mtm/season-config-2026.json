@@ -53,10 +53,12 @@
     "rating_fit_iters": 200,
     "monte_carlo_runs": 20000,
     "seed": 20260829,
-    "model": "seeded_monte_carlo_v1",
+    "model": "seeded_monte_carlo_v2_support_strata",
     "min_conditional_samples": 100,
     "min_conditional_share": 0.01,
     "calibration_tolerance": 0.03,
-    "calibration_iters": 500
+    "calibration_iters": 500,
+    "support_runs_per_team": 25,
+    "support_prior_weight": 0.01
   }
 }

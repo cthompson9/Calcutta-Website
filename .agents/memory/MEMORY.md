@@ -39,3 +39,4 @@
 - [Polymorphic trigger dispatch](postgresql-polymorphic-trigger-dispatch.md) — select the trigger table before accessing table-specific NEW/OLD fields.
 - [Numeric update authority](numeric-update-authority.md) — results ingest automatically, but MTM and bracket forecasts update only from explicit commissioner recalculation.
 - [NFL web production build](nfl-web-production-build.md) — local production builds require the artifact’s PORT and BASE_PATH environment values.
+- [Joint market calibration](joint-market-calibration.md) — fit win ladders to schedule-feasible totals separately; playoff path reweighting is a posterior and needs explicit support columns.
