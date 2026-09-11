@@ -433,7 +433,7 @@ function PipelineMarkPanel({
     );
   }
 
-  const isPreview = typeof window !== 'undefined' && window.location.pathname.startsWith('/unified-preview');
+  const isPreview = true;
   return (
     <section className="border border-border bg-card">
       <div className="flex flex-wrap items-start justify-between gap-4 border-b border-border p-4">

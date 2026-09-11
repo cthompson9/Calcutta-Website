@@ -38,3 +38,4 @@
 - [Live mark week boundaries](live-mark-week-boundaries.md) — bucket pipeline captures by completed NFL week; retries replace the same point instead of advancing history.
 - [Polymorphic trigger dispatch](postgresql-polymorphic-trigger-dispatch.md) — select the trigger table before accessing table-specific NEW/OLD fields.
 - [Numeric update authority](numeric-update-authority.md) — results ingest automatically, but MTM and bracket forecasts update only from explicit commissioner recalculation.
+- [NFL web production build](nfl-web-production-build.md) — local production builds require the artifact’s PORT and BASE_PATH environment values.

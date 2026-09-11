@@ -114,7 +114,7 @@ export default function Results() {
   const consortiumBasis = "mtm" as const;
   const teamBasis = "realized" as const;
   const viewBasis = tab === "byTeam" ? teamBasis : consortiumBasis;
-  const isPreview = typeof window !== 'undefined' && window.location.pathname.startsWith('/unified-preview');
+  const isPreview = true;
 
   useEffect(() => {
     setPreviewLastUpdated(null);

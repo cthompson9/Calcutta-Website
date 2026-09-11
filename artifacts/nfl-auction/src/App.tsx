@@ -64,11 +64,13 @@ function Router() {
         </div>
       </Route>
       <Route>
-        <Shell>
-          <RoutedErrorBoundary>
-            <MainRoutes />
-          </RoutedErrorBoundary>
-        </Shell>
+        <div className="unified-preview">
+          <Shell isPreview>
+            <RoutedErrorBoundary>
+              <MainRoutes />
+            </RoutedErrorBoundary>
+          </Shell>
+        </div>
       </Route>
     </Switch>
   );
