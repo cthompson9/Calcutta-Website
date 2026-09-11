@@ -20,11 +20,21 @@ import Trades from '@/pages/Trades';
 import MtmTracker from '@/pages/MtmTracker';
 import WhatsNew from '@/pages/WhatsNew';
 import Faq from '@/pages/Faq';
+import FormatPreview from '@/pages/FormatPreview';
 import { SeasonProvider } from '@/hooks/useSeason';
 
 const queryClient = new QueryClient();
 
 function Router() {
+  const [location] = useLocation();
+  if (location === '/format-preview') {
+    return (
+      <RoutedErrorBoundary>
+        <FormatPreview />
+      </RoutedErrorBoundary>
+    );
+  }
+
   return (
     <Shell>
       <RoutedErrorBoundary>
