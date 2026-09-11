@@ -110,9 +110,46 @@ export default function Results() {
   const [period, setPeriod] = useState<number | undefined>(undefined);
   const [compareSeasons, setCompareSeasons] = useState<number[]>([]);
   const [compareGroupBy, setCompareGroupBy] = useState<"bidder" | "consortium">("consortium");
+  const [previewLastUpdated, setPreviewLastUpdated] = useState<string | null>(null);
   const consortiumBasis = "mtm" as const;
   const teamBasis = "realized" as const;
   const viewBasis = tab === "byTeam" ? teamBasis : consortiumBasis;
+  const isPreview = typeof window !== 'undefined' && window.location.pathname.startsWith('/unified-preview');
+
+  useEffect(() => {
+    setPreviewLastUpdated(null);
+    if (!isPreview || !isNflCalcutta || !calcuttaId) {
+      return;
+    }
+
+    const controller = new AbortController();
+    const params = new URLSearchParams({
+      season: String(year),
+      calcuttaId: String(calcuttaId),
+    });
+
+    void fetch(`/api/mtm/pipeline/status?${params}`, {
+      signal: controller.signal,
+    })
+      .then((response) => {
+        if (!response.ok) {
+          throw new Error("Unable to load the latest successful update time.");
+        }
+        return response.json() as Promise<{
+          status: { currentAsOf: string | null } | null;
+        }>;
+      })
+      .then((payload) => {
+        setPreviewLastUpdated(payload.status?.currentAsOf ?? null);
+      })
+      .catch((error: unknown) => {
+        if (!(error instanceof DOMException && error.name === "AbortError")) {
+          setPreviewLastUpdated(null);
+        }
+      });
+
+    return () => controller.abort();
+  }, [isPreview, isNflCalcutta, year, calcuttaId]);
 
   const {
     data: historicalPools,
@@ -317,12 +354,28 @@ export default function Results() {
       <header className="flex flex-col gap-3 px-4 pt-4 md:flex-row md:items-end md:justify-between md:px-0 md:pt-0">
         <div>
           <h1 className="text-3xl md:text-5xl font-extrabold uppercase tracking-tighter mb-1" data-testid="text-report-title">
-            NFL szn
+            {isPreview ? "Results" : "NFL szn"}
           </h1>
-          <p className="text-muted-foreground font-mono text-sm md:text-base uppercase tracking-widest" data-testid="text-report-subtitle">
-            We are so back
-          </p>
+          {!isPreview && (
+            <p className="text-muted-foreground font-mono text-sm md:text-base uppercase tracking-widest" data-testid="text-report-subtitle">
+              We are so back
+            </p>
+          )}
         </div>
+        {isPreview && (
+          <div className="text-right pb-1">
+            <span className="text-muted-foreground text-[13px]">
+              Last Updated: {previewLastUpdated ? new Date(previewLastUpdated).toLocaleString("en-US", {
+                timeZone: "America/New_York",
+                month: "short",
+                day: "numeric",
+                hour: "2-digit",
+                minute: "2-digit",
+                hour12: false,
+              }) + " ET" : "—"}
+            </span>
+          </div>
+        )}
       </header>
 
       <div className="hidden px-4 md:block md:px-0">
@@ -464,7 +517,7 @@ export default function Results() {
         ))}
       </div>
 
-      {!prefersHistoricalResults && tab !== "compare" && staleMtmReasons.length > 0 && (
+      {!prefersHistoricalResults && tab !== "compare" && staleMtmReasons.length > 0 && !isPreview && (
         <div
           className="mx-4 flex items-start gap-3 border border-amber-300 bg-amber-50 px-4 py-3 text-amber-950 dark:border-amber-800 dark:bg-amber-950/40 dark:text-amber-100 md:mx-0"
           role="status"

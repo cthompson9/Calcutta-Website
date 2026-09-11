@@ -1,0 +1,84 @@
+Update /unified-preview/ using selected design elements from /format-preview/ and the attached screenshots. This is a focused UI update to the unified preview.
+
+Use the existing components, assets, and data sources. Inspect only the code needed for these changes.
+
+Top-left branding
+
+Use the new crest shown in screenshot 1 and used in /format-preview/.
+
+Display The Calcutta.
+
+Replace “Football Club · Est. 2015” with NFL Szn · Est. 2022.
+
+Match the reference’s typography, spacing, and crest treatment.
+
+Left sidebar pool summary
+
+Use the available whitespace immediately above What’s New / FAQ for a compact summary showing:
+
+Pool size
+
+$ per point
+
+Both values must come from the currently selected Calcutta and update when that selection changes.
+
+Format pool size as currency with thousands separators and $ per point as currency with two decimal places.
+
+The screenshot’s $97,625 and $8.55 are visual examples, not hardcoded values. Reuse the existing calculations.
+
+Results page heading
+
+Replace the current “NFL Szn” heading/subheading treatment with a single Results heading.
+
+Match the heading style used by the other tabs.
+
+Auction results layout
+
+Apply the auction ledger/table style from /format-preview/, shown in screenshot 2.
+
+Replace the AFC/NFC split with one combined table containing all auction entries.
+
+Use the reference columns: Lot, Club, Buyer, Hammer, with understated dividers, generous row spacing, muted column labels, and right-aligned prices.
+
+Use existing auction data and preserve the underlying auction order and any existing interactions.
+
+Use actual lot numbers where available; do not invent them.
+
+Keep the table usable on smaller screens.
+
+The pool summary belongs in the sidebar as requested above; no additional summary cards or oversized ledger title are needed.
+
+Results freshness display
+
+Remove the “Stale” warning banners from Results.
+
+Add a subtle timestamp at the top right, styled like screenshot 3:
+Last Updated: MMM DD, HH ET
+
+Example: Last Updated: Sep 11, 14:45 ET.
+
+Use the actual last successful update time for the displayed data, converted to America/New_York so daylight saving time is handled correctly.
+
+Do not use the current time or page-load time as a substitute. If no timestamp is available, display Last Updated: —.
+
+Preserve existing refresh behavior and genuine loading/error handling.
+
+Tracker
+
+Remove the “Stale” warning banner from the Tracker tab.
+
+Preserve its data, refresh behavior, and genuine loading/error handling.
+
+Verify before stopping
+
+Switching the selected Calcutta updates both sidebar values correctly.
+
+Results has one heading and one combined auction table, with no missing or duplicated entries.
+
+Neither Results nor Tracker shows a “Stale” warning.
+
+The Results timestamp uses the actual data update time and the specified Eastern Time format.
+
+Check desktop and narrow-screen layouts and run the relevant existing checks.
+
+Stop once these preview changes are implemented and verified. Do not publish or deploy. Report a concise summary of changes, verification results, and any unresolved issues.

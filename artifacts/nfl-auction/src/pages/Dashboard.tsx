@@ -6,7 +6,7 @@ import {
   getGetAuctionSummaryQueryKey,
   getGetPointsRubricV2QueryKey,
 } from "@workspace/api-client-react";
-import { formatCurrency } from "@/lib/utils";
+import { formatCurrency, cn } from "@/lib/utils";
 import { DollarSign, Activity, Download, Lock, Unlock, Loader2 } from "lucide-react";
 import { useSeason } from "@/hooks/useSeason";
 import { useBacklinkBackShortcut } from "@/hooks/useBacklinkBackShortcut";
@@ -150,6 +150,7 @@ export default function Dashboard() {
   );
   useBacklinkBackShortcut(sourceTarget.teamId != null);
 
+  const isPreview = typeof window !== 'undefined' && window.location.pathname.startsWith('/unified-preview');
   const [adminKey, setAdminKey] = useState<string | null>(null);
   const [confirmOpen, setConfirmOpen] = useState(false);
   const [importing, setImporting] = useState(false);
@@ -236,12 +237,14 @@ export default function Dashboard() {
 
   return (
     <div className="space-y-5 px-4 pb-6 pt-4 md:space-y-8 md:p-8 max-w-7xl mx-auto">
-      <header className="flex flex-col md:flex-row md:items-end justify-between gap-4">
+      <header className="flex flex-col gap-4 md:flex-row md:items-end justify-between">
         <div>
           <h1 className="text-3xl md:text-5xl font-extrabold uppercase tracking-tighter mb-2" data-testid="text-auction-title">Auction Results</h1>
-          <p className="text-muted-foreground font-mono text-xs md:text-sm uppercase tracking-widest">
-            {year} auction results
-          </p>
+          {!isPreview && (
+            <p className="text-muted-foreground font-mono text-xs md:text-sm uppercase tracking-widest">
+              {year} auction results
+            </p>
+          )}
         </div>
 
         {/* Admin controls */}
@@ -280,15 +283,17 @@ export default function Dashboard() {
       )}
 
       {/* Headline Stats */}
-         <div className="grid grid-cols-1 md:grid-cols-3 gap-0 border border-border bg-card rounded-md overflow-hidden">
-         <StatCard title="Total Pot" value={formatCurrency(summary.potSize)} icon={DollarSign} className="border-b md:border-b-0 md:border-r" />
-         <StatCard title="Avg Bid / Team" value={formatCurrency(summary.avgBidPerTeam)} icon={Activity} className="border-b md:border-b-0 md:border-r" />
-         <StatCard
+      {!isPreview && (
+        <div className="grid grid-cols-1 md:grid-cols-3 gap-0 border border-border bg-card rounded-md overflow-hidden">
+          <StatCard title="Total Pot" value={formatCurrency(summary.potSize)} icon={DollarSign} className="border-b md:border-b-0 md:border-r" />
+          <StatCard title="Avg Bid / Team" value={formatCurrency(summary.avgBidPerTeam)} icon={Activity} className="border-b md:border-b-0 md:border-r" />
+          <StatCard
             title="$ Per Point"
             value={`$${summary.dollarsPerPoint.toFixed(2)}`}
             icon={DollarSign}
-         />
-      </div>
+          />
+        </div>
+      )}
 
       {pointsRubric && (
         <section className="rounded-md border border-border bg-card p-5">
@@ -308,93 +313,141 @@ export default function Dashboard() {
         </section>
       )}
 
-      <div className="grid md:grid-cols-3 gap-8 items-start">
+      <div className={cn("grid gap-8 items-start", isPreview ? "grid-cols-1" : "md:grid-cols-3")}>
          {/* Auction results */}
-        <div className="md:col-span-2 space-y-4">
-           <div className="table-scroll border border-border bg-card">
-              <div className="sticky-table-header hidden md:grid grid-cols-12 bg-muted text-muted-foreground text-xs font-mono font-bold uppercase tracking-widest px-4 py-3 border-b border-border">
-               <div className="col-span-2 text-center">Order</div>
-               <div className="col-span-4">Team</div>
-               <div className="col-span-3">Winner</div>
-               <div className="col-span-3 text-right">Bid</div>
-            </div>
-             {summary.auctionResults.map((result) => (
-               <div
-                 key={result.teamId}
-                  id={`auction-result-${result.teamId}`}
-                  tabIndex={-1}
-                  data-testid={`row-auction-result-${result.teamId}`}
-                  className={`grid grid-cols-[2rem_minmax(0,1fr)_auto] md:grid-cols-12 items-center px-4 py-3 md:py-4 border-b border-border last:border-0 scroll-mt-6 hover:bg-muted/50 transition-colors focus:outline-none ${
-                    sourceTarget.teamId === result.teamId
-                      ? "bg-primary/10 ring-2 ring-primary ring-inset"
-                      : ""
-                  }`}
-               >
-                  <div className="col-span-1 row-span-2 md:col-span-2 md:row-span-1 text-center font-mono font-bold">
-                   {result.draftOrder ?? "—"}
-                 </div>
-                  <div className="col-span-1 md:col-span-4 font-bold truncate pr-2">{result.teamName}</div>
-                  <div className="col-span-1 md:col-span-3 text-xs md:text-base font-medium truncate pr-2 text-muted-foreground md:text-foreground">{result.winnerName}</div>
-                  <div className="col-span-1 col-start-3 row-span-2 md:col-span-3 md:col-start-auto md:row-span-1 text-right font-mono font-bold text-base md:text-lg">
-                   {formatCurrency(result.bidAmount)}
-                 </div>
-               </div>
-             ))}
-             {summary.auctionResults.length === 0 && (
-              <div className="p-8 text-center text-muted-foreground">
-                 No auction results for {year} yet.
-              </div>
-            )}
+        <div className={cn("space-y-4", isPreview ? "" : "md:col-span-2")}>
+           <div className={cn("table-scroll bg-card", isPreview ? "" : "border border-border")}>
+              {isPreview ? (
+                <table className="w-full text-sm font-sans border-collapse">
+                  <thead className="sticky-table-header text-[9px] uppercase tracking-[0.15em] text-muted-foreground font-semibold border-b border-border">
+                    <tr>
+                      <th className="px-4 py-3 text-left w-16">Lot</th>
+                      <th className="px-4 py-3 text-left">Club</th>
+                      <th className="px-4 py-3 text-right">Buyer</th>
+                      <th className="px-4 py-3 text-right w-32">Hammer</th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {summary.auctionResults.map((result) => (
+                      <tr
+                        key={result.teamId}
+                        id={`auction-result-${result.teamId}`}
+                        tabIndex={-1}
+                        data-testid={`row-auction-result-${result.teamId}`}
+                        className={`border-b border-border last:border-0 hover:bg-muted/50 transition-colors focus:outline-none ${
+                          sourceTarget.teamId === result.teamId
+                            ? "bg-primary/10 ring-2 ring-primary ring-inset"
+                            : ""
+                        }`}
+                      >
+                        <td className="px-4 py-3.5 text-muted-foreground font-mono">
+                          {result.draftOrder != null ? String(result.draftOrder).padStart(2, "0") : "—"}
+                        </td>
+                        <td className="px-4 py-3.5 font-bold">{result.teamName}</td>
+                        <td className="px-4 py-3.5 text-right text-muted-foreground">{result.winnerName}</td>
+                        <td className="px-4 py-3.5 text-right font-bold tabular-nums">
+                          {formatCurrency(result.bidAmount)}
+                        </td>
+                      </tr>
+                    ))}
+                    {summary.auctionResults.length === 0 && (
+                      <tr>
+                        <td colSpan={4} className="p-8 text-center text-muted-foreground">
+                          No auction results for {year} yet.
+                        </td>
+                      </tr>
+                    )}
+                  </tbody>
+                </table>
+              ) : (
+                <>
+                  <div className="sticky-table-header hidden md:grid grid-cols-12 bg-muted text-muted-foreground text-xs font-mono font-bold uppercase tracking-widest px-4 py-3 border-b border-border">
+                   <div className="col-span-2 text-center">Order</div>
+                   <div className="col-span-4">Team</div>
+                   <div className="col-span-3">Winner</div>
+                   <div className="col-span-3 text-right">Bid</div>
+                  </div>
+                  {summary.auctionResults.map((result) => (
+                   <div
+                     key={result.teamId}
+                      id={`auction-result-${result.teamId}`}
+                      tabIndex={-1}
+                      data-testid={`row-auction-result-${result.teamId}`}
+                      className={`grid grid-cols-[2rem_minmax(0,1fr)_auto] md:grid-cols-12 items-center px-4 py-3 md:py-4 border-b border-border last:border-0 scroll-mt-6 hover:bg-muted/50 transition-colors focus:outline-none ${
+                        sourceTarget.teamId === result.teamId
+                          ? "bg-primary/10 ring-2 ring-primary ring-inset"
+                          : ""
+                      }`}
+                   >
+                      <div className="col-span-1 row-span-2 md:col-span-2 md:row-span-1 text-center font-mono font-bold">
+                       {result.draftOrder ?? "—"}
+                     </div>
+                      <div className="col-span-1 md:col-span-4 font-bold truncate pr-2">{result.teamName}</div>
+                      <div className="col-span-1 md:col-span-3 text-xs md:text-base font-medium truncate pr-2 text-muted-foreground md:text-foreground">{result.winnerName}</div>
+                      <div className="col-span-1 col-start-3 row-span-2 md:col-span-3 md:col-start-auto md:row-span-1 text-right font-mono font-bold text-base md:text-lg">
+                       {formatCurrency(result.bidAmount)}
+                     </div>
+                   </div>
+                  ))}
+                  {summary.auctionResults.length === 0 && (
+                   <div className="p-8 text-center text-muted-foreground">
+                      No auction results for {year} yet.
+                   </div>
+                  )}
+                </>
+              )}
           </div>
         </div>
 
         {/* Conference Breakdown */}
-        <div className="space-y-4">
-          <h2 className="text-xl font-bold uppercase tracking-tight flex items-center gap-2">
-            <div className="w-3 h-3 bg-primary" /> Conference Splits
-          </h2>
-          <div className="flex flex-col gap-4">
-            {summary.conferenceBreakdown.map((conf) => {
-              const isAFC = conf.conference === "AFC";
-              return (
-                <div
-                  key={conf.conference}
-                  className={`border border-border p-5 relative overflow-hidden bg-card ${
-                    isAFC ? "border-t-4 border-t-afc" : "border-t-4 border-t-nfc"
-                  }`}
-                >
-                  <div className="flex justify-between items-end mb-6">
-                    <h3 className={`text-4xl font-black ${isAFC ? "text-afc" : "text-nfc"}`}>
-                      {conf.conference}
-                    </h3>
-                    <div className="text-right">
-                      <div className="text-sm font-bold uppercase tracking-wide text-muted-foreground">Spent</div>
-                      <div className="text-xl font-mono font-bold">{formatCurrency(conf.totalSpent)}</div>
+        {!isPreview && (
+          <div className="space-y-4">
+            <h2 className="text-xl font-bold uppercase tracking-tight flex items-center gap-2">
+              <div className="w-3 h-3 bg-primary" /> Conference Splits
+            </h2>
+            <div className="flex flex-col gap-4">
+              {summary.conferenceBreakdown.map((conf) => {
+                const isAFC = conf.conference === "AFC";
+                return (
+                  <div
+                    key={conf.conference}
+                    className={`border border-border p-5 relative overflow-hidden bg-card ${
+                      isAFC ? "border-t-4 border-t-afc" : "border-t-4 border-t-nfc"
+                    }`}
+                  >
+                    <div className="flex justify-between items-end mb-6">
+                      <h3 className={`text-4xl font-black ${isAFC ? "text-afc" : "text-nfc"}`}>
+                        {conf.conference}
+                      </h3>
+                      <div className="text-right">
+                        <div className="text-sm font-bold uppercase tracking-wide text-muted-foreground">Spent</div>
+                        <div className="text-xl font-mono font-bold">{formatCurrency(conf.totalSpent)}</div>
+                      </div>
                     </div>
-                  </div>
 
-                  <div className="grid grid-cols-2 gap-4 border-t border-border pt-4 mt-2">
-                    <div>
-                      <div className="text-[10px] font-mono font-bold text-muted-foreground uppercase tracking-widest">Teams</div>
-                      <div className="font-mono text-lg">{conf.teamCount}/16</div>
-                    </div>
-                    <div className="text-right">
-                      <div className="text-[10px] font-mono font-bold text-muted-foreground uppercase tracking-widest">Avg Bid</div>
-                      <div className="font-mono text-lg">{formatCurrency(conf.avgBid)}</div>
+                    <div className="grid grid-cols-2 gap-4 border-t border-border pt-4 mt-2">
+                      <div>
+                        <div className="text-[10px] font-mono font-bold text-muted-foreground uppercase tracking-widest">Teams</div>
+                        <div className="font-mono text-lg">{conf.teamCount}/16</div>
+                      </div>
+                      <div className="text-right">
+                        <div className="text-[10px] font-mono font-bold text-muted-foreground uppercase tracking-widest">Avg Bid</div>
+                        <div className="font-mono text-lg">{formatCurrency(conf.avgBid)}</div>
+                      </div>
                     </div>
                   </div>
+                );
+              })}
+              {summary.conferenceBreakdown.length === 0 && (
+                <div className="border border-dashed border-border px-5 py-12 text-center">
+                  <p className="text-xs font-mono font-bold uppercase tracking-widest text-muted-foreground">
+                    No conference auction data for {year}
+                  </p>
                 </div>
-              );
-            })}
-            {summary.conferenceBreakdown.length === 0 && (
-              <div className="border border-dashed border-border px-5 py-12 text-center">
-                <p className="text-xs font-mono font-bold uppercase tracking-widest text-muted-foreground">
-                  No conference auction data for {year}
-                </p>
-              </div>
-            )}
+              )}
+            </div>
           </div>
-        </div>
+        )}
       </div>
 
       {/* Confirmation dialog */}

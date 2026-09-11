@@ -54,6 +54,30 @@
   border-color: hsl(var(--border));
 }
 
+.unified-preview-page-crest {
+  display: flex;
+  justify-content: center;
+  padding: 2rem 1rem 0;
+}
+
+.unified-preview-page-crest img {
+  width: 7rem;
+  height: 7.75rem;
+  object-fit: contain;
+  mix-blend-mode: multiply;
+}
+
+@media (max-width: 767px) {
+  .unified-preview-page-crest {
+    padding-top: 1.25rem;
+  }
+
+  .unified-preview-page-crest img {
+    width: 5rem;
+    height: 5.5rem;
+  }
+}
+
 /* Force remove rounded corners on cards and panels */
 .unified-preview .rounded-sm,
 .unified-preview .rounded-md,

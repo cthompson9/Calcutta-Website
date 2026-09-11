@@ -433,6 +433,7 @@ function PipelineMarkPanel({
     );
   }
 
+  const isPreview = typeof window !== 'undefined' && window.location.pathname.startsWith('/unified-preview');
   return (
     <section className="border border-border bg-card">
       <div className="flex flex-wrap items-start justify-between gap-4 border-b border-border p-4">
@@ -463,7 +464,7 @@ function PipelineMarkPanel({
         </button>
       </div>
 
-      {status.staleReasons.length > 0 && (
+      {status.staleReasons.length > 0 && !isPreview && (
         <div className="border-b border-amber-500/30 bg-amber-500/10 px-4 py-3 text-sm text-amber-800">
           <p className="flex items-center gap-2 font-semibold">
             <AlertTriangle className="h-4 w-4 shrink-0" />
