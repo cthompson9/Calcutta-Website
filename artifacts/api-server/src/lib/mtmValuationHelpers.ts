@@ -6,6 +6,93 @@ export type ConditionalRow = {
   qualityStatus: "good" | "warning" | "insufficient"; reconciliationResidual: number | null;
 };
 
+type SwingConditionalTeam = {
+  team_id: number | null;
+  gross_baseline: number | null;
+  gross_expected_payout: number | null;
+  sample_count: number | null;
+  sample_share: number | null;
+  effective_sample_size: number | null;
+  standard_error: number | null;
+  quality_status: "good" | "warning" | "insufficient";
+};
+
+type SwingConditionalEvent = {
+  event_id: number;
+  home: number | null;
+  away: number | null;
+  week: number | null;
+  outcomes: Partial<Record<"home_win" | "away_win" | "tie", {
+    teams: SwingConditionalTeam[];
+  }>>;
+};
+
+function minNullable(values: Array<number | null | undefined>) {
+  const present = values.filter((value): value is number => value != null);
+  return present.length ? Math.min(...present) : null;
+}
+
+function maxNullable(values: Array<number | null | undefined>) {
+  const present = values.filter((value): value is number => value != null);
+  return present.length ? Math.max(...present) : null;
+}
+
+export function deriveGameEvSwings(
+  events: SwingConditionalEvent[],
+  teamNames: Map<number, string | null>,
+) {
+  return events.map((event) => {
+    const swingFor = (
+      teamId: number | null,
+      winOutcome: "home_win" | "away_win",
+      lossOutcome: "home_win" | "away_win",
+    ) => {
+      const win = event.outcomes[winOutcome]?.teams.find((team) => team.team_id === teamId);
+      const loss = event.outcomes[lossOutcome]?.teams.find((team) => team.team_id === teamId);
+      const baseline = win?.gross_baseline ?? loss?.gross_baseline ?? null;
+      const winGross = win?.gross_expected_payout ?? null;
+      const lossGross = loss?.gross_expected_payout ?? null;
+      const qualityStatus = !win || !loss ||
+        win.quality_status === "insufficient" || loss.quality_status === "insufficient"
+        ? "insufficient"
+        : win.quality_status === "warning" || loss.quality_status === "warning"
+          ? "warning"
+          : "good";
+      const available = qualityStatus === "good" &&
+        baseline != null && winGross != null && lossGross != null;
+      return {
+        teamId,
+        teamName: teamId == null ? null : teamNames.get(teamId) ?? null,
+        available,
+        qualityStatus,
+        baselineGrossExpectedPayout: available ? baseline : null,
+        winGrossExpectedPayout: available ? winGross : null,
+        lossGrossExpectedPayout: available ? lossGross : null,
+        benefitOfWin: available ? winGross - baseline : null,
+        costOfLoss: available ? baseline - lossGross : null,
+        totalEvSwing: available ? winGross - lossGross : null,
+        sampleCount: minNullable([win?.sample_count, loss?.sample_count]),
+        sampleShare: minNullable([win?.sample_share, loss?.sample_share]),
+        effectiveSampleSize: minNullable([
+          win?.effective_sample_size,
+          loss?.effective_sample_size,
+        ]),
+        standardError: maxNullable([win?.standard_error, loss?.standard_error]),
+      };
+    };
+    return {
+      eventId: event.event_id,
+      week: event.week,
+      homeTeamId: event.home,
+      awayTeamId: event.away,
+      teams: [
+        swingFor(event.home, "home_win", "away_win"),
+        swingFor(event.away, "away_win", "home_win"),
+      ],
+    };
+  });
+}
+
 export function flattenEngineConditionals(
   conditionals: Record<string, any>,
   entryByTeam: Map<string, number>,

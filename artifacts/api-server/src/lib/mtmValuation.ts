@@ -19,6 +19,7 @@ import {
   calculateSignedOwnerValue,
   chooseProvisionalOutcome,
   computeValuationInvariants,
+  deriveGameEvSwings,
 } from "./mtmValuationHelpers";
 
 export type MtmMarkType = "authoritative" | "latest" | "canonical" | "provisional";
@@ -58,7 +59,8 @@ export async function getNormalizedMtmValuation(args: {
     return {
       available: false,
       mark: { type: args.markType ?? "authoritative", approximate: false, quality: "insufficient", stale: true, reason: "No successful MTM snapshot is available." },
-      teams: [], owners: [], conditionalPayouts: {}, diagnostics: status?.diagnostics ?? null,
+      teams: [], owners: [], conditionalPayouts: {}, gameEvSwings: [],
+      diagnostics: status?.diagnostics ?? null,
       invariants: {
         teamGrossPoolConservation: { status: "unavailable" },
         entryNetVersusAuctionProceeds: { status: "unavailable" },
@@ -218,6 +220,10 @@ export async function getNormalizedMtmValuation(args: {
       }));
     }
   }
+  const gameEvSwings = deriveGameEvSwings(
+    Object.values(conditionalPayouts),
+    new Map(entries.map((entry) => [entry.teamId, entry.teamName])),
+  );
   const owners = buildOwners();
   const expectedPot = Number((snapshot.stateJson as Record<string, unknown> | null)?.pot ?? 0);
   const secondaryTradePaid = [...ownership.byBidder.values()].reduce((sum, positions) =>
@@ -251,7 +257,7 @@ export async function getNormalizedMtmValuation(args: {
             : "latest successful snapshot requested",
       provisionalSuppressionReason,
     },
-    teams, owners, conditionalPayouts,
+    teams, owners, conditionalPayouts, gameEvSwings,
     diagnostics: {
       market_calibration: snapshot.diagnostics?.market_calibration ?? { status: snapshot.calibrationStatus ?? "insufficient" },
       market_drift: await assessMarketDrift(snapshot.id),

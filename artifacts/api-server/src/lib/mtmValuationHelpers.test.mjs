@@ -6,6 +6,7 @@ import {
   computeValuationInvariants,
   calculateSignedOwnerValue,
   calculateMidpointDrift,
+  deriveGameEvSwings,
 } from "./mtmValuationHelpers.ts";
 
 test("flattens nested conditional outcomes for every team", () => {
@@ -40,4 +41,50 @@ test("drift compares intersecting quote midpoints and exposes count", () => {
   const result = calculateMidpointDrift([{ ticker: "A", bid: 0.2, ask: 0.4 }], [{ ticker: "A", bid: 0.4, ask: 0.6 }, { ticker: "B", bid: 0, ask: 1 }]);
   assert.equal(result.comparedTickerCount, 1);
   assert.equal(result.weightedDrift, 0.2);
+});
+
+test("derives home and away EV swings and gates weak pairs", () => {
+  const team = (teamId, baseline, gross, qualityStatus = "good", ess = 200) => ({
+    team_id: teamId,
+    gross_baseline: baseline,
+    gross_expected_payout: gross,
+    sample_count: 300,
+    sample_share: 0.45,
+    effective_sample_size: ess,
+    standard_error: 2,
+    quality_status: qualityStatus,
+  });
+  const [game] = deriveGameEvSwings([{
+    event_id: 9,
+    home: 1,
+    away: 2,
+    week: 4,
+    outcomes: {
+      home_win: { teams: [team(1, 100, 130), team(2, 80, 65)] },
+      away_win: { teams: [team(1, 100, 70), team(2, 80, 105)] },
+      tie: { teams: [team(1, 100, 99), team(2, 80, 81)] },
+    },
+  }], new Map([[1, "Home"], [2, "Away"]]));
+  assert.equal(game.teams[0].benefitOfWin, 30);
+  assert.equal(game.teams[0].costOfLoss, 30);
+  assert.equal(game.teams[0].totalEvSwing, 60);
+  assert.equal(game.teams[1].benefitOfWin, 25);
+  assert.equal(game.teams[1].costOfLoss, 15);
+  assert.equal(game.teams[1].totalEvSwing, 40);
+
+  const [weakGame] = deriveGameEvSwings([{
+    event_id: 10,
+    home: 1,
+    away: 2,
+    week: 5,
+    outcomes: {
+      home_win: { teams: [team(1, 100, 130)] },
+      away_win: { teams: [team(1, 100, 70, "warning", 20)] },
+    },
+  }], new Map([[1, "Home"], [2, "Away"]]));
+  assert.equal(weakGame.teams[0].available, false);
+  assert.equal(weakGame.teams[0].qualityStatus, "warning");
+  assert.equal(weakGame.teams[0].totalEvSwing, null);
+  assert.equal(weakGame.teams[0].effectiveSampleSize, 20);
+  assert.equal(weakGame.teams[1].qualityStatus, "insufficient");
 });

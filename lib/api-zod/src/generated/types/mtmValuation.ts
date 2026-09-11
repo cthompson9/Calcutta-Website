@@ -5,6 +5,7 @@
  * NFL Auction Manager API
  * OpenAPI spec version: 0.1.0
  */
+import type { MtmGameEvSwing } from './mtmGameEvSwing';
 import type { MtmValuationConditionalPayouts } from './mtmValuationConditionalPayouts';
 import type { MtmValuationDiagnostics } from './mtmValuationDiagnostics';
 import type { MtmValuationInvariants } from './mtmValuationInvariants';
@@ -18,6 +19,7 @@ export interface MtmValuation {
   teams: MtmValuationTeamsItem[];
   owners: MtmValuationOwnersItem[];
   conditionalPayouts: MtmValuationConditionalPayouts;
+  gameEvSwings: MtmGameEvSwing[];
   /** @nullable */
   diagnostics: MtmValuationDiagnostics;
   invariants: MtmValuationInvariants;

@@ -3815,6 +3815,10 @@ components:
         conditionalPayouts:
           type: object
           additionalProperties: true
+        gameEvSwings:
+          type: array
+          items:
+            $ref: "#/components/schemas/MtmGameEvSwing"
         diagnostics:
           type: ["object", "null"]
           properties:
@@ -3842,7 +3846,57 @@ components:
             ownerSecondaryTradeCash:
               type: object
               additionalProperties: true
-      required: [available, mark, teams, owners, conditionalPayouts, diagnostics, invariants]
+      required: [available, mark, teams, owners, conditionalPayouts, gameEvSwings, diagnostics, invariants]
+
+    MtmGameEvSwing:
+      type: object
+      properties:
+        eventId: { type: number }
+        week: { type: ["number", "null"] }
+        homeTeamId: { type: ["number", "null"] }
+        awayTeamId: { type: ["number", "null"] }
+        teams:
+          type: array
+          items:
+            $ref: "#/components/schemas/MtmTeamEvSwing"
+      required: [eventId, week, homeTeamId, awayTeamId, teams]
+
+    MtmTeamEvSwing:
+      type: object
+      properties:
+        teamId: { type: ["number", "null"] }
+        teamName: { type: ["string", "null"] }
+        available: { type: boolean }
+        qualityStatus:
+          type: string
+          enum: [good, warning, insufficient]
+        baselineGrossExpectedPayout: { type: ["number", "null"] }
+        winGrossExpectedPayout: { type: ["number", "null"] }
+        lossGrossExpectedPayout: { type: ["number", "null"] }
+        benefitOfWin: { type: ["number", "null"] }
+        costOfLoss: { type: ["number", "null"] }
+        totalEvSwing: { type: ["number", "null"] }
+        sampleCount: { type: ["number", "null"] }
+        sampleShare: { type: ["number", "null"] }
+        effectiveSampleSize: { type: ["number", "null"] }
+        standardError: { type: ["number", "null"] }
+      required:
+        [
+          teamId,
+          teamName,
+          available,
+          qualityStatus,
+          baselineGrossExpectedPayout,
+          winGrossExpectedPayout,
+          lossGrossExpectedPayout,
+          benefitOfWin,
+          costOfLoss,
+          totalEvSwing,
+          sampleCount,
+          sampleShare,
+          effectiveSampleSize,
+          standardError,
+        ]
 
     MtmData:
       type: object

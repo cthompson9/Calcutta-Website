@@ -1531,6 +1531,28 @@ export const GetMtmValuationResponse = zod.object({
   "net": zod.number().optional()
 })),
   "conditionalPayouts": zod.record(zod.string(), zod.unknown()),
+  "gameEvSwings": zod.array(zod.object({
+  "eventId": zod.number(),
+  "week": zod.number().nullable(),
+  "homeTeamId": zod.number().nullable(),
+  "awayTeamId": zod.number().nullable(),
+  "teams": zod.array(zod.object({
+  "teamId": zod.number().nullable(),
+  "teamName": zod.string().nullable(),
+  "available": zod.boolean(),
+  "qualityStatus": zod.enum(['good', 'warning', 'insufficient']),
+  "baselineGrossExpectedPayout": zod.number().nullable(),
+  "winGrossExpectedPayout": zod.number().nullable(),
+  "lossGrossExpectedPayout": zod.number().nullable(),
+  "benefitOfWin": zod.number().nullable(),
+  "costOfLoss": zod.number().nullable(),
+  "totalEvSwing": zod.number().nullable(),
+  "sampleCount": zod.number().nullable(),
+  "sampleShare": zod.number().nullable(),
+  "effectiveSampleSize": zod.number().nullable(),
+  "standardError": zod.number().nullable()
+}))
+})),
   "diagnostics": zod.object({
   "market_calibration": zod.record(zod.string(), zod.unknown()).optional(),
   "market_drift": zod.object({

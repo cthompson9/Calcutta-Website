@@ -12,6 +12,8 @@ import type {
   MtmTeamWeekMarketStatus,
   MtmValuation,
   MtmValuationTeamsItem,
+  MtmGameEvSwing,
+  MtmTeamEvSwing,
 } from "@workspace/api-client-react";
 import { useQuery } from "@tanstack/react-query";
 import { formatCurrency } from "@/lib/utils";
@@ -554,48 +556,7 @@ function PipelineMarkPanel({
         </div>
       )}
 
-      {valuation.conditionalPayouts && Object.keys(valuation.conditionalPayouts).length > 0 && (
-        <div className="border-b border-border bg-muted/20 px-4 py-3 text-sm">
-          <p className="flex items-center gap-2 font-semibold font-mono text-xs uppercase tracking-widest text-muted-foreground">
-            <Zap className="h-3 w-3 shrink-0" />
-            Upcoming game conditionals
-          </p>
-          <div className="mt-2 text-xs flex flex-wrap gap-4">
-            {Object.entries(valuation.conditionalPayouts).map(([eventId, eventInfo]) => {
-              const info = eventInfo as any;
-              const teamName = (teamId: number | null) =>
-                displayTeams.find((team) => team.teamId === teamId)?.teamName ?? `Team ${teamId ?? "—"}`;
-              return (
-                <div key={eventId} className="border border-border/50 bg-background rounded-sm p-2 min-w-[200px]">
-                  <div className="font-bold text-[10px] uppercase text-muted-foreground mb-1">
-                    {teamName(info.away)} @ {teamName(info.home)}
-                  </div>
-                  <div className="space-y-1">
-                    {Object.entries(info.outcomes ?? {}).map(([outcomeName, outcomeValue]) => {
-                      const outcome = outcomeValue as any;
-                      const teams = Array.isArray(outcome.teams) ? outcome.teams : [];
-                      const sampleShare = teams.find((team: any) => team.sample_share != null)?.sample_share;
-                      const quality = teams.some((team: any) => team.quality_status === "insufficient")
-                        ? "insufficient"
-                        : teams.some((team: any) => team.quality_status === "warning")
-                          ? "warning"
-                          : "good";
-                      return (
-                        <div key={outcomeName} className="flex justify-between items-center text-[10px] font-mono">
-                          <span>{outcomeName.replaceAll("_", " ")}</span>
-                          <span className={quality === "good" ? "text-emerald-600" : quality === "warning" ? "text-amber-700" : "text-red-600"}>
-                            {sampleShare == null ? quality : `${(Number(sampleShare) * 100).toFixed(1)}% · ${quality}`}
-                          </span>
-                        </div>
-                      );
-                    })}
-                  </div>
-                </div>
-              );
-            })}
-          </div>
-        </div>
-      )}
+      <UpcomingEvSwings games={valuation.gameEvSwings ?? []} />
 
       {displayTeams.length > 0 && (
         <>
@@ -702,6 +663,118 @@ function PipelineMarkPanel({
           </div>
         </>
       )}
+    </section>
+  );
+}
+
+function signedCurrency(value: number) {
+  return `${value >= 0 ? "+" : "−"}${formatCurrency(Math.abs(value))}`;
+}
+
+function SwingTeamRow({ swing }: { swing: MtmTeamEvSwing }) {
+  if (!swing.available) {
+    return (
+      <div className="border-t border-border/60 py-3 first:border-t-0" data-testid="ev-swing-team">
+        <div className="flex items-center justify-between gap-3">
+          <span className="font-semibold">{swing.teamName ?? "Unknown team"}</span>
+          <span className="font-mono text-[10px] font-bold uppercase text-amber-700 dark:text-amber-300">
+            Unavailable
+          </span>
+        </div>
+        <p className="mt-1 text-[11px] text-muted-foreground">
+          {swing.qualityStatus.replaceAll("_", " ")} conditional quality
+          {swing.effectiveSampleSize == null ? "" : ` · ESS ${Math.round(swing.effectiveSampleSize)}`}
+        </p>
+      </div>
+    );
+  }
+  return (
+    <div className="border-t border-border/60 py-3 first:border-t-0" data-testid="ev-swing-team">
+      <div className="mb-2 flex items-center justify-between gap-3">
+        <span className="font-semibold">{swing.teamName ?? "Unknown team"}</span>
+        <span className="font-mono text-sm font-extrabold text-primary">
+          {formatCurrency(swing.totalEvSwing ?? 0)} swing
+        </span>
+      </div>
+      <div className="grid grid-cols-2 gap-2 text-[11px]">
+        <div className="border border-emerald-500/25 bg-emerald-500/10 px-2 py-1.5">
+          <p className="font-mono text-[9px] font-bold uppercase tracking-wider text-emerald-700 dark:text-emerald-300">Benefit of win</p>
+          <p className="mt-0.5 font-mono font-bold text-emerald-700 dark:text-emerald-300">
+            {signedCurrency(swing.benefitOfWin ?? 0)}
+          </p>
+        </div>
+        <div className="border border-red-500/25 bg-red-500/10 px-2 py-1.5 text-right">
+          <p className="font-mono text-[9px] font-bold uppercase tracking-wider text-red-700 dark:text-red-300">Cost of loss</p>
+          <p className="mt-0.5 font-mono font-bold text-red-700 dark:text-red-300">
+            {formatCurrency(swing.costOfLoss ?? 0)}
+          </p>
+        </div>
+      </div>
+      <p className="mt-1.5 font-mono text-[9px] uppercase tracking-wide text-muted-foreground">
+        Win EV {formatCurrency(swing.winGrossExpectedPayout ?? 0)} · Loss EV {formatCurrency(swing.lossGrossExpectedPayout ?? 0)}
+      </p>
+    </div>
+  );
+}
+
+export function UpcomingEvSwings({ games }: { games: MtmGameEvSwing[] }) {
+  const weeks = [...new Set(
+    games.map((game) => game.week).filter((week): week is number => week != null),
+  )].sort((a, b) => a - b).slice(0, 3);
+  const selectedWeeks = new Set(weeks);
+  const visible = games
+    .filter((game) => game.week != null && selectedWeeks.has(game.week))
+    .sort((a, b) =>
+      (a.week ?? Infinity) - (b.week ?? Infinity) ||
+      (a.teams.find((team) => team.teamId === a.awayTeamId)?.teamName ?? "").localeCompare(
+        b.teams.find((team) => team.teamId === b.awayTeamId)?.teamName ?? "",
+      ) ||
+      (a.teams.find((team) => team.teamId === a.homeTeamId)?.teamName ?? "").localeCompare(
+        b.teams.find((team) => team.teamId === b.homeTeamId)?.teamName ?? "",
+      ) ||
+      a.eventId - b.eventId
+    );
+  if (!visible.length) return null;
+  return (
+    <section className="border-b border-border bg-muted/20 px-4 py-4" data-testid="upcoming-ev-swings">
+      <div className="flex flex-wrap items-end justify-between gap-2">
+        <div>
+          <h3 className="flex items-center gap-2 font-mono text-xs font-bold uppercase tracking-widest">
+            <Zap className="h-3.5 w-3.5 text-primary" />
+            Upcoming game EV swings
+          </h3>
+          <p className="mt-1 text-xs text-muted-foreground">
+            Benefit of a win plus cost of a loss · next three available weeks
+          </p>
+        </div>
+        <p className="font-mono text-[10px] uppercase tracking-wider text-muted-foreground">
+          Weeks {weeks.join(", ")}
+        </p>
+      </div>
+      <div className="mt-4 space-y-5">
+        {weeks.map((week) => (
+          <div key={week} data-testid={`ev-swing-week-${week}`}>
+            <p className="mb-2 font-mono text-[10px] font-extrabold uppercase tracking-[0.18em] text-primary">
+              Week {week}
+            </p>
+            <div className="grid gap-3 md:grid-cols-2">
+              {visible.filter((game) => game.week === week).map((game) => {
+                const away = game.teams.find((team) => team.teamId === game.awayTeamId);
+                const home = game.teams.find((team) => team.teamId === game.homeTeamId);
+                return (
+                  <article key={game.eventId} className="border border-border bg-background px-3" data-testid="ev-swing-game">
+                    <p className="border-b border-border py-2 font-mono text-[10px] font-bold uppercase tracking-wider text-muted-foreground">
+                      {away?.teamName ?? "Away"} @ {home?.teamName ?? "Home"}
+                    </p>
+                    {away && <SwingTeamRow swing={away} />}
+                    {home && <SwingTeamRow swing={home} />}
+                  </article>
+                );
+              })}
+            </div>
+          </div>
+        ))}
+      </div>
     </section>
   );
 }
