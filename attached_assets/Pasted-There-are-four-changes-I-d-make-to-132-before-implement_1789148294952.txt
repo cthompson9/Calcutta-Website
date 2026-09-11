@@ -1,0 +1,178 @@
+There are four changes I’d make to #132 before implementation.
+
+1. Store team conditional gross payout, not team conditional net MTM as the economic primitive
+
+This sentence is almost right:
+
+owner conditional EV = Σ ownership share × entry conditional EV
+
+But it is only exactly right if entry conditional EV means gross expected payout.
+
+After trades, an owner’s cost basis is not necessarily their ownership share × the team’s original auction cost. Your Rams position is a perfect example: you acquired 15% later at a negotiated trade price.
+
+So owner calculations should be:
+
+Conditional owner gross value
+
+\sum_i signedOwnership_{owner,i} \times ConditionalGrossPayout_i
+
+Then:
+
+Conditional owner net MTM
+
+ConditionalOwnerGrossValue - SignedOwnerCostBasis
+
+where SignedOwnerCostBasis comes from the existing ownership/trade ledger.
+
+That correctly handles:
+
+* primary-auction positions
+* later purchases
+* short sales
+* different trade prices
+* split positions
+
+I would therefore make mean_gross_payout the canonical stored conditional value. entry_net_mtm can exist as a convenience field for team-level reporting, but shouldn’t be the building block for owner valuation.
+
+⸻
+
+2. Add explicit statistical quality controls for conditional EV
+
+This is the biggest missing modeling issue.
+
+Filtering existing paths is elegant:
+
+EV | Rams win = mean(value among Rams-win paths)
+
+For normal win/loss probabilities, great.
+
+But suppose you have:
+
+* 100,000 simulations
+* a team with a 3% win probability → ~3,000 win paths
+* a tie with a 0.3% probability → ~300 tie paths
+
+The mean of the rare bucket can become quite noisy, especially because playoff payouts have fat tails.
+
+So each conditional needs at least:
+
+* sample_count
+* sample_share
+* standard_error or equivalent quality statistic
+* quality_status = good / warning / insufficient
+
+And the API shouldn’t confidently return $1,472 when the conditional is based on 83 paths.
+
+For V1, I would not solve this with additional simulations. Just expose the uncertainty and establish a threshold. Win/loss conditionals should usually be fine; tie conditionals can frequently be marked low-confidence.
+
+Later, if needed, targeted/stratified simulation can improve rare buckets.
+
+⸻
+
+3. I disagree with one V1 deferral: include postgame conditional MTM
+
+The proposed V1 says:
+
+Delay “current live MTM.”
+
+I agree about in-game continuously reweighted pricing. That’s extra complexity.
+
+But I would absolutely include final-conditioned provisional marks in V1.
+
+Otherwise the architecture still fails your original Problem #1.
+
+You already paid to calculate:
+
+* Rams EV | win
+* Rams EV | loss
+* Rams EV | tie
+
+So when the Rams lose, setting:
+
+Provisional postgame value = latest simulation’s EV | Rams loss
+
+is virtually free.
+
+The sequence becomes:
+
+Thursday 7 PM
+
+* Fresh simulation: Rams = $1,300
+* If win = $1,520
+* If loss = $1,040
+
+11:30 PM — game final
+
+* Immediately show $1,040 provisional
+* Label: “Postgame estimate · conditioned on Sep 10 simulation”
+
+Friday — fresh market-grounded simulation
+
+* New simulated MTM = $970
+* Replace provisional authoritative mark
+
+That gives you the dopamine hit without introducing an independent pricing model.
+
+I wouldn’t necessarily put provisional observations into the historical canonical chart yet. But I would make them available to the app/MCP and potentially show them visually as dashed/provisional.
+
+⸻
+
+4. Tighten what “net MTM sums to zero” means
+
+The proposal says:
+
+Gross expected payouts should sum to the pool. Net MTM should sum to zero.
+
+That’s correct at the entry/team economic level if:
+
+TotalAuctionCost = PoolSize
+
+which I assume is the Calcutta structure, but I’d encode the invariant explicitly rather than assuming it.
+
+More importantly, distinguish this from owner net MTM after secondary trades.
+
+Secondary trades move cash between owners but don’t alter team payout economics. The useful invariants are:
+
+For every simulation path:
+
+\sum TeamGrossPayout = Pool
+
+For entry-level MTM:
+
+\sum (ExpectedTeamPayout - OriginalAuctionCost)=0
+
+assuming auction proceeds equal the payout pool.
+
+At the owner level, signed secondary-trade cash flows should also net to zero across all participants, but that’s a separate ledger invariant.
+
+Keeping those separate will prevent some very confusing bugs later.
+
+⸻
+
+Everything else I like quite a bit.
+
+The canonical-period pointer is better than an is_canonical boolean. It lets you say “Week 4 officially points to snapshot 892,” later replace it with snapshot 897, and preserve both immutable runs plus the selection history.
+
+Unifying Week 0 is absolutely correct. Week 0 should be “same simulator, zero completed events,” not its own valuation philosophy. One wrinkle: the available calibration markets will naturally differ preseason versus Week 12, but that’s an input/configuration difference rather than a different valuation engine.
+
+Per-path normalization is especially important. If payout ultimately depends on each team’s points relative to everybody else’s points, scoring and normalizing the entire Calcutta inside each path is the correct method. It automatically captures the subtle effect where one team’s great outcome slightly dilutes everybody else’s share of the pool.
+
+And the normalized calibration table is the right answer to the “ground it in Kalshi” issue. I would make one additional distinction there: don’t require the simulator to exactly hit every Kalshi market. Some markets can be mutually inconsistent because of liquidity, spreads, timing, etc. Store a target weight and residual, then have a run-level calibration status based on tolerances.
+
+The architecture I’d settle on is therefore:
+
+Market observations happen frequently → drift is measured cheaply → a trigger decides whether a new simulation is warranted → successful simulation produces MTM + conditional distributions → completed games immediately collapse to the applicable conditional → next simulation re-anchors everything to fresh reality.
+
+That creates a particularly nice attribution after every game:
+
+Pregame simulated MTM: $1,300
+Expected value conditional on loss: $1,040
+Fresh postgame simulated MTM: $970
+
+Game outcome effect: -$260
+Additional market/model repricing: -$70
+Total move: -$330
+
+That is basically the answer you wanted from me on the Rams today.
+
+So I’d call #132 ~90% there, with the most important change being: do not defer final-conditioned provisional marks. They’re cheap, mathematically coherent with the simulation, and directly solve the biggest UX gap.
