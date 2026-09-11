@@ -13,6 +13,16 @@ export type ReleaseNote = {
 
 export const releaseNotes: ReleaseNote[] = [
   {
+    date: "September 11, 2026",
+    updates: [
+      {
+        title: "The Calcutta has a new look",
+        description:
+          "The redesigned experience is now live across Results, Live Tracker, Trades, and Auction Results, with the Calcutta crest, centered page headers, clearer typography, a simplified auction ledger, and consistent desktop and mobile navigation.",
+      },
+    ],
+  },
+  {
     date: "September 10, 2026",
     updates: [
       {
