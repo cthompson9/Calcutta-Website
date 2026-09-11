@@ -8,6 +8,7 @@ import {
   CircleHelp,
   PanelLeftClose,
   PanelLeftOpen,
+  ArrowLeft,
 } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { ReactNode, useEffect, useState } from "react";
@@ -17,9 +18,10 @@ import { trackEvent } from "@/lib/analytics";
 
 interface ShellProps {
   children: ReactNode;
+  isPreview?: boolean;
 }
 
-export function Shell({ children }: ShellProps) {
+export function Shell({ children, isPreview }: ShellProps) {
   const [location] = useLocation();
   const { selectedCalcutta } = useSeason();
   const [sidebarCollapsed, setSidebarCollapsed] = useState(() => {
@@ -136,6 +138,15 @@ export function Shell({ children }: ShellProps) {
                 </Link>
               );
             })}
+            {isPreview && (
+              <Link
+                href="~/"
+                className="flex items-center gap-3 px-3 py-2.5 mt-2 cursor-pointer transition-colors font-medium text-sm rounded-md text-sidebar-foreground hover:bg-sidebar-accent hover:text-sidebar-accent-foreground"
+              >
+                <ArrowLeft className="w-4 h-4" />
+                Return to live app
+              </Link>
+            )}
           </div>
         </nav>
       </aside>
@@ -184,13 +195,23 @@ export function Shell({ children }: ShellProps) {
           <div className="min-w-0 flex-1">
             <SeasonToggle testId="select-calcutta-mobile" />
           </div>
-          <span
-            className="hidden min-[390px]:inline-flex shrink-0 items-center gap-1 rounded-full border border-emerald-200 bg-emerald-50 px-2 py-1 text-[8px] font-mono font-bold uppercase tracking-wider text-emerald-700"
-            data-testid="status-mobile-view"
-          >
-            <span className="h-1.5 w-1.5 rounded-full bg-emerald-500" />
-            View
-          </span>
+          {isPreview ? (
+            <Link
+              href="~/"
+              className="inline-flex shrink-0 items-center gap-1.5 text-xs font-medium text-muted-foreground hover:text-foreground"
+            >
+              <ArrowLeft className="w-3 h-3" />
+              Live app
+            </Link>
+          ) : (
+            <span
+              className="hidden min-[390px]:inline-flex shrink-0 items-center gap-1 rounded-full border border-emerald-200 bg-emerald-50 px-2 py-1 text-[8px] font-mono font-bold uppercase tracking-wider text-emerald-700"
+              data-testid="status-mobile-view"
+            >
+              <span className="h-1.5 w-1.5 rounded-full bg-emerald-500" />
+              View
+            </span>
+          )}
         </div>
         {unsupportedSport ? (
           <UnsupportedSportState

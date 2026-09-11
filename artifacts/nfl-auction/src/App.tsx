@@ -22,8 +22,25 @@ import WhatsNew from '@/pages/WhatsNew';
 import Faq from '@/pages/Faq';
 import FormatPreview from '@/pages/FormatPreview';
 import { SeasonProvider } from '@/hooks/useSeason';
+import './unified-preview.css';
 
 const queryClient = new QueryClient();
+
+function MainRoutes() {
+  return (
+    <Switch>
+      <Route path="/" component={Results} />
+      <Route path="/mtm" component={MtmTracker} />
+      <Route path="/trades" component={Trades} />
+      <Route path="/teams" component={Teams} />
+      <Route path="/bidders" component={Bidders} />
+      <Route path="/dashboard" component={Dashboard} />
+      <Route path="/whats-new" component={WhatsNew} />
+      <Route path="/faq" component={Faq} />
+      <Route component={NotFound} />
+    </Switch>
+  );
+}
 
 function Router() {
   const [location] = useLocation();
@@ -36,21 +53,24 @@ function Router() {
   }
 
   return (
-    <Shell>
-      <RoutedErrorBoundary>
-        <Switch>
-          <Route path="/" component={Results} />
-          <Route path="/mtm" component={MtmTracker} />
-          <Route path="/trades" component={Trades} />
-          <Route path="/teams" component={Teams} />
-          <Route path="/bidders" component={Bidders} />
-          <Route path="/dashboard" component={Dashboard} />
-          <Route path="/whats-new" component={WhatsNew} />
-          <Route path="/faq" component={Faq} />
-          <Route component={NotFound} />
-        </Switch>
-      </RoutedErrorBoundary>
-    </Shell>
+    <Switch>
+      <Route path="/unified-preview" nest>
+        <div className="unified-preview">
+          <Shell isPreview>
+            <RoutedErrorBoundary>
+              <MainRoutes />
+            </RoutedErrorBoundary>
+          </Shell>
+        </div>
+      </Route>
+      <Route>
+        <Shell>
+          <RoutedErrorBoundary>
+            <MainRoutes />
+          </RoutedErrorBoundary>
+        </Shell>
+      </Route>
+    </Switch>
   );
 }
 
