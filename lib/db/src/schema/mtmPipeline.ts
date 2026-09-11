@@ -37,6 +37,13 @@ export const mtmSnapshotTable = pgTable(
     diagnostics: jsonb("diagnostics").$type<Record<string, unknown> | null>(),
     stateJson: jsonb("state_json").$type<Record<string, unknown> | null>(),
     inputProvenance: jsonb("input_provenance").$type<Record<string, unknown> | null>(),
+    pathCount: integer("path_count"),
+    randomSeed: integer("random_seed"),
+    inputHash: text("input_hash"),
+    marketAnchor: timestamp("market_anchor", { withTimezone: true }),
+    actualAnchor: timestamp("actual_anchor", { withTimezone: true }),
+    calibrationStatus: text("calibration_status"),
+    runKind: text("run_kind"),
     createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
   },
   (t) => [
@@ -44,6 +51,10 @@ export const mtmSnapshotTable = pgTable(
     index("mtm_snapshot_pool_created_idx").on(t.poolId, t.createdAt),
     check("mtm_snapshot_trigger_supported", sql`${t.trigger} IN ('scheduled', 'manual')`),
     check("mtm_snapshot_status_supported", sql`${t.status} IN ('ok', 'failed')`),
+    check("mtm_snapshot_path_count_non_negative", sql`${t.pathCount} IS NULL OR ${t.pathCount} >= 0`),
+    check("mtm_snapshot_random_seed_non_negative", sql`${t.randomSeed} IS NULL OR ${t.randomSeed} >= 0`),
+    check("mtm_snapshot_calibration_status_supported", sql`${t.calibrationStatus} IS NULL OR ${t.calibrationStatus} IN ('good', 'warning', 'insufficient', 'not_run')`),
+    check("mtm_snapshot_run_kind_supported", sql`${t.runKind} IS NULL OR ${t.runKind} IN ('week_0', 'scheduled', 'manual', 'postgame', 'backfill')`),
   ],
 );
 

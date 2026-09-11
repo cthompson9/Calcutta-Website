@@ -51,6 +51,12 @@
     "hfa_points": 1.6,
     "rating_fit_lr": 0.5,
     "rating_fit_iters": 200,
-    "monte_carlo_runs": 20000
+    "monte_carlo_runs": 20000,
+    "seed": 20260829,
+    "model": "seeded_monte_carlo_v1",
+    "min_conditional_samples": 100,
+    "min_conditional_share": 0.01,
+    "calibration_tolerance": 0.03,
+    "calibration_iters": 500
   }
 }

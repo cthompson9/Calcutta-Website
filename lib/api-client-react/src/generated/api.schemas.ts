@@ -1749,6 +1749,119 @@ export interface MtmWeekData {
   teamValues: MtmTeamWeek[];
 }
 
+export type MtmValuationMarkType = typeof MtmValuationMarkType[keyof typeof MtmValuationMarkType];
+
+
+export const MtmValuationMarkType = {
+  authoritative: 'authoritative',
+  latest: 'latest',
+  canonical: 'canonical',
+  provisional: 'provisional',
+} as const;
+
+export type MtmValuationMarkQuality = typeof MtmValuationMarkQuality[keyof typeof MtmValuationMarkQuality];
+
+
+export const MtmValuationMarkQuality = {
+  good: 'good',
+  warning: 'warning',
+  insufficient: 'insufficient',
+} as const;
+
+export type MtmValuationMarkModel = {
+  name: string;
+  /** @nullable */
+  seed?: number | null;
+};
+
+export type MtmValuationMark = {
+  /** @nullable */
+  snapshotId?: number | null;
+  type: MtmValuationMarkType;
+  approximate: boolean;
+  quality: MtmValuationMarkQuality;
+  stale: boolean;
+  /** @nullable */
+  asOf?: string | null;
+  /** @nullable */
+  inputHash?: string | null;
+  /** @nullable */
+  pathCount?: number | null;
+  /** @nullable */
+  selectionReason?: string | null;
+  /** @nullable */
+  provisionalSuppressionReason?: string | null;
+  model?: MtmValuationMarkModel;
+};
+
+export type MtmValuationTeamsItem = {
+  entryId: number;
+  /** @nullable */
+  teamId?: number | null;
+  /** @nullable */
+  teamName?: string | null;
+  grossExpectedPayout: number;
+  /** @nullable */
+  auctionPrice?: number | null;
+  /** @nullable */
+  net?: number | null;
+};
+
+export type MtmValuationOwnersItem = {
+  bidderId?: number;
+  bidderName?: string;
+  grossExpectedPayout?: number;
+  signedCostBasis?: number;
+  net?: number;
+};
+
+export type MtmValuationConditionalPayouts = { [key: string]: unknown };
+
+export type MtmValuationDiagnosticsMarketCalibration = { [key: string]: unknown };
+
+export type MtmValuationDiagnosticsMarketDrift = {
+  available?: boolean;
+  /** @nullable */
+  reason?: string | null;
+  threshold?: number;
+  /** @nullable */
+  maxDrift?: number | null;
+  /** @nullable */
+  weightedDrift?: number | null;
+  recommendsRerun?: boolean;
+};
+
+/**
+ * @nullable
+ */
+export type MtmValuationDiagnostics = {
+  market_calibration?: MtmValuationDiagnosticsMarketCalibration;
+  market_drift?: MtmValuationDiagnosticsMarketDrift;
+} | null;
+
+export type MtmValuationInvariantsTeamGrossPoolConservation = { [key: string]: unknown };
+
+export type MtmValuationInvariantsEntryNetVersusAuctionProceeds = { [key: string]: unknown };
+
+export type MtmValuationInvariantsOwnerSecondaryTradeCash = { [key: string]: unknown };
+
+export type MtmValuationInvariants = {
+  teamGrossPoolConservation?: MtmValuationInvariantsTeamGrossPoolConservation;
+  entryNetVersusAuctionProceeds?: MtmValuationInvariantsEntryNetVersusAuctionProceeds;
+  ownerSecondaryTradeCash?: MtmValuationInvariantsOwnerSecondaryTradeCash;
+};
+
+export interface MtmValuation {
+  available: boolean;
+  mark: MtmValuationMark;
+  teams: MtmValuationTeamsItem[];
+  owners: MtmValuationOwnersItem[];
+  conditionalPayouts: MtmValuationConditionalPayouts;
+  /** @nullable */
+  diagnostics: MtmValuationDiagnostics;
+  invariants: MtmValuationInvariants;
+}
+
 export interface MtmTeamSeries {
   teamId: number;
   teamName: string;
@@ -2277,6 +2390,23 @@ calcuttaId?: number | null;
 teamId?: number | null;
 };
 
+export type GetMtmValuationParams = {
+season: number;
+calcuttaId?: number;
+markType?: GetMtmValuationMarkType;
+owner?: string;
+};
+
+export type GetMtmValuationMarkType = typeof GetMtmValuationMarkType[keyof typeof GetMtmValuationMarkType];
+
+
+export const GetMtmValuationMarkType = {
+  authoritative: 'authoritative',
+  latest: 'latest',
+  canonical: 'canonical',
+  provisional: 'provisional',
+} as const;
+
 export type GetMtmPipelineEvidenceParams = {
 season: number;
 calcuttaId?: number;
@@ -2456,3 +2586,4 @@ export const GetConsortiumLeaderboardV2MembershipView = {
   historical: 'historical',
   current: 'current',
 } as const;
+

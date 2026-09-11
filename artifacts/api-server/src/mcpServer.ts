@@ -63,6 +63,7 @@ import {
 import { loadCurrentBidderConsortiums } from "./lib/consortiumMemberships";
 import { applyNflStandingsImport, NflStandingsImportError } from "./lib/nflStandingsImport";
 import { getMtmPipelineStatus } from "./lib/mtmPipeline";
+import { getNormalizedMtmValuation } from "./lib/mtmValuation";
 import { createPendingTrade, validateTradeOwnership } from "./lib/tradeService";
 import {
   mcpProtectedResourceMetadataUrl,
@@ -452,6 +453,42 @@ function buildMcpServer(isAdmin: boolean) {
       const matchedTeam = await findTeam(team);
       if (!matchedTeam) return text(JSON.stringify({ available: false, reason: `Team not found: ${team}` }));
       const status = await getMtmPipelineStatus(season, calcuttaId);
+      const normalized = await getNormalizedMtmValuation({ season, calcuttaId });
+      const normalizedTeam = normalized.teams.find((row: any) => row.teamId === matchedTeam.id);
+      if (normalizedTeam) {
+        const pipelineValuation = status?.valuations.find((row) => row.teamId === matchedTeam.id) as Record<string, any> | undefined;
+        const selectedSnapshotId = normalized.mark.snapshotId ?? status?.currentSnapshotId ?? null;
+        const snapshotState = selectedSnapshotId == null ? null : (await db.select({
+          stateJson: mtmSnapshotTable.stateJson,
+        }).from(mtmSnapshotTable).where(eq(mtmSnapshotTable.id, selectedSnapshotId)).limit(1))[0]?.stateJson;
+        const teamCode = (Array.isArray(snapshotState?.entries) ? snapshotState.entries : [])
+          .find((entry: any) => String(entry?.entry_id) === String(pipelineValuation?.entryId))?.team;
+        const projection = teamCode && status ? status.projections[String(teamCode)] : null;
+        const selectedPoint = pipelineValuation?.history?.find((point: any) =>
+          point.snapshotId === selectedSnapshotId
+        ) ?? pipelineValuation?.history?.at(-1);
+        return text(JSON.stringify({
+          available: true, basis: "mtm", default_measure: "net_mtm", team: matchedTeam.name,
+          gross_mtm: normalizedTeam.grossExpectedPayout, cost_basis: normalizedTeam.auctionPrice,
+          net_mtm: normalizedTeam.net, source: "normalized_mtm_valuation",
+          snapshot_id: normalized.mark.snapshotId ?? null,
+          method_version: normalized.mark.model?.name ?? null,
+          as_of: normalized.mark.asOf ?? null,
+          week: selectedPoint?.label ?? null,
+          mark: normalized.mark, diagnostics: normalized.diagnostics,
+          conditional_payouts: Object.values(normalized.conditionalPayouts).filter((row: any) =>
+            row.home === matchedTeam.id || row.away === matchedTeam.id),
+          projection_available: Boolean(projection),
+          playoff_odds: projection ? {
+            playoff_berth: projection.pBerth == null ? null : Number(projection.pBerth),
+            divisional_round: projection.pDivisional == null ? null : Number(projection.pDivisional),
+            conference_championship: projection.pConf == null ? null : Number(projection.pConf),
+            super_bowl_berth: projection.pSbBerth == null ? null : Number(projection.pSbBerth),
+            super_bowl_win: projection.pSbWin == null ? null : Number(projection.pSbWin),
+          } : null,
+          stale: normalized.mark.stale, stale_reasons: status?.staleReasons ?? [],
+        }, null, 2));
+      }
       const valuation = status?.valuations.find((row) => row.teamId === matchedTeam.id) as Record<string, any> | undefined;
       const current = valuation?.history?.at(-1);
       if (!status || !valuation || !current || current.netPayout == null || current.auctionPrice == null) {
@@ -520,6 +557,15 @@ function buildMcpServer(isAdmin: boolean) {
     }
     const ownership = await loadSeasonOwnership(seasonId, status.poolId);
     const positions = ownership.byBidder.get(bidder.id);
+    const normalized = await getNormalizedMtmValuation({ season, calcuttaId, owner: bidder.name });
+    const normalizedOwners = normalized.owners as Array<{
+      bidderId: number; grossExpectedPayout: number; signedCostBasis: number; net: number;
+    }>;
+    const normalizedTeams = normalized.teams as Array<{
+      teamId: number | null; grossExpectedPayout: number;
+    }>;
+    const normalizedOwner = normalizedOwners.find((row) => row.bidderId === bidder.id);
+    const normalizedTeamById = new Map(normalizedTeams.map((row) => [row.teamId, row]));
     const [snapshot] = await db.select({
       methodVersion: mtmSnapshotTable.methodVersion,
       stateJson: mtmSnapshotTable.stateJson,
@@ -535,9 +581,11 @@ function buildMcpServer(isAdmin: boolean) {
       const valuation = status.valuations.find((row) => row.teamId === teamId) as Record<string, any> | undefined;
       const point = valuation?.history?.at(-1);
       const previousPoint = valuation?.history?.at(-2);
-      const teamGross = point?.netPayout == null || point?.auctionPrice == null
-        ? null
-        : Number(point.netPayout) + Number(point.auctionPrice);
+      const normalizedTeam = normalizedTeamById.get(teamId);
+      const teamGross = normalizedTeam?.grossExpectedPayout
+        ?? (point?.netPayout == null || point?.auctionPrice == null
+          ? null
+          : Number(point.netPayout) + Number(point.auctionPrice));
       const previousTeamGross = previousPoint?.netPayout == null || previousPoint?.auctionPrice == null
         ? null
         : Number(previousPoint.netPayout) + Number(previousPoint.auctionPrice);
@@ -582,20 +630,22 @@ function buildMcpServer(isAdmin: boolean) {
     });
     const latestPoint = (status.valuations[0] as Record<string, any> | undefined)?.history?.at(-1);
     return {
-      available: complete,
+      available: normalizedOwner != null && complete,
       basis: "mtm",
       default_measure: "net_mtm",
       owner: bidder.name,
-      gross_mtm: complete ? grossMtm : null,
-      signed_cost_basis: signedCostBasis,
-      net_mtm: complete ? grossMtm - signedCostBasis : null,
+      gross_mtm: normalizedOwner?.grossExpectedPayout ?? (complete ? grossMtm : null),
+      signed_cost_basis: normalizedOwner?.signedCostBasis ?? signedCostBasis,
+      net_mtm: normalizedOwner?.net ?? (complete ? grossMtm - signedCostBasis : null),
       holdings,
       week: latestPoint?.label ?? null,
-      as_of: status.currentAsOf,
-      snapshot_id: status.currentSnapshotId,
-      method_version: snapshot?.methodVersion ?? null,
-      source: "live_mtm_pipeline",
-      stale: status.stale,
+      as_of: normalized.mark.asOf ?? status.currentAsOf,
+      snapshot_id: normalized.mark.snapshotId ?? status.currentSnapshotId,
+      method_version: normalized.mark.model?.name ?? snapshot?.methodVersion ?? null,
+      source: normalizedOwner ? "normalized_mtm_valuation" : "live_mtm_pipeline",
+      mark: normalized.mark,
+      diagnostics: normalized.diagnostics,
+      stale: normalized.mark.stale,
       stale_reasons: status.staleReasons,
     };
   };
@@ -1154,9 +1204,10 @@ function buildMcpServer(isAdmin: boolean) {
       const t = await findTeam(team);
       if (!t) return text(null);
       const year = season ?? await activeSeasonYear() ?? await defaultSeasonYear();
-      const status = await getMtmPipelineStatus(year, calcuttaId);
-      const valuation = status?.valuations.find((row) => row.teamId === t.id) as Record<string, any> | undefined;
-      return text(valuation?.history?.at(-1)?.netPayout ?? null);
+      const normalized = await getNormalizedMtmValuation({ season: year, calcuttaId });
+      const valuation = (normalized.teams as Array<{ teamId: number | null; net: number | null }>)
+        .find((row) => row.teamId === t.id);
+      return text(valuation?.net ?? null);
     },
   );
 
@@ -1215,23 +1266,10 @@ function buildMcpServer(isAdmin: boolean) {
       const b = await findBidder(owner);
       if (!b) return text(null);
       const year = season ?? await activeSeasonYear() ?? await defaultSeasonYear();
-      const sid = await resolveSeasonId(year);
-      if (!sid) return text(null);
-      const status = await getMtmPipelineStatus(year, calcuttaId);
-      if (!status?.currentSnapshotId) return text(null);
-      const ownership = await loadSeasonOwnership(sid, status.poolId);
-      const positions = ownership.byBidder.get(b.id);
-      if (!positions) return text(0);
-      let grossMtm = 0;
-      let signedCostBasis = 0;
-      for (const [teamId, position] of positions) {
-        const valuation = status.valuations.find((row) => row.teamId === teamId) as Record<string, any> | undefined;
-        const point = valuation?.history?.at(-1);
-        if (point?.netPayout == null || point?.auctionPrice == null) return text(null);
-        grossMtm += (Number(point.netPayout) + Number(point.auctionPrice)) * position.effectiveShare;
-        signedCostBasis += position.originalCostBasis + position.tradePaid - position.tradeReceived;
-      }
-      return text(Math.round((grossMtm - signedCostBasis) * 100) / 100);
+      const normalized = await getNormalizedMtmValuation({ season: year, calcuttaId, owner: b.name });
+      const valuation = (normalized.owners as Array<{ bidderId: number; net: number }>)
+        .find((row) => row.bidderId === b.id);
+      return text(valuation == null ? null : Math.round(valuation.net * 100) / 100);
     },
   );
 

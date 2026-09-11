@@ -19,6 +19,8 @@ market and price correctly with no special casing.
 """
 from __future__ import annotations
 
+import math
+
 STAGES = ["berth", "divisional", "conference", "sb_berth", "sb_win"]
 
 
@@ -85,3 +87,89 @@ def value_pool(rubric: dict,
                 "2720 only if E[total league wins]=272, i.e. ties priced at ~0).",
     }
     return {"entries": rows, "team_valuations": team_vals, "diagnostics": diagnostics}
+
+
+def value_simulation(rubric: dict, entries: list[dict], pot: float,
+                     simulation: dict, games: list,
+                     min_conditional_samples: int = 100,
+                     min_conditional_share: float = 0.01) -> dict:
+    """Turn aggregate Monte Carlo results into the authoritative mark.
+
+    ``simulation`` contains sums, not raw paths.  Each path was normalized to
+    the pot before its sum was accumulated, which is important when ties or
+    other path-level inventory effects change the denominator.
+    """
+    runs = int(simulation.get("runs", 0))
+    sums = simulation.get("payout_sum", {})
+    sqs = simulation.get("payout_sq_sum", {})
+    teams = list(sums)
+    expected = {t: (sums[t] / runs if runs else 0.0) for t in teams}
+    rows = []
+    for e in entries:
+        t = e["team"]
+        gross = expected.get(t, 0.0)
+        rows.append({
+            "entry_id": e["entry_id"], "team": t,
+            "expected_points": None, "expected_share": gross / pot if pot else 0.0,
+            "expected_payout": round(gross, 2),
+            "gross_expected_payout": round(gross, 2),
+            "net_convenience": round(gross - (e.get("price") or 0), 2),
+            "auction_price": e.get("price"),
+            "mtm_multiple": round(gross / e["price"], 3) if e.get("price") else None,
+        })
+    total = sum(expected.values())
+    cond_out = {}
+    for gi, g in enumerate(games):
+        cond_out[str(gi)] = {"home": g.home, "away": g.away, "week": g.week,
+                             "event_id": g.event_id, "outcomes": {}}
+        buckets = simulation.get("conditional_payouts", {}).get(gi, {})
+        for outcome, b in buckets.items():
+            n = b["count"]
+            weight = b.get("weight", n)
+            weight_sq = b.get("weight_sq", n)
+            team_data = {}
+            for t in teams:
+                mean = b["sum"][t] / weight if weight else None
+                variance = max(0.0, b["sq"][t] / weight - mean * mean) if weight else None
+                effective_n = weight * weight / weight_sq if weight_sq else 0.0
+                sufficient = effective_n >= min_conditional_samples and (
+                    weight / runs >= min_conditional_share if runs else False)
+                # Reconciliation is a game/team property, not an outcome
+                # property: all three conditional buckets must be weighted
+                # together before comparing to the unconditional baseline.
+                weighted = sum(
+                    x.get("weight", x["count"]) / runs
+                    * (x["sum"][t] / x.get("weight", x["count"]))
+                    for x in buckets.values() if x.get("weight", x["count"]) and runs)
+                team_data[t] = {
+                    "gross_expected_payout": round(mean, 2) if mean is not None else None,
+                    "sample_count": n,
+                    "sample_share": weight / runs if runs else 0.0,
+                    "effective_sample_size": round(effective_n, 2),
+                    "standard_error": round(math.sqrt(variance / effective_n), 4)
+                    if effective_n else None,
+                    "quality_status": "good" if sufficient else "insufficient",
+                    "reconciliation_residual": round(
+                        weighted - expected.get(t, 0.0), 6) if runs else None,
+                }
+            cond_out[str(gi)]["outcomes"][outcome] = team_data
+    # A useful run-level invariant: normalized payouts sum to pot on every
+    # simulated path (up to floating point accumulation).
+    diagnostics = {
+        "path_count": runs,
+        "gross_payout_total": round(total, 2),
+        "pot": pot,
+        "conservation_residual": round(total - pot, 6),
+        "conservation_status": "ok" if abs(total - pot) <= max(.01, pot * 1e-6) else "warning",
+        "effective_sample_size": round(simulation.get("effective_sample_size", runs), 2),
+        "market_calibration_converged": simulation.get("calibration_converged", True),
+    }
+    team_valuations = {
+        t: {"gross_expected_payout": round(expected[t], 2),
+            "net_convenience": round(expected[t] - sum(
+                e.get("price", 0) or 0 for e in entries if e["team"] == t), 2)}
+        for t in teams
+    }
+    return {"entries": rows, "team_valuations": team_valuations,
+            "conditional_payouts": cond_out,
+            "diagnostics": diagnostics}

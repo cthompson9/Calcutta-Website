@@ -1193,6 +1193,42 @@ paths:
               schema:
                 $ref: "#/components/schemas/ErrorResponse"
 
+  /mtm/valuation:
+    get:
+      operationId: getMtmValuation
+      tags: [mtm]
+      summary: Get the normalized MTM valuation read model
+      parameters:
+        - name: season
+          in: query
+          required: true
+          schema: { type: number }
+        - name: calcuttaId
+          in: query
+          schema: { type: number }
+        - name: markType
+          in: query
+          schema:
+            type: string
+            enum: [authoritative, latest, canonical, provisional]
+            default: authoritative
+        - name: owner
+          in: query
+          schema: { type: string }
+      responses:
+        "200":
+          description: Normalized valuation, ownership, conditionals, and invariants
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/MtmValuation"
+        "400":
+          description: Validation error
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+
   /mtm/pipeline/evidence:
     get:
       operationId: getMtmPipelineEvidence
@@ -3729,6 +3765,84 @@ components:
           updatedAt,
           derived,
         ]
+
+    MtmValuation:
+      type: object
+      properties:
+        available: { type: boolean }
+        mark:
+          type: object
+          properties:
+            snapshotId: { type: ["number", "null"] }
+            type: { type: string, enum: [authoritative, latest, canonical, provisional] }
+            approximate: { type: boolean }
+            quality: { type: string, enum: [good, warning, insufficient] }
+            stale: { type: boolean }
+            asOf: { type: ["string", "null"] }
+            inputHash: { type: ["string", "null"] }
+            pathCount: { type: ["number", "null"] }
+            selectionReason: { type: ["string", "null"] }
+            provisionalSuppressionReason: { type: ["string", "null"] }
+            model:
+              type: object
+              properties:
+                name: { type: string }
+                seed: { type: ["number", "null"] }
+              required: [name]
+          required: [type, approximate, quality, stale]
+        teams:
+          type: array
+          items:
+            type: object
+            properties:
+              entryId: { type: number }
+              teamId: { type: ["number", "null"] }
+              teamName: { type: ["string", "null"] }
+              grossExpectedPayout: { type: number }
+              auctionPrice: { type: ["number", "null"] }
+              net: { type: ["number", "null"] }
+            required: [entryId, grossExpectedPayout]
+        owners:
+          type: array
+          items:
+            type: object
+            properties:
+              bidderId: { type: number }
+              bidderName: { type: string }
+              grossExpectedPayout: { type: number }
+              signedCostBasis: { type: number }
+              net: { type: number }
+        conditionalPayouts:
+          type: object
+          additionalProperties: true
+        diagnostics:
+          type: ["object", "null"]
+          properties:
+            market_calibration:
+              type: object
+              additionalProperties: true
+            market_drift:
+              type: object
+              properties:
+                available: { type: boolean }
+                reason: { type: ["string", "null"] }
+                threshold: { type: number }
+                maxDrift: { type: ["number", "null"] }
+                weightedDrift: { type: ["number", "null"] }
+                recommendsRerun: { type: boolean }
+        invariants:
+          type: object
+          properties:
+            teamGrossPoolConservation:
+              type: object
+              additionalProperties: true
+            entryNetVersusAuctionProceeds:
+              type: object
+              additionalProperties: true
+            ownerSecondaryTradeCash:
+              type: object
+              additionalProperties: true
+      required: [available, mark, teams, owners, conditionalPayouts, diagnostics, invariants]
 
     MtmData:
       type: object

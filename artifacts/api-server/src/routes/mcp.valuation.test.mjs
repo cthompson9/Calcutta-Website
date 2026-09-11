@@ -262,7 +262,7 @@ describe("MCP Live Tracker valuation contract", { skip: !canRun }, () => {
     });
     assert.match(update, /^Last refresh: \*\*August 1, 2099 at 11:00 AM ET\*\*/);
     assert.match(update, /- \*\*Buffalo Bills \(100%\)\*\*/);
-    assert.match(update, /\*\*\$100 MTM\*\* \(\*\*\+\$0 net\*\*\)/);
+    assert.match(update, /\*\*\$250 MTM\*\* \(\*\*\+\$150 net\*\*\)/);
     assert.match(update, /change unavailable \(no prior comparable refresh\)/);
     assert.match(update, /No material supported development since the prior refresh/);
     assert.doesNotMatch(update, /\|/);
@@ -294,15 +294,16 @@ describe("MCP Live Tracker valuation contract", { skip: !canRun }, () => {
 
     assert.equal(teamValuation.available, true);
     assert.equal(teamValuation.default_measure, "net_mtm");
-    assert.equal(teamValuation.gross_mtm, 100);
+    assert.equal(teamValuation.gross_mtm, 250);
     assert.equal(teamValuation.cost_basis, 100);
-    assert.equal(teamValuation.net_mtm, 0);
+    assert.equal(teamValuation.net_mtm, 150);
     assert.equal(teamValuation.snapshot_id, liveSnapshot.id);
     assert.equal(teamValuation.method_version, methodVersion);
+    assert.equal(teamValuation.week, "Week 0");
     assert.equal(ownerValuation.available, true);
-    assert.equal(ownerValuation.gross_mtm, 100);
+    assert.equal(ownerValuation.gross_mtm, 250);
     assert.equal(ownerValuation.signed_cost_basis, 100);
-    assert.equal(ownerValuation.net_mtm, 0);
+    assert.equal(ownerValuation.net_mtm, 150);
     assert.equal(ownerValuation.holdings[0].team_code, "BUF");
     assert.equal(ownerValuation.holdings[0].projection_available, true);
     assert.equal(ownerValuation.holdings[0].playoff_odds.playoff_berth, 0.72);

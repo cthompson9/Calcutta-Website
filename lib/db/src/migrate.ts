@@ -36,6 +36,7 @@ import {
   calendarProjectionParticipantIdentityMigration,
   calendarIntegrityGuardDispatchMigration,
   refreshJobObservabilityMigration,
+  mtmRunMetadataAndConditionalsMigration,
 } from "./migrations";
 
 const migrations = [
@@ -74,6 +75,7 @@ const migrations = [
   calendarProjectionParticipantIdentityMigration,
   calendarIntegrityGuardDispatchMigration,
   refreshJobObservabilityMigration,
+  mtmRunMetadataAndConditionalsMigration,
 ] as const;
 
 /**

@@ -33,3 +33,4 @@ export { calendarProjectionCandidateIdentityMigration } from "./0037CalendarProj
 export { calendarProjectionParticipantIdentityMigration } from "./0038CalendarProjectionParticipantIdentity";
 export { calendarIntegrityGuardDispatchMigration } from "./0039CalendarIntegrityGuardDispatch";
 export { refreshJobObservabilityMigration } from "./0040RefreshJobObservability";
+export { mtmRunMetadataAndConditionalsMigration } from "./0041MtmRunMetadataAndConditionals";

@@ -4,6 +4,7 @@ import { mkdtemp, readFile, rm, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { resolve } from "node:path";
 import { promisify } from "node:util";
+import { createHash } from "node:crypto";
 import { and, asc, eq, inArray, sql } from "drizzle-orm";
 import {
   calcuttaEntriesTable,
@@ -13,6 +14,8 @@ import {
   mtmMarketQuoteTable,
   mtmSnapshotTable,
   mtmTeamProjectionTable,
+  mtmCalibrationMetricTable,
+  mtmGameConditionalTable,
   calcuttaCalendarsTable,
   calendarRoundsTable,
   calendarSlotsTable,
@@ -22,12 +25,16 @@ import {
   seasonsTable,
   teamsTable,
   pool,
+  eventsTable,
+  mtmCanonicalPeriodSelectionTable,
+  sportPeriodsTable,
 } from "@workspace/db";
 import { loadSeasonOwnership } from "./seasonOwnership";
 import {
   isNflMarqueeKickoff,
   NFL_SCORING_ADAPTER,
 } from "./competitionScoring";
+import { flattenEngineConditionals } from "./mtmValuationHelpers";
 
 const execFileAsync = promisify(execFile);
 const WORKSPACE_ROOT = existsSync(resolve(process.cwd(), "mtm"))
@@ -56,7 +63,7 @@ type MtmState = {
   pot: number;
   entries: Array<{ entry_id: string; team: string; price: number }>;
   realized: Record<string, { wins: number; ties: number; adj_pt_diff: number }>;
-  remaining_schedule: Array<{ home: string; away: string; marquee: boolean; week: number }>;
+  remaining_schedule: Array<{ event_id: number; home: string; away: string; marquee: boolean; week: number }>;
   divisions: Record<string, string[]>;
   win_ladders: Record<string, Array<{ strike: number; yes_bid: number | null; yes_ask: number | null; volume: number }>>;
   elimination_quotes: Record<string, Record<string, number>>;
@@ -69,6 +76,12 @@ type EngineSnapshot = {
   projections?: Record<string, Record<string, unknown>>;
   valuations?: Array<Record<string, unknown>>;
   diagnostics?: Record<string, unknown>;
+  path_count?: number;
+  model?: { name?: string; seed?: number };
+  calibration?: Array<Record<string, unknown>>;
+  conditionals?: Array<Record<string, unknown>>;
+  calibration_metrics?: Array<Record<string, unknown>>;
+  conditional_payouts?: Record<string, unknown>;
 };
 
 type RawMarketQuote = {
@@ -190,6 +203,16 @@ export type MtmPipelineResult = {
 function asNumber(value: unknown, fallback = 0): number {
   const result = Number(value);
   return Number.isFinite(result) ? result : fallback;
+}
+
+function canonicalJson(value: unknown): string {
+  if (Array.isArray(value)) return `[${value.map(canonicalJson).join(",")}]`;
+  if (value && typeof value === "object") {
+    return `{${Object.keys(value as Record<string, unknown>).sort()
+      .map((key) => `${JSON.stringify(key)}:${canonicalJson((value as Record<string, unknown>)[key])}`)
+      .join(",")}}`;
+  }
+  return JSON.stringify(value);
 }
 
 function pipelineMarkWeek(stateJson: Record<string, unknown> | null): number {
@@ -329,7 +352,7 @@ function deriveQuoteState(
 async function fetchEspnRemainingSchedule(
   seasonYear: number,
 ): Promise<{
-  schedule: MtmState["remaining_schedule"];
+  schedule: Array<Omit<MtmState["remaining_schedule"][number], "event_id">>;
   provenance: MtmInputProvenance["schedule"];
 }> {
   const weeks = await Promise.all(Array.from({ length: 18 }, async (_, index) => {
@@ -451,6 +474,36 @@ async function exportState(seasonYear: number, calcuttaId?: number): Promise<{
   })));
   const scheduleCapture = await fetchEspnRemainingSchedule(seasonYear);
   const remainingSchedule = scheduleCapture.schedule;
+  const eventRows = await db.select({
+    id: eventsTable.id,
+    sourceEventId: eventsTable.sourceEventId,
+    week: eventsTable.week,
+    homeTeamId: eventsTable.homeTeamId,
+    awayTeamId: eventsTable.awayTeamId,
+  }).from(eventsTable).where(and(
+    eq(eventsTable.seasonId, poolRow.seasonId),
+    eq(eventsTable.sport, "NFL"),
+    eq(eventsTable.competition, "NFL_REGULAR_SEASON"),
+  ));
+  const eventBySource = new Map(eventRows.map((event) => [event.sourceEventId, event]));
+  const eventByMatchup = new Map(eventRows.map((event) =>
+    [`${event.week}:${event.awayTeamId}:${event.homeTeamId}`, event] as const,
+  ));
+  const canonicalSchedule = remainingSchedule.map((game) => {
+    const source = scheduleCapture.provenance.find((item) =>
+      item.week === game.week && item.home === game.home && item.away === game.away);
+    const awayEntry = entries.find((entry) => TEAM_CODE_BY_NAME[entry.name] === game.away);
+    const homeEntry = entries.find((entry) => TEAM_CODE_BY_NAME[entry.name] === game.home);
+    const event = (source ? eventBySource.get(source.source_id) : undefined)
+      ?? (awayEntry && homeEntry
+        ? eventByMatchup.get(`${game.week}:${awayEntry.teamId}:${homeEntry.teamId}`)
+        : undefined);
+    if (!event) throw new Error(`Remaining NFL event ${game.week}:${game.away}:${game.home} has no canonical events.id.`);
+    return { ...game, event_id: event.id };
+  });
+  // The engine state is deliberately provider-neutral: only the canonical
+  // events.id is exported, never an ESPN/provider identifier.
+  const remainingScheduleWithIds = canonicalSchedule;
   const completedGames = games.filter((game) =>
     game.period >= 1 &&
     game.period <= 18 &&
@@ -462,15 +515,15 @@ async function exportState(seasonYear: number, calcuttaId?: number): Promise<{
     const away = TEAM_CODE_BY_NAME[teamNameById.get(game.away) ?? ""];
     return `${game.period}:${away}:${home}`;
   });
-  const remainingGameIds = remainingSchedule.map((game) => `${game.week}:${game.away}:${game.home}`);
+  const remainingGameIds = remainingScheduleWithIds.map((game) => `${game.week}:${game.away}:${game.home}`);
   const scheduleIdentityError = validateScheduleIdentitySets(completedGameIds, remainingGameIds);
   if (scheduleIdentityError) throw new Error(scheduleIdentityError);
   const knownCodes = new Set(entries.map((entry) => TEAM_CODE_BY_NAME[entry.name]));
-  if (remainingSchedule.some((game) => !knownCodes.has(game.home) || !knownCodes.has(game.away))) {
+  if (remainingScheduleWithIds.some((game) => !knownCodes.has(game.home) || !knownCodes.has(game.away))) {
     throw new Error("ESPN returned an NFL team that is not present in the canonical Calcutta.");
   }
   const remainingByTeam = new Map<string, number>();
-  for (const game of remainingSchedule) {
+  for (const game of remainingScheduleWithIds) {
     remainingByTeam.set(game.home, (remainingByTeam.get(game.home) ?? 0) + 1);
     remainingByTeam.set(game.away, (remainingByTeam.get(game.away) ?? 0) + 1);
   }
@@ -504,7 +557,7 @@ async function exportState(seasonYear: number, calcuttaId?: number): Promise<{
         adj_pt_diff: asNumber(metrics.pt_diff),
       }];
     })),
-    remaining_schedule: remainingSchedule,
+    remaining_schedule: remainingScheduleWithIds,
     divisions,
     win_ladders: {},
     elimination_quotes: {},
@@ -746,8 +799,30 @@ export async function runMtmPipeline(input: { seasonYear: number; calcuttaId?: n
     const derivedQuotes = deriveQuoteState(config, quoteTeams, rawQuotes);
     state.win_ladders = derivedQuotes.winLadders;
     state.elimination_quotes = derivedQuotes.elimination;
+    const inputHash = createHash("sha256").update(canonicalJson({
+      state,
+      inputProvenance,
+      quotes: rawQuotes.map((quote) => ({
+        series: quote.series,
+        team: quote.team,
+        ticker: quote.market.ticker,
+        market: quote.market,
+      })),
+    })).digest("hex");
+    const actualAnchor = new Date(Math.max(
+      0,
+      ...((inputProvenance.realized_results ?? [])
+        .map((result) => result.fetched_at ? Date.parse(result.fetched_at) : 0)),
+    ));
     await db.update(mtmSnapshotTable).set({ stateJson: state })
       .where(eq(mtmSnapshotTable.id, snapshotId));
+    const latestQuoteAt = rawQuotes.reduce<Date | null>((latest, quote) =>
+      quote.fetchedAt && (!latest || quote.fetchedAt > latest) ? quote.fetchedAt : latest, null);
+    await db.update(mtmSnapshotTable).set({
+      inputHash,
+      marketAnchor: latestQuoteAt,
+      actualAnchor: actualAnchor.getTime() > 0 ? actualAnchor : null,
+    }).where(eq(mtmSnapshotTable.id, snapshotId));
   } catch (error) {
     const message = `Kalshi quote transformation failed: ${error instanceof Error ? error.message : String(error)}`;
     const diagnostics = { quoteErrors: [], transformationError: message };
@@ -776,6 +851,92 @@ export async function runMtmPipeline(input: { seasonYear: number; calcuttaId?: n
       staleReasons: [engineValidationError], diagnostics, valuations: [], projections: {},
     };
   }
+  const engineCalibration = engine.calibration
+    ?? engine.calibration_metrics
+    ?? ((engine.diagnostics?.market_calibration as Record<string, unknown> | undefined)?.metrics as Array<Record<string, unknown>> | undefined)
+    ?? [];
+  const conditionalSource = engine.conditionals
+    ?? engine.conditional_payouts
+    ?? ((engine.diagnostics?.conditional_payouts as unknown) ?? []);
+  const rawConditionals: Array<Record<string, unknown>> = Array.isArray(conditionalSource)
+    ? conditionalSource
+    : Object.values((conditionalSource ?? {}) as Record<string, unknown>).flatMap((game) => {
+      if (!game || typeof game !== "object") return [];
+      const record = game as Record<string, unknown>;
+      const outcomes = record.outcomes;
+      if (!outcomes || typeof outcomes !== "object") return [record];
+      return Object.entries(outcomes as Record<string, unknown>).flatMap(([outcome, value]) => {
+        if (Array.isArray(value)) return value.map((entry) => ({ ...(entry as Record<string, unknown>), ...record, outcome }));
+        if (value && typeof value === "object") return [{ ...(value as Record<string, unknown>), ...record, outcome }];
+        return [];
+      });
+    });
+  const entryMap = new Map(state.entries.map((entry) => [String(entry.entry_id), Number(entry.entry_id)]));
+  const eventIds = rawConditionals.map((row) => Number(row.event_id ?? row.eventId)).filter(Number.isInteger);
+  const eventRows = eventIds.length
+    ? await db.select({ id: eventsTable.id }).from(eventsTable).where(inArray(eventsTable.id, eventIds))
+    : [];
+  const knownEvents = new Set(eventRows.map((row) => row.id));
+  const calibrationRows = engineCalibration.map((metric) => ({
+    snapshotId,
+    metricKey: `${String(metric.metric ?? metric.metric_key ?? metric.metricKey ?? "unknown")}:${String(metric.team ?? "league")}`,
+    marketTicker: metric.market_ticker == null ? null : String(metric.market_ticker),
+    targetProbability: metric.target_probability == null ? null : String(metric.target_probability),
+    simulatedProbability: metric.simulated_probability == null ? null : String(metric.simulated_probability),
+    weight: metric.weight == null ? null : String(metric.weight),
+    residual: metric.residual == null ? null : String(metric.residual),
+    tolerance: metric.tolerance == null ? null : String(metric.tolerance),
+    sampleCount: metric.sample_count == null ? null : Math.trunc(asNumber(metric.sample_count)),
+    sampleShare: metric.sample_share == null ? null : String(metric.sample_share),
+    effectiveSampleSize: metric.effective_sample_size == null ? null : String(metric.effective_sample_size),
+    qualityStatus: String(metric.quality_status ?? "insufficient"),
+    sampleMetadata: { ...(metric.sample_metadata as Record<string, unknown> | undefined), metric: metric.metric ?? null, team: metric.team ?? null },
+  }));
+  const baselineByEntry = new Map((engine.valuations ?? []).map((row) => [Number(row.entry_id), asNumber(row.expected_payout)]));
+  const nestedRows = conditionalSource && !Array.isArray(conditionalSource) && typeof conditionalSource === "object"
+    ? flattenEngineConditionals(conditionalSource as Record<string, any>, new Map(state.entries.map((entry) => [entry.team, Number(entry.entry_id)])), baselineByEntry)
+    : [];
+  const conditionalRows = (nestedRows.length ? nestedRows.map((row) => ({
+    snapshotId,
+    eventId: row.eventId,
+    entryId: row.entryId,
+    outcome: row.outcome,
+    probability: row.probability == null ? null : String(row.probability),
+    grossBaseline: row.grossBaseline == null ? null : String(row.grossBaseline),
+    grossConditional: row.grossConditional == null ? null : String(row.grossConditional),
+    grossDelta: row.grossDelta == null ? null : String(row.grossDelta),
+    sampleCount: row.sampleCount,
+    sampleShare: row.sampleShare == null ? null : String(row.sampleShare),
+    effectiveSampleSize: row.effectiveSampleSize == null ? null : String(row.effectiveSampleSize),
+    standardError: row.standardError == null ? null : String(row.standardError),
+    qualityStatus: row.qualityStatus,
+    reconciliationResidual: row.reconciliationResidual == null ? null : String(row.reconciliationResidual),
+  })) : rawConditionals.flatMap((row) => {
+    const eventId = Number(row.event_id ?? row.eventId);
+    const entryId = Number(row.entry_id ?? row.entryId);
+    const outcome = String(row.outcome ?? "");
+    if (!Number.isInteger(eventId) || !knownEvents.has(eventId) || !entryMap.has(String(entryId)) ||
+        !["home_win", "away_win", "tie"].includes(outcome)) {
+      throw new Error(`MTM conditional has incomplete event, entry, or outcome mapping.`);
+    }
+    return [{
+      snapshotId, eventId, entryId,
+      outcome,
+      probability: row.probability == null ? null : String(row.probability),
+      grossBaseline: row.gross_baseline == null && row.grossBaseline == null ? null : String(row.gross_baseline ?? row.grossBaseline),
+      grossConditional: row.gross_conditional == null && row.grossConditional == null ? null : String(row.gross_conditional ?? row.grossConditional),
+      grossDelta: row.gross_delta == null && row.grossDelta == null ? null : String(row.gross_delta ?? row.grossDelta),
+      sampleCount: row.sample_count == null && row.sampleCount == null ? null : Math.trunc(asNumber(row.sample_count ?? row.sampleCount)),
+      sampleShare: row.sample_share == null && row.sampleShare == null ? null : String(row.sample_share ?? row.sampleShare),
+      effectiveSampleSize: row.effective_sample_size == null && row.effectiveSampleSize == null ? null : String(row.effective_sample_size ?? row.effectiveSampleSize),
+      standardError: row.standard_error == null && row.standardError == null ? null : String(row.standard_error ?? row.standardError),
+      qualityStatus: String(row.quality_status ?? row.qualityStatus ?? "insufficient"),
+      reconciliationResidual: row.reconciliation_residual == null && row.reconciliationResidual == null ? null : String(row.reconciliation_residual ?? row.reconciliationResidual),
+    }];
+  })).map((row: any) => row);
+  if (nestedRows.length && nestedRows.length !== state.remaining_schedule.length * 3 * state.entries.length) {
+    throw new Error(`MTM engine returned ${nestedRows.length} conditional rows; expected ${state.remaining_schedule.length * 3 * state.entries.length}.`);
+  }
   try {
     await db.transaction(async (tx) => {
       const projections = Object.entries(engine.projections ?? {}).map(([team, projection]) => ({
@@ -793,12 +954,48 @@ export async function runMtmPipeline(input: { seasonYear: number; calcuttaId?: n
         mtmMultiple: valuation.mtm_multiple == null ? null : String(asNumber(valuation.mtm_multiple)),
       }));
       if (valuations.length) await tx.insert(mtmEntryValuationTable).values(valuations);
+      if (calibrationRows.length) await tx.insert(mtmCalibrationMetricTable).values(calibrationRows);
+      if (conditionalRows.length) await tx.insert(mtmGameConditionalTable).values(conditionalRows);
       // Calendar projection parents are guarded by a database trigger that
       // requires the referenced MTM snapshot to already be successful. Keep
       // this status transition and projection publication in this transaction.
       await tx.update(mtmSnapshotTable).set({
-        status: "ok", error: null, diagnostics: engine.diagnostics ?? null,
+        status: "ok", error: null,
+        diagnostics: engine.diagnostics ?? null,
+        pathCount: engine.path_count == null ? null : Math.trunc(asNumber(engine.path_count)),
+        randomSeed: engine.model?.seed == null ? null : Math.trunc(asNumber(engine.model.seed)),
+        calibrationStatus:
+          engine.diagnostics?.market_calibration &&
+          typeof engine.diagnostics.market_calibration === "object"
+            ? String((engine.diagnostics.market_calibration as Record<string, unknown>).status ?? "insufficient")
+            : null,
+        runKind: Object.values(state.realized).every((team) =>
+          team.wins === 0 && team.ties === 0 && team.adj_pt_diff === 0
+        ) ? "week_0" : input.trigger === "manual" ? "manual" : "scheduled",
       }).where(eq(mtmSnapshotTable.id, snapshotId));
+      const periodSequence = pipelineMarkWeek(state);
+      const period = await tx.select({ id: sportPeriodsTable.id })
+        .from(sportPeriodsTable)
+        .where(and(
+          eq(sportPeriodsTable.sport, "NFL"),
+          eq(sportPeriodsTable.competition, "NFL_REGULAR_SEASON"),
+          eq(sportPeriodsTable.sequence, periodSequence),
+        )).limit(1);
+      if (period[0]) {
+        const existingSelection = await tx.select({ id: mtmCanonicalPeriodSelectionTable.id })
+          .from(mtmCanonicalPeriodSelectionTable)
+          .where(and(
+            eq(mtmCanonicalPeriodSelectionTable.poolId, poolId),
+            eq(mtmCanonicalPeriodSelectionTable.sportPeriodId, period[0].id),
+            eq(mtmCanonicalPeriodSelectionTable.snapshotId, snapshotId),
+          )).limit(1);
+        if (!existingSelection[0]) {
+          await tx.insert(mtmCanonicalPeriodSelectionTable).values({
+            poolId, sportPeriodId: period[0].id, snapshotId,
+            selectedReason: "successful MTM publication",
+          });
+        }
+      }
       const calendars = await tx.select({ calendarId: calcuttaCalendarsTable.id })
         .from(calcuttaCalendarsTable).where(eq(calcuttaCalendarsTable.calcuttaId, poolId));
       for (const calendar of calendars) {

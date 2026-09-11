@@ -14,8 +14,8 @@ trades) automatically each pull because the market already has.
 
 Outputs per team:
   - e_remaining_pt_diff (raw)  and e_remaining_marquee_diff (the 2x add-on)
-  - optional Monte Carlo playoff-stage probabilities (CROSS-CHECK ONLY;
-    the elimination markets are the primary source)
+  - Monte Carlo playoff-stage probabilities calibrated by path weighting to
+    the normalized elimination-market marginals
 
 For rank-based rubrics (e.g. NFL 2024's ranked-differential ladder) use
 monte_carlo(...)['diff_samples'] - expectations are not enough there.
@@ -37,6 +37,7 @@ class Game:
     away: str
     marquee: bool = False   # outside Sun 1-7pm ET window; diff counts double
     week: int = 0
+    event_id: str | None = None
 
 
 def fit_ratings(target_remaining_wins: dict[str, float],
@@ -108,18 +109,40 @@ def monte_carlo(ratings: dict[str, float],
                 hfa: float = 1.6,
                 margin_sd: float = 13.5,
                 runs: int = 20000,
-                seed: int = 20260829) -> dict:
-    """Cross-check simulator. Simplified seeding: division winners by wins
+                seed: int = 20260829,
+                rubric: dict | None = None,
+                pot: float = 0.0,
+                 realized_stats: dict | None = None,
+                 stage_targets: dict[str, dict[str, float]] | None = None,
+                 calibration_tolerance: float = 0.03,
+                 calibration_iters: int = 500) -> dict:
+    """Joint season simulator. Simplified seeding: division winners by wins
     (random tiebreak), wildcards by wins. Playoff games decided by Phi on
     neutral-adjusted ratings (home field to better seed until SB, SB neutral).
-    Deliberately NOT the primary playoff source - the elimination markets are.
-    Also returns per-team season diff samples for rank-based rubrics.
+    Generated playoff paths are reweighted to normalized elimination-market
+    stage marginals before they price payouts. Also returns per-team season
+    diff samples for rank-based rubrics.
     """
     rng = random.Random(seed)
     teams = list(ratings.keys())
+    stages = ("berth", "divisional", "conference", "sb_berth", "sb_win")
     stage_hits = {t: {"berth": 0, "divisional": 0, "conference": 0,
                       "sb_berth": 0, "sb_win": 0} for t in teams}
     diff_samples: dict[str, list[float]] = {t: [] for t in teams}
+    # These are deliberately aggregates, rather than paths.  They make the
+    # simulator useful to the mark without turning the snapshot into a dump of
+    # (potentially very large) simulated outcomes.
+    payout_sum = {t: 0.0 for t in teams}
+    payout_sq_sum = {t: 0.0 for t in teams}
+    win_sum = {t: 0.0 for t in teams}
+    conditional = {i: {o: {"count": 0, "sum": {t: 0.0 for t in teams},
+                            "sq": {t: 0.0 for t in teams}, "weight": 0.0,
+                            "weight_sq": 0.0}
+                     for o in ("home_win", "away_win", "tie")} for i in range(len(remaining))}
+    path_gross = []
+    path_outcomes = []
+    path_wins = []
+    hit_indices = {(t, s): [] for t in teams for s in stages}
 
     conf_of = {}
     for conf, divs in divisions.items():
@@ -135,19 +158,28 @@ def monte_carlo(ratings: dict[str, float],
         margin = rng.gauss(mean, margin_sd)
         return (a, margin) if margin >= 0 else (b, -margin)
 
-    for _ in range(runs):
-        wins = dict(realized_wins)
+    for run_index in range(runs):
+        wins = {t: (v.get("wins", 0) if isinstance(v, dict) else v)
+                for t, v in (realized_stats or realized_wins).items()}
+        ties = {t: (v.get("ties", 0) if isinstance(v, dict) else 0)
+                for t, v in (realized_stats or {}).items()}
+        realized_diff = {t: (v.get("adj_pt_diff", 0) if isinstance(v, dict) else 0)
+                         for t, v in (realized_stats or {}).items()}
         diff = {t: 0.0 for t in teams}
-        for g in remaining:
+        outcomes = []
+        for gi, g in enumerate(remaining):
             winner, margin = play(g.home, g.away, g.home)
             wins[winner] = wins.get(winner, 0) + 1
             sgn = 1 if winner == g.home else -1
-            diff[g.home] += sgn * margin
-            diff[g.away] -= sgn * margin
+            adjusted_margin = margin * (2 if g.marquee else 1)
+            diff[g.home] += sgn * adjusted_margin
+            diff[g.away] -= sgn * adjusted_margin
+            outcomes.append("home_win" if winner == g.home else "away_win")
         for t in teams:
             diff_samples[t].append(diff[t])
 
         # seeding per conference
+        path_stage = {t: {s: 0 for s in stage_hits[t]} for t in teams}
         for conf in {c for c in conf_of.values()}:
             div_winners = []
             for div, ts in divisions.items():
@@ -162,6 +194,7 @@ def monte_carlo(ratings: dict[str, float],
             seeds = div_winners + wildcards          # 1..7
             for t in seeds:
                 stage_hits[t]["berth"] += 1
+                path_stage[t]["berth"] = 1
             # wild card round: 2v7 3v6 4v5, 1 bye
             wc_winners = [seeds[0]]
             for hi, lo in [(1, 6), (2, 5), (3, 4)]:
@@ -169,21 +202,139 @@ def monte_carlo(ratings: dict[str, float],
                 wc_winners.append(w)
             for t in wc_winners:
                 stage_hits[t]["divisional"] += 1
+                path_stage[t]["divisional"] = 1
             wc_winners.sort(key=lambda t: seeds.index(t))
             w1, _ = play(wc_winners[0], wc_winners[3], wc_winners[0])
             w2, _ = play(wc_winners[1], wc_winners[2], wc_winners[1])
             finalists = sorted([w1, w2], key=lambda t: seeds.index(t))
             for t in finalists:
                 stage_hits[t]["conference"] += 1
+                path_stage[t]["conference"] = 1
             cw, _ = play(finalists[0], finalists[1], finalists[0])
             stage_hits[cw]["sb_berth"] += 1
+            path_stage[cw]["sb_berth"] = 1
             if conf == sorted({c for c in conf_of.values()})[0]:
                 sb_a = cw
             else:
                 sb_b = cw
         sb_winner, _ = play(sb_a, sb_b, None)
         stage_hits[sb_winner]["sb_win"] += 1
+        path_stage[sb_winner]["sb_win"] = 1
 
-    probs = {t: {s: round(h / runs, 4) for s, h in d.items()}
-             for t, d in stage_hits.items()}
-    return {"stage_probs": probs, "diff_samples": diff_samples, "runs": runs}
+        if rubric is not None and pot:
+            points = {}
+            for t in teams:
+                p = float(rubric["banked"])
+                p += rubric["per_win"] * wins.get(t, 0)
+                p += rubric.get("per_tie", 0) * ties.get(t, 0)
+                p += rubric["per_pt_diff"] * (realized_diff.get(t, 0) + diff[t])
+                for s in stages:
+                    p += rubric["bonuses"][s] * path_stage[t][s]
+                points[t] = p
+            total = sum(points.values())
+            if total > 0:
+                gross = {t: pot * points[t] / total for t in teams}
+                path_gross.append(gross)
+        if rubric is None or not pot:
+            path_gross.append(None)
+        path_outcomes.append(outcomes)
+        path_wins.append(wins)
+        for t in teams:
+            for s in stages:
+                if path_stage[t][s]:
+                    hit_indices[(t, s)].append(run_index)
+
+    weights = [1.0] * runs
+    calibration_residuals = {}
+    calibration_converged = True
+    if stage_targets and weights:
+        # Settled contracts are hard constraints, not ordinary calibration
+        # targets. Remove impossible paths before fitting open probabilities;
+        # later multiplicative updates cannot revive a zero-weight path.
+        all_indices = set(range(runs))
+        for t in teams:
+            for s in stages:
+                original_target = float(stage_targets[t][s])
+                indices = hit_indices[(t, s)]
+                if original_target == 0.0:
+                    for i in indices:
+                        weights[i] = 0.0
+                elif original_target == 1.0:
+                    if not indices:
+                        raise ValueError(f"no simulated support for settled playoff target {t}:{s}=1")
+                    hit_set = set(indices)
+                    for i in all_indices - hit_set:
+                        weights[i] = 0.0
+        if sum(weights) <= 0:
+            raise ValueError("settled playoff targets leave no jointly feasible simulated paths")
+        scale = runs / sum(weights)
+        weights = [w * scale for w in weights]
+
+        for _ in range(calibration_iters):
+            total_weight = sum(weights)
+            for t in teams:
+                for s in stages:
+                    original_target = float(stage_targets[t][s])
+                    if original_target in (0.0, 1.0):
+                        continue
+                    target = min(max(original_target, 1e-7), 1 - 1e-7)
+                    indices = hit_indices[(t, s)]
+                    hit_weight = sum(weights[i] for i in indices)
+                    current = hit_weight / total_weight if total_weight else 0.0
+                    if not indices or current <= 0:
+                        raise ValueError(f"no simulated support for positive playoff target {t}:{s}")
+                    current = min(max(current, 1e-12), 1 - 1e-12)
+                    odds_ratio = ((target / (1 - target)) / (current / (1 - current))) ** 0.5
+                    for i in indices:
+                        weights[i] *= odds_ratio
+                    total_weight = sum(weights)
+            scale = len(weights) / sum(weights)
+            weights = [w * scale for w in weights]
+            calibration_residuals = {
+                f"{t}:{s}": sum(weights[i] for i in hit_indices[(t, s)]) / len(weights)
+                - float(stage_targets[t][s])
+                for t in teams for s in stages
+            }
+            if max(abs(value) for value in calibration_residuals.values()) <= calibration_tolerance:
+                break
+        calibration_converged = max(
+            (abs(value) for value in calibration_residuals.values()), default=0.0
+        ) <= calibration_tolerance
+
+    weighted_stage_hits = {
+        t: {s: sum(weights[i] for i in hit_indices[(t, s)]) for s in stages}
+        for t in teams
+    }
+    for i, weight in enumerate(weights):
+        gross = path_gross[i]
+        wins = path_wins[i]
+        for t in teams:
+            win_sum[t] += weight * wins.get(t, 0)
+            if gross is not None:
+                payout_sum[t] += weight * gross[t]
+                payout_sq_sum[t] += weight * gross[t] ** 2
+        if gross is not None:
+          for gi, outcome in enumerate(path_outcomes[i]):
+            bucket = conditional[gi][outcome]
+            bucket["count"] += 1
+            bucket["weight"] += weight
+            bucket["weight_sq"] += weight * weight
+            for t in teams:
+                bucket["sum"][t] += weight * gross[t]
+                bucket["sq"][t] += weight * gross[t] ** 2
+
+    probs = {t: {s: round(h / max(sum(weights), 1), 6) for s, h in d.items()}
+             for t, d in weighted_stage_hits.items()}
+    effective_sample_size = (
+        sum(weights) ** 2 / sum(w * w for w in weights) if weights else 0.0
+    )
+    out = {"stage_probs": probs, "diff_samples": diff_samples, "runs": runs,
+           "effective_sample_size": effective_sample_size,
+           "calibration_converged": calibration_converged,
+           "calibration_residuals": calibration_residuals}
+    if rubric is not None and pot:
+        out["payout_sum"] = payout_sum
+        out["payout_sq_sum"] = payout_sq_sum
+        out["win_sum"] = win_sum
+        out["conditional_payouts"] = conditional
+    return out

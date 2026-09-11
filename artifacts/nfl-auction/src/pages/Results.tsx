@@ -25,6 +25,8 @@ import {
   getGetHistoricalPoolOwnersQueryKey,
   useGetHistoricalPoolTrades,
   getGetHistoricalPoolTradesQueryKey,
+  useGetMtmValuation,
+  getGetMtmValuationQueryKey,
 } from "@workspace/api-client-react";
 import type {
   OwnershipSegment,
@@ -36,6 +38,7 @@ import type {
   AuctionSummary,
   MtmData,
   TradeRow,
+  MtmValuation,
 } from "@workspace/api-client-react";
 import { formatCurrency } from "@/lib/utils";
 import { cn } from "@/lib/utils";
@@ -110,46 +113,23 @@ export default function Results() {
   const [period, setPeriod] = useState<number | undefined>(undefined);
   const [compareSeasons, setCompareSeasons] = useState<number[]>([]);
   const [compareGroupBy, setCompareGroupBy] = useState<"bidder" | "consortium">("consortium");
-  const [previewLastUpdated, setPreviewLastUpdated] = useState<string | null>(null);
   const consortiumBasis = "mtm" as const;
   const teamBasis = "realized" as const;
   const viewBasis = tab === "byTeam" ? teamBasis : consortiumBasis;
   const isPreview = true;
 
-  useEffect(() => {
-    setPreviewLastUpdated(null);
-    if (!isPreview || !isNflCalcutta || !calcuttaId) {
-      return;
+  const { data: valuation } = useGetMtmValuation(
+    { season: year, calcuttaId, markType: "provisional" },
+    {
+      query: {
+        enabled: usesLiveResults && !!calcuttaId,
+        queryKey: getGetMtmValuationQueryKey({ season: year, calcuttaId, markType: "provisional" }),
+      },
     }
+  );
 
-    const controller = new AbortController();
-    const params = new URLSearchParams({
-      season: String(year),
-      calcuttaId: String(calcuttaId),
-    });
-
-    void fetch(`/api/mtm/pipeline/status?${params}`, {
-      signal: controller.signal,
-    })
-      .then((response) => {
-        if (!response.ok) {
-          throw new Error("Unable to load the latest successful update time.");
-        }
-        return response.json() as Promise<{
-          status: { currentAsOf: string | null } | null;
-        }>;
-      })
-      .then((payload) => {
-        setPreviewLastUpdated(payload.status?.currentAsOf ?? null);
-      })
-      .catch((error: unknown) => {
-        if (!(error instanceof DOMException && error.name === "AbortError")) {
-          setPreviewLastUpdated(null);
-        }
-      });
-
-    return () => controller.abort();
-  }, [isPreview, isNflCalcutta, year, calcuttaId]);
+  const currentValuation = period == null ? valuation : undefined;
+  const previewLastUpdated = valuation?.mark?.asOf ?? null;
 
   const {
     data: historicalPools,
@@ -283,6 +263,7 @@ export default function Results() {
       },
     },
   );
+  // Retained for historical trend series charting only.
   const { data: mtmData } = useGetMtmSnapshots(
     { season: year, calcuttaId },
     {
@@ -338,15 +319,11 @@ export default function Results() {
       : tab === "byOwner"
         ? loadingOwners
         : loadingCompare;
-  const staleMtmReasons = useMemo(() => {
-    const teamReasons = (teamResults ?? [])
-      .filter((row) => row.marketStatus === "stale")
-      .flatMap((row) => row.marketStatusReasons);
-    const ownerReasons = (ownerResults ?? [])
-      .filter((row) => row.marketStatus === "stale")
-      .flatMap((row) => row.marketStatusReasons);
-    return [...new Set([...teamReasons, ...ownerReasons])];
-  }, [teamResults, ownerResults]);
+  const isStale = currentValuation?.mark?.stale ?? false;
+  const staleMtmReasons = [
+    currentValuation?.mark?.selectionReason,
+    currentValuation?.mark?.provisionalSuppressionReason
+  ].filter(Boolean) as string[];
 
   return (
     <div className="md:p-8 space-y-4 md:space-y-6 max-w-[1400px] mx-auto pb-6">
@@ -517,7 +494,7 @@ export default function Results() {
         ))}
       </div>
 
-      {!prefersHistoricalResults && tab !== "compare" && staleMtmReasons.length > 0 && !isPreview && (
+      {!prefersHistoricalResults && tab !== "compare" && (isStale || staleMtmReasons.length > 0) && !isPreview && (
         <div
           className="mx-4 flex items-start gap-3 border border-amber-300 bg-amber-50 px-4 py-3 text-amber-950 dark:border-amber-800 dark:bg-amber-950/40 dark:text-amber-100 md:mx-0"
           role="status"
@@ -526,10 +503,10 @@ export default function Results() {
           <AlertTriangle className="mt-0.5 h-4 w-4 shrink-0" />
           <div>
             <p className="font-mono text-xs font-bold uppercase tracking-wider">
-              Stale market inputs — MTM is untrustworthy
+              {isStale ? "Stale market inputs — MTM is untrustworthy" : "Market data notice"}
             </p>
             <p className="mt-1 text-xs">
-              {staleMtmReasons.join(" ")}
+              {staleMtmReasons.join(" ") || "The provisional mark is currently stale."}
             </p>
           </div>
         </div>
@@ -563,6 +540,7 @@ export default function Results() {
                 seasonYear={year}
                 summary={auctionSummary}
                 mtmData={mtmData}
+                valuation={currentValuation}
                 trades={trades}
                 consortiumByBidderId={consortiumByBidderId}
               />
@@ -574,6 +552,7 @@ export default function Results() {
                 setExpandedOwner={setExpandedOwner}
                 consortiumByBidderId={consortiumByBidderId}
                 seasonYear={year}
+                valuation={currentValuation}
               />
             </div>
           </>
@@ -596,6 +575,7 @@ export default function Results() {
             seasonYear={year}
             returnTeamId={returnState.teamId}
             returnBidderId={returnState.bidderId}
+            valuation={currentValuation}
           />
         )}
       </div>
@@ -628,18 +608,38 @@ type CommandSortKey =
   | "teams"
   | "movement";
 
-function commandReturn(row: OwnerResultRow): number {
-  return row.totalNetMtm;
+function commandReturn(row: OwnerResultRow, valuation?: MtmValuation): number {
+  const provisional = valuation?.owners?.find(o => o.bidderId === row.bidderId);
+  return provisional?.net ?? row.totalNetMtm;
 }
 
-function commandMarketValue(row: OwnerResultRow): number {
-  return row.totalMtm;
+function commandMarketValue(row: OwnerResultRow, valuation?: MtmValuation): number {
+  const provisional = valuation?.owners?.find(o => o.bidderId === row.bidderId);
+  return provisional?.grossExpectedPayout ?? row.totalMtm;
 }
 
-function commandReturnPct(row: OwnerResultRow): number {
+function commandReturnPct(row: OwnerResultRow, valuation?: MtmValuation): number {
   return Math.abs(row.totalCost) > 0.005
-    ? (commandReturn(row) / Math.abs(row.totalCost)) * 100
+    ? (commandReturn(row, valuation) / Math.abs(row.totalCost)) * 100
     : 0;
+}
+
+function getExpandedTeamNetMtm(row: ExpandedTeamRow, valuation?: MtmValuation): number {
+  if (!valuation) return row.mtm;
+  const provisional = valuation.teams?.find(t => t.teamId === row.teamId);
+  if (!provisional) return row.mtm;
+  const teamGross = provisional.grossExpectedPayout;
+  return (teamGross * row.ownershipShare) - row.cost;
+}
+
+function getTeamNetMtm(team: TeamResultRow, valuation?: MtmValuation): number {
+  const provisional = valuation?.teams?.find(t => t.teamId === team.teamId);
+  return provisional?.net ?? team.netMtm;
+}
+
+function getTeamMtm(team: TeamResultRow, valuation?: MtmValuation): number {
+  const provisional = valuation?.teams?.find(t => t.teamId === team.teamId);
+  return provisional?.grossExpectedPayout ?? team.markToMarket;
 }
 
 function signedCurrency(value: number): string {
@@ -774,6 +774,7 @@ function DesktopResultsCommandCenter({
   seasonYear,
   summary,
   mtmData,
+  valuation,
   trades,
   consortiumByBidderId,
 }: {
@@ -782,6 +783,7 @@ function DesktopResultsCommandCenter({
   seasonYear: number;
   summary?: AuctionSummary;
   mtmData?: MtmData;
+  valuation?: MtmValuation;
   trades?: TradeRow[];
   consortiumByBidderId: Map<number, string>;
 }) {
@@ -809,9 +811,9 @@ function DesktopResultsCommandCenter({
   const rankedRows = useMemo(
     () =>
       [...rows].sort(
-        (a, b) => commandReturn(b) - commandReturn(a),
+        (a, b) => commandReturn(b, valuation) - commandReturn(a, valuation),
       ),
-    [rows],
+    [rows, valuation],
   );
   const ranks = useMemo(
     () => new Map(rankedRows.map((row, index) => [row.bidderId, index + 1])),
@@ -819,24 +821,24 @@ function DesktopResultsCommandCenter({
   );
   const maxReturn = Math.max(
     1,
-    ...rows.map((row) => Math.abs(commandReturn(row))),
+    ...rows.map((row) => Math.abs(commandReturn(row, valuation))),
   );
   const sortedRows = [...filteredRows].sort((a, b) => {
     const previousA = previousById.get(a.bidderId);
     const previousB = previousById.get(b.bidderId);
     const movementA = previousA
-      ? commandReturn(a) - commandReturn(previousA)
+      ? commandReturn(a, valuation) - commandReturn(previousA)
       : 0;
     const movementB = previousB
-      ? commandReturn(b) - commandReturn(previousB)
+      ? commandReturn(b, valuation) - commandReturn(previousB)
       : 0;
     const values: Record<CommandSortKey, [number, number]> = {
-      return: [commandReturn(a), commandReturn(b)],
-      returnPct: [commandReturnPct(a), commandReturnPct(b)],
+      return: [commandReturn(a, valuation), commandReturn(b, valuation)],
+      returnPct: [commandReturnPct(a, valuation), commandReturnPct(b, valuation)],
       cost: [a.totalCost, b.totalCost],
       marketValue: [
-        commandMarketValue(a),
-        commandMarketValue(b),
+        commandMarketValue(a, valuation),
+        commandMarketValue(b, valuation),
       ],
       teams: [a.teamCount, b.teamCount],
       movement: [movementA, movementB],
@@ -850,7 +852,7 @@ function DesktopResultsCommandCenter({
     .map((row) => ({
       row,
       movement: previousById.has(row.bidderId)
-        ? commandReturn(row) -
+        ? commandReturn(row, valuation) -
           commandReturn(previousById.get(row.bidderId)!)
         : 0,
     }))
@@ -933,7 +935,7 @@ function DesktopResultsCommandCenter({
             <CommandMetric
               label="Leader"
               value={leader ? ownerLabelById(leader.bidderId, leader.bidderName, consortiumByBidderId) : "—"}
-               subvalue={leader ? signedCurrency(commandReturn(leader)) : undefined}
+               subvalue={leader ? signedCurrency(commandReturn(leader, valuation)) : undefined}
             />
             <CommandMetric
               label="Biggest mover"
@@ -954,13 +956,13 @@ function DesktopResultsCommandCenter({
           <CommandCallout
             label="Top net MTM"
             owner={leader}
-             value={leader ? commandReturn(leader) : 0}
+             value={leader ? commandReturn(leader, valuation) : 0}
             consortiumByBidderId={consortiumByBidderId}
           />
           <CommandCallout
             label="Lowest net MTM"
             owner={worst}
-             value={worst ? commandReturn(worst) : 0}
+             value={worst ? commandReturn(worst, valuation) : 0}
             consortiumByBidderId={consortiumByBidderId}
           />
           <div className="p-4">
@@ -1020,9 +1022,9 @@ function DesktopResultsCommandCenter({
                   const rank = ranks.get(row.bidderId) ?? sortedRows.indexOf(row) + 1;
                   const previous = previousById.get(row.bidderId);
                    const movement = previous
-                     ? commandReturn(row) - commandReturn(previous)
+                     ? commandReturn(row, valuation) - commandReturn(previous)
                     : null;
-                   const returnValue = commandReturn(row);
+                   const returnValue = commandReturn(row, valuation);
                   const ownerName = ownerLabelById(
                     row.bidderId,
                     row.bidderName,
@@ -1073,7 +1075,7 @@ function DesktopResultsCommandCenter({
                         {formatCurrency(row.totalCost)}
                       </td>
                       <td className="px-3 py-3 text-right font-mono text-xs">
-                         {formatCurrency(commandMarketValue(row))}
+                         {formatCurrency(commandMarketValue(row, valuation))}
                       </td>
                       <td className={cn(
                         "px-3 py-3 text-right font-mono text-sm font-bold",
@@ -1083,9 +1085,9 @@ function DesktopResultsCommandCenter({
                       </td>
                       <td className={cn(
                         "px-3 py-3 text-right font-mono text-xs font-bold",
-                         commandReturnPct(row) >= 0 ? "text-emerald-600 dark:text-emerald-400" : "text-rose-600 dark:text-rose-400",
+                         commandReturnPct(row, valuation) >= 0 ? "text-emerald-600 dark:text-emerald-400" : "text-rose-600 dark:text-rose-400",
                       )}>
-                         {signedPercent(commandReturnPct(row))}
+                         {signedPercent(commandReturnPct(row, valuation))}
                       </td>
                       <td className="px-3 py-3 text-right font-mono text-xs">
                         {movement == null ? (
@@ -1118,6 +1120,7 @@ function DesktopResultsCommandCenter({
             owner={selectedOwner}
             seasonYear={seasonYear}
             mtmData={mtmData}
+            valuation={valuation}
             trades={trades ?? []}
             consortiumByBidderId={consortiumByBidderId}
             onClose={closeOwner}
@@ -1193,6 +1196,7 @@ function DesktopOwnerDetail({
   owner,
   seasonYear,
   mtmData,
+  valuation,
   trades,
   consortiumByBidderId,
   onClose,
@@ -1201,6 +1205,7 @@ function DesktopOwnerDetail({
   owner: OwnerResultRow;
   seasonYear: number;
   mtmData?: MtmData;
+  valuation?: MtmValuation;
   trades: TradeRow[];
   consortiumByBidderId: Map<number, string>;
   onClose: () => void;
@@ -1282,10 +1287,10 @@ function DesktopOwnerDetail({
           />
           <DetailMetric
             label="MTM"
-            value={signedCurrency(owner.totalNetMtm)}
-            tone={owner.totalNetMtm >= 0 ? "positive" : "negative"}
+            value={signedCurrency(commandReturn(owner, valuation))}
+            tone={commandReturn(owner, valuation) >= 0 ? "positive" : "negative"}
           />
-          <DetailMetric label="MTM %" value={signedPercent(commandReturnPct(owner))} tone={commandReturnPct(owner) >= 0 ? "positive" : "negative"} />
+          <DetailMetric label="MTM %" value={signedPercent(commandReturnPct(owner, valuation))} tone={commandReturnPct(owner, valuation) >= 0 ? "positive" : "negative"} />
         </div>
 
         <section>
@@ -1336,7 +1341,7 @@ function DesktopOwnerDetail({
                         Realized net <strong className={team.netReturn >= 0 ? "text-emerald-600 dark:text-emerald-400" : "text-rose-600 dark:text-rose-400"}>{signedCurrency(team.netReturn)}</strong>
                       </span>
                       <span className="text-muted-foreground">
-                        MTM <strong className={team.netMtm >= 0 ? "text-emerald-600 dark:text-emerald-400" : "text-rose-600 dark:text-rose-400"}>{signedCurrency(team.netMtm)}</strong>
+                        MTM <strong className={getTeamNetMtm(team, valuation) >= 0 ? "text-emerald-600 dark:text-emerald-400" : "text-rose-600 dark:text-rose-400"}>{signedCurrency(getTeamNetMtm(team, valuation))}</strong>
                       </span>
                       <span className="text-muted-foreground">
                         Realized pts to BE <BreakevenPoints points={team.ptsToBreakeven} />
@@ -1514,19 +1519,21 @@ function ByOwnerView({
   setExpandedOwner,
   consortiumByBidderId,
   seasonYear,
+  valuation,
 }: {
   rows: OwnerResultRow[];
   expandedOwner: number | null;
   setExpandedOwner: (id: number | null) => void;
   consortiumByBidderId: Map<number, string>;
   seasonYear: number;
+  valuation?: MtmValuation;
 }) {
   if (!rows.length) return <Empty />;
 
+  const getNet = (row: OwnerResultRow) => commandReturn(row, valuation);
+
   // Net MTM is the fixed, live consortium standing metric.
-  const sorted = [...rows].sort((a, b) =>
-    b.totalNetMtm - a.totalNetMtm,
-  );
+  const sorted = [...rows].sort((a, b) => getNet(b) - getNet(a));
 
   return (
     <div className="space-y-3">
@@ -1550,7 +1557,7 @@ function ByOwnerView({
         {sorted.map((row, idx) => {
           const isExpanded = expandedOwner === row.bidderId;
           const isLeader = idx === 0;
-          const isWinner = isLeader && row.totalNetMtm > 0;
+          const isWinner = isLeader && getNet(row) > 0;
           return (
             <div
               key={row.bidderId}
@@ -1603,12 +1610,12 @@ function ByOwnerView({
                 <div
                   className={cn(
                     "text-right font-mono font-bold text-sm md:text-base self-center",
-                    row.totalNetMtm >= 0 ? "text-green-600 dark:text-green-400" : "text-red-600 dark:text-red-400",
+                    getNet(row) >= 0 ? "text-green-600 dark:text-green-400" : "text-red-600 dark:text-red-400",
                   )}
                 >
-                  {row.totalNetMtm !== 0
-                    ? (row.totalNetMtm >= 0 ? "+" : "") +
-                      formatCurrency(row.totalNetMtm)
+                  {getNet(row) !== 0
+                    ? (getNet(row) >= 0 ? "+" : "") +
+                      formatCurrency(getNet(row))
                     : "—"}
                 </div>
                 <div className="hidden md:block text-right font-mono text-sm text-muted-foreground self-center">
@@ -1638,7 +1645,7 @@ function ByOwnerView({
                     <div className="text-muted-foreground uppercase tracking-widest text-[10px]">Net MTM %</div>
                     <div className="font-bold">
                       {calculateExposure(row) !== 0
-                        ? ((row.totalNetMtm / Math.abs(calculateExposure(row))) * 100).toFixed(1) + "%"
+                        ? ((getNet(row) / Math.abs(calculateExposure(row))) * 100).toFixed(1) + "%"
                         : "—"}
                     </div>
                   </div>
@@ -2150,6 +2157,7 @@ type ExpandedTeamRow = {
   net: number;
   mtm: number;
   ptsToBreakeven: number | null;
+  teamResultRow: TeamResultRow;
 };
 
 type BTSortKey =
@@ -2249,6 +2257,7 @@ function expandTeams(
         net: owner.net,
         mtm: owner.mtmNet,
         ptsToBreakeven: owner.ptsToBreakeven,
+        teamResultRow: team,
       });
     }
   }
@@ -2261,12 +2270,14 @@ function ByTeamView({
   seasonYear,
   returnTeamId,
   returnBidderId,
+  valuation,
 }: {
   rows: TeamResultRow[];
   consortiumByBidderId: Map<number, string>;
   seasonYear: number;
   returnTeamId: number | null;
   returnBidderId: number | null;
+  valuation?: MtmValuation;
 }) {
   const [splitByOwner, setSplitByOwner] = useState(false);
   const [sortKey, setSortKey] = useState<BTSortKey>("cost");
@@ -2484,7 +2495,7 @@ function ByTeamView({
         diff = a.netReturn - b.netReturn;
         break;
       case "mtm":
-        diff = a.netMtm - b.netMtm;
+        diff = getTeamNetMtm(a, valuation) - getTeamNetMtm(b, valuation);
         break;
       default:
         break;
@@ -2555,7 +2566,7 @@ function ByTeamView({
         diff = a.net - b.net;
         break;
       case "mtm":
-        diff = a.mtm - b.mtm;
+        diff = getExpandedTeamNetMtm(a, valuation) - getExpandedTeamNetMtm(b, valuation);
         break;
       default:
         break;
@@ -2715,11 +2726,11 @@ function ByTeamView({
                     <td
                       className={cn(
                         "px-4 md:px-5 py-3 text-right font-mono font-bold text-sm",
-                        row.mtm >= 0 ? "text-green-600 dark:text-green-400" : "text-red-600 dark:text-red-400",
+                        getExpandedTeamNetMtm(row, valuation) >= 0 ? "text-green-600 dark:text-green-400" : "text-red-600 dark:text-red-400",
                       )}
                     >
-                      {row.mtm !== 0
-                        ? (row.mtm >= 0 ? "+" : "") + formatCurrency(row.mtm)
+                      {getExpandedTeamNetMtm(row, valuation) !== 0
+                        ? (getExpandedTeamNetMtm(row, valuation) >= 0 ? "+" : "") + formatCurrency(getExpandedTeamNetMtm(row, valuation))
                         : "—"}
                     </td>
                      <td className="px-4 md:px-5 py-3 text-right">
@@ -2806,14 +2817,14 @@ function ByTeamView({
                       <td
                         className={cn(
                           "px-4 md:px-5 py-3 text-right font-mono font-bold text-sm",
-                          row.netMtm >= 0
+                          getTeamNetMtm(row, valuation) >= 0
                             ? "text-green-600 dark:text-green-400"
                             : "text-red-600 dark:text-red-400",
                         )}
                       >
-                        {row.netMtm !== 0
-                          ? (row.netMtm >= 0 ? "+" : "") +
-                            formatCurrency(row.netMtm)
+                        {getTeamNetMtm(row, valuation) !== 0
+                          ? (getTeamNetMtm(row, valuation) >= 0 ? "+" : "") +
+                            formatCurrency(getTeamNetMtm(row, valuation))
                           : "—"}
                       </td>
                       <td className="px-4 md:px-5 py-3 text-right">

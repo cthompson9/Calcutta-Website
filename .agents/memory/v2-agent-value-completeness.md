@@ -41,3 +41,19 @@ field.
 **How to apply:** Describe both bases in the MCP server and tool schemas, reject
 ambiguous calls without a basis, and keep dedicated realized-only and MTM-only
 tools labeled as such.
+
+Authoritative playoff payouts must use joint simulated paths weighted to the
+normalized elimination-market stage marginals. Merely reporting market
+probabilities or calibration residuals while valuing uncalibrated paths is not
+market-calibrated MTM. Any required win or playoff marginal outside the accepted
+tolerance makes the run unavailable and must prevent canonical publication.
+
+**Why:** Win-total-fitted ratings and playoff elimination markets encode
+different information. Using the former for official playoff bonuses while
+keeping the latter as diagnostics can leave official marks unchanged when all
+playoff quotes move.
+
+**How to apply:** Calibrate in-memory path weights before aggregating payouts,
+conditionals, and sample quality. Preserve exact settled zero/one targets, reject
+positive targets with no path support, and never publish a warning-only
+calibration failure.

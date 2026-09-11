@@ -3,11 +3,15 @@ import {
   useGetTeams,
   useCaptureWeekZeroMtm,
   useGetBidders,
+  useGetMtmValuation,
+  getGetMtmValuationQueryKey,
 } from "@workspace/api-client-react";
 import type {
   MtmData,
   MtmWeekData,
   MtmTeamWeekMarketStatus,
+  MtmValuation,
+  MtmValuationTeamsItem,
 } from "@workspace/api-client-react";
 import { useQuery } from "@tanstack/react-query";
 import { formatCurrency } from "@/lib/utils";
@@ -213,6 +217,16 @@ export default function MtmTracker() {
   const [pipelineLoading, setPipelineLoading] = useState(false);
   const [pipelineRunning, setPipelineRunning] = useState(false);
 
+  const { data: valuation, isLoading: valuationLoading, refetch: refetchValuation } = useGetMtmValuation(
+    { season: year, calcuttaId, markType: "provisional" },
+    {
+      query: {
+        enabled: isNflCalcutta && !!calcuttaId,
+        queryKey: getGetMtmValuationQueryKey({ season: year, calcuttaId, markType: "provisional" }),
+      },
+    },
+  );
+
   async function loadPipelineStatus() {
     if (!isNflCalcutta) {
       setPipelineStatus(null);
@@ -257,6 +271,7 @@ export default function MtmTracker() {
       });
       toast.success("In-season MTM mark recalculated.");
       await loadPipelineStatus();
+      void refetchValuation();
     } catch (error) {
       trackEvent("live_tracker_recalculated", {
         outcome: "failed",
@@ -293,6 +308,8 @@ export default function MtmTracker() {
 
       {isNflCalcutta && (
         <PipelineMarkPanel
+          valuation={valuation}
+          valuationLoading={valuationLoading}
           status={pipelineStatus}
           loading={pipelineLoading}
           running={pipelineRunning}
@@ -307,6 +324,8 @@ export default function MtmTracker() {
 }
 
 function PipelineMarkPanel({
+  valuation,
+  valuationLoading,
   status,
   loading,
   running,
@@ -314,6 +333,8 @@ function PipelineMarkPanel({
   onRecalculate,
   consortiumByName,
 }: {
+  valuation?: MtmValuation;
+  valuationLoading: boolean;
   status: PipelineStatus | null;
   loading: boolean;
   running: boolean;
@@ -326,14 +347,14 @@ function PipelineMarkPanel({
   const [sortKey, setSortKey] = useState<SortKey>("payout");
   const [sortAsc, setSortAsc] = useState(false);
 
-  if (loading && !status) {
+  if (valuationLoading && !valuation) {
     return (
       <section className="border border-border bg-card p-5 text-sm font-mono text-muted-foreground">
         Loading in-season MTM status…
       </section>
     );
   }
-  if (!status) {
+  if (!valuation) {
     return (
       <section className="border border-dashed border-border bg-card p-5">
         <div className="flex flex-wrap items-center justify-between gap-3">
@@ -355,58 +376,73 @@ function PipelineMarkPanel({
     );
   }
 
-  function ownerText(valuation: PipelineValuation) {
-    return (valuation.owners ?? [])
+  function ownerText(teamId: number | null | undefined) {
+    const pipelineTeam = status?.valuations.find(v => v.teamId === teamId || v.entryId === teamId);
+    if (!pipelineTeam) return "—";
+    return (pipelineTeam.owners ?? [])
       .map((owner) => combinedOwnerLabel(owner.name, consortiumByName))
       .join(" / ");
   }
 
-  function currentNetPayout(valuation: PipelineValuation) {
-    const current = valuation.history?.[valuation.history.length - 1];
-    return current?.netPayout ?? null;
-  }
-
-  function previousNetPayout(valuation: PipelineValuation) {
-    const history = valuation.history ?? [];
+  function previousNetPayout(teamId: number | null | undefined) {
+    const pipelineTeam = status?.valuations.find(v => v.teamId === teamId || v.entryId === teamId);
+    const history = pipelineTeam?.history ?? [];
     const prior = history[history.length - 2];
     return prior?.netPayout ?? null;
   }
 
+  const baseItems = valuation?.teams ?? [];
+
   const query = search.trim().toLowerCase();
-  const filtered = status.valuations.filter((valuation) =>
+  const filtered = baseItems.filter((team) =>
     !query ||
-    valuation.teamName.toLowerCase().includes(query) ||
-    ownerText(valuation).toLowerCase().includes(query)
+    (team.teamName || "").toLowerCase().includes(query) ||
+    ownerText(team.teamId).toLowerCase().includes(query)
   );
-  const valuations = [...filtered].sort((a, b) => {
-    const netA = currentNetPayout(a);
-    const netB = currentNetPayout(b);
-    const priorNetA = previousNetPayout(a);
-    const priorNetB = previousNetPayout(b);
-    const values: Record<Exclude<SortKey, "team" | "owner">, [number, number]> = {
-      points: [Number(a.expectedPoints), Number(b.expectedPoints)],
+
+  const displayTeams = [...filtered].sort((a, b) => {
+    const netA = a.net ?? null;
+    const netB = b.net ?? null;
+    const priorNetA = previousNetPayout(a.teamId);
+    const priorNetB = previousNetPayout(b.teamId);
+    const priceA = a.auctionPrice ?? null;
+    const priceB = b.auctionPrice ?? null;
+    const multipleA = priceA && priceA > 0 ? (a.grossExpectedPayout / priceA) : null;
+    const multipleB = priceB && priceB > 0 ? (b.grossExpectedPayout / priceB) : null;
+
+    const values: Record<Exclude<SortKey, "team" | "owner" | "points">, [number, number]> = {
       payout: [netA ?? -Infinity, netB ?? -Infinity],
-      price: [Number(a.auctionPrice ?? -Infinity), Number(b.auctionPrice ?? -Infinity)],
-      multiple: [Number(a.mtmMultiple ?? -Infinity), Number(b.mtmMultiple ?? -Infinity)],
+      price: [priceA ?? -Infinity, priceB ?? -Infinity],
+      multiple: [multipleA ?? -Infinity, multipleB ?? -Infinity],
       prior: [
         netA == null || priorNetA == null ? -Infinity : netA - priorNetA,
         netB == null || priorNetB == null ? -Infinity : netB - priorNetB,
       ],
     };
-    const difference = sortKey === "team"
-      ? a.teamName.localeCompare(b.teamName)
-      : sortKey === "owner"
-        ? ownerText(a).localeCompare(ownerText(b))
-        : values[sortKey][0] - values[sortKey][1];
+
+    let difference = 0;
+    if (sortKey === "team") {
+      difference = (a.teamName || "").localeCompare(b.teamName || "");
+    } else if (sortKey === "owner") {
+      difference = ownerText(a.teamId).localeCompare(ownerText(b.teamId));
+    } else if (sortKey === "points") {
+      // Points not strictly in normalized teams, using grossExpectedPayout to sort since it correlates
+      difference = a.grossExpectedPayout - b.grossExpectedPayout;
+    } else {
+      difference = values[sortKey as Exclude<SortKey, "team" | "owner" | "points">][0] - values[sortKey as Exclude<SortKey, "team" | "owner" | "points">][1];
+    }
     return sortAsc ? difference : -difference;
   });
-  const netPayouts = status.valuations
-    .map(currentNetPayout)
+
+  const netPayouts = baseItems
+    .map(t => t.net)
     .filter((value): value is number => value != null);
   const maxPayout = Math.max(0, ...netPayouts);
   const minPayout = Math.min(0, ...netPayouts);
   const payoutRange = Math.max(1, maxPayout - minPayout);
-  const maxMultiple = Math.max(1, ...status.valuations.map((valuation) => Number(valuation.mtmMultiple ?? 1)));
+
+  const allMultiples = baseItems.map(t => (t.auctionPrice && t.auctionPrice > 0 ? t.grossExpectedPayout / t.auctionPrice : 1));
+  const maxMultiple = Math.max(1, ...allMultiples);
 
   function handleSort(key: SortKey) {
     if (sortKey === key) setSortAsc((value) => !value);
@@ -438,10 +474,38 @@ function PipelineMarkPanel({
     <section className="border border-border bg-card">
       <div className="flex flex-wrap items-start justify-between gap-4 border-b border-border p-4">
         <div>
-          <h2 className="font-mono text-sm font-bold uppercase tracking-widest">Latest Mark</h2>
+          <div className="flex items-center gap-2 mb-1">
+            <h2 className="font-mono text-sm font-bold uppercase tracking-widest">
+              Latest Mark
+            </h2>
+            {valuation.mark.type && (
+              <span className="bg-primary/10 text-primary px-1.5 py-0.5 text-[10px] font-mono font-bold uppercase rounded-sm">
+                {valuation.mark.type}
+              </span>
+            )}
+            {valuation.mark.approximate && (
+              <span className="bg-amber-100 text-amber-800 px-1.5 py-0.5 text-[10px] font-mono font-bold uppercase rounded-sm">
+                Approximate
+              </span>
+            )}
+            {valuation.mark.quality && (
+              <span className={cn(
+                "px-1.5 py-0.5 text-[10px] font-mono font-bold uppercase rounded-sm",
+                valuation.mark.quality === 'good' ? 'bg-emerald-100 text-emerald-800' :
+                valuation.mark.quality === 'warning' ? 'bg-amber-100 text-amber-800' : 'bg-red-100 text-red-800'
+              )}>
+                Quality: {valuation.mark.quality}
+              </span>
+            )}
+            {valuation.mark.pathCount != null && (
+              <span className="bg-muted text-muted-foreground px-1.5 py-0.5 text-[10px] font-mono font-bold uppercase rounded-sm">
+                {valuation.mark.pathCount} paths
+              </span>
+            )}
+          </div>
           <p className="mt-1 text-xs text-muted-foreground">
-            Last update: {status.currentAsOf
-              ? new Date(status.currentAsOf).toLocaleString("en-US", {
+            As of: {valuation.mark.asOf
+              ? new Date(valuation.mark.asOf).toLocaleString("en-US", {
                   timeZone: "America/New_York",
                   month: "short",
                   day: "numeric",
@@ -464,21 +528,76 @@ function PipelineMarkPanel({
         </button>
       </div>
 
-      {status.staleReasons.length > 0 && !isPreview && (
+      {(valuation.mark.stale || valuation.mark.selectionReason || valuation.mark.provisionalSuppressionReason) && !isPreview && (
         <div className="border-b border-amber-500/30 bg-amber-500/10 px-4 py-3 text-sm text-amber-800">
           <p className="flex items-center gap-2 font-semibold">
             <AlertTriangle className="h-4 w-4 shrink-0" />
-            {status.status === "failed"
-              ? "The latest attempt did not replace the prior successful mark."
-              : "The current successful mark is stale."}
+            {valuation.mark.stale ? "The current mark is stale." : "Mark selection notice"}
           </p>
           <ul className="mt-1 list-disc pl-6 text-xs">
-            {status.staleReasons.map((reason) => <li key={reason}>{reason}</li>)}
+            {valuation.mark.selectionReason && <li>{valuation.mark.selectionReason}</li>}
+            {valuation.mark.provisionalSuppressionReason && <li>{valuation.mark.provisionalSuppressionReason}</li>}
           </ul>
         </div>
       )}
 
-      {valuations.length > 0 && (
+      {valuation.diagnostics?.market_drift?.recommendsRerun && canRecalculate && (
+        <div className="border-b border-primary/30 bg-primary/10 px-4 py-3 text-sm text-primary">
+          <p className="flex items-center gap-2 font-semibold">
+            <Activity className="h-4 w-4 shrink-0" />
+            Market drift detected
+          </p>
+          <p className="mt-1 text-xs">
+            The underlying market probability has drifted significantly. A recalculation is recommended to update the provisional mark.
+            {valuation.diagnostics.market_drift.maxDrift && ` Max drift: ${(valuation.diagnostics.market_drift.maxDrift * 100).toFixed(1)}%`}
+          </p>
+        </div>
+      )}
+
+      {valuation.conditionalPayouts && Object.keys(valuation.conditionalPayouts).length > 0 && (
+        <div className="border-b border-border bg-muted/20 px-4 py-3 text-sm">
+          <p className="flex items-center gap-2 font-semibold font-mono text-xs uppercase tracking-widest text-muted-foreground">
+            <Zap className="h-3 w-3 shrink-0" />
+            Upcoming game conditionals
+          </p>
+          <div className="mt-2 text-xs flex flex-wrap gap-4">
+            {Object.entries(valuation.conditionalPayouts).map(([eventId, eventInfo]) => {
+              const info = eventInfo as any;
+              const teamName = (teamId: number | null) =>
+                displayTeams.find((team) => team.teamId === teamId)?.teamName ?? `Team ${teamId ?? "—"}`;
+              return (
+                <div key={eventId} className="border border-border/50 bg-background rounded-sm p-2 min-w-[200px]">
+                  <div className="font-bold text-[10px] uppercase text-muted-foreground mb-1">
+                    {teamName(info.away)} @ {teamName(info.home)}
+                  </div>
+                  <div className="space-y-1">
+                    {Object.entries(info.outcomes ?? {}).map(([outcomeName, outcomeValue]) => {
+                      const outcome = outcomeValue as any;
+                      const teams = Array.isArray(outcome.teams) ? outcome.teams : [];
+                      const sampleShare = teams.find((team: any) => team.sample_share != null)?.sample_share;
+                      const quality = teams.some((team: any) => team.quality_status === "insufficient")
+                        ? "insufficient"
+                        : teams.some((team: any) => team.quality_status === "warning")
+                          ? "warning"
+                          : "good";
+                      return (
+                        <div key={outcomeName} className="flex justify-between items-center text-[10px] font-mono">
+                          <span>{outcomeName.replaceAll("_", " ")}</span>
+                          <span className={quality === "good" ? "text-emerald-600" : quality === "warning" ? "text-amber-700" : "text-red-600"}>
+                            {sampleShare == null ? quality : `${(Number(sampleShare) * 100).toFixed(1)}% · ${quality}`}
+                          </span>
+                        </div>
+                      );
+                    })}
+                  </div>
+                </div>
+              );
+            })}
+          </div>
+        </div>
+      )}
+
+      {displayTeams.length > 0 && (
         <>
           <div className="border-b border-border p-4">
             <div className="mb-3 flex flex-col gap-3 sm:flex-row sm:items-end sm:justify-between">
@@ -500,7 +619,7 @@ function PipelineMarkPanel({
                 />
               </label>
             </div>
-            <NetPayoutHistoryChart valuations={valuations} />
+            <NetPayoutHistoryChart valuations={displayTeams.map(t => status?.valuations.find(v => v.teamId === t.teamId || v.entryId === t.entryId)).filter((v): v is PipelineValuation => v != null)} />
           </div>
 
           <div className="table-scroll">
@@ -510,7 +629,7 @@ function PipelineMarkPanel({
               <tr>
                 <th className="px-4 py-2 text-left"><SortButton label="Team" value="team" /></th>
                 <th className="px-3 py-2 text-left"><SortButton label="Consortium" value="owner" /></th>
-                <th className="px-3 py-2 text-right"><SortButton label="Expected pts" value="points" /></th>
+                <th className="px-3 py-2 text-right"><SortButton label="Gross payout" value="points" /></th>
                 <th className="px-3 py-2 text-right"><SortButton label="Net payout" value="payout" /></th>
                 <th className="px-3 py-2 text-right"><SortButton label="Auction price" value="price" /></th>
                 <th className="px-3 py-2 text-right"><SortButton label="Multiple" value="multiple" /></th>
@@ -518,14 +637,14 @@ function PipelineMarkPanel({
               </tr>
             </thead>
             <tbody className="divide-y divide-border">
-              {valuations.map((valuation) => {
-                const price = valuation.auctionPrice == null ? null : Number(valuation.auctionPrice);
-                const payout = currentNetPayout(valuation);
-                const previousPayout = previousNetPayout(valuation);
+              {displayTeams.map((teamItem) => {
+                const price = teamItem.auctionPrice ?? null;
+                const payout = teamItem.net ?? null;
+                const previousPayout = previousNetPayout(teamItem.teamId);
                 const delta = payout == null || previousPayout == null
                   ? null
                   : payout - previousPayout;
-                const multiple = valuation.mtmMultiple == null ? null : Number(valuation.mtmMultiple);
+                const multiple = price && price > 0 ? (teamItem.grossExpectedPayout / price) : null;
                 const payoutIntensity = payout == null ? 0 : Math.abs(payout) / Math.max(1, Math.max(Math.abs(minPayout), Math.abs(maxPayout)));
                 const multipleIntensity = multiple == null
                   ? 0
@@ -533,12 +652,12 @@ function PipelineMarkPanel({
                     ? Math.min(1, 1 - multiple)
                     : Math.min(1, (multiple - 1) / Math.max(0.01, maxMultiple - 1));
                 return (
-                  <tr key={valuation.entryId}>
-                    <td className="px-4 py-2 font-semibold">{valuation.teamName}</td>
+                  <tr key={teamItem.entryId}>
+                    <td className="px-4 py-2 font-semibold">{teamItem.teamName}</td>
                     <td className="max-w-[18rem] px-3 py-2 text-xs text-muted-foreground">
-                      {ownerText(valuation) || "—"}
+                      {ownerText(teamItem.teamId)}
                     </td>
-                    <td className="px-3 py-2 text-right font-mono">{Number(valuation.expectedPoints).toFixed(2)}</td>
+                    <td className="px-3 py-2 text-right font-mono">{formatCurrency(teamItem.grossExpectedPayout)}</td>
                     <td
                       className="px-3 py-2 text-right font-mono font-semibold"
                       style={{
@@ -579,7 +698,7 @@ function PipelineMarkPanel({
           </table>
           </div>
           <div className="border-t border-border px-4 py-3 font-mono text-[10px] uppercase tracking-widest text-muted-foreground">
-            {valuations.length} of {status.valuations.length} teams
+            {displayTeams.length} of {baseItems.length} teams
           </div>
         </>
       )}

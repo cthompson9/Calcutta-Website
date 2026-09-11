@@ -22,6 +22,8 @@ import {
   UpsertMtmSnapshotResponse,
   GetMtmPipelineEvidenceQueryParams,
   GetMtmPipelineEvidenceResponse,
+  GetMtmValuationQueryParams,
+  GetMtmValuationResponse,
 } from "@workspace/api-zod";
 import { loadSeasonOwnership } from "../lib/seasonOwnership";
 import { captureKalshiWeekZero } from "../lib/kalshiWeekZero";
@@ -50,8 +52,19 @@ import {
   withMtmLock,
 } from "../lib/mtmPipeline";
 import { z } from "zod/v4";
+import { getNormalizedMtmValuation } from "../lib/mtmValuation";
 
 const router: IRouter = Router();
+
+router.get("/mtm/valuation", async (req, res): Promise<void> => {
+  const parsed = GetMtmValuationQueryParams.safeParse(req.query);
+  if (!parsed.success) {
+    sendParsedJson(res, ErrorResponse, { error: parsed.error.message }, 400);
+    return;
+  }
+  const result = await getNormalizedMtmValuation(parsed.data);
+  sendParsedJson(res, GetMtmValuationResponse, result);
+});
 class WeekZeroDateCollisionError extends Error {}
 
 interface StoredWeekZeroMarketData {

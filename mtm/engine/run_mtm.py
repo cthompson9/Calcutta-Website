@@ -88,19 +88,97 @@ def build_snapshot(config: dict, state: dict) -> dict:
 
     valued = valuation.value_pool(rubric, state["realized"], projections,
                                   state["entries"], state["pot"])
+    # The simulated, path-normalized mark is authoritative.  The analytic
+    # valuation above remains in the snapshot for backwards compatibility and
+    # audit comparison.
+    schedule = [simulate.Game(**g) for g in state["remaining_schedule"]]
+    seed = simcfg.get("seed", 20260829)
+    mc = simulate.monte_carlo(
+        fit["ratings"], schedule,
+        {t: state["realized"][t]["wins"] for t in teams},
+        state.get("divisions", {}), hfa=simcfg["hfa_points"],
+        margin_sd=simcfg["margin_sd"], runs=simcfg["monte_carlo_runs"],
+        seed=seed, rubric=rubric, pot=state["pot"],
+        realized_stats=state["realized"], stage_targets=norm["probs"],
+        calibration_tolerance=simcfg.get("calibration_tolerance", 0.03),
+        calibration_iters=simcfg.get("calibration_iters", 500))
+    if not mc.get("calibration_converged", False):
+        worst = max((abs(value) for value in mc.get("calibration_residuals", {}).values()),
+                    default=float("inf"))
+        raise ValueError(f"playoff market calibration failed; max residual {worst:.6f}")
+    sim_valued = valuation.value_simulation(
+        rubric, state["entries"], state["pot"], mc, schedule,
+        min_conditional_samples=simcfg.get("min_conditional_samples", 100),
+        min_conditional_share=simcfg.get("min_conditional_share", 0.01))
+    # Keep legacy point fields stable for consumers while replacing only the
+    # payout mark with the path-normalized result.
+    legacy_by_entry = {r["entry_id"]: r for r in valued["entries"]}
+    for row in sim_valued["entries"]:
+        old = legacy_by_entry.get(row["entry_id"], {})
+        row["expected_points"] = old.get("expected_points")
+    # Calibration is intentionally normalized and explicit: weights are the
+    # number of simulated observations, residuals compare each bucket's
+    # weighted estimate with the unconditional estimate.
+    calibration = []
+    tolerance = simcfg.get("calibration_tolerance", 0.03)
+    for t in teams:
+        n_games = sum(1 for g in schedule if g.home == t or g.away == t)
+        target = target_remaining[t] / n_games if n_games else 0.0
+        simulated = ((mc.get("win_sum", {}).get(t, 0.0) / mc["runs"])
+                     - state["realized"][t].get("wins", 0)) / n_games if n_games else 0.0
+        calibration.append({"metric": "remaining_win_probability", "team": t,
+                            "target_probability": target,
+                            "simulated_probability": simulated,
+                            "residual": simulated - target, "weight": n_games,
+                            "tolerance": tolerance, "sample_count": mc["runs"],
+                            "sample_share": 1.0,
+                            "effective_sample_size": mc["runs"],
+                            "quality_status": "good" if abs(simulated-target) <= tolerance else "warning"})
+    for stage in playoffs.STAGES:
+        target_total = config["stage_targets"][stage]
+        for t in teams:
+            target = norm["probs"][t][stage]
+            sim = mc["stage_probs"][t][stage]
+            calibration.append({"metric": stage, "team": t,
+                                "target_probability": target,
+                                "simulated_probability": sim,
+                                "residual": sim - target,
+                                "weight": target_total, "tolerance": tolerance,
+                                "sample_count": mc["runs"], "sample_share": 1.0,
+                                "effective_sample_size": mc.get("effective_sample_size", mc["runs"]),
+                                "quality_status": "good" if abs(sim-target) <= tolerance else "warning"})
+    failed_calibration = [row for row in calibration if row["quality_status"] != "good"]
+    if failed_calibration:
+        worst = max(abs(row["residual"]) for row in failed_calibration)
+        raise ValueError(
+            f"market calibration failed for {len(failed_calibration)} metrics; "
+            f"max residual {worst:.6f}"
+        )
 
     return {
         "status": "ok",
         "as_of": datetime.now(timezone.utc).isoformat(),
         "config_season": config["season"],
         "projections": projections,
-        "valuations": valued["entries"],
+        "valuations": sim_valued["entries"],
+        "team_valuations": sim_valued["team_valuations"],
+        "path_count": mc["runs"],
+        "model": {"name": simcfg.get("model", "seeded_monte_carlo"), "seed": seed,
+                  "runs": mc["runs"], "margin_sd": simcfg["margin_sd"],
+                  "hfa_points": simcfg["hfa_points"]},
+        "conditional_payouts": sim_valued["conditional_payouts"],
         "diagnostics": {
             "wins": win_diags,
             "playoff_alphas": norm["alphas"],
             "playoff_residuals": norm["residuals"],
             "rating_fit_max_win_error": fit["max_abs_win_error"],
             **valued["diagnostics"],
+            "simulation": sim_valued["diagnostics"],
+            "market_calibration": {"metrics": calibration,
+                "status": "good" if all(v["quality_status"] == "good"
+                                        for v in calibration) else "warning",
+                "calibration_status": "good" if all(
+                    v["quality_status"] == "good" for v in calibration) else "warning"},
         },
     }
 

@@ -1486,6 +1486,71 @@ export const UpsertMtmSnapshotResponse = zod.object({
 
 
 /**
+ * @summary Get the normalized MTM valuation read model
+ */
+export const getMtmValuationQueryMarkTypeDefault = `authoritative`;
+
+export const GetMtmValuationQueryParams = zod.object({
+  "season": zod.coerce.number(),
+  "calcuttaId": zod.coerce.number().optional(),
+  "markType": zod.enum(['authoritative', 'latest', 'canonical', 'provisional']).default(getMtmValuationQueryMarkTypeDefault),
+  "owner": zod.coerce.string().optional()
+})
+
+export const GetMtmValuationResponse = zod.object({
+  "available": zod.boolean(),
+  "mark": zod.object({
+  "snapshotId": zod.number().nullish(),
+  "type": zod.enum(['authoritative', 'latest', 'canonical', 'provisional']),
+  "approximate": zod.boolean(),
+  "quality": zod.enum(['good', 'warning', 'insufficient']),
+  "stale": zod.boolean(),
+  "asOf": zod.string().nullish(),
+  "inputHash": zod.string().nullish(),
+  "pathCount": zod.number().nullish(),
+  "selectionReason": zod.string().nullish(),
+  "provisionalSuppressionReason": zod.string().nullish(),
+  "model": zod.object({
+  "name": zod.string(),
+  "seed": zod.number().nullish()
+}).optional()
+}),
+  "teams": zod.array(zod.object({
+  "entryId": zod.number(),
+  "teamId": zod.number().nullish(),
+  "teamName": zod.string().nullish(),
+  "grossExpectedPayout": zod.number(),
+  "auctionPrice": zod.number().nullish(),
+  "net": zod.number().nullish()
+})),
+  "owners": zod.array(zod.object({
+  "bidderId": zod.number().optional(),
+  "bidderName": zod.string().optional(),
+  "grossExpectedPayout": zod.number().optional(),
+  "signedCostBasis": zod.number().optional(),
+  "net": zod.number().optional()
+})),
+  "conditionalPayouts": zod.record(zod.string(), zod.unknown()),
+  "diagnostics": zod.object({
+  "market_calibration": zod.record(zod.string(), zod.unknown()).optional(),
+  "market_drift": zod.object({
+  "available": zod.boolean().optional(),
+  "reason": zod.string().nullish(),
+  "threshold": zod.number().optional(),
+  "maxDrift": zod.number().nullish(),
+  "weightedDrift": zod.number().nullish(),
+  "recommendsRerun": zod.boolean().optional()
+}).optional()
+}).nullable(),
+  "invariants": zod.object({
+  "teamGrossPoolConservation": zod.record(zod.string(), zod.unknown()).optional(),
+  "entryNetVersusAuctionProceeds": zod.record(zod.string(), zod.unknown()).optional(),
+  "ownerSecondaryTradeCash": zod.record(zod.string(), zod.unknown()).optional()
+})
+})
+
+
+/**
  * @summary Inspect immutable Kalshi evidence for frozen-engine MTM attempts
  */
 export const GetMtmPipelineEvidenceQueryParams = zod.object({
@@ -2067,3 +2132,5 @@ export const GetConsortiumLeaderboardV2Response = zod.object({
   "market_status_reasons": zod.array(zod.string())
 }))
 })
+
+

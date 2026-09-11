@@ -47,6 +47,7 @@ import type {
   GetGameV2Params,
   GetMtmPipelineEvidenceParams,
   GetMtmSnapshotsParams,
+  GetMtmValuationParams,
   GetOwnerPortfolioPerformanceV2Params,
   GetOwnerPortfolioV2Params,
   GetOwnerSummaryV2Params,
@@ -72,6 +73,7 @@ import type {
   MtmPipelineEvidenceResponse,
   MtmSnapshot,
   MtmSnapshotInput,
+  MtmValuation,
   NflStandingsImportInput,
   NflStandingsImportPreview,
   NflStandingsImportResponse,
@@ -3256,6 +3258,90 @@ export const useUpsertMtmSnapshot = <TError = ErrorType<ErrorResponse>,
       return useMutation(getUpsertMtmSnapshotMutationOptions(options));
     }
 
+export const getGetMtmValuationUrl = (params: GetMtmValuationParams,) => {
+  const normalizedParams = new URLSearchParams();
+
+  Object.entries(params || {}).forEach(([key, value]) => {
+
+    if (value !== undefined) {
+      normalizedParams.append(key, value === null ? 'null' : String(value))
+    }
+  });
+
+  const stringifiedParams = normalizedParams.toString();
+
+  return stringifiedParams.length > 0 ? `/api/mtm/valuation?${stringifiedParams}` : `/api/mtm/valuation`
+}
+
+/**
+ * @summary Get the normalized MTM valuation read model
+ */
+export const getMtmValuation = async (params: GetMtmValuationParams, options?: Parameters<typeof customFetch>[1]): Promise<MtmValuation> => {
+
+  return customFetch<MtmValuation>(getGetMtmValuationUrl(params),
+  {
+    ...options,
+    method: 'GET'
+
+
+  }
+);}
+
+
+
+
+
+export const getGetMtmValuationQueryKey = (params?: GetMtmValuationParams,) => {
+    return [
+    `/api/mtm/valuation`, ...(params ? [params] : [])
+    ] as const;
+    }
+
+
+export const getGetMtmValuationQueryOptions = <TData = Awaited<ReturnType<typeof getMtmValuation>>, TError = ErrorType<ErrorResponse>>(params: GetMtmValuationParams, options?: { query?:UseQueryOptions<Awaited<ReturnType<typeof getMtmValuation>>, TError, TData>, request?: SecondParameter<typeof customFetch>}
+) => {
+
+const {query: queryOptions, request: requestOptions} = options ?? {};
+
+  const queryKey =  queryOptions?.queryKey ?? getGetMtmValuationQueryKey(params);
+
+
+
+    const queryFn: QueryFunction<Awaited<ReturnType<typeof getMtmValuation>>> = ({ signal }) => getMtmValuation(params, { signal, ...requestOptions });
+
+
+
+
+
+   return  { queryKey, queryFn, ...queryOptions} as UseQueryOptions<Awaited<ReturnType<typeof getMtmValuation>>, TError, TData> & { queryKey: QueryKey }
+}
+
+export type GetMtmValuationQueryResult = NonNullable<Awaited<ReturnType<typeof getMtmValuation>>>
+export type GetMtmValuationQueryError = ErrorType<ErrorResponse>
+
+
+/**
+ * @summary Get the normalized MTM valuation read model
+ */
+
+export function useGetMtmValuation<TData = Awaited<ReturnType<typeof getMtmValuation>>, TError = ErrorType<ErrorResponse>>(
+ params: GetMtmValuationParams, options?: { query?:UseQueryOptions<Awaited<ReturnType<typeof getMtmValuation>>, TError, TData>, request?: SecondParameter<typeof customFetch>}
+
+ ):  UseQueryResult<TData, TError> & { queryKey: QueryKey } {
+
+  const queryOptions = getGetMtmValuationQueryOptions(params,options)
+
+  const query = useQuery(queryOptions) as  UseQueryResult<TData, TError> & { queryKey: QueryKey };
+
+  return withQueryKey(query, queryOptions.queryKey);
+}
+
+
+
+
+
+
+
 export const getGetMtmPipelineEvidenceUrl = (params: GetMtmPipelineEvidenceParams,) => {
   const normalizedParams = new URLSearchParams();
 
@@ -4304,3 +4390,10 @@ export function useGetConsortiumLeaderboardV2<TData = Awaited<ReturnType<typeof 
 
   return withQueryKey(query, queryOptions.queryKey);
 }
+
+
+
+
+
+
+
