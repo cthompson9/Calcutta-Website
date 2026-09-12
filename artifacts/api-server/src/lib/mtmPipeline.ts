@@ -43,6 +43,7 @@ const WORKSPACE_ROOT = existsSync(resolve(process.cwd(), "mtm"))
 const ENGINE_DIR = resolve(WORKSPACE_ROOT, "mtm/engine");
 const CONFIG_PATH = resolve(WORKSPACE_ROOT, "mtm/season-config-2026.json");
 const MTM_LOCK_NAMESPACE = 7_143;
+const CONDITIONAL_PERSISTENCE_BATCH_SIZE = 500;
 const ESPN_TEAM_CODE: Record<string, string> = { JAX: "JAC", WSH: "WAS" };
 const TEAM_CODE_BY_NAME: Record<string, string> = {
   "Arizona Cardinals": "ARI", "Atlanta Falcons": "ATL", "Baltimore Ravens": "BAL",
@@ -1219,7 +1220,11 @@ export async function runMtmPipeline(input: { seasonYear: number; calcuttaId?: n
       }));
       if (valuations.length) await tx.insert(mtmEntryValuationTable).values(valuations);
       if (calibrationRows.length) await tx.insert(mtmCalibrationMetricTable).values(calibrationRows);
-      if (conditionalRows.length) await tx.insert(mtmGameConditionalTable).values(conditionalRows);
+      for (let offset = 0; offset < conditionalRows.length; offset += CONDITIONAL_PERSISTENCE_BATCH_SIZE) {
+        await tx.insert(mtmGameConditionalTable).values(
+          conditionalRows.slice(offset, offset + CONDITIONAL_PERSISTENCE_BATCH_SIZE),
+        );
+      }
       // Calendar projection parents are guarded by a database trigger that
       // requires the referenced MTM snapshot to already be successful. Keep
       // this status transition and projection publication in this transaction.
@@ -1448,6 +1453,13 @@ export const mtmPipelineTestUtils = {
   quoteVolume,
   deriveQuoteState,
   validateCompleteEngineSnapshot,
+  conditionalPersistenceBatches<T>(rows: T[]): T[][] {
+    const batches: T[][] = [];
+    for (let offset = 0; offset < rows.length; offset += CONDITIONAL_PERSISTENCE_BATCH_SIZE) {
+      batches.push(rows.slice(offset, offset + CONDITIONAL_PERSISTENCE_BATCH_SIZE));
+    }
+    return batches;
+  },
   mergeTeamQuoteResults,
   validateScheduleIdentitySets,
   buildMarketQuoteRows,

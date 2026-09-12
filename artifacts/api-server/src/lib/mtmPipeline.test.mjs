@@ -209,6 +209,14 @@ test("rejects fractional-cent published payouts", () => {
   );
 });
 
+test("bounds full-season conditional persistence batches", () => {
+  const rows = Array.from({ length: 272 * 3 * 32 }, (_, index) => index);
+  const batches = mtmPipelineTestUtils.conditionalPersistenceBatches(rows);
+  assert.equal(batches.flat().length, rows.length);
+  assert.ok(batches.length > 1);
+  assert.ok(batches.every((batch) => batch.length <= 500));
+});
+
 test("rejects invalid stage nesting and mismatched entry teams", () => {
   const invalidStage = completeEngineFixture();
   invalidStage.engine.projections.T0.p_stage.sb_win = 0.9;
