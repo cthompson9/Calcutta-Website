@@ -588,16 +588,14 @@ function PipelineMarkPanel({
         </div>
       )}
 
-      <UpcomingEvSwings games={valuation.gameEvSwings ?? []} />
-
       {displayTeams.length > 0 && (
         <>
           <div className="border-b border-border p-4">
             <div className="mb-3 flex flex-col gap-3 sm:flex-row sm:items-end sm:justify-between">
               <div>
-                <h3 className="font-mono text-xs font-bold uppercase tracking-widest">Net payout history by team</h3>
+                <h3 className="font-mono text-xs font-bold uppercase tracking-widest">By team standings</h3>
                 <p className="mt-1 text-xs text-muted-foreground">
-                  Expected payout normalized to the auction pool, minus auction price. Dot size reflects auction price.
+                  Current expected payout, auction price, multiple, and change from the prior mark.
                 </p>
               </div>
               <label className="relative block sm:w-72">
@@ -612,7 +610,6 @@ function PipelineMarkPanel({
                 />
               </label>
             </div>
-            <NetPayoutHistoryChart valuations={displayTeams.map(t => status?.valuations.find(v => v.teamId === t.teamId || v.entryId === t.entryId)).filter((v): v is PipelineValuation => v != null)} />
           </div>
 
           <div className="table-scroll">
@@ -693,8 +690,19 @@ function PipelineMarkPanel({
           <div className="border-t border-border px-4 py-3 font-mono text-[10px] uppercase tracking-widest text-muted-foreground">
             {displayTeams.length} of {baseItems.length} teams
           </div>
+          <div className="border-t border-border p-4">
+            <div className="mb-3">
+              <h3 className="font-mono text-xs font-bold uppercase tracking-widest">Net payout history by team</h3>
+              <p className="mt-1 text-xs text-muted-foreground">
+                Expected payout normalized to the auction pool, minus auction price. Dot size reflects auction price.
+              </p>
+            </div>
+            <NetPayoutHistoryChart valuations={displayTeams.map(t => status?.valuations.find(v => v.teamId === t.teamId || v.entryId === t.entryId)).filter((v): v is PipelineValuation => v != null)} />
+          </div>
         </>
       )}
+
+      <UpcomingEvSwings games={valuation.gameEvSwings ?? []} />
     </section>
   );
 }
