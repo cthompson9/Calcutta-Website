@@ -42,3 +42,4 @@
 - [Joint market calibration](joint-market-calibration.md) — fit win ladders to schedule-feasible totals separately; playoff path reweighting is a posterior and needs explicit support columns.
 - [MTM v3 review boundary](mtm-v3-review-boundary.md) — a completed simulation is not a publishable mark; review attempts must stay invisible to production selectors.
 - [MTM conditional persistence](mtm-conditional-persistence.md) — persist full-season conditional matrices in bounded batches inside one transaction.
+- [Coherent MTM versions](coherent-mtm-versions.md) — actuals and displayed MTM advance through one validated version; multi-game changes retain the prior mark pending recalculation.

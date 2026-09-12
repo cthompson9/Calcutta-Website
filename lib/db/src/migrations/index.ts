@@ -34,3 +34,7 @@ export { calendarProjectionParticipantIdentityMigration } from "./0038CalendarPr
 export { calendarIntegrityGuardDispatchMigration } from "./0039CalendarIntegrityGuardDispatch";
 export { refreshJobObservabilityMigration } from "./0040RefreshJobObservability";
 export { mtmRunMetadataAndConditionalsMigration } from "./0041MtmRunMetadataAndConditionals";
+export { mtmCurrentVersionMigration } from "./0042MtmCurrentVersion";
+export { mtmCurrentVersionGuardsMigration } from "./0043MtmCurrentVersionGuards";
+export { mtmCurrentPromotionIntegrityMigration } from "./0044MtmCurrentPromotionIntegrity";
+export { mtmCurrentCanonicalGamesMigration } from "./0045MtmCurrentCanonicalGames";

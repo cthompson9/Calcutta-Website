@@ -30,5 +30,6 @@ export * from "./mcpOauth";
 export * from "./normalizedHistorical";
 export * from "./historicalCalcuttaRosters";
 export * from "./mtmPipeline";
+export * from "./mtmCurrentVersion";
 export * from "./mtmCanonical";
 export * from "./calcuttaCalendar";

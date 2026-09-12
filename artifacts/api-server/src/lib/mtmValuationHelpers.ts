@@ -1,3 +1,5 @@
+import { createHash } from "node:crypto";
+
 export type ConditionalRow = {
   eventId: number; entryId: number; outcome: "home_win" | "away_win" | "tie";
   team: string; grossBaseline: number | null; grossConditional: number | null;
@@ -5,6 +7,109 @@ export type ConditionalRow = {
   sampleShare: number | null; effectiveSampleSize: number | null; standardError: number | null;
   qualityStatus: "good" | "warning" | "insufficient"; reconciliationResidual: number | null;
 };
+
+/**
+ * Only these fields affect the economic state of finalized actuals.  In
+ * particular, ingestion timestamps and provider provenance are intentionally
+ * excluded so an identical result does not create a new mark merely because
+ * it was fetched again.
+ */
+export type FinalizedActual = {
+  eventId?: number | string | null;
+  event_id?: number | string | null;
+  gameId?: number | string | null;
+  game_id?: number | string | null;
+  sourceGameId?: number | string | null;
+  source_game_id?: number | string | null;
+  sourceId?: number | string | null;
+  source_id?: number | string | null;
+  week?: number | string | null;
+  homeTeamId?: number | string | null;
+  home_team_id?: number | string | null;
+  home?: number | string | null;
+  awayTeamId?: number | string | null;
+  away_team_id?: number | string | null;
+  away?: number | string | null;
+  homeScore?: number | string | null;
+  home_score?: number | string | null;
+  awayScore?: number | string | null;
+  away_score?: number | string | null;
+};
+
+export type CanonicalActual = {
+  game_id: string;
+  week: number;
+  home_team_id: string;
+  away_team_id: string;
+  home_score: number;
+  away_score: number;
+};
+
+function actualValue(actual: FinalizedActual, ...keys: Array<keyof FinalizedActual>): unknown {
+  for (const key of keys) {
+    const value = actual[key];
+    if (value !== undefined && value !== null && value !== "") return value;
+  }
+  return null;
+}
+
+function finiteActualNumber(value: unknown, field: string): number {
+  const number = Number(value);
+  if (!Number.isFinite(number)) throw new Error(`Finalized actual ${field} must be finite.`);
+  return number;
+}
+
+/**
+ * Stable, order-independent economic representation of finalized results.
+ * Correction of any identity, score, or matchup field therefore changes the
+ * resulting hash, while timestamps/provenance and object key order do not.
+ */
+export function canonicalizeActuals(actuals: FinalizedActual[]): CanonicalActual[] {
+  const canonical = actuals.map((actual) => {
+    const week = finiteActualNumber(actualValue(actual, "week"), "week");
+    const home = actualValue(actual, "homeTeamId", "home_team_id", "home");
+    const away = actualValue(actual, "awayTeamId", "away_team_id", "away");
+    const explicitGame = actualValue(actual, "eventId", "event_id", "gameId", "game_id");
+    if (home == null || away == null) {
+      throw new Error("Finalized actual requires game identity, home team, and away team.");
+    }
+    // Provider source IDs are provenance, not economic identity.  The
+    // canonical matchup key keeps ledger records usable when an ingestion
+    // source has no canonical events.id yet.
+    const game = explicitGame == null ? `${week}:${String(away)}:${String(home)}` : explicitGame;
+    const homeScore = finiteActualNumber(actualValue(actual, "homeScore", "home_score"), "home_score");
+    const awayScore = finiteActualNumber(actualValue(actual, "awayScore", "away_score"), "away_score");
+    return {
+      game_id: String(game),
+      week,
+      home_team_id: String(home),
+      away_team_id: String(away),
+      home_score: homeScore,
+      away_score: awayScore,
+    };
+  });
+  canonical.sort((a, b) => {
+    const left = JSON.stringify(a);
+    const right = JSON.stringify(b);
+    return left < right ? -1 : left > right ? 1 : 0;
+  });
+  const identities = new Set(canonical.map((actual) => actual.game_id));
+  if (identities.size !== canonical.length) throw new Error("Finalized actuals contain duplicate game identities.");
+  return canonical;
+}
+
+export function canonicalActualsJson(actuals: FinalizedActual[]): string {
+  return JSON.stringify(canonicalizeActuals(actuals));
+}
+
+export function hashActualsState(actuals: FinalizedActual[]): string {
+  return createHash("sha256").update(canonicalActualsJson(actuals)).digest("hex");
+}
+
+// Explicit aliases make the helper discoverable to callers that use the
+// domain term "state hash" rather than "actuals hash".
+export const canonicalizeActualsState = canonicalizeActuals;
+export const computeActualsStateHash = hashActualsState;
 
 type SwingConditionalTeam = {
   team_id: number | null;

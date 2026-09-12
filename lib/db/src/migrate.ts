@@ -37,6 +37,10 @@ import {
   calendarIntegrityGuardDispatchMigration,
   refreshJobObservabilityMigration,
   mtmRunMetadataAndConditionalsMigration,
+  mtmCurrentVersionMigration,
+  mtmCurrentVersionGuardsMigration,
+  mtmCurrentPromotionIntegrityMigration,
+  mtmCurrentCanonicalGamesMigration,
 } from "./migrations";
 
 const migrations = [
@@ -76,6 +80,10 @@ const migrations = [
   calendarIntegrityGuardDispatchMigration,
   refreshJobObservabilityMigration,
   mtmRunMetadataAndConditionalsMigration,
+  mtmCurrentVersionMigration,
+  mtmCurrentVersionGuardsMigration,
+  mtmCurrentPromotionIntegrityMigration,
+  mtmCurrentCanonicalGamesMigration,
 ] as const;
 
 /**

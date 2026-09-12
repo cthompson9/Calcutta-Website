@@ -23,6 +23,21 @@ import {
   deriveOwnerGameEvSwings,
 } from "./mtmValuationHelpers";
 
+// The durable current-version resolver is shared by internal server callers.
+// Legacy consumers remain on this module's existing normalized read model
+// until their migration is explicitly scheduled.
+export {
+  resolveCurrentMtm,
+  buildCurrentMtmResolution,
+  validateCurrentMtmVersion,
+  assertValidCurrentMtmVersion,
+  validateAndPromoteCurrentMtm,
+  validateAndPromoteCurrentMtmVersion,
+  mapSourceActualsForPool,
+  mapSourceActuals,
+  normalizeSourceActuals,
+} from "./currentMtm";
+
 export type MtmMarkType = "authoritative" | "latest" | "canonical" | "provisional";
 
 export async function assessMarketDrift(snapshotId: number, threshold = 0.05) {
