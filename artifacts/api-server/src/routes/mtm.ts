@@ -54,6 +54,7 @@ import {
 } from "../lib/mtmPipeline";
 import { z } from "zod/v4";
 import { getNormalizedMtmValuation } from "../lib/mtmValuation";
+import { validateAndPromoteCurrentMtm } from "../lib/currentMtm";
 
 const router: IRouter = Router();
 
@@ -279,13 +280,23 @@ router.post("/mtm/pipeline/recalc", requireAdmin, async (req, res): Promise<void
     if (current && Date.now() - Date.parse(current.asOf) < 5 * 60 * 1000) {
       return { cooldown: true as const };
     }
+    const result = await runMtmPipeline({
+      seasonYear: parsed.data.season,
+      calcuttaId: parsed.data.calcuttaId,
+      trigger: "manual",
+    });
+    if (result.status !== "ok" || result.currentSnapshotId == null) {
+      return { cooldown: false as const, result, currentMtmVersion: null };
+    }
+    const currentMtmVersion = await validateAndPromoteCurrentMtm({
+      poolId: result.poolId,
+      sourceSnapshotId: result.currentSnapshotId,
+      markType: "official",
+    });
     return {
       cooldown: false as const,
-      result: await runMtmPipeline({
-        seasonYear: parsed.data.season,
-        calcuttaId: parsed.data.calcuttaId,
-        trigger: "manual",
-      }),
+      result,
+      currentMtmVersion,
     };
   });
   if (!locked.acquired) {
@@ -298,7 +309,10 @@ router.post("/mtm/pipeline/recalc", requireAdmin, async (req, res): Promise<void
     }, 409);
     return;
   }
-  res.status(locked.value.result.status === "ok" ? 200 : 502).json(locked.value.result);
+  res.status(locked.value.result.status === "ok" ? 200 : 502).json({
+    ...locked.value.result,
+    currentMtmVersion: locked.value.currentMtmVersion,
+  });
 });
 
 /**
