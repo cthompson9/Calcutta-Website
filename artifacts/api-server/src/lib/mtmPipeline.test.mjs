@@ -115,6 +115,7 @@ test("coalesces retries into one UTC as-of hour", () => {
 
 test("rejects partial engine output before a snapshot can be promoted", () => {
   const state = {
+    pot: 3200,
     entries: [],
     realized: {},
   };
@@ -128,7 +129,105 @@ test("rejects partial engine output before a snapshot can be promoted", () => {
       },
       state,
     ),
-    /expected 32/,
+    /32 unique teams/,
+  );
+});
+
+function completeEngineFixture() {
+  const teams = Array.from({ length: 32 }, (_, index) => `T${index}`);
+  const state = {
+    pot: 3200,
+    realized: Object.fromEntries(teams.map((team) => [
+      team,
+      { wins: 0, ties: 0, adj_pt_diff: 0 },
+    ])),
+    entries: teams.map((team, index) => ({
+      entry_id: String(index + 1),
+      team,
+      price: 100,
+    })),
+  };
+  const projections = Object.fromEntries(teams.map((team) => [team, {
+    e_wins_total: 8.5,
+    e_remaining_wins: 8.5,
+    e_remaining_raw_diff: 0,
+    e_remaining_marquee_addon: 0,
+    rating: 0,
+    p_stage: {
+      berth: 0.5,
+      divisional: 0.25,
+      conference: 0.125,
+      sb_berth: 0.0625,
+      sb_win: 0.03125,
+    },
+  }]));
+  const valuations = state.entries.map((entry) => ({
+    entry_id: entry.entry_id,
+    team: entry.team,
+    expected_points: 100,
+    expected_share: 1 / 32,
+    expected_payout: 100,
+    auction_price: 100,
+    mtm_multiple: 1,
+  }));
+  return {
+    state,
+    engine: {
+      status: "ok",
+      as_of: "2026-08-29T00:00:00.000Z",
+      projections,
+      valuations,
+    },
+  };
+}
+
+test("accepts a complete pool-conserving engine snapshot", () => {
+  const { state, engine } = completeEngineFixture();
+  assert.equal(
+    mtmPipelineTestUtils.validateCompleteEngineSnapshot(engine, state),
+    null,
+  );
+});
+
+test("rejects an engine snapshot whose payouts do not conserve the pool", () => {
+  const { state, engine } = completeEngineFixture();
+  engine.valuations[0].expected_payout += 0.01;
+  engine.valuations[0].expected_share = engine.valuations[0].expected_payout / state.pot;
+  assert.match(
+    mtmPipelineTestUtils.validateCompleteEngineSnapshot(engine, state),
+    /payouts total/,
+  );
+});
+
+test("rejects fractional-cent published payouts", () => {
+  const { state, engine } = completeEngineFixture();
+  engine.valuations[0].expected_payout = 100.001;
+  engine.valuations[0].expected_share = engine.valuations[0].expected_payout / state.pot;
+  assert.match(
+    mtmPipelineTestUtils.validateCompleteEngineSnapshot(engine, state),
+    /fractional-cent payout/,
+  );
+});
+
+test("rejects invalid stage nesting and mismatched entry teams", () => {
+  const invalidStage = completeEngineFixture();
+  invalidStage.engine.projections.T0.p_stage.sb_win = 0.9;
+  assert.match(
+    mtmPipelineTestUtils.validateCompleteEngineSnapshot(
+      invalidStage.engine,
+      invalidStage.state,
+    ),
+    /invalid nested stage probabilities/,
+  );
+
+  const mismatchedTeam = completeEngineFixture();
+  mismatchedTeam.engine.valuations[0].team = "T1";
+  assert.match(
+    mtmPipelineTestUtils.validateCompleteEngineSnapshot(
+      mismatchedTeam.engine,
+      mismatchedTeam.state,
+    ),
+    /mismatched team/,
   );
 });
 

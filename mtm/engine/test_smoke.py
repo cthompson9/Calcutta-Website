@@ -355,8 +355,8 @@ def test_conditional_quality_uses_effective_sample_size():
     games = [simulate.Game("A", "B", week=1)]
     simulation = {
         "runs": 1000,
-        "payout_sum": {"A": 500000.0},
-        "payout_sq_sum": {"A": 250000000.0},
+        "payout_sum": {"A": 1000000.0},
+        "payout_sq_sum": {"A": 1000000000.0},
         "conditional_payouts": {
             0: {
                 "home_win": {
@@ -385,6 +385,15 @@ def test_conditional_quality_uses_effective_sample_size():
     assert bucket["sample_share"] == 1.0
     assert bucket["effective_sample_size"] == 1.0
     assert bucket["quality_status"] == "insufficient"
+
+
+def test_payout_cent_allocation_is_exact_and_deterministic():
+    allocated = valuation._allocate_payout_cents(
+        {"A": 10 / 3, "B": 10 / 3, "C": 10 / 3},
+        10,
+    )
+    assert allocated == {"A": 3.33, "B": 3.33, "C": 3.34}
+    assert round(sum(allocated.values()), 2) == 10
 
 
 def _longshot_fixture(mathematically_eliminated=False):
@@ -462,6 +471,7 @@ if __name__ == "__main__":
     test_zero_settled_target_needs_no_simulated_support()
     test_settled_targets_remove_impossible_weighted_paths()
     test_conditional_quality_uses_effective_sample_size()
+    test_payout_cent_allocation_is_exact_and_deterministic()
     test_support_strata_recover_feasible_positive_longshot_deterministically()
     test_support_strata_do_not_revive_mathematically_eliminated_team()
     print("\nall 15 smoke tests passed")

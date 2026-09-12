@@ -212,6 +212,7 @@ export type MtmPipelineResult = {
   diagnostics: Record<string, unknown> | null;
   valuations: Array<Record<string, unknown>>;
   projections: Record<string, Record<string, unknown>>;
+  currentSelectionType?: "canonical" | "latest";
 };
 
 function asNumber(value: unknown, fallback = 0): number {
@@ -241,6 +242,67 @@ function pipelineMarkWeek(stateJson: Record<string, unknown> | null): number {
     .filter((week) => Number.isInteger(week) && week > 0);
   if (remainingWeeks.length === 0) return 18;
   return Math.max(0, Math.min(...remainingWeeks) - 1);
+}
+
+async function selectOfficialWeeklySnapshots(
+  poolId: number,
+  successfulRows: Array<typeof mtmSnapshotTable.$inferSelect>,
+): Promise<{
+  snapshots: Array<typeof mtmSnapshotTable.$inferSelect>;
+  canonicalSnapshotIds: Set<number>;
+}> {
+  const successfulByWeek = new Map<number, Array<typeof mtmSnapshotTable.$inferSelect>>();
+  for (const snapshot of successfulRows) {
+    const week = pipelineMarkWeek(snapshot.stateJson);
+    const rows = successfulByWeek.get(week) ?? [];
+    rows.push(snapshot);
+    successfulByWeek.set(week, rows);
+  }
+  const periods = await db.select({
+    id: sportPeriodsTable.id,
+    sequence: sportPeriodsTable.sequence,
+  }).from(sportPeriodsTable).where(and(
+    eq(sportPeriodsTable.sport, "NFL"),
+    eq(sportPeriodsTable.competition, "NFL_REGULAR_SEASON"),
+  ));
+  const weekByPeriodId = new Map(periods.map((period) => [period.id, period.sequence]));
+  const canonicalRows = await db.select({
+    selectionId: mtmCanonicalPeriodSelectionTable.id,
+    sportPeriodId: mtmCanonicalPeriodSelectionTable.sportPeriodId,
+    snapshot: mtmSnapshotTable,
+  }).from(mtmCanonicalPeriodSelectionTable)
+    .innerJoin(
+      mtmSnapshotTable,
+      eq(mtmSnapshotTable.id, mtmCanonicalPeriodSelectionTable.snapshotId),
+    )
+    .where(and(
+      eq(mtmCanonicalPeriodSelectionTable.poolId, poolId),
+      eq(mtmSnapshotTable.status, "ok"),
+      ne(mtmSnapshotTable.methodVersion, "mtm-v3-review"),
+    ))
+    .orderBy(
+      sql`${mtmCanonicalPeriodSelectionTable.selectedAt} desc`,
+      sql`${mtmCanonicalPeriodSelectionTable.id} desc`,
+    );
+  const canonicalByWeek = new Map<number, typeof mtmSnapshotTable.$inferSelect>();
+  for (const row of canonicalRows) {
+    const week = weekByPeriodId.get(row.sportPeriodId);
+    if (week == null || canonicalByWeek.has(week) ||
+        pipelineMarkWeek(row.snapshot.stateJson) !== week) continue;
+    canonicalByWeek.set(week, row.snapshot);
+  }
+  const canonicalSnapshotIds = new Set<number>();
+  const snapshots = [...successfulByWeek.keys()]
+    .sort((a, b) => b - a)
+    .map((week) => {
+      const canonical = canonicalByWeek.get(week);
+      if (canonical) {
+        canonicalSnapshotIds.add(canonical.id);
+        return canonical;
+      }
+      return successfulByWeek.get(week)![0]!;
+    });
+  return { snapshots, canonicalSnapshotIds };
 }
 
 function seasonCode(year: number): string {
@@ -797,9 +859,22 @@ function hourStart(date: Date): Date {
 
 function validateCompleteEngineSnapshot(engine: EngineSnapshot, state: MtmState): string | null {
   if (engine.status !== "ok") return engine.error ?? "MTM engine failed.";
-  const expectedTeams = new Set(Object.keys(state.realized));
+  if (!Number.isFinite(state.pot) || state.pot <= 0) {
+    return "MTM state has an invalid auction pool.";
+  }
+  const expectedTeamList = Object.keys(state.realized);
+  const expectedTeams = new Set(expectedTeamList);
+  const stateEntriesById = new Map(state.entries.map((entry) => [String(entry.entry_id), entry]));
+  const entryTeams = new Set(state.entries.map((entry) => entry.team));
+  if (expectedTeams.size !== 32 || state.entries.length !== 32 ||
+      stateEntriesById.size !== 32 || entryTeams.size !== 32 ||
+      [...expectedTeams].some((team) => !entryTeams.has(team))) {
+    return "MTM state must contain 32 unique teams and 32 uniquely identified matching entries.";
+  }
   const projections = engine.projections ?? {};
-  if (Object.keys(projections).length !== 32 || new Set(Object.keys(projections)).size !== 32) {
+  const projectionTeams = Object.keys(projections);
+  if (projectionTeams.length !== 32 || new Set(projectionTeams).size !== 32 ||
+      projectionTeams.some((team) => !expectedTeams.has(team))) {
     return `MTM engine returned ${Object.keys(projections).length} team projections; expected 32.`;
   }
   for (const team of expectedTeams) {
@@ -819,19 +894,56 @@ function validateCompleteEngineSnapshot(engine: EngineSnapshot, state: MtmState)
     if (!projection || values!.some((value) => !Number.isFinite(Number(value)))) {
       return `MTM engine returned an incomplete projection for ${team}.`;
     }
+    const stage = projection.p_stage as Record<string, unknown>;
+    const stageValues = ["berth", "divisional", "conference", "sb_berth", "sb_win"]
+      .map((key) => Number(stage[key]));
+    if (stageValues.some((value) => value < 0 || value > 1) ||
+        stageValues.some((value, index) => index > 0 && stageValues[index - 1]! < value)) {
+      return `MTM engine returned invalid nested stage probabilities for ${team}.`;
+    }
+    const eWins = Number(projection.e_wins_total);
+    const eRemainingWins = Number(projection.e_remaining_wins);
+    if (eWins < 0 || eWins > 17 || eRemainingWins < 0 || eRemainingWins > 17) {
+      return `MTM engine returned out-of-range win expectations for ${team}.`;
+    }
   }
-  const expectedEntries = new Set(state.entries.map((entry) => entry.entry_id));
+  const expectedEntries = new Set(state.entries.map((entry) => String(entry.entry_id)));
   const valuations = engine.valuations ?? [];
   const actualEntries = new Set(valuations.map((valuation) => String(valuation.entry_id)));
   if (valuations.length !== 32 || actualEntries.size !== 32 ||
       [...expectedEntries].some((entryId) => !actualEntries.has(entryId))) {
     return `MTM engine returned ${valuations.length} complete entry valuations; expected the pool's 32 unique entries.`;
   }
+  let payoutCents = 0;
+  let shareTotal = 0;
   for (const valuation of valuations) {
     if (["expected_points", "expected_share", "expected_payout", "auction_price", "mtm_multiple"]
       .some((field) => !Number.isFinite(Number(valuation[field])))) {
       return `MTM engine returned invalid numeric values for entry ${valuation.entry_id}.`;
     }
+    const entry = stateEntriesById.get(String(valuation.entry_id));
+    if (!entry || String(valuation.team) !== entry.team) {
+      return `MTM engine returned a mismatched team for entry ${valuation.entry_id}.`;
+    }
+    const share = Number(valuation.expected_share);
+    const payout = Number(valuation.expected_payout);
+    if (share < 0 || share > 1 || payout < 0 || payout > state.pot) {
+      return `MTM engine returned an out-of-range share or payout for entry ${valuation.entry_id}.`;
+    }
+    if (Math.abs(payout * 100 - Math.round(payout * 100)) > 1e-6) {
+      return `MTM engine returned a fractional-cent payout for entry ${valuation.entry_id}.`;
+    }
+    if (Math.abs(payout - share * state.pot) > 0.0051) {
+      return `MTM engine returned an inconsistent share and payout for entry ${valuation.entry_id}.`;
+    }
+    payoutCents += Math.round(payout * 100);
+    shareTotal += share;
+  }
+  if (payoutCents !== Math.round(state.pot * 100)) {
+    return `MTM engine payouts total ${(payoutCents / 100).toFixed(2)}; expected ${state.pot.toFixed(2)}.`;
+  }
+  if (Math.abs(shareTotal - 1) > 1e-9) {
+    return `MTM engine shares total ${shareTotal}; expected 1.`;
   }
   return null;
 }
@@ -1202,18 +1314,17 @@ export async function getMtmPipelineStatus(seasonYear: number, calcuttaId?: numb
   const attempt = attempts[0];
   if (!attempt) return null;
   const successfulRows = await db.select().from(mtmSnapshotTable)
-    .where(and(eq(mtmSnapshotTable.poolId, selected[0].poolId), eq(mtmSnapshotTable.status, "ok")))
+    .where(and(
+      eq(mtmSnapshotTable.poolId, selected[0].poolId),
+      eq(mtmSnapshotTable.status, "ok"),
+      ne(mtmSnapshotTable.methodVersion, "mtm-v3-review"),
+    ))
     .orderBy(
       sql`${mtmSnapshotTable.asOf} desc`,
       sql`${mtmSnapshotTable.id} desc`,
     );
-  const seenMarkWeeks = new Set<number>();
-  const weeklySuccessfulRows = successfulRows.filter((snapshot) => {
-    const markWeek = pipelineMarkWeek(snapshot.stateJson);
-    if (seenMarkWeeks.has(markWeek)) return false;
-    seenMarkWeeks.add(markWeek);
-    return true;
-  });
+  const official = await selectOfficialWeeklySnapshots(selected[0].poolId, successfulRows);
+  const weeklySuccessfulRows = official.snapshots;
   const current = weeklySuccessfulRows[0];
   const previous = weeklySuccessfulRows[1];
   const dataSnapshotId = current?.id ?? attempt.id;
@@ -1322,6 +1433,9 @@ export async function getMtmPipelineStatus(seasonYear: number, calcuttaId?: numb
     stale: staleReasons.length > 0, staleReasons, diagnostics: current?.diagnostics ?? null,
     projections: Object.fromEntries(projections.map((projection) => [projection.team, projection])),
     valuations: enrichedValuations as unknown as Array<Record<string, unknown>>,
+    currentSelectionType: current && official.canonicalSnapshotIds.has(current.id)
+      ? "canonical"
+      : "latest",
   };
 }
 

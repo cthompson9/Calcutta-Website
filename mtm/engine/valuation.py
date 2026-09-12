@@ -24,6 +24,27 @@ import math
 STAGES = ["berth", "divisional", "conference", "sb_berth", "sb_win"]
 
 
+def _allocate_payout_cents(expected: dict[str, float], pot: float) -> dict[str, float]:
+    """Round team payouts to cents while preserving the pool exactly."""
+    target_cents = round(pot * 100)
+    raw_cents = {team: max(0.0, value * 100) for team, value in expected.items()}
+    cents = {team: math.floor(value) for team, value in raw_cents.items()}
+    remainder = target_cents - sum(cents.values())
+    ranked = sorted(
+        expected,
+        key=lambda team: (raw_cents[team] - cents[team], team),
+        reverse=True,
+    )
+    if remainder < 0 or remainder > len(ranked):
+        raise ValueError(
+            f"simulated payouts do not conserve the pool before rounding: "
+            f"{sum(expected.values()):.6f} versus {pot:.6f}"
+        )
+    for team in ranked[:remainder]:
+        cents[team] += 1
+    return {team: value / 100 for team, value in cents.items()}
+
+
 def value_team(rubric: dict,
                realized: dict,
                projection: dict) -> dict:
@@ -104,20 +125,21 @@ def value_simulation(rubric: dict, entries: list[dict], pot: float,
     sqs = simulation.get("payout_sq_sum", {})
     teams = list(sums)
     expected = {t: (sums[t] / runs if runs else 0.0) for t in teams}
+    published = _allocate_payout_cents(expected, pot)
     rows = []
     for e in entries:
         t = e["team"]
-        gross = expected.get(t, 0.0)
+        gross = published.get(t, 0.0)
         rows.append({
             "entry_id": e["entry_id"], "team": t,
             "expected_points": None, "expected_share": gross / pot if pot else 0.0,
-            "expected_payout": round(gross, 2),
-            "gross_expected_payout": round(gross, 2),
+            "expected_payout": gross,
+            "gross_expected_payout": gross,
             "net_convenience": round(gross - (e.get("price") or 0), 2),
             "auction_price": e.get("price"),
             "mtm_multiple": round(gross / e["price"], 3) if e.get("price") else None,
         })
-    total = sum(expected.values())
+    total = sum(published.values())
     cond_out = {}
     for gi, g in enumerate(games):
         cond_out[str(gi)] = {"home": g.home, "away": g.away, "week": g.week,
@@ -165,8 +187,8 @@ def value_simulation(rubric: dict, entries: list[dict], pot: float,
         "market_calibration_converged": simulation.get("calibration_converged", True),
     }
     team_valuations = {
-        t: {"gross_expected_payout": round(expected[t], 2),
-            "net_convenience": round(expected[t] - sum(
+        t: {"gross_expected_payout": published[t],
+            "net_convenience": round(published[t] - sum(
                 e.get("price", 0) or 0 for e in entries if e["team"] == t), 2)}
         for t in teams
     }

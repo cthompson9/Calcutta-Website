@@ -59,7 +59,16 @@ export async function getNormalizedMtmValuation(args: {
   if (!status?.currentSnapshotId) {
     return {
       available: false,
-      mark: { type: args.markType ?? "authoritative", approximate: false, quality: "insufficient", stale: true, reason: "No successful MTM snapshot is available." },
+      mark: {
+        type: args.markType ?? "authoritative",
+        approximate: false,
+        quality: "insufficient",
+        stale: true,
+        staleReasons: status?.staleReasons?.length
+          ? status.staleReasons
+          : ["No successful MTM snapshot is available."],
+        reason: "No successful MTM snapshot is available.",
+      },
       teams: [], owners: [], conditionalPayouts: {}, gameEvSwings: [],
       diagnostics: status?.diagnostics ?? null,
       invariants: {
@@ -69,16 +78,9 @@ export async function getNormalizedMtmValuation(args: {
       },
     };
   }
-  const canonical = await db.select({ snapshotId: mtmCanonicalPeriodSelectionTable.snapshotId })
-    .from(mtmCanonicalPeriodSelectionTable)
-    .where(eq(mtmCanonicalPeriodSelectionTable.poolId, status.poolId))
-    .orderBy(desc(mtmCanonicalPeriodSelectionTable.selectedAt))
-    .limit(1);
   const wantsCanonical = args.markType === "canonical" || args.markType === "authoritative" || args.markType === "provisional";
-  let selectedType: MtmMarkType = canonical[0] && wantsCanonical
-    ? "canonical"
-    : "latest";
-  const selectedSnapshotId = selectedType === "canonical" ? canonical[0]?.snapshotId : status.currentSnapshotId;
+  let selectedType: MtmMarkType = status.currentSelectionType ?? "latest";
+  const selectedSnapshotId = status.currentSnapshotId;
   const snapshot = selectedSnapshotId == null ? undefined
     : (await db.select().from(mtmSnapshotTable).where(eq(mtmSnapshotTable.id, selectedSnapshotId)).limit(1))[0];
   if (!snapshot) throw new Error("The selected MTM snapshot disappeared.");
@@ -252,6 +254,7 @@ export async function getNormalizedMtmValuation(args: {
       approximate: selectedType === "provisional",
       quality: snapshot.calibrationStatus ?? "insufficient",
       stale: status.stale,
+      staleReasons: status.staleReasons,
       asOf: snapshot.asOf.toISOString(),
       inputHash: snapshot.inputHash,
       model: { name: snapshot.methodVersion, seed: snapshot.randomSeed },

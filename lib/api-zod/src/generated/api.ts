@@ -1505,6 +1505,7 @@ export const GetMtmValuationResponse = zod.object({
   "approximate": zod.boolean(),
   "quality": zod.enum(['good', 'warning', 'insufficient']),
   "stale": zod.boolean(),
+  "staleReasons": zod.array(zod.string()),
   "asOf": zod.string().nullish(),
   "inputHash": zod.string().nullish(),
   "pathCount": zod.number().nullish(),

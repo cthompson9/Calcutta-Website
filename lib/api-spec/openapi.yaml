@@ -3778,6 +3778,9 @@ components:
             approximate: { type: boolean }
             quality: { type: string, enum: [good, warning, insufficient] }
             stale: { type: boolean }
+            staleReasons:
+              type: array
+              items: { type: string }
             asOf: { type: ["string", "null"] }
             inputHash: { type: ["string", "null"] }
             pathCount: { type: ["number", "null"] }
@@ -3789,7 +3792,7 @@ components:
                 name: { type: string }
                 seed: { type: ["number", "null"] }
               required: [name]
-          required: [type, approximate, quality, stale]
+          required: [type, approximate, quality, stale, staleReasons]
         teams:
           type: array
           items:

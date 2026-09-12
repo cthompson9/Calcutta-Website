@@ -228,6 +228,8 @@ const liveTeamRows = [
   },
 ];
 
+let mtmValuation: any;
+
 vi.mock("@workspace/api-client-react", () => {
   const queryKey = (...args: unknown[]) => args;
   const emptyQuery = () => ({ data: [], isLoading: false });
@@ -261,7 +263,7 @@ vi.mock("@workspace/api-client-react", () => {
     useGetResultsCompare: () => ({ data: undefined, isLoading: false }),
     useGetResultsAvailability: () => ({ data: undefined, isLoading: false }),
     useGetAuctionSummary: () => ({ data: undefined, isLoading: false }),
-    useGetMtmValuation: emptyQuery,
+    useGetMtmValuation: () => ({ data: mtmValuation, isLoading: false }),
     useGetMtmSnapshots: emptyQuery,
     useGetTrades: emptyQuery,
     getGetMtmValuationQueryKey: queryKey,
@@ -291,6 +293,7 @@ function renderResults() {
 
 describe("Results Calcutta data source", () => {
   beforeEach(() => {
+    mtmValuation = undefined;
     localStorage.clear();
     window.history.replaceState(null, "", "/");
   });
@@ -339,6 +342,41 @@ describe("Results Calcutta data source", () => {
 
     expect(screen.getByText("Results command center · 2025")).toBeInTheDocument();
     expect(screen.queryByTestId("historical-results-notice")).not.toBeInTheDocument();
+  });
+
+  it("shows only genuine stale MTM warnings", () => {
+    mtmValuation = {
+      available: true,
+      mark: {
+        snapshotId: 227,
+        type: "canonical",
+        approximate: false,
+        quality: "good",
+        stale: false,
+        staleReasons: [],
+        selectionReason: "latest append-only canonical period selection",
+      },
+      teams: [],
+      owners: [],
+      conditionalPayouts: {},
+      gameEvSwings: [],
+    };
+    const { unmount } = renderResults();
+    expect(screen.queryByTestId("stale-mtm-warning")).not.toBeInTheDocument();
+    unmount();
+
+    mtmValuation = {
+      ...mtmValuation,
+      mark: {
+        ...mtmValuation.mark,
+        stale: true,
+        staleReasons: ["The latest MTM refresh failed; the prior mark remains active."],
+      },
+    };
+    renderResults();
+    expect(screen.getByTestId("stale-mtm-warning")).toHaveTextContent(
+      "The latest MTM refresh failed; the prior mark remains active.",
+    );
   });
 
   it("restores the By Team tab and originating ownership disclosure", async () => {

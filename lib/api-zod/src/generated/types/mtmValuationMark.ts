@@ -16,6 +16,7 @@ export type MtmValuationMark = {
   approximate: boolean;
   quality: MtmValuationMarkQuality;
   stale: boolean;
+  staleReasons: string[];
   /** @nullable */
   asOf?: string | null;
   /** @nullable */

@@ -321,7 +321,7 @@ export default function Results() {
         : loadingCompare;
   const isStale = currentValuation?.mark?.stale ?? false;
   const staleMtmReasons = [
-    currentValuation?.mark?.selectionReason,
+    ...(currentValuation?.mark?.staleReasons ?? []),
     currentValuation?.mark?.provisionalSuppressionReason
   ].filter(Boolean) as string[];
 
@@ -494,7 +494,7 @@ export default function Results() {
         ))}
       </div>
 
-      {!prefersHistoricalResults && tab !== "compare" && (isStale || staleMtmReasons.length > 0) && !isPreview && (
+      {!prefersHistoricalResults && tab !== "compare" && (isStale || staleMtmReasons.length > 0) && (
         <div
           className="mx-4 flex items-start gap-3 border border-amber-300 bg-amber-50 px-4 py-3 text-amber-950 dark:border-amber-800 dark:bg-amber-950/40 dark:text-amber-100 md:mx-0"
           role="status"
