@@ -49,6 +49,7 @@ import { requireAdmin } from "../middlewares/requireAdmin";
 import {
   getMtmPipelineStatus,
   runMtmPipeline,
+  runMtmV3Review,
   withMtmLock,
 } from "../lib/mtmPipeline";
 import { z } from "zod/v4";
@@ -107,6 +108,11 @@ const MtmPipelineQuery = z.object({
 });
 
 const MtmPipelineRecalcBody = z.object({
+  season: z.number().int().min(2000).max(2200),
+  calcuttaId: z.number().int().positive().optional(),
+}).strict();
+
+const MtmV3ReviewBody = z.object({
   season: z.number().int().min(2000).max(2200),
   calcuttaId: z.number().int().positive().optional(),
 }).strict();
@@ -293,6 +299,31 @@ router.post("/mtm/pipeline/recalc", requireAdmin, async (req, res): Promise<void
     return;
   }
   res.status(locked.value.result.status === "ok" ? 200 : 502).json(locked.value.result);
+});
+
+/**
+ * Run the v3 engine as an explicitly noncanonical review.  This endpoint
+ * intentionally stores every attempt as status=failed: the existing snapshot
+ * status is consumed by Live Tracker/Results and must never publish a review.
+ */
+router.post("/mtm/pipeline/review", requireAdmin, async (req, res): Promise<void> => {
+  const parsed = MtmV3ReviewBody.safeParse(req.body);
+  if (!parsed.success) {
+    sendParsedJson(res, ErrorResponse, { error: parsed.error.message }, 400);
+    return;
+  }
+  const locked = await withMtmLock(
+    { seasonYear: parsed.data.season, calcuttaId: parsed.data.calcuttaId },
+    () => runMtmV3Review({
+      seasonYear: parsed.data.season,
+      calcuttaId: parsed.data.calcuttaId,
+    }),
+  );
+  if (!locked.acquired) {
+    sendParsedJson(res, ErrorResponse, { error: "An MTM calculation is already running." }, 409);
+    return;
+  }
+  res.status(locked.value.error ? 502 : 200).json(locked.value);
 });
 
 router.get("/mtm", async (req, res): Promise<void> => {

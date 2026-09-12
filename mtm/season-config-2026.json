@@ -60,5 +60,26 @@
     "calibration_iters": 500,
     "support_runs_per_team": 25,
     "support_prior_weight": 0.01
+  },
+  "sim_v3_review": {
+    "runs": 20000,
+    "pilot_runs": 2000,
+    "seed": 20260829,
+    "hfa_points": 1.6,
+    "margin_sd": 13.5,
+    "latent_strength_sd": 3.0,
+    "tie_window_points": 0.075,
+    "playoff_futures_rating_scale": 1.25,
+    "proposal_shift_points": 5.0,
+    "max_proposal_fraction": 0.25,
+    "residual_adaptation_trigger": 0.04,
+    "min_target_hits": 25,
+    "min_global_ess": 1000,
+    "max_team_payout_mc_se": 10.0,
+    "max_split_half_difference": 15.0,
+    "min_conditional_ess": 100,
+    "min_conditional_share": 0.01,
+    "max_generated_win_residual": 0.25,
+    "max_playoff_residual": 0.05
   }
 }

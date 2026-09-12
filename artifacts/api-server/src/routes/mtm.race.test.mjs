@@ -911,7 +911,7 @@ describe(
     );
 
     test(
-      "Results fail closed when the latest pipeline attempt fails despite an older successful snapshot",
+      "Results retain the latest successful mark when a newer pipeline attempt fails",
       async () => {
         await resetPipelineLedger();
         const teamId = testTeamIds[0];
@@ -985,12 +985,12 @@ describe(
           assert.ok(team);
           assert.ok(owner);
           assert.ok(ownerTeam);
-          assert.equal(team.markToMarket, 0, "failed current capture must not expose legacy MTM");
-          assert.equal(team.netMtm, -team.cost);
+          assert.equal(team.markToMarket, 777, "failed capture must retain the latest successful pipeline mark");
+          assert.equal(team.netMtm, 777 - team.cost);
           assert.equal(team.marketStatus, "stale");
           assert.ok(team.marketStatusReasons.includes("test capture failed"));
-          assert.equal(ownerTeam.markToMarket, 0);
-          assert.equal(owner.totalMtm, 0);
+          assert.equal(ownerTeam.markToMarket, 777);
+          assert.equal(owner.totalMtm, 777 * entryIdByTeam.size);
           assert.equal(owner.marketStatus, "stale");
           assert.ok(owner.marketStatusReasons.includes("test capture failed"));
         } finally {

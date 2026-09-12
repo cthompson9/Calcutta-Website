@@ -5,7 +5,7 @@ import { tmpdir } from "node:os";
 import { resolve } from "node:path";
 import { promisify } from "node:util";
 import { createHash } from "node:crypto";
-import { and, asc, eq, inArray, sql } from "drizzle-orm";
+import { and, asc, eq, inArray, ne, sql } from "drizzle-orm";
 import {
   calcuttaEntriesTable,
   calcuttasTable,
@@ -64,6 +64,13 @@ type MtmState = {
   entries: Array<{ entry_id: string; team: string; price: number }>;
   realized: Record<string, { wins: number; ties: number; adj_pt_diff: number }>;
   remaining_schedule: Array<{ event_id: number; home: string; away: string; marquee: boolean; week: number }>;
+  completed_results?: Array<{
+    week: number;
+    home: string;
+    away: string;
+    home_score: number;
+    away_score: number;
+  }>;
   divisions: Record<string, string[]>;
   win_ladders: Record<string, Array<{ strike: number; yes_bid: number | null; yes_ask: number | null; volume: number }>>;
   elimination_quotes: Record<string, Record<string, number>>;
@@ -637,6 +644,136 @@ async function runEngine(state: MtmState): Promise<EngineSnapshot> {
   }
 }
 
+/**
+ * Execute the side-by-side v3 engine.  Review attempts deliberately use the
+ * same exported, provider-neutral state as production, but are never passed
+ * through the production publication transaction.
+ */
+async function runReviewEngine(state: MtmState, configPath: string): Promise<EngineSnapshot> {
+  const dir = await mkdtemp(resolve(tmpdir(), "calcutta-mtm-v3-review-"));
+  const statePath = resolve(dir, "state.json");
+  const outPath = resolve(dir, "snapshot.json");
+  try {
+    await writeFile(statePath, JSON.stringify(state), "utf8");
+    await execFileAsync("python3", [
+      "run_mtm_v3.py", "--config", configPath, "--state", statePath, "--out", outPath,
+    ], { cwd: ENGINE_DIR, timeout: 300_000 });
+    return JSON.parse(await readFile(outPath, "utf8")) as EngineSnapshot;
+  } catch (error) {
+    try {
+      return JSON.parse(await readFile(outPath, "utf8")) as EngineSnapshot;
+    } catch {
+      return {
+        status: "failed",
+        as_of: new Date().toISOString(),
+        error: error instanceof Error ? error.message : String(error),
+      };
+    }
+  } finally {
+    await rm(dir, { recursive: true, force: true });
+  }
+}
+
+export async function runMtmV3Review(input: {
+  seasonYear: number;
+  calcuttaId?: number;
+  now?: Date;
+}): Promise<{ id: number; poolId: number; status: "review"; error: string | null; diagnostics: Record<string, unknown> }> {
+  const now = input.now ?? new Date();
+  const asOfHour = hourStart(now);
+  const config = await loadConfig();
+  const selected = await db.select({ poolId: calcuttasTable.id }).from(calcuttasTable)
+    .innerJoin(seasonsTable, eq(seasonsTable.id, calcuttasTable.seasonId))
+    .where(and(
+      eq(seasonsTable.year, input.seasonYear),
+      eq(calcuttasTable.sport, "NFL"),
+      input.calcuttaId == null ? eq(calcuttasTable.isCanonical, true) : eq(calcuttasTable.id, input.calcuttaId),
+    )).limit(1);
+  if (!selected[0]) throw new Error(`NFL Calcutta for season ${input.seasonYear} was not found.`);
+  const poolId = selected[0].poolId;
+  const methodVersion = "mtm-v3-review";
+  const baseDiagnostics: Record<string, unknown> = {
+    review: true,
+    publication: "noncanonical",
+    engine: "v3",
+    effectiveConfig: config,
+    requestedAt: now.toISOString(),
+  };
+  let exported: Awaited<ReturnType<typeof exportState>>;
+  try {
+    exported = await exportState(input.seasonYear, input.calcuttaId);
+  } catch (error) {
+    const message = error instanceof Error ? error.message : String(error);
+    const [row] = await db.insert(mtmSnapshotTable).values({
+      poolId, asOf: now, asOfHour, trigger: "manual", status: "failed",
+      methodVersion, runKind: "backfill", error: message, diagnostics: {
+        ...baseDiagnostics, pipelineError: message,
+      },
+    }).returning({ id: mtmSnapshotTable.id });
+    return { id: row!.id, poolId, status: "review", error: message, diagnostics: { ...baseDiagnostics, pipelineError: message } };
+  }
+  const { state, rawQuotes, quoteErrors, quoteTeams, inputProvenance } = exported;
+  state.completed_results = inputProvenance.realized_results.map((game) => ({
+    week: game.week,
+    home: game.home,
+    away: game.away,
+    home_score: game.home_score,
+    away_score: game.away_score,
+  }));
+  const [row] = await db.insert(mtmSnapshotTable).values({
+    poolId, asOf: now, asOfHour, trigger: "manual", status: "failed",
+    methodVersion, runKind: "backfill", stateJson: state, inputProvenance,
+    diagnostics: { ...baseDiagnostics, quoteErrors },
+  }).returning({ id: mtmSnapshotTable.id });
+  const snapshotId = row!.id;
+  if (rawQuotes.length) await db.insert(mtmMarketQuoteTable).values(buildMarketQuoteRows(snapshotId, rawQuotes));
+  if (quoteErrors.length) {
+    const error = `Kalshi quote collection was incomplete: ${quoteErrors.join("; ")}`;
+    const diagnostics = { ...baseDiagnostics, quoteErrors, reviewStatus: "failed" };
+    await db.update(mtmSnapshotTable).set({ error, diagnostics }).where(eq(mtmSnapshotTable.id, snapshotId));
+    return { id: snapshotId, poolId, status: "review", error, diagnostics };
+  }
+  let diagnostics: Record<string, unknown> = { ...baseDiagnostics };
+  try {
+    const derived = deriveQuoteState(config, quoteTeams, rawQuotes);
+    state.win_ladders = derived.winLadders;
+    state.elimination_quotes = derived.elimination;
+    const engine = await runReviewEngine(state, CONFIG_PATH);
+    diagnostics = {
+      ...diagnostics,
+      reviewStatus: engine.status === "ok"
+        ? ((
+            engine.diagnostics?.simulation as Record<string, unknown> | undefined
+          )?.review_ready === true
+          ? "completed_review_ready"
+          : "completed_not_ready")
+        : "failed",
+      engineDiagnostics: engine.diagnostics ?? null,
+      engineCodeVersion: engine.model?.name ?? "run_mtm_v3.py",
+      seed: engine.model?.seed ?? null,
+      pathCount: engine.path_count ?? null,
+      valuations: engine.valuations ?? [],
+      projections: engine.projections ?? {},
+      calibration: engine.calibration ?? engine.calibration_metrics ?? [],
+      conditionalDiagnostics: (
+        engine.diagnostics?.simulation as Record<string, unknown> | undefined
+      )?.conditional_quality ?? null,
+    };
+    const error = engine.status === "ok" ? null : (engine.error ?? "MTM v3 review engine failed.");
+    await db.update(mtmSnapshotTable).set({
+      error, diagnostics, stateJson: state,
+      pathCount: engine.path_count == null ? null : Math.trunc(Number(engine.path_count)),
+      randomSeed: engine.model?.seed == null ? null : Math.trunc(Number(engine.model.seed)),
+    }).where(eq(mtmSnapshotTable.id, snapshotId));
+    return { id: snapshotId, poolId, status: "review", error, diagnostics };
+  } catch (error) {
+    const message = error instanceof Error ? error.message : String(error);
+    diagnostics = { ...diagnostics, reviewStatus: "failed", engineError: message };
+    await db.update(mtmSnapshotTable).set({ error: message, diagnostics }).where(eq(mtmSnapshotTable.id, snapshotId));
+    return { id: snapshotId, poolId, status: "review", error: message, diagnostics };
+  }
+}
+
 function hourStart(date: Date): Date {
   const result = new Date(date);
   result.setUTCMinutes(0, 0, 0);
@@ -1039,7 +1176,10 @@ export async function getMtmPipelineStatus(seasonYear: number, calcuttaId?: numb
     .where(and(eq(seasonsTable.year, seasonYear), eq(calcuttasTable.sport, "NFL"), calcuttaId == null ? eq(calcuttasTable.isCanonical, true) : eq(calcuttasTable.id, calcuttaId))).limit(1);
   if (!selected[0]) return null;
   const attempts = await db.select().from(mtmSnapshotTable)
-    .where(eq(mtmSnapshotTable.poolId, selected[0].poolId))
+    .where(and(
+      eq(mtmSnapshotTable.poolId, selected[0].poolId),
+      ne(mtmSnapshotTable.methodVersion, "mtm-v3-review"),
+    ))
     .orderBy(
       sql`${mtmSnapshotTable.createdAt} desc`,
       sql`${mtmSnapshotTable.id} desc`,

@@ -162,10 +162,9 @@ async function loadCurrentPipelineMtmByTeam(
   // behavior. Once a pipeline attempt exists, however, that ledger is
   // authoritative and Results must not silently fall back to another MTM source.
   if (!status) return null;
-  // A failed latest attempt invalidates the current report basis even when an
-  // older successful snapshot exists. Results must not silently reuse that
-  // older value while presenting the current capture as merely stale.
-  if (status.status !== "ok" || !status.currentSnapshotId) {
+  // Match Live Tracker: retain the latest complete successful mark after a
+  // failed attempt, while carrying the failure/staleness reasons explicitly.
+  if (!status.currentSnapshotId) {
     return {
       values: new Map(),
       unavailableReasons: status.staleReasons.length > 0
