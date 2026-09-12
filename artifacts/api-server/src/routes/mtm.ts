@@ -114,6 +114,20 @@ const MtmPipelineRecalcBody = z.object({
   calcuttaId: z.number().int().positive().optional(),
 }).strict();
 
+interface ManualRecalculationState {
+  running: boolean;
+  startedAt: string;
+  completedAt: string | null;
+  error: string | null;
+  currentSnapshotId: number | null;
+}
+
+const manualRecalculationByPool = new Map<string, ManualRecalculationState>();
+
+function manualRecalculationKey(input: { season: number; calcuttaId?: number }) {
+  return `${input.season}:${input.calcuttaId ?? "default"}`;
+}
+
 const MtmV3ReviewBody = z.object({
   season: z.number().int().min(2000).max(2200),
   calcuttaId: z.number().int().positive().optional(),
@@ -266,71 +280,87 @@ router.get("/mtm/pipeline/evidence", requireAdmin, async (req, res): Promise<voi
   });
 });
 
+router.get("/mtm/pipeline/recalc/status", requireAdmin, (req, res): void => {
+  const parsed = MtmPipelineQuery.safeParse(req.query);
+  if (!parsed.success) {
+    sendParsedJson(res, ErrorResponse, { error: parsed.error.message }, 400);
+    return;
+  }
+  const state = manualRecalculationByPool.get(manualRecalculationKey(parsed.data));
+  res.json(state ?? {
+    running: false,
+    startedAt: null,
+    completedAt: null,
+    error: null,
+    currentSnapshotId: null,
+  });
+});
+
 router.post("/mtm/pipeline/recalc", requireAdmin, async (req, res): Promise<void> => {
   const parsed = MtmPipelineRecalcBody.safeParse(req.body);
   if (!parsed.success) {
     sendParsedJson(res, ErrorResponse, { error: parsed.error.message }, 400);
     return;
   }
-  const lockInput = {
-    seasonYear: parsed.data.season,
-    calcuttaId: parsed.data.calcuttaId,
-  };
-  try {
-    const locked = await withMtmLock(lockInput, async () => {
-      const current = await getMtmPipelineStatus(parsed.data.season, parsed.data.calcuttaId);
-      if (current && Date.now() - Date.parse(current.asOf) < 5 * 60 * 1000) {
-        return { cooldown: true as const };
-      }
-      const actualsRefresh = await runNflStandingsRefresh({
-        seasonYear: parsed.data.season,
-        requestedBy: "admin_mtm_recalculation",
-      });
-      const result = await runMtmPipeline({
-        seasonYear: parsed.data.season,
-        calcuttaId: parsed.data.calcuttaId,
-        trigger: "manual",
-      });
-      if (result.status !== "ok" || result.currentSnapshotId == null) {
-        return {
-          cooldown: false as const,
-          actualsRefresh,
-          result,
-          currentMtmVersion: null,
-        };
-      }
-      const currentMtmVersion = await validateAndPromoteCurrentMtm({
-        poolId: result.poolId,
-        sourceSnapshotId: result.currentSnapshotId,
-        markType: "official",
-      });
-      return {
-        cooldown: false as const,
-        actualsRefresh,
-        result,
-        currentMtmVersion,
-      };
-    });
-    if (!locked.acquired) {
-      sendParsedJson(res, ErrorResponse, { error: "An MTM calculation is already running." }, 409);
-      return;
-    }
-    if (locked.value.cooldown) {
-      sendParsedJson(res, ErrorResponse, {
-        error: "An MTM calculation has already been requested in the last five minutes.",
-      }, 409);
-      return;
-    }
-    res.status(locked.value.result.status === "ok" ? 200 : 502).json({
-      ...locked.value.result,
-      actualsRefresh: locked.value.actualsRefresh,
-      currentMtmVersion: locked.value.currentMtmVersion,
-    });
-  } catch (error) {
-    sendParsedJson(res, ErrorResponse, {
-      error: error instanceof Error ? error.message : "Full recalculation failed unexpectedly.",
-    }, 502);
+  const key = manualRecalculationKey(parsed.data);
+  if (manualRecalculationByPool.get(key)?.running) {
+    sendParsedJson(res, ErrorResponse, { error: "An MTM calculation is already running." }, 409);
+    return;
   }
+  const state: ManualRecalculationState = {
+    running: true,
+    startedAt: new Date().toISOString(),
+    completedAt: null,
+    error: null,
+    currentSnapshotId: null,
+  };
+  manualRecalculationByPool.set(key, state);
+  res.status(202).json(state);
+
+  setImmediate(() => {
+    void (async () => {
+      try {
+        const locked = await withMtmLock({
+          seasonYear: parsed.data.season,
+          calcuttaId: parsed.data.calcuttaId,
+        }, async () => {
+          const current = await getMtmPipelineStatus(parsed.data.season, parsed.data.calcuttaId);
+          if (current && Date.now() - Date.parse(current.asOf) < 5 * 60 * 1000) {
+            throw new Error("An MTM calculation has already been requested in the last five minutes.");
+          }
+          await runNflStandingsRefresh({
+            seasonYear: parsed.data.season,
+            requestedBy: "admin_mtm_recalculation",
+          });
+          const result = await runMtmPipeline({
+            seasonYear: parsed.data.season,
+            calcuttaId: parsed.data.calcuttaId,
+            trigger: "manual",
+          });
+          if (result.status !== "ok" || result.currentSnapshotId == null) {
+            throw new Error(result.error ?? "MTM recalculation failed.");
+          }
+          await validateAndPromoteCurrentMtm({
+            poolId: result.poolId,
+            sourceSnapshotId: result.currentSnapshotId,
+            markType: "official",
+          });
+          return result.currentSnapshotId;
+        });
+        if (!locked.acquired) {
+          throw new Error("An MTM calculation is already running.");
+        }
+        state.currentSnapshotId = locked.value;
+      } catch (error) {
+        state.error = error instanceof Error
+          ? error.message
+          : "Full recalculation failed unexpectedly.";
+      } finally {
+        state.running = false;
+        state.completedAt = new Date().toISOString();
+      }
+    })();
+  });
 });
 
 /**

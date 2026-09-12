@@ -267,14 +267,43 @@ export default function MtmTracker() {
         body: JSON.stringify({ season: year, calcuttaId }),
       });
       const payload = await response.json().catch(() => null) as { error?: string } | null;
+      if (response.status === 401) {
+        clearAdminKey();
+        throw new Error("Admin key rejected. Unlock commissioner controls again.");
+      }
       if (!response.ok) throw new Error(payload?.error ?? "MTM recalculation failed.");
-      trackEvent("live_tracker_recalculated", {
-        outcome: "success",
-        year,
-      });
-      toast.success("Actuals and in-season MTM mark refreshed.");
-      await loadPipelineStatus();
-      void refetchValuation();
+      toast.info("Recalculation started. This page will update when it finishes.");
+      const params = new URLSearchParams({ season: String(year) });
+      if (calcuttaId) params.set("calcuttaId", String(calcuttaId));
+      const deadline = Date.now() + 20 * 60 * 1000;
+      while (Date.now() < deadline) {
+        await new Promise((resolve) => setTimeout(resolve, 2_500));
+        const statusResponse = await fetch(`/api/mtm/pipeline/recalc/status?${params}`, {
+          headers: { Authorization: `Bearer ${adminKey}` },
+        });
+        const run = await statusResponse.json().catch(() => null) as {
+          running?: boolean;
+          error?: string | null;
+        } | null;
+        if (statusResponse.status === 401) {
+          clearAdminKey();
+          throw new Error("Admin key rejected. Unlock commissioner controls again.");
+        }
+        if (!statusResponse.ok) {
+          throw new Error(run?.error ?? "Unable to check recalculation status.");
+        }
+        if (run?.running) continue;
+        if (run?.error) throw new Error(run.error);
+        trackEvent("live_tracker_recalculated", {
+          outcome: "success",
+          year,
+        });
+        toast.success("Actuals and in-season MTM mark refreshed.");
+        await loadPipelineStatus();
+        void refetchValuation();
+        return;
+      }
+      throw new Error("Recalculation is still running. Refresh Live Tracker in a few minutes.");
     } catch (error) {
       trackEvent("live_tracker_recalculated", {
         outcome: "failed",
@@ -591,7 +620,7 @@ function PipelineMarkPanel({
             <caption className="sr-only">Sortable latest MTM values by team</caption>
             <thead className="sticky-table-header border-b border-border bg-muted/40 font-mono text-[10px] uppercase tracking-wider text-muted-foreground">
               <tr>
-                <th className="px-4 py-2 text-left"><SortButton label="Team" value="team" /></th>
+                <th className="sticky left-0 z-20 bg-muted px-4 py-2 text-left shadow-[1px_0_0_hsl(var(--border))]"><SortButton label="Team" value="team" /></th>
                 <th className="px-3 py-2 text-left"><SortButton label="Consortium" value="owner" /></th>
                 <th className="px-3 py-2 text-right"><SortButton label="Gross payout" value="points" /></th>
                 <th className="px-3 py-2 text-right"><SortButton label="Net payout" value="payout" /></th>
@@ -617,7 +646,7 @@ function PipelineMarkPanel({
                     : Math.min(1, (multiple - 1) / Math.max(0.01, maxMultiple - 1));
                 return (
                   <tr key={teamItem.entryId}>
-                    <td className="px-4 py-2 font-semibold">{teamItem.teamName}</td>
+                    <td className="sticky left-0 z-10 bg-background px-4 py-2 font-semibold shadow-[1px_0_0_hsl(var(--border))]">{teamItem.teamName}</td>
                     <td className="max-w-[18rem] px-3 py-2 text-xs text-muted-foreground">
                       {ownerText(teamItem.teamId)}
                     </td>
@@ -696,6 +725,10 @@ function signedCurrency(value: number) {
   return `${value >= 0 ? "+" : "−"}${formatCurrency(Math.abs(value))}`;
 }
 
+function ownerCurrency(value: number) {
+  return `${value < 0 ? "−" : ""}${formatCurrency(Math.abs(value))}`;
+}
+
 function SwingTeamRow({ swing }: { swing: MtmTeamEvSwing }) {
   if (!swing.available) {
     return (
@@ -743,35 +776,42 @@ function SwingTeamRow({ swing }: { swing: MtmTeamEvSwing }) {
 }
 
 function OwnerSwingRow({ swing }: { swing: MtmOwnerTeamEvSwing }) {
-  const share = `${swing.signedShare < 0 ? "Short " : ""}${Math.abs(swing.signedShare * 100).toFixed(1).replace(/\.0$/, "")}%`;
   if (!swing.available) {
     return (
-      <div className="border-t border-border/60 py-3 first:border-t-0" data-testid="ev-swing-owner-holding">
-        <div className="flex items-center justify-between gap-3">
-          <span className="font-semibold">{swing.teamName ?? "Unknown team"} <span className="font-mono text-[10px] text-muted-foreground">· {share}</span></span>
-          <span className="font-mono text-[10px] font-bold uppercase text-amber-700 dark:text-amber-300">Unavailable</span>
-        </div>
-        <p className="mt-1 text-[11px] text-muted-foreground">
+      <div className="flex items-center justify-between gap-3 py-2" data-testid="ev-swing-owner-holding">
+        <span className="font-semibold">{swing.teamName ?? "Unknown team"}</span>
+        <span className="font-mono text-[10px] font-bold uppercase text-amber-700 dark:text-amber-300">Unavailable</span>
+        <span className="sr-only">
           {swing.qualityStatus.replaceAll("_", " ")} team conditional quality
           {swing.effectiveSampleSize == null ? "" : ` · ESS ${Math.round(swing.effectiveSampleSize)}`}
-        </p>
+        </span>
       </div>
     );
   }
   return (
-    <div className="border-t border-border/60 py-3 first:border-t-0" data-testid="ev-swing-owner-holding">
-      <div className="mb-2 flex items-center justify-between gap-3">
-        <span className="font-semibold">{swing.teamName ?? "Unknown team"} <span className="font-mono text-[10px] text-muted-foreground">· {share}</span></span>
-        <span className="font-mono text-sm font-extrabold text-primary">{signedCurrency(swing.totalEvSwing ?? 0)} owned swing</span>
+    <div className="py-2" data-testid="ev-swing-owner-holding">
+      <div className="flex items-center justify-between gap-3">
+        <span className="font-semibold">{swing.teamName ?? "Unknown team"}</span>
+        <span className="font-mono text-sm font-extrabold text-primary">
+          {ownerCurrency(swing.totalEvSwing ?? 0)} swing
+        </span>
       </div>
-      <div className="grid grid-cols-2 gap-2 text-[11px]">
+      <div className="mt-2 grid grid-cols-2 gap-2 text-[11px]">
         <div className="border border-emerald-500/25 bg-emerald-500/10 px-2 py-1.5">
-          <p className="font-mono text-[9px] font-bold uppercase tracking-wider text-emerald-700 dark:text-emerald-300">Benefit of team win</p>
-          <p className="mt-0.5 font-mono font-bold text-emerald-700 dark:text-emerald-300">{signedCurrency(swing.benefitOfWin ?? 0)}</p>
+          <p className="font-mono text-[9px] font-bold uppercase tracking-wider text-emerald-700 dark:text-emerald-300">
+            Benefit of win
+          </p>
+          <p className="mt-0.5 font-mono font-bold text-emerald-700 dark:text-emerald-300">
+            {ownerCurrency(swing.benefitOfWin ?? 0)}
+          </p>
         </div>
         <div className="border border-red-500/25 bg-red-500/10 px-2 py-1.5 text-right">
-          <p className="font-mono text-[9px] font-bold uppercase tracking-wider text-red-700 dark:text-red-300">Cost of team loss</p>
-          <p className="mt-0.5 font-mono font-bold text-red-700 dark:text-red-300">{signedCurrency(swing.costOfLoss ?? 0)}</p>
+          <p className="font-mono text-[9px] font-bold uppercase tracking-wider text-red-700 dark:text-red-300">
+            Cost of loss
+          </p>
+          <p className="mt-0.5 font-mono font-bold text-red-700 dark:text-red-300">
+            {ownerCurrency(swing.costOfLoss ?? 0)}
+          </p>
         </div>
       </div>
     </div>
@@ -812,33 +852,47 @@ export function UpcomingEvSwings({ games }: { games: MtmGameEvSwing[] }) {
       ) ||
       a.eventId - b.eventId
     );
-  function ownerRowsForWeek(week: number) {
-    return visible
-      .filter((game) => game.week === week)
-      .flatMap((game) => {
-        const away = game.teams.find((team) => team.teamId === game.awayTeamId);
-        const home = game.teams.find((team) => team.teamId === game.homeTeamId);
-        return game.owners.flatMap((owner) =>
-          owner.holdings
-            .filter((holding) =>
-              !filterQuery ||
-              owner.bidderName.toLocaleLowerCase().includes(filterQuery) ||
-              (holding.teamName ?? "").toLocaleLowerCase().includes(filterQuery),
-            )
-            .map((holding) => ({
-              owner,
-              holding,
-              matchup: `${away?.teamName ?? "Away"} @ ${home?.teamName ?? "Home"}`,
-              eventId: game.eventId,
-            })),
-        );
-      })
-      .sort((a, b) =>
-        a.owner.bidderName.localeCompare(b.owner.bidderName) ||
+  const ownerGroupMap = new Map<number, {
+    bidderId: number;
+    bidderName: string;
+    rows: Array<{
+      week: number;
+      eventId: number;
+      holding: MtmOwnerTeamEvSwing;
+    }>;
+  }>();
+  for (const game of visible) {
+    if (game.week == null) continue;
+    for (const owner of game.owners) {
+      const rows = owner.holdings
+        .filter((holding) =>
+          !filterQuery ||
+          owner.bidderName.toLocaleLowerCase().includes(filterQuery) ||
+          (holding.teamName ?? "").toLocaleLowerCase().includes(filterQuery),
+        )
+        .map((holding) => ({ week: game.week as number, eventId: game.eventId, holding }));
+      if (!rows.length) continue;
+      const group = ownerGroupMap.get(owner.bidderId) ?? {
+        bidderId: owner.bidderId,
+        bidderName: owner.bidderName,
+        rows: [],
+      };
+      group.rows.push(...rows);
+      ownerGroupMap.set(owner.bidderId, group);
+    }
+  }
+  const ownerGroups = [...ownerGroupMap.values()]
+    .sort((a, b) => a.bidderName.localeCompare(b.bidderName))
+    .map((group) => ({
+      ...group,
+      rows: group.rows.sort((a, b) =>
+        a.week - b.week ||
+        Math.abs(b.holding.totalEvSwing ?? Number.NEGATIVE_INFINITY) -
+          Math.abs(a.holding.totalEvSwing ?? Number.NEGATIVE_INFINITY) ||
         (a.holding.teamName ?? "").localeCompare(b.holding.teamName ?? "") ||
         a.eventId - b.eventId
-      );
-  }
+      ),
+    }));
   if (!games.length) return null;
   return (
     <section className="border-b border-border bg-muted/20 px-4 py-4" data-testid="upcoming-ev-swings">
@@ -877,7 +931,32 @@ export function UpcomingEvSwings({ games }: { games: MtmGameEvSwing[] }) {
             No {view === "team" ? "teams" : "owners or teams"} match this filter.
           </p>
         )}
-        {weeks.map((week) => (
+        {view === "owner" ? ownerGroups.map((group) => (
+          <details
+            key={group.bidderId}
+            open
+            className="border border-border bg-background"
+            data-testid="ev-swing-owner-group"
+          >
+            <summary className="cursor-pointer select-none border-b border-border bg-muted/40 px-3 py-2 font-mono text-[11px] font-extrabold uppercase tracking-wider text-primary">
+              {group.bidderName}
+            </summary>
+            <div className="divide-y divide-border px-3">
+              {group.rows.map(({ week, eventId, holding }) => (
+                <article
+                  key={`${holding.teamId ?? "unknown"}-${eventId}`}
+                  className="grid grid-cols-[auto_1fr] items-center gap-x-3"
+                  data-testid="ev-swing-owner"
+                >
+                  <span className="font-mono text-[9px] font-bold uppercase tracking-wider text-muted-foreground">
+                    Week {week}
+                  </span>
+                  <OwnerSwingRow swing={holding} />
+                </article>
+              ))}
+            </div>
+          </details>
+        )) : weeks.map((week) => (
           <div
             key={week}
             role="group"
@@ -891,23 +970,7 @@ export function UpcomingEvSwings({ games }: { games: MtmGameEvSwing[] }) {
               Week {week}
             </h4>
             <div className="grid gap-3 md:grid-cols-2">
-              {view === "owner" ? ownerRowsForWeek(week).map(({ owner, holding, matchup, eventId }) => (
-                <article
-                  key={`${owner.bidderId}-${holding.teamId ?? "unknown"}-${eventId}`}
-                  className="border border-border bg-background px-3"
-                  data-testid="ev-swing-owner"
-                >
-                  <div className="border-b border-border py-2">
-                    <p className="font-mono text-[10px] font-extrabold uppercase tracking-wider text-primary">
-                      {owner.bidderName}
-                    </p>
-                    <p className="mt-0.5 font-mono text-[9px] uppercase tracking-wider text-muted-foreground">
-                      {matchup}
-                    </p>
-                  </div>
-                  <OwnerSwingRow swing={holding} />
-                </article>
-              )) : visible.filter((game) => game.week === week).map((game) => {
+              {visible.filter((game) => game.week === week).map((game) => {
                 const away = game.teams.find((team) => team.teamId === game.awayTeamId);
                 const home = game.teams.find((team) => team.teamId === game.homeTeamId);
                 const gameHeadingId = `ev-swing-week-${week}-game-${game.eventId}-heading`;
@@ -966,13 +1029,11 @@ export function NetPayoutHistoryChart({
   const minTimestamp = timestamps.length ? Math.min(...timestamps) : 0;
   const maxTimestamp = timestamps.length ? Math.max(...timestamps) : minTimestamp;
   const timestampRange = Math.max(1, maxTimestamp - minTimestamp);
-  const ticks = Array.from(
-    new Map(
-      [...datedPoints]
-        .sort((a, b) => a.timestamp - b.timestamp)
-        .map((point) => [point.label, point.timestamp] as const),
-    ).entries(),
-  );
+  const tickByLabel = new Map<string, number>();
+  for (const point of [...datedPoints].sort((a, b) => a.timestamp - b.timestamp)) {
+    if (!tickByLabel.has(point.label)) tickByLabel.set(point.label, point.timestamp);
+  }
+  const ticks = [...tickByLabel.entries()];
   const values = points.map((point) => point.netPayout as number);
   const rawMin = Math.min(0, ...values);
   const rawMax = Math.max(0, ...values);

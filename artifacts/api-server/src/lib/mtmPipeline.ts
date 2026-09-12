@@ -13,6 +13,7 @@ import {
   mtmEntryValuationTable,
   mtmMarketQuoteTable,
   mtmSnapshotTable,
+  mtmSnapshotsTable,
   mtmTeamProjectionTable,
   mtmCalibrationMetricTable,
   mtmGameConditionalTable,
@@ -45,6 +46,7 @@ const ENGINE_DIR = resolve(WORKSPACE_ROOT, "mtm/engine");
 const CONFIG_PATH = resolve(WORKSPACE_ROOT, "mtm/season-config-2026.json");
 const MTM_LOCK_NAMESPACE = 7_143;
 const CONDITIONAL_PERSISTENCE_BATCH_SIZE = 500;
+const ENGINE_TIMEOUT_MS = 15 * 60_000;
 const ESPN_TEAM_CODE: Record<string, string> = { JAX: "JAC", WSH: "WAS" };
 const TEAM_CODE_BY_NAME: Record<string, string> = {
   "Arizona Cardinals": "ARI", "Atlanta Falcons": "ATL", "Baltimore Ravens": "BAL",
@@ -713,14 +715,30 @@ async function runEngine(state: MtmState): Promise<EngineSnapshot> {
     await execFileAsync(
       "python3",
       ["run_mtm.py", "--config", CONFIG_PATH, "--state", statePath, "--out", outPath],
-      { cwd: ENGINE_DIR, timeout: 300_000 },
+      { cwd: ENGINE_DIR, timeout: ENGINE_TIMEOUT_MS, maxBuffer: 16 * 1024 * 1024 },
     );
     return JSON.parse(await readFile(outPath, "utf8")) as EngineSnapshot;
   } catch (error) {
     try {
       return JSON.parse(await readFile(outPath, "utf8")) as EngineSnapshot;
     } catch {
-      return { status: "failed", as_of: new Date().toISOString(), error: error instanceof Error ? error.message : String(error) };
+      const processError = error as Error & {
+        killed?: boolean;
+        signal?: string;
+        stderr?: string;
+      };
+      const details = [
+        processError.killed ? `Engine exceeded its ${ENGINE_TIMEOUT_MS / 60_000}-minute execution limit.` : null,
+        processError.signal ? `Termination signal: ${processError.signal}.` : null,
+        processError.stderr?.trim() || null,
+      ].filter((detail): detail is string => Boolean(detail));
+      return {
+        status: "failed",
+        as_of: new Date().toISOString(),
+        error: details.length
+          ? `${processError.message}\n${details.join("\n")}`
+          : processError.message,
+      };
     }
   } finally {
     await rm(dir, { recursive: true, force: true });
@@ -1359,7 +1377,7 @@ export async function getMtmPipelineStatus(seasonYear: number, calcuttaId?: numb
   const previous = successfulRows.find((snapshot) => snapshot.id !== current?.id);
   const dataSnapshotId = current?.id ?? attempt.id;
   const successfulSnapshotIds = successfulRows.map((snapshot) => snapshot.id);
-  const [projections, valuations, historicalValuations, entryRows, ownership] = await Promise.all([
+  const [projections, valuations, historicalValuations, entryRows, ownership, weekZeroRows, primaryCostRows] = await Promise.all([
     db.select().from(mtmTeamProjectionTable).where(eq(mtmTeamProjectionTable.snapshotId, dataSnapshotId)),
     db.select().from(mtmEntryValuationTable).where(eq(mtmEntryValuationTable.snapshotId, dataSnapshotId)),
     successfulSnapshotIds.length > 0
@@ -1374,6 +1392,28 @@ export async function getMtmPipelineStatus(seasonYear: number, calcuttaId?: numb
       .innerJoin(teamsTable, eq(teamsTable.id, calcuttaEntriesTable.teamId))
       .where(eq(calcuttaEntriesTable.calcuttaId, selected[0].poolId)),
     loadSeasonOwnership(selected[0].seasonId, selected[0].poolId),
+    db.select({
+      id: mtmSnapshotsTable.id,
+      entryId: mtmSnapshotsTable.entryId,
+      mtmValue: mtmSnapshotsTable.mtmValue,
+      capturedAt: mtmSnapshotsTable.capturedAt,
+      snapshotDate: mtmSnapshotsTable.snapshotDate,
+    }).from(mtmSnapshotsTable)
+      .innerJoin(calcuttaEntriesTable, eq(calcuttaEntriesTable.id, mtmSnapshotsTable.entryId))
+      .where(and(
+        eq(calcuttaEntriesTable.calcuttaId, selected[0].poolId),
+        eq(mtmSnapshotsTable.snapshotKey, "week-0"),
+        eq(mtmSnapshotsTable.source, "kalshi"),
+      )),
+    db.select({
+      entryId: positionsTable.entryId,
+      costBasis: positionsTable.costBasis,
+    }).from(positionsTable)
+      .innerJoin(calcuttaEntriesTable, eq(calcuttaEntriesTable.id, positionsTable.entryId))
+      .where(and(
+        eq(calcuttaEntriesTable.calcuttaId, selected[0].poolId),
+        eq(positionsTable.source, "primary"),
+      )),
   ]);
   const entryById = new Map(entryRows.map((entry) => [entry.entryId, entry]));
   const historicalValuationBySnapshotAndEntry = new Map(
@@ -1396,12 +1436,37 @@ export async function getMtmPipelineStatus(seasonYear: number, calcuttaId?: numb
     totals.auctionPrice += asNumber(valuation.auctionPrice);
     historicalTotalsBySnapshot.set(valuation.snapshotId, totals);
   }
+  const primaryCostByEntry = new Map<number, number>();
+  for (const position of primaryCostRows) {
+    primaryCostByEntry.set(
+      position.entryId,
+      (primaryCostByEntry.get(position.entryId) ?? 0) + asNumber(position.costBasis),
+    );
+  }
+  const weekZeroByEntry = new Map(weekZeroRows.map((row) => [row.entryId, row]));
+  const weekZeroTotal = weekZeroRows.reduce((sum, row) => sum + asNumber(row.mtmValue), 0);
+  const weekZeroCostTotal = entryRows.reduce(
+    (sum, entry) => sum + (primaryCostByEntry.get(entry.entryId) ?? 0),
+    0,
+  );
+  const hasAuthoritativeWeekZero =
+    weekZeroRows.length === entryRows.length &&
+    weekZeroByEntry.size === entryRows.length &&
+    entryRows.every((entry) =>
+      weekZeroByEntry.has(entry.entryId) && primaryCostByEntry.has(entry.entryId),
+    ) &&
+    Math.abs(weekZeroTotal - weekZeroCostTotal) <= 0.01;
   const previousPayoutByEntry = new Map(
     previous
       ? historicalValuations
           .filter((valuation) => valuation.snapshotId === previous.id)
           .map((valuation) => [valuation.entryId, valuation.expectedPayout])
-      : [],
+      : hasAuthoritativeWeekZero
+        ? entryRows.map((entry) => [
+            entry.entryId,
+            weekZeroByEntry.get(entry.entryId)?.mtmValue ?? null,
+          ])
+        : [],
   );
   const chronologicalSnapshots = [...successfulRows].sort(
     (a, b) => a.asOf.getTime() - b.asOf.getTime() || a.id - b.id,
@@ -1420,7 +1485,26 @@ export async function getMtmPipelineStatus(seasonYear: number, calcuttaId?: numb
       teamId: entry?.teamId ?? null,
       teamName: entry?.teamName ?? `Entry ${valuation.entryId}`,
       previousExpectedPayout: previousPayoutByEntry.get(valuation.entryId) ?? null,
-      history: chronologicalSnapshots.flatMap((snapshot) => {
+      history: [
+        ...(hasAuthoritativeWeekZero
+          ? (() => {
+              const baseline = weekZeroByEntry.get(valuation.entryId);
+              const auctionPrice = primaryCostByEntry.get(valuation.entryId);
+              if (!baseline || auctionPrice == null) return [];
+              const expectedPayout = asNumber(baseline.mtmValue);
+              const asOf = baseline.capturedAt
+                ?? new Date(`${baseline.snapshotDate}T12:00:00-04:00`);
+              return [{
+                snapshotId: baseline.id,
+                label: "Week 0",
+                asOf: asOf.toISOString(),
+                expectedPayout,
+                auctionPrice,
+                netPayout: expectedPayout - auctionPrice,
+              }];
+            })()
+          : []),
+        ...chronologicalSnapshots.flatMap((snapshot) => {
         const historical = historicalValuationBySnapshotAndEntry.get(
           `${snapshot.id}:${valuation.entryId}`,
         );
@@ -1443,7 +1527,8 @@ export async function getMtmPipelineStatus(seasonYear: number, calcuttaId?: numb
             ? null
             : expectedPayout * payoutScale - auctionPrice,
         }];
-      }),
+        }),
+      ],
       owners,
     };
   });

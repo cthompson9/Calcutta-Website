@@ -159,11 +159,18 @@ describe("UpcomingEvSwings", () => {
     const user = userEvent.setup();
     render(<UpcomingEvSwings games={[game(3, 3, "Bills", "Jets")]} />);
     await user.click(screen.getByRole("button", { name: "By Owner" }));
+    const group = screen.getByTestId("ev-swing-owner-group");
     const owner = screen.getByTestId("ev-swing-owner");
-    expect(owner).toHaveTextContent("Alpha Consortium");
-    expect(owner).toHaveTextContent("Short 25%");
-    expect(owner).toHaveTextContent("−$14 owned swing");
+    expect(group).toHaveTextContent("Alpha Consortium");
+    expect(owner).toHaveTextContent("Week 3");
+    expect(owner).toHaveTextContent("Bills");
+    expect(owner).toHaveTextContent("−$14 swing");
+    expect(owner).not.toHaveTextContent("Short 25%");
+    expect(owner).toHaveTextContent("Benefit of win");
+    expect(owner).toHaveTextContent("Cost of loss");
     expect(owner).toHaveTextContent("−$8");
+    expect(owner).toHaveTextContent("−$6");
+    expect(owner).not.toHaveTextContent("+$");
 
     render(<UpcomingEvSwings games={[game(4, 4, "Weak Team", "Other", false)]} />);
     await user.click(screen.getAllByRole("button", { name: "By Owner" })[1]);
@@ -199,17 +206,22 @@ describe("UpcomingEvSwings", () => {
 
     await user.clear(filter);
     await user.click(screen.getByRole("button", { name: "By Owner" }));
+    const ownerGroups = screen.getAllByTestId("ev-swing-owner-group");
+    expect(ownerGroups.map((group) => group.querySelector("summary")?.textContent)).toEqual([
+      "Alpha Consortium",
+      "Zulu Consortium",
+    ]);
     const ownerRows = screen.getAllByTestId("ev-swing-owner");
     expect(ownerRows.map((row) => row.textContent)).toEqual([
-      expect.stringMatching(/^Alpha Consortium.*Alpha Team/s),
-      expect.stringMatching(/^Alpha Consortium.*Beta Team/s),
-      expect.stringMatching(/^Zulu Consortium.*Zebra Team/s),
+      expect.stringMatching(/^Week 8Alpha Team.*swing.*Benefit of win.*Cost of loss/s),
+      expect.stringMatching(/^Week 8Beta Team.*swing.*Benefit of win.*Cost of loss/s),
+      expect.stringMatching(/^Week 8Zebra Team.*swing.*Benefit of win.*Cost of loss/s),
     ]);
 
     const ownerFilter = screen.getByRole("searchbox", { name: "Filter owners and teams" });
     await user.type(ownerFilter, "Zulu");
     expect(screen.getAllByTestId("ev-swing-owner")).toHaveLength(1);
-    expect(screen.getByTestId("ev-swing-owner")).toHaveTextContent("Zulu Consortium");
+    expect(screen.getByTestId("ev-swing-owner-group")).toHaveTextContent("Zulu Consortium");
   });
 });
 
