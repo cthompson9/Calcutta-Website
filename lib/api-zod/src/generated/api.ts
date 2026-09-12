@@ -848,8 +848,8 @@ export const ApplyNflStandingsImportResponse = zod.object({
   "importedTeams": zod.number(),
   "replay": zod.boolean(),
   "mtmReconciliation": zod.array(zod.object({
-  "poolId": zod.number().optional(),
-  "status": zod.enum(['promoted', 'unchanged', 'skipped', 'warning']).optional(),
+  "poolId": zod.number(),
+  "status": zod.enum(['promoted', 'unchanged', 'skipped', 'warning']),
   "markType": zod.enum(['official', 'provisional', 'pending_recalculation']).optional(),
   "versionId": zod.number().optional(),
   "warning": zod.string().optional()
@@ -874,6 +874,13 @@ export const RefreshNflStandingsJobResponse = zod.object({
   "ran": zod.boolean(),
   "reason": zod.enum(['no-games-live', 'already-running', 'already-current']).optional(),
   "teamsUpdated": zod.number().optional(),
+  "mtmReconciliation": zod.array(zod.object({
+  "poolId": zod.number(),
+  "status": zod.enum(['promoted', 'unchanged', 'skipped', 'warning']),
+  "markType": zod.enum(['official', 'provisional', 'pending_recalculation']).optional(),
+  "versionId": zod.number().optional(),
+  "warning": zod.string().optional()
+})).optional(),
   "durationMs": zod.number()
 })
 

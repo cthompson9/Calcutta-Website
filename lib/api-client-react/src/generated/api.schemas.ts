@@ -431,11 +431,39 @@ export const NflStandingsRefreshJobResponseReason = {
   'already-current': 'already-current',
 } as const;
 
+export type NflMtmReconciliationResultStatus = typeof NflMtmReconciliationResultStatus[keyof typeof NflMtmReconciliationResultStatus];
+
+
+export const NflMtmReconciliationResultStatus = {
+  promoted: 'promoted',
+  unchanged: 'unchanged',
+  skipped: 'skipped',
+  warning: 'warning',
+} as const;
+
+export type NflMtmReconciliationResultMarkType = typeof NflMtmReconciliationResultMarkType[keyof typeof NflMtmReconciliationResultMarkType];
+
+
+export const NflMtmReconciliationResultMarkType = {
+  official: 'official',
+  provisional: 'provisional',
+  pending_recalculation: 'pending_recalculation',
+} as const;
+
+export interface NflMtmReconciliationResult {
+  poolId: number;
+  status: NflMtmReconciliationResultStatus;
+  markType?: NflMtmReconciliationResultMarkType;
+  versionId?: number;
+  warning?: string;
+}
+
 export interface NflStandingsRefreshJobResponse {
   job: NflStandingsRefreshJobResponseJob;
   ran: boolean;
   reason?: NflStandingsRefreshJobResponseReason;
   teamsUpdated?: number;
+  mtmReconciliation?: NflMtmReconciliationResult[];
   durationMs: number;
 }
 
@@ -868,33 +896,6 @@ export interface NflStandingsImportPreview {
   teams: NflStandingsImportTeamPreview[];
 }
 
-export type NflStandingsImportResponseMtmReconciliationItemStatus = typeof NflStandingsImportResponseMtmReconciliationItemStatus[keyof typeof NflStandingsImportResponseMtmReconciliationItemStatus];
-
-
-export const NflStandingsImportResponseMtmReconciliationItemStatus = {
-  promoted: 'promoted',
-  unchanged: 'unchanged',
-  skipped: 'skipped',
-  warning: 'warning',
-} as const;
-
-export type NflStandingsImportResponseMtmReconciliationItemMarkType = typeof NflStandingsImportResponseMtmReconciliationItemMarkType[keyof typeof NflStandingsImportResponseMtmReconciliationItemMarkType];
-
-
-export const NflStandingsImportResponseMtmReconciliationItemMarkType = {
-  official: 'official',
-  provisional: 'provisional',
-  pending_recalculation: 'pending_recalculation',
-} as const;
-
-export type NflStandingsImportResponseMtmReconciliationItem = {
-  poolId?: number;
-  status?: NflStandingsImportResponseMtmReconciliationItemStatus;
-  markType?: NflStandingsImportResponseMtmReconciliationItemMarkType;
-  versionId?: number;
-  warning?: string;
-};
-
 export interface NflStandingsImportResponse {
   seasonYear: number;
   source: string;
@@ -903,7 +904,7 @@ export interface NflStandingsImportResponse {
   fetchedAt: string;
   importedTeams: number;
   replay: boolean;
-  mtmReconciliation?: NflStandingsImportResponseMtmReconciliationItem[];
+  mtmReconciliation?: NflMtmReconciliationResult[];
 }
 
 export interface SportPeriod {

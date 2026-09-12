@@ -5,6 +5,7 @@
  * NFL Auction Manager API
  * OpenAPI spec version: 0.1.0
  */
+import type { NflMtmReconciliationResult } from './nflMtmReconciliationResult';
 import type { NflStandingsRefreshJobResponseJob } from './nflStandingsRefreshJobResponseJob';
 import type { NflStandingsRefreshJobResponseReason } from './nflStandingsRefreshJobResponseReason';
 
@@ -13,5 +14,6 @@ export interface NflStandingsRefreshJobResponse {
   ran: boolean;
   reason?: NflStandingsRefreshJobResponseReason;
   teamsUpdated?: number;
+  mtmReconciliation?: NflMtmReconciliationResult[];
   durationMs: number;
 }

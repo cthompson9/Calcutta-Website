@@ -2017,6 +2017,10 @@ components:
           enum: [no-games-live, already-running, already-current]
         teamsUpdated:
           type: number
+        mtmReconciliation:
+          type: array
+          items:
+            $ref: "#/components/schemas/NflMtmReconciliationResult"
         durationMs:
           type: number
       required: [job, ran, durationMs]
@@ -2532,21 +2536,25 @@ components:
         mtmReconciliation:
           type: array
           items:
-            type: object
-            properties:
-              poolId:
-                type: number
-              status:
-                type: string
-                enum: [promoted, unchanged, skipped, warning]
-              markType:
-                type: string
-                enum: [official, provisional, pending_recalculation]
-              versionId:
-                type: number
-              warning:
-                type: string
+            $ref: "#/components/schemas/NflMtmReconciliationResult"
       required: [seasonYear, source, sourceUrl, sourceHash, fetchedAt, importedTeams, replay]
+
+    NflMtmReconciliationResult:
+      type: object
+      properties:
+        poolId:
+          type: number
+        status:
+          type: string
+          enum: [promoted, unchanged, skipped, warning]
+        markType:
+          type: string
+          enum: [official, provisional, pending_recalculation]
+        versionId:
+          type: number
+        warning:
+          type: string
+      required: [poolId, status]
 
     SportPeriod:
       type: object

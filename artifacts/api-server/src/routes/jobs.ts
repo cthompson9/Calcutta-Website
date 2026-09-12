@@ -423,6 +423,7 @@ router.post("/jobs/refresh", async (req, res): Promise<void> => {
         ran: true,
         reason: result.replay ? ("already-current" as const) : undefined,
         teamsUpdated: result.importedTeams,
+        mtmReconciliation: result.mtmReconciliation,
         durationMs: Date.now() - startedAtMs,
       };
     }, resolvedScope);

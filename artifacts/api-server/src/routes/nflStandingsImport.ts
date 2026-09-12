@@ -7,10 +7,10 @@ import {
 } from "@workspace/api-zod";
 import { ErrorResponse, sendParsedJson } from "../lib/sendParsedJson";
 import {
-  applyNflStandingsImport,
   NflStandingsImportError,
   previewNflStandingsImport,
 } from "../lib/nflStandingsImport";
+import { runNflStandingsRefresh } from "../lib/nflStandingsRefresh";
 import { requireAdmin } from "../middlewares/requireAdmin";
 
 const router: IRouter = Router();
@@ -48,7 +48,7 @@ router.post("/results/nfl-standings/apply", requireAdmin, async (req, res): Prom
   try {
     const requestId = req.headers["x-request-id"];
     sendParsedJson(res, ApplyNflStandingsImportResponse,
-      await applyNflStandingsImport({
+      await runNflStandingsRefresh({
         seasonYear: parsed.data.seasonYear,
         requestedBy: "admin_api",
         requestId: typeof requestId === "string" ? requestId : undefined,

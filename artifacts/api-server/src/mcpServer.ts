@@ -61,7 +61,8 @@ import {
   resolveSeasonIdForSport,
 } from "./lib/calcuttaContext";
 import { loadCurrentBidderConsortiums } from "./lib/consortiumMemberships";
-import { applyNflStandingsImport, NflStandingsImportError } from "./lib/nflStandingsImport";
+import { NflStandingsImportError } from "./lib/nflStandingsImport";
+import { runNflStandingsRefresh } from "./lib/nflStandingsRefresh";
 import { getMtmPipelineStatus } from "./lib/mtmPipeline";
 import { getNormalizedMtmValuation } from "./lib/mtmValuation";
 import { createPendingTrade, validateTradeOwnership } from "./lib/tradeService";
@@ -1100,7 +1101,7 @@ function buildMcpServer(isAdmin: boolean) {
       const year = season ?? await activeSeasonYear();
       if (!year) return text("Error: No active season is configured for the NFL standings import.");
       try {
-        const outcome = await applyNflStandingsImport({
+        const outcome = await runNflStandingsRefresh({
           seasonYear: year,
           requestedBy: "mcp",
         });
