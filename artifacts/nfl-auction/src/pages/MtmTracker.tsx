@@ -780,12 +780,28 @@ function OwnerSwingRow({ swing }: { swing: MtmOwnerTeamEvSwing }) {
 
 export function UpcomingEvSwings({ games }: { games: MtmGameEvSwing[] }) {
   const [view, setView] = useState<"team" | "owner">("team");
+  const [filter, setFilter] = useState("");
+  const filterQuery = filter.trim().toLocaleLowerCase();
   const weeks = [...new Set(
     games.map((game) => game.week).filter((week): week is number => week != null),
   )].sort((a, b) => a - b).slice(0, 3);
   const selectedWeeks = new Set(weeks);
   const visible = games
     .filter((game) => game.week != null && selectedWeeks.has(game.week))
+    .filter((game) => {
+      if (!filterQuery) return true;
+      if (view === "team") {
+        return game.teams.some((team) =>
+          (team.teamName ?? "").toLocaleLowerCase().includes(filterQuery),
+        );
+      }
+      return game.owners.some((owner) =>
+        owner.bidderName.toLocaleLowerCase().includes(filterQuery) ||
+        owner.holdings.some((holding) =>
+          (holding.teamName ?? "").toLocaleLowerCase().includes(filterQuery),
+        ),
+      );
+    })
     .sort((a, b) =>
       (a.week ?? Infinity) - (b.week ?? Infinity) ||
       (a.teams.find((team) => team.teamId === a.awayTeamId)?.teamName ?? "").localeCompare(
@@ -796,7 +812,34 @@ export function UpcomingEvSwings({ games }: { games: MtmGameEvSwing[] }) {
       ) ||
       a.eventId - b.eventId
     );
-  if (!visible.length) return null;
+  function ownerRowsForWeek(week: number) {
+    return visible
+      .filter((game) => game.week === week)
+      .flatMap((game) => {
+        const away = game.teams.find((team) => team.teamId === game.awayTeamId);
+        const home = game.teams.find((team) => team.teamId === game.homeTeamId);
+        return game.owners.flatMap((owner) =>
+          owner.holdings
+            .filter((holding) =>
+              !filterQuery ||
+              owner.bidderName.toLocaleLowerCase().includes(filterQuery) ||
+              (holding.teamName ?? "").toLocaleLowerCase().includes(filterQuery),
+            )
+            .map((holding) => ({
+              owner,
+              holding,
+              matchup: `${away?.teamName ?? "Away"} @ ${home?.teamName ?? "Home"}`,
+              eventId: game.eventId,
+            })),
+        );
+      })
+      .sort((a, b) =>
+        a.owner.bidderName.localeCompare(b.owner.bidderName) ||
+        (a.holding.teamName ?? "").localeCompare(b.holding.teamName ?? "") ||
+        a.eventId - b.eventId
+      );
+  }
+  if (!games.length) return null;
   return (
     <section className="border-b border-border bg-muted/20 px-4 py-4" data-testid="upcoming-ev-swings">
       <div className="flex flex-wrap items-end justify-between gap-2">
@@ -809,15 +852,31 @@ export function UpcomingEvSwings({ games }: { games: MtmGameEvSwing[] }) {
             Benefit of a win plus cost of a loss · next three available weeks
           </p>
         </div>
-        <div className="flex items-center gap-3">
+        <div className="flex flex-wrap items-center justify-end gap-3">
           <div className="flex border border-border bg-background p-0.5" aria-label="Exposure view">
-            <button type="button" onClick={() => setView("team")} aria-pressed={view === "team"} className={cn("px-2 py-1 font-mono text-[9px] font-bold uppercase tracking-wider", view === "team" ? "bg-primary text-primary-foreground" : "text-muted-foreground")}>Gross team exposure</button>
-            <button type="button" onClick={() => setView("owner")} aria-pressed={view === "owner"} className={cn("px-2 py-1 font-mono text-[9px] font-bold uppercase tracking-wider", view === "owner" ? "bg-primary text-primary-foreground" : "text-muted-foreground")}>Owned consortium exposure</button>
+            <button type="button" onClick={() => setView("team")} aria-pressed={view === "team"} className={cn("px-2 py-1 font-mono text-[9px] font-bold uppercase tracking-wider", view === "team" ? "bg-primary text-primary-foreground" : "text-muted-foreground")}>By Team</button>
+            <button type="button" onClick={() => setView("owner")} aria-pressed={view === "owner"} className={cn("px-2 py-1 font-mono text-[9px] font-bold uppercase tracking-wider", view === "owner" ? "bg-primary text-primary-foreground" : "text-muted-foreground")}>By Owner</button>
           </div>
           <p className="font-mono text-[10px] uppercase tracking-wider text-muted-foreground">Weeks {weeks.join(", ")}</p>
         </div>
       </div>
+      <label className="relative mt-3 block sm:max-w-sm">
+        <Search className="pointer-events-none absolute left-2.5 top-2.5 h-3.5 w-3.5 text-muted-foreground" />
+        <span className="sr-only">Filter {view === "team" ? "teams" : "owners and teams"}</span>
+        <input
+          type="search"
+          value={filter}
+          onChange={(event) => setFilter(event.target.value)}
+          placeholder={view === "team" ? "Filter teams…" : "Filter owners or teams…"}
+          className="w-full border border-border bg-background py-2 pl-8 pr-3 font-mono text-xs outline-none focus:border-primary focus:ring-1 focus:ring-primary"
+        />
+      </label>
       <div className="mt-4 space-y-5">
+        {!visible.length && (
+          <p className="border border-dashed border-border bg-background p-4 text-xs text-muted-foreground">
+            No {view === "team" ? "teams" : "owners or teams"} match this filter.
+          </p>
+        )}
         {weeks.map((week) => (
           <div
             key={week}
@@ -832,7 +891,23 @@ export function UpcomingEvSwings({ games }: { games: MtmGameEvSwing[] }) {
               Week {week}
             </h4>
             <div className="grid gap-3 md:grid-cols-2">
-              {visible.filter((game) => game.week === week).map((game) => {
+              {view === "owner" ? ownerRowsForWeek(week).map(({ owner, holding, matchup, eventId }) => (
+                <article
+                  key={`${owner.bidderId}-${holding.teamId ?? "unknown"}-${eventId}`}
+                  className="border border-border bg-background px-3"
+                  data-testid="ev-swing-owner"
+                >
+                  <div className="border-b border-border py-2">
+                    <p className="font-mono text-[10px] font-extrabold uppercase tracking-wider text-primary">
+                      {owner.bidderName}
+                    </p>
+                    <p className="mt-0.5 font-mono text-[9px] uppercase tracking-wider text-muted-foreground">
+                      {matchup}
+                    </p>
+                  </div>
+                  <OwnerSwingRow swing={holding} />
+                </article>
+              )) : visible.filter((game) => game.week === week).map((game) => {
                 const away = game.teams.find((team) => team.teamId === game.awayTeamId);
                 const home = game.teams.find((team) => team.teamId === game.homeTeamId);
                 const gameHeadingId = `ev-swing-week-${week}-game-${game.eventId}-heading`;
@@ -849,21 +924,15 @@ export function UpcomingEvSwings({ games }: { games: MtmGameEvSwing[] }) {
                     >
                       {away?.teamName ?? "Away"} @ {home?.teamName ?? "Home"}
                     </h5>
-                    {view === "team" ? (
-                      <>
-                        {away && <SwingTeamRow swing={away} />}
-                        {home && <SwingTeamRow swing={home} />}
-                      </>
-                    ) : game.owners.length ? (
-                      game.owners.map((owner) => (
-                        <div key={owner.bidderId} className="border-t border-border py-2 first:border-t-0" data-testid="ev-swing-owner">
-                          <p className="font-mono text-[10px] font-extrabold uppercase tracking-wider text-primary">{owner.bidderName}</p>
-                          {owner.holdings.map((holding) => <OwnerSwingRow key={holding.teamId ?? "unknown"} swing={holding} />)}
-                        </div>
+                    {[away, home]
+                      .filter((team): team is MtmTeamEvSwing => Boolean(
+                        team &&
+                        (!filterQuery ||
+                          (team.teamName ?? "").toLocaleLowerCase().includes(filterQuery)),
                       ))
-                    ) : (
-                      <p className="py-3 text-xs text-muted-foreground">No consortium owns a position in this game.</p>
-                    )}
+                      .map((team) => (
+                        <SwingTeamRow key={team.teamId ?? team.teamName} swing={team} />
+                      ))}
                   </article>
                 );
               })}
@@ -890,11 +959,18 @@ export function NetPayoutHistoryChart({
       .filter((point) => point.netPayout != null)
       .map((point) => ({ ...point, valuation })),
   );
-  const labels = Array.from(
+  const datedPoints = points
+    .map((point) => ({ ...point, timestamp: Date.parse(point.asOf) }))
+    .filter((point) => Number.isFinite(point.timestamp));
+  const timestamps = datedPoints.map((point) => point.timestamp);
+  const minTimestamp = timestamps.length ? Math.min(...timestamps) : 0;
+  const maxTimestamp = timestamps.length ? Math.max(...timestamps) : minTimestamp;
+  const timestampRange = Math.max(1, maxTimestamp - minTimestamp);
+  const ticks = Array.from(
     new Map(
-      valuations.flatMap((valuation) =>
-        (valuation.history ?? []).map((point) => [point.snapshotId, point.label] as const),
-      ),
+      [...datedPoints]
+        .sort((a, b) => a.timestamp - b.timestamp)
+        .map((point) => [point.label, point.timestamp] as const),
     ).entries(),
   );
   const values = points.map((point) => point.netPayout as number);
@@ -916,9 +992,9 @@ export function NetPayoutHistoryChart({
     return current?.netPayout == null ? sum : sum + current.netPayout;
   }, 0);
 
-  function xPos(index: number) {
-    if (labels.length <= 1) return PAD.left + chartW / 2;
-    return PAD.left + (index / (labels.length - 1)) * chartW;
+  function xPos(timestamp: number) {
+    if (maxTimestamp === minTimestamp) return PAD.left + chartW / 2;
+    return PAD.left + ((timestamp - minTimestamp) / timestampRange) * chartW;
   }
 
   function yPos(value: number) {
@@ -939,7 +1015,7 @@ export function NetPayoutHistoryChart({
   return (
     <div className="mt-4">
       <div className="mb-2 flex items-center justify-between gap-3 font-mono text-[10px] uppercase tracking-widest text-muted-foreground">
-        <span>{labels.length === 1 ? "Week 0 baseline" : `${labels.length} weekly marks`}</span>
+        <span>{datedPoints.length === 1 ? "1 refresh point" : `${datedPoints.length} refresh points`}</span>
         <span>
           Current net total{" "}
           <strong className={cn(
@@ -957,7 +1033,7 @@ export function NetPayoutHistoryChart({
           preserveAspectRatio="xMinYMin meet"
           className="min-w-[700px] font-mono"
           role="img"
-          aria-label="Team net payout history by week"
+          aria-label="Team net payout history over time"
         >
           <line
             x1={PAD.left}
@@ -997,18 +1073,18 @@ export function NetPayoutHistoryChart({
             );
           })}
 
-          {labels.map(([snapshotId, label], index) => (
-            <g key={snapshotId}>
+          {ticks.map(([label, timestamp]) => (
+            <g key={`${label}-${timestamp}`}>
               <line
-                x1={xPos(index)}
+                x1={xPos(timestamp)}
                 y1={PAD.top}
-                x2={xPos(index)}
+                x2={xPos(timestamp)}
                 y2={H - PAD.bottom}
                 stroke="currentColor"
                 strokeOpacity={0.07}
               />
               <text
-                x={xPos(index)}
+                x={xPos(timestamp)}
                 y={H - 14}
                 textAnchor="middle"
                 fontSize={10}
@@ -1024,13 +1100,12 @@ export function NetPayoutHistoryChart({
           {valuations.map((valuation, valuationIndex) => {
             const history = (valuation.history ?? []).filter(
               (point): point is typeof point & { netPayout: number } =>
-                point.netPayout != null,
-            );
+                point.netPayout != null && Number.isFinite(Date.parse(point.asOf)),
+            ).sort((a, b) => Date.parse(a.asOf) - Date.parse(b.asOf));
             const lineColor = color(valuation, valuationIndex);
             const path = history
               .map((point, pointIndex) => {
-                const labelIndex = labels.findIndex(([id]) => id === point.snapshotId);
-                return `${pointIndex === 0 ? "M" : "L"}${xPos(labelIndex)},${yPos(point.netPayout)}`;
+                return `${pointIndex === 0 ? "M" : "L"}${xPos(Date.parse(point.asOf))},${yPos(point.netPayout)}`;
               })
               .join(" ");
             return (
@@ -1047,12 +1122,11 @@ export function NetPayoutHistoryChart({
                   />
                 )}
                 {history.map((point) => {
-                  const labelIndex = labels.findIndex(([id]) => id === point.snapshotId);
                   const pointRadius = radius(point.auctionPrice);
                   return (
                     <circle
                       key={point.snapshotId}
-                      cx={xPos(labelIndex)}
+                      cx={xPos(Date.parse(point.asOf))}
                       cy={yPos(point.netPayout)}
                       r={pointRadius}
                       fill={lineColor}

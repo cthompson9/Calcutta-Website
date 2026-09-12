@@ -27,6 +27,7 @@ import {
   pool,
   eventsTable,
   mtmCanonicalPeriodSelectionTable,
+  mtmValuationVersionTable,
   sportPeriodsTable,
 } from "@workspace/db";
 import { loadSeasonOwnership } from "./seasonOwnership";
@@ -1322,22 +1323,42 @@ export async function getMtmPipelineStatus(seasonYear: number, calcuttaId?: numb
     ).limit(1);
   const attempt = attempts[0];
   if (!attempt) return null;
-  const successfulRows = await db.select().from(mtmSnapshotTable)
+  const promotedVersions = await db.select({
+    sourceSnapshotId: mtmValuationVersionTable.sourceSnapshotId,
+    status: mtmValuationVersionTable.status,
+    mtmAsOf: mtmValuationVersionTable.mtmAsOf,
+  }).from(mtmValuationVersionTable)
     .where(and(
-      eq(mtmSnapshotTable.poolId, selected[0].poolId),
-      eq(mtmSnapshotTable.status, "ok"),
-      ne(mtmSnapshotTable.methodVersion, "mtm-v3-review"),
+      eq(mtmValuationVersionTable.poolId, selected[0].poolId),
+      inArray(mtmValuationVersionTable.status, ["current", "superseded"]),
     ))
     .orderBy(
-      sql`${mtmSnapshotTable.asOf} desc`,
-      sql`${mtmSnapshotTable.id} desc`,
+      sql`${mtmValuationVersionTable.mtmAsOf} desc`,
+      sql`${mtmValuationVersionTable.id} desc`,
     );
-  const official = await selectOfficialWeeklySnapshots(selected[0].poolId, successfulRows);
-  const weeklySuccessfulRows = official.snapshots;
-  const current = weeklySuccessfulRows[0];
-  const previous = weeklySuccessfulRows[1];
+  const promotedSnapshotIds = [...new Set(
+    promotedVersions.map((version) => version.sourceSnapshotId),
+  )];
+  const successfulRows = promotedSnapshotIds.length
+    ? await db.select().from(mtmSnapshotTable)
+        .where(and(
+          eq(mtmSnapshotTable.poolId, selected[0].poolId),
+          eq(mtmSnapshotTable.status, "ok"),
+          ne(mtmSnapshotTable.methodVersion, "mtm-v3-review"),
+          inArray(mtmSnapshotTable.id, promotedSnapshotIds),
+        ))
+        .orderBy(
+          sql`${mtmSnapshotTable.asOf} desc`,
+          sql`${mtmSnapshotTable.id} desc`,
+        )
+    : [];
+  const currentVersion = promotedVersions.find((version) => version.status === "current");
+  const current = currentVersion
+    ? successfulRows.find((snapshot) => snapshot.id === currentVersion.sourceSnapshotId)
+    : undefined;
+  const previous = successfulRows.find((snapshot) => snapshot.id !== current?.id);
   const dataSnapshotId = current?.id ?? attempt.id;
-  const successfulSnapshotIds = weeklySuccessfulRows.map((snapshot) => snapshot.id);
+  const successfulSnapshotIds = successfulRows.map((snapshot) => snapshot.id);
   const [projections, valuations, historicalValuations, entryRows, ownership] = await Promise.all([
     db.select().from(mtmTeamProjectionTable).where(eq(mtmTeamProjectionTable.snapshotId, dataSnapshotId)),
     db.select().from(mtmEntryValuationTable).where(eq(mtmEntryValuationTable.snapshotId, dataSnapshotId)),
@@ -1382,8 +1403,8 @@ export async function getMtmPipelineStatus(seasonYear: number, calcuttaId?: numb
           .map((valuation) => [valuation.entryId, valuation.expectedPayout])
       : [],
   );
-  const chronologicalSnapshots = [...weeklySuccessfulRows].sort(
-    (a, b) => pipelineMarkWeek(a.stateJson) - pipelineMarkWeek(b.stateJson),
+  const chronologicalSnapshots = [...successfulRows].sort(
+    (a, b) => a.asOf.getTime() - b.asOf.getTime() || a.id - b.id,
   );
   const enrichedValuations = valuations.map((valuation) => {
     const entry = entryById.get(valuation.entryId);
@@ -1442,9 +1463,7 @@ export async function getMtmPipelineStatus(seasonYear: number, calcuttaId?: numb
     stale: staleReasons.length > 0, staleReasons, diagnostics: current?.diagnostics ?? null,
     projections: Object.fromEntries(projections.map((projection) => [projection.team, projection])),
     valuations: enrichedValuations as unknown as Array<Record<string, unknown>>,
-    currentSelectionType: current && official.canonicalSnapshotIds.has(current.id)
-      ? "canonical"
-      : "latest",
+    currentSelectionType: current ? "canonical" : "latest",
   };
 }
 

@@ -1176,7 +1176,7 @@ describe(
     );
 
     test(
-      "pipeline status keeps successful weekly history ordered and zero-sum while excluding a failed retry",
+      "pipeline status excludes successful raw attempts that were never coherently promoted",
       async () => {
         await resetPipelineLedger();
         const entryIds = [...entryIdByTeam.values()];
@@ -1285,38 +1285,10 @@ describe(
           const status = await getMtmPipelineStatus(9999, testCalcuttaId);
           assert.ok(status);
           assert.equal(status.id, failed.id, "the failed retry remains the latest attempt");
-          assert.equal(status.currentSnapshotId, weekOne.id, "the newest success remains current");
+          assert.equal(status.currentSnapshotId, null, "an unpromoted success must not become current");
           assert.equal(status.status, "failed");
           assert.ok(status.staleReasons.includes("test weekly retry failed"));
-          assert.equal(status.valuations.length, 32);
-
-          for (const valuation of status.valuations) {
-            assert.deepEqual(
-              valuation.history.map((point) => point.label),
-              ["Week 0", "Week 1"],
-            );
-            assert.deepEqual(
-              valuation.history.map((point) => point.snapshotId),
-              [weekZeroRetry.id, weekOne.id],
-            );
-            assert.ok(
-              valuation.history.every(
-                (point) => point.snapshotId !== failed.id && point.snapshotId !== weekZero.id,
-              ),
-              "failed attempts and superseded same-week captures must not become chart points",
-            );
-          }
-
-          for (const historyIndex of [0, 1]) {
-            const weeklyNet = status.valuations.reduce(
-              (sum, valuation) => sum + valuation.history[historyIndex].netPayout,
-              0,
-            );
-            assert.ok(
-              Math.abs(weeklyNet) <= 0.01,
-              `Week ${historyIndex} normalized net payout must balance to zero; got ${weeklyNet}`,
-            );
-          }
+          assert.equal(status.valuations.length, 0);
         } finally {
           await deletePipelineSnapshotsByIds(pipelineSnapshotIds);
           await resetPipelineLedger();

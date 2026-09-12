@@ -55,8 +55,8 @@ function game(eventId: number, week: number, awayName: string, homeName: string,
 }
 
 describe("NetPayoutHistoryChart", () => {
-  it("renders a connected team path after two successful weekly points", () => {
-    render(
+  it("renders refreshes within the same week at distinct timestamp positions", () => {
+    const { container } = render(
       <NetPayoutHistoryChart
         valuations={[
           {
@@ -86,6 +86,14 @@ describe("NetPayoutHistoryChart", () => {
                 auctionPrice: 1500,
                 netPayout: 100,
               },
+              {
+                snapshotId: 103,
+                label: "Week 1",
+                asOf: "2026-09-01T18:00:00.000Z",
+                expectedPayout: 1650,
+                auctionPrice: 1500,
+                netPayout: 150,
+              },
             ],
           },
         ]}
@@ -95,7 +103,10 @@ describe("NetPayoutHistoryChart", () => {
     const path = screen.getByTestId("net-payout-path-7");
     expect(path.getAttribute("d")).toMatch(/^M[^L]+L/);
     expect(path).toHaveAttribute("stroke", "#00338D");
-    expect(screen.getByText("2 weekly marks")).toBeInTheDocument();
+    expect(screen.getByText("3 refresh points")).toBeInTheDocument();
+    const circles = [...container.querySelectorAll("circle")];
+    expect(circles).toHaveLength(3);
+    expect(circles[1]?.getAttribute("cx")).not.toBe(circles[2]?.getAttribute("cx"));
   });
 });
 
@@ -147,7 +158,7 @@ describe("UpcomingEvSwings", () => {
   it("shows signed consortium exposure and carries through unavailable quality", async () => {
     const user = userEvent.setup();
     render(<UpcomingEvSwings games={[game(3, 3, "Bills", "Jets")]} />);
-    await user.click(screen.getByRole("button", { name: "Owned consortium exposure" }));
+    await user.click(screen.getByRole("button", { name: "By Owner" }));
     const owner = screen.getByTestId("ev-swing-owner");
     expect(owner).toHaveTextContent("Alpha Consortium");
     expect(owner).toHaveTextContent("Short 25%");
@@ -155,10 +166,50 @@ describe("UpcomingEvSwings", () => {
     expect(owner).toHaveTextContent("−$8");
 
     render(<UpcomingEvSwings games={[game(4, 4, "Weak Team", "Other", false)]} />);
-    await user.click(screen.getAllByRole("button", { name: "Owned consortium exposure" })[1]);
+    await user.click(screen.getAllByRole("button", { name: "By Owner" })[1]);
     const holdings = screen.getAllByTestId("ev-swing-owner-holding");
     expect(holdings.at(-1)).toHaveTextContent("Unavailable");
     expect(holdings.at(-1)).not.toHaveTextContent("$0.00");
+  });
+
+  it("filters both views and orders owner exposure by consortium then team", async () => {
+    const user = userEvent.setup();
+    const ownerGame = game(8, 8, "Zebra Team", "Alpha Team");
+    ownerGame.owners = [
+      {
+        bidderId: 2,
+        bidderName: "Zulu Consortium",
+        holdings: [{ ...ownerGame.owners[0].holdings[0], teamName: "Zebra Team", teamId: 16 }],
+      },
+      {
+        bidderId: 1,
+        bidderName: "Alpha Consortium",
+        holdings: [
+          { ...ownerGame.owners[0].holdings[0], teamName: "Beta Team", teamId: 17 },
+          { ...ownerGame.owners[0].holdings[0], teamName: "Alpha Team", teamId: 18 },
+        ],
+      },
+    ];
+    render(<UpcomingEvSwings games={[ownerGame]} />);
+
+    const filter = screen.getByRole("searchbox", { name: "Filter teams" });
+    await user.type(filter, "Alpha Team");
+    expect(screen.getByText("Alpha Team")).toBeInTheDocument();
+    expect(screen.queryByText("Zebra Team", { selector: "[data-testid='ev-swing-team'] span" })).not.toBeInTheDocument();
+
+    await user.clear(filter);
+    await user.click(screen.getByRole("button", { name: "By Owner" }));
+    const ownerRows = screen.getAllByTestId("ev-swing-owner");
+    expect(ownerRows.map((row) => row.textContent)).toEqual([
+      expect.stringMatching(/^Alpha Consortium.*Alpha Team/s),
+      expect.stringMatching(/^Alpha Consortium.*Beta Team/s),
+      expect.stringMatching(/^Zulu Consortium.*Zebra Team/s),
+    ]);
+
+    const ownerFilter = screen.getByRole("searchbox", { name: "Filter owners and teams" });
+    await user.type(ownerFilter, "Zulu");
+    expect(screen.getAllByTestId("ev-swing-owner")).toHaveLength(1);
+    expect(screen.getByTestId("ev-swing-owner")).toHaveTextContent("Zulu Consortium");
   });
 });
 
