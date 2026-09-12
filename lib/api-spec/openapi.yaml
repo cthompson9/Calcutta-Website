@@ -1212,6 +1212,7 @@ paths:
             type: string
             enum: [authoritative, latest, canonical, provisional]
             default: authoritative
+          description: Compatibility selector; provisional reads return the already-promoted coherent current version and never recompute from live events.
         - name: owner
           in: query
           schema: { type: string }
@@ -2297,6 +2298,42 @@ components:
       required: [bidderId, ownershipShare]
 
     # Results (Calcutta Returns format)
+    CurrentMtmVersion:
+      type: ["object", "null"]
+      description: Coherent promoted current-MTM version used for every numeric MTM field in this row.
+      properties:
+        versionId: { type: ["number", "null"] }
+        sourceSnapshotId: { type: ["number", "null"] }
+        markType:
+          type: ["string", "null"]
+          enum: [official, provisional, pending_recalculation, null]
+        status: { type: ["string", "null"] }
+        provisionalEventId: { type: ["number", "null"] }
+        provisionalOutcome:
+          type: ["string", "null"]
+          enum: [home_win, away_win, tie, null]
+        pendingGames:
+          type: array
+          items: { type: object, additionalProperties: true }
+        incorporatedGames:
+          type: array
+          items: { type: object, additionalProperties: true }
+        actualsAsOf: { type: ["string", "null"], format: date-time }
+        mtmAsOf: { type: ["string", "null"], format: date-time }
+        staleReason: { type: ["string", "null"] }
+      required:
+        - versionId
+        - sourceSnapshotId
+        - markType
+        - status
+        - provisionalEventId
+        - provisionalOutcome
+        - pendingGames
+        - incorporatedGames
+        - actualsAsOf
+        - mtmAsOf
+        - staleReason
+
     TeamResultRow:
       type: object
       properties:
@@ -2373,6 +2410,8 @@ components:
           items:
             type: string
           description: Human-readable warnings explaining stale MTM inputs.
+        currentMtmVersion:
+          $ref: "#/components/schemas/CurrentMtmVersion"
         seed:
           type: ["number", "null"]
           description: "Playoff seed within conference (1–7). Null if team missed playoffs or seed not yet set."
@@ -2404,6 +2443,7 @@ components:
         - ptsToBreakeven
         - marketStatus
         - marketStatusReasons
+        - currentMtmVersion
 
     NflStandingsImportInput:
       type: object
@@ -2789,6 +2829,8 @@ components:
           type: array
           items:
             type: string
+        currentMtmVersion:
+          $ref: "#/components/schemas/CurrentMtmVersion"
         teams:
           type: array
           items:
@@ -2806,6 +2848,7 @@ components:
         - totalNetMtm
         - marketStatus
         - marketStatusReasons
+        - currentMtmVersion
         - teams
 
     HistoricalPool:
@@ -3791,7 +3834,10 @@ components:
           type: object
           properties:
             snapshotId: { type: ["number", "null"] }
-            type: { type: string, enum: [authoritative, latest, canonical, provisional] }
+            type: { type: string, enum: [authoritative, latest, canonical, official, provisional, pending_recalculation] }
+            versionId: { type: ["number", "null"], description: Durable coherent current-version identity. }
+            sourceSnapshotId: { type: ["number", "null"], description: Immutable source snapshot used by the version. }
+            status: { type: ["string", "null"], enum: [candidate, current, superseded, null] }
             approximate: { type: boolean }
             quality: { type: string, enum: [good, warning, insufficient] }
             stale: { type: boolean }
@@ -3799,6 +3845,11 @@ components:
               type: array
               items: { type: string }
             asOf: { type: ["string", "null"] }
+            actualsAsOf: { type: ["string", "null"] }
+            mtmAsOf: { type: ["string", "null"] }
+            actualsStateHash: { type: ["string", "null"] }
+            provisionalEventId: { type: ["number", "null"] }
+            provisionalOutcome: { type: ["string", "null"], enum: [home_win, away_win, tie, null] }
             inputHash: { type: ["string", "null"] }
             pathCount: { type: ["number", "null"] }
             selectionReason: { type: ["string", "null"] }
@@ -3810,6 +3861,20 @@ components:
                 seed: { type: ["number", "null"] }
               required: [name]
           required: [type, approximate, quality, stale, staleReasons]
+        versionId: { type: ["number", "null"] }
+        sourceSnapshotId: { type: ["number", "null"] }
+        markType: { type: ["string", "null"], enum: [official, provisional, pending_recalculation, null] }
+        provisionalEventId: { type: ["number", "null"] }
+        provisionalOutcome: { type: ["string", "null"], enum: [home_win, away_win, tie, null] }
+        actualsAsOf: { type: ["string", "null"] }
+        mtmAsOf: { type: ["string", "null"] }
+        incorporatedGames:
+          type: array
+          items: { type: object, additionalProperties: true }
+        pendingGames:
+          type: array
+          items: { type: object, additionalProperties: true }
+        staleReason: { type: ["string", "null"] }
         teams:
           type: array
           items:

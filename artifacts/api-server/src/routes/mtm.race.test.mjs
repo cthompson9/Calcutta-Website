@@ -20,26 +20,28 @@
 import assert from "node:assert/strict";
 import http from "node:http";
 import { before, after, describe, test } from "node:test";
-import { and, eq, isNotNull, inArray, isNull } from "drizzle-orm";
+import { and, eq, isNotNull, inArray, isNull, notInArray } from "drizzle-orm";
 
 const DATABASE_URL = process.env.DATABASE_URL;
 const ADMIN_KEY = process.env.ADMIN_API_KEY;
 const canRun = Boolean(DATABASE_URL && ADMIN_KEY);
 
 // Deferred imports — must not execute when DATABASE_URL is absent (lib/db throws)
-let db, mtmSnapshotsTable, mtmSnapshotTable, mtmEntryValuationTable, snapshotMetricsTable, sportPeriodsTable, seasonsTable, teamsTable, teamSeasonAuctionsTable, calcuttasTable, calcuttaEntriesTable, positionsTable, biddersTable;
+let db, mtmSnapshotsTable, mtmSnapshotTable, mtmEntryValuationTable, mtmValuationVersionTable, snapshotMetricsTable, sportPeriodsTable, seasonsTable, teamsTable, teamSeasonAuctionsTable, calcuttasTable, calcuttaEntriesTable, positionsTable, biddersTable;
 let app;
 let WEEK_ZERO_SNAPSHOT_KEY;
 let runCanonicalMtmRefresh;
 let getMtmPipelineStatus;
+let validateAndPromoteCurrentMtm;
 
 if (canRun) {
-  ({ db, mtmSnapshotsTable, mtmSnapshotTable, mtmEntryValuationTable, snapshotMetricsTable, sportPeriodsTable, seasonsTable, teamsTable, teamSeasonAuctionsTable, calcuttasTable, calcuttaEntriesTable, positionsTable, biddersTable } =
+  ({ db, mtmSnapshotsTable, mtmSnapshotTable, mtmEntryValuationTable, mtmValuationVersionTable, snapshotMetricsTable, sportPeriodsTable, seasonsTable, teamsTable, teamSeasonAuctionsTable, calcuttasTable, calcuttaEntriesTable, positionsTable, biddersTable } =
     await import("@workspace/db"));
   ({ default: app } = await import("../app.ts"));
   ({ WEEK_ZERO_SNAPSHOT_KEY } = await import("../lib/weekZeroValuation.ts"));
   ({ runCanonicalMtmRefresh } = await import("../lib/jobMtmRefresh.ts"));
   ({ getMtmPipelineStatus } = await import("../lib/mtmPipeline.ts"));
+  ({ validateAndPromoteCurrentMtm } = await import("../lib/currentMtm.ts"));
 }
 
 // ── Kalshi fetch mock ────────────────────────────────────────────────────────
@@ -202,12 +204,31 @@ describe(
         })
         .returning();
       testCalcuttaId = calcutta.id;
+      // A prior interrupted run may have left pipeline/current-version rows
+      // behind. Remove versions first because they restrict source snapshots.
+      await db
+        .update(mtmValuationVersionTable)
+        .set({ status: "superseded" })
+        .where(and(
+          eq(mtmValuationVersionTable.poolId, testCalcuttaId),
+          eq(mtmValuationVersionTable.status, "current"),
+        ));
       // A prior interrupted run may have left pipeline-ledger rows behind.
       // This fixture owns the disposable 9999 pool, so reset that ledger
       // before creating assertions whose ordering depends on a clean history.
-      await db
-        .delete(mtmSnapshotTable)
-        .where(eq(mtmSnapshotTable.poolId, testCalcuttaId));
+      const retainedSources = await db.select({
+        sourceSnapshotId: mtmValuationVersionTable.sourceSnapshotId,
+      }).from(mtmValuationVersionTable)
+        .where(eq(mtmValuationVersionTable.poolId, testCalcuttaId));
+      const retainedSourceIds = retainedSources.map((row) => row.sourceSnapshotId);
+      await db.delete(mtmSnapshotTable).where(
+        retainedSourceIds.length === 0
+          ? eq(mtmSnapshotTable.poolId, testCalcuttaId)
+          : and(
+            eq(mtmSnapshotTable.poolId, testCalcuttaId),
+            notInArray(mtmSnapshotTable.id, retainedSourceIds),
+          ),
+      );
       const entries = await db
         .insert(calcuttaEntriesTable)
         .values(testTeamIds.map((teamId) => ({ calcuttaId: calcutta.id, teamId })))
@@ -252,9 +273,18 @@ describe(
       // Clean it by pool as well, otherwise a failed run can become the
       // "latest attempt" in the next run and contaminate status/history tests.
       if (testCalcuttaId != null) {
-        await db
-          .delete(mtmSnapshotTable)
-          .where(eq(mtmSnapshotTable.poolId, testCalcuttaId));
+        const referenced = await db.select({ sourceSnapshotId: mtmValuationVersionTable.sourceSnapshotId })
+          .from(mtmValuationVersionTable)
+          .where(eq(mtmValuationVersionTable.poolId, testCalcuttaId));
+        const referencedIds = referenced.map((row) => row.sourceSnapshotId);
+        if (referencedIds.length === 0) {
+          await db.delete(mtmSnapshotTable).where(eq(mtmSnapshotTable.poolId, testCalcuttaId));
+        } else {
+          await db.delete(mtmSnapshotTable).where(and(
+            eq(mtmSnapshotTable.poolId, testCalcuttaId),
+            notInArray(mtmSnapshotTable.id, referencedIds),
+          ));
+        }
       }
       await db
         .delete(mtmSnapshotsTable)
@@ -262,9 +292,9 @@ describe(
       await db
         .delete(teamSeasonAuctionsTable)
         .where(eq(teamSeasonAuctionsTable.seasonId, testSeasonId));
-      await db
-        .delete(seasonsTable)
-        .where(eq(seasonsTable.id, testSeasonId));
+      // Current-version publication rows are append-only and retain their
+      // source snapshots, so this disposable season cannot be cascaded away.
+      // Its records are isolated to the 9999 fixture pool.
       await db.delete(biddersTable).where(eq(biddersTable.id, testBidderId));
     });
 
@@ -396,15 +426,80 @@ describe(
 
     async function deletePipelineSnapshotsByIds(ids) {
       if (ids.length === 0) return;
+      const referenced = await db.select({ sourceSnapshotId: mtmValuationVersionTable.sourceSnapshotId })
+        .from(mtmValuationVersionTable)
+        .where(inArray(mtmValuationVersionTable.sourceSnapshotId, ids));
+      const referencedIds = new Set(referenced.map((row) => row.sourceSnapshotId));
+      const deletableIds = ids.filter((id) => !referencedIds.has(id));
+      if (deletableIds.length === 0) return;
       await db
         .delete(mtmSnapshotTable)
-        .where(inArray(mtmSnapshotTable.id, ids));
+        .where(inArray(mtmSnapshotTable.id, deletableIds));
     }
 
     async function resetPipelineLedger() {
+      const referenced = await db.select({ sourceSnapshotId: mtmValuationVersionTable.sourceSnapshotId })
+        .from(mtmValuationVersionTable)
+        .where(eq(mtmValuationVersionTable.poolId, testCalcuttaId));
+      const referencedIds = referenced.map((row) => row.sourceSnapshotId);
+      const condition = referencedIds.length === 0
+        ? eq(mtmSnapshotTable.poolId, testCalcuttaId)
+        : and(
+          eq(mtmSnapshotTable.poolId, testCalcuttaId),
+          notInArray(mtmSnapshotTable.id, referencedIds),
+        );
+      await db.delete(mtmSnapshotTable).where(condition);
+    }
+
+    async function resetCurrentVersionLedger() {
       await db
-        .delete(mtmSnapshotTable)
-        .where(eq(mtmSnapshotTable.poolId, testCalcuttaId));
+        .update(mtmValuationVersionTable)
+        .set({ status: "superseded" })
+        .where(and(
+          eq(mtmValuationVersionTable.poolId, testCalcuttaId),
+          eq(mtmValuationVersionTable.status, "current"),
+        ));
+    }
+
+    async function seedCoherentOfficialVersion(value, asOf = new Date("2026-01-01T00:00:00.000Z")) {
+      const entries = [...entryIdByTeam.entries()];
+      const pot = value * entries.length;
+      const [snapshot] = await db.insert(mtmSnapshotTable).values({
+        poolId: testCalcuttaId,
+        asOf,
+        asOfHour: asOf,
+        createdAt: asOf,
+        trigger: "scheduled",
+        status: "ok",
+        methodVersion: "coherent-test",
+        stateJson: {
+          pot,
+          entries: entries.map(([teamId, entryId]) => ({
+            team: `TEAM-${teamId}`,
+            price: 1500,
+            entry_id: String(entryId),
+          })),
+          remaining_schedule: [{ week: 2 }],
+        },
+        inputProvenance: {
+          schema_version: "1.0",
+          schedule: [],
+          realized_results: [],
+          standings: [],
+        },
+      }).returning({ id: mtmSnapshotTable.id });
+      await db.insert(mtmEntryValuationTable).values(entries.map(([, entryId]) => ({
+        snapshotId: snapshot.id,
+        entryId,
+        expectedPayout: String(value),
+        auctionPrice: "1500",
+      })));
+      const promotion = await validateAndPromoteCurrentMtm({
+        poolId: testCalcuttaId,
+        sourceSnapshotId: snapshot.id,
+        markType: "official",
+      });
+      return { snapshotId: snapshot.id, versionId: promotion.versionId };
     }
 
     async function mtmMetricRowsForEntries(entryIds) {
@@ -911,11 +1006,12 @@ describe(
     );
 
     test(
-      "Results retain the latest successful mark when a newer pipeline attempt fails",
+      "Results retain the promoted coherent mark when a newer pipeline attempt fails",
       async () => {
+        await resetCurrentVersionLedger();
         await resetPipelineLedger();
         const teamId = testTeamIds[0];
-        const legacyMetric = await setLegacyCalculatedMtm(teamId, 100);
+         const coherent = await seedCoherentOfficialVersion(777);
         let pipelineSnapshotIds = [];
         try {
           const priorAsOf = new Date(Date.now() - 60_000);
@@ -948,9 +1044,12 @@ describe(
           assert.equal(
             completeTeam?.markToMarket,
             777,
-            "a complete current pipeline snapshot must remain authoritative",
+            "the promoted coherent mark must remain authoritative",
           );
-          assert.equal(completeTeam?.marketStatus, "live");
+           assert.equal(completeTeam?.currentMtmVersion.versionId, coherent.versionId);
+           assert.equal(completeTeam?.currentMtmVersion.sourceSnapshotId, coherent.snapshotId);
+           assert.equal(completeTeam?.currentMtmVersion.markType, "official");
+           assert.equal(completeTeam?.marketStatus, "live");
 
           const [latest] = await db
             .insert(mtmSnapshotTable)
@@ -985,16 +1084,21 @@ describe(
           assert.ok(team);
           assert.ok(owner);
           assert.ok(ownerTeam);
-          assert.equal(team.markToMarket, 777, "failed capture must retain the latest successful pipeline mark");
-          assert.equal(team.netMtm, 777 - team.cost);
-          assert.equal(team.marketStatus, "stale");
-          assert.ok(team.marketStatusReasons.includes("test capture failed"));
+           assert.equal(team.markToMarket, 777, "failed capture must not override the promoted coherent mark");
+           assert.equal(team.netMtm, 777 - team.cost);
+           assert.equal(team.currentMtmVersion.versionId, coherent.versionId);
+           assert.equal(team.currentMtmVersion.sourceSnapshotId, coherent.snapshotId);
+           assert.equal(team.marketStatus, "live");
+           assert.deepEqual(team.marketStatusReasons, []);
           assert.equal(ownerTeam.markToMarket, 777);
+           assert.equal(ownerTeam.currentMtmVersion.sourceSnapshotId, coherent.snapshotId);
           assert.equal(owner.totalMtm, 777 * entryIdByTeam.size);
-          assert.equal(owner.marketStatus, "stale");
-          assert.ok(owner.marketStatusReasons.includes("test capture failed"));
+           assert.equal(owner.currentMtmVersion.versionId, coherent.versionId);
+           assert.equal(owner.currentMtmVersion.sourceSnapshotId, coherent.snapshotId);
+           assert.equal(owner.marketStatus, "live");
+           assert.deepEqual(owner.marketStatusReasons, []);
         } finally {
-          await restoreLegacyCalculatedMtm(legacyMetric);
+           await resetCurrentVersionLedger();
           await deletePipelineSnapshotsByIds(pipelineSnapshotIds);
           await resetPipelineLedger();
         }
@@ -1002,10 +1106,11 @@ describe(
     );
 
     test(
-      "Results fail closed when the successful pipeline snapshot omits one expected team",
+      "Results ignore an incomplete raw snapshot and retain the promoted coherent mark",
       async () => {
+        await resetCurrentVersionLedger();
         const teamId = testTeamIds[0];
-        const legacyMetric = await setLegacyCalculatedMtm(teamId, 100);
+         const coherent = await seedCoherentOfficialVersion(777);
         let pipelineSnapshotId;
         try {
           const asOf = new Date("2026-08-30T12:00:00.000Z");
@@ -1048,18 +1153,24 @@ describe(
           assert.ok(team);
           assert.ok(owner);
           assert.ok(ownerTeam);
-          assert.equal(team.markToMarket, 0, "partial current capture must not expose legacy MTM");
-          assert.equal(team.marketStatus, "stale");
-          assert.ok(team.marketStatusReasons.some((reason) => reason.includes("every team")));
-          assert.equal(ownerTeam.markToMarket, 0);
-          assert.equal(owner.totalMtm, 0);
-          assert.equal(owner.marketStatus, "stale");
-          assert.ok(owner.marketStatusReasons.some((reason) => reason.includes("every team")));
+            assert.equal(team.markToMarket, 777, "partial raw capture must not override coherent MTM");
+            assert.equal(team.currentMtmVersion.versionId, coherent.versionId);
+            assert.equal(team.currentMtmVersion.sourceSnapshotId, coherent.snapshotId);
+           assert.equal(team.marketStatus, "live");
+           assert.deepEqual(team.marketStatusReasons, []);
+            assert.equal(ownerTeam.markToMarket, 777);
+           assert.equal(ownerTeam.currentMtmVersion.sourceSnapshotId, coherent.snapshotId);
+           assert.equal(owner.totalMtm, 777 * entryIdByTeam.size);
+           assert.equal(owner.currentMtmVersion.versionId, coherent.versionId);
+           assert.equal(owner.currentMtmVersion.sourceSnapshotId, coherent.snapshotId);
+           assert.equal(owner.marketStatus, "live");
+           assert.deepEqual(owner.marketStatusReasons, []);
         } finally {
-          await restoreLegacyCalculatedMtm(legacyMetric);
+           await resetCurrentVersionLedger();
           await deletePipelineSnapshotsByIds(
             pipelineSnapshotId == null ? [] : [pipelineSnapshotId],
           );
+           await resetPipelineLedger();
         }
       },
     );
@@ -1069,11 +1180,16 @@ describe(
       async () => {
         await resetPipelineLedger();
         const entryIds = [...entryIdByTeam.values()];
-        const weekZeroAt = new Date("2026-08-25T12:00:00.000Z");
-        const weekZeroRetryAt = new Date("2026-08-26T12:00:00.000Z");
-        const weekOneAt = new Date("2026-09-01T12:00:00.000Z");
-        const failedAt = new Date("2026-09-01T13:00:00.000Z");
+         const weekZeroAt = new Date("2099-08-25T12:00:00.000Z");
+         const weekZeroRetryAt = new Date("2099-08-26T12:00:00.000Z");
+         const weekOneAt = new Date("2099-09-01T12:00:00.000Z");
+         const failedAt = new Date("2099-09-01T13:00:00.000Z");
         let pipelineSnapshotIds = [];
+         const sourceEntries = entryIds.map((entryId, index) => ({
+           team: `TEAM-${testTeamIds[index]}`,
+           price: 1500,
+           entry_id: String(entryId),
+         }));
 
         try {
           const inserted = await db
@@ -1088,6 +1204,7 @@ describe(
                 status: "ok",
                 methodVersion: "test",
                 stateJson: {
+                   entries: sourceEntries,
                   remaining_schedule: [{ week: 2 }],
                 },
               },
@@ -1100,6 +1217,7 @@ describe(
                 status: "ok",
                 methodVersion: "test",
                 stateJson: {
+                   entries: sourceEntries,
                   remaining_schedule: [{ week: 1 }],
                 },
               },
@@ -1112,6 +1230,7 @@ describe(
                 status: "ok",
                 methodVersion: "test",
                 stateJson: {
+                   entries: sourceEntries,
                   remaining_schedule: [{ week: 1 }],
                 },
               },

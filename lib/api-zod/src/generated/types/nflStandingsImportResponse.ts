@@ -5,6 +5,7 @@
  * NFL Auction Manager API
  * OpenAPI spec version: 0.1.0
  */
+import type { NflStandingsImportResponseMtmReconciliationItem } from './nflStandingsImportResponseMtmReconciliationItem';
 
 export interface NflStandingsImportResponse {
   seasonYear: number;
@@ -14,11 +15,5 @@ export interface NflStandingsImportResponse {
   fetchedAt: string;
   importedTeams: number;
   replay: boolean;
-  mtmReconciliation?: Array<{
-    poolId: number;
-    status: "promoted" | "unchanged" | "skipped" | "warning";
-    markType?: "official" | "provisional" | "pending_recalculation";
-    versionId?: number;
-    warning?: string;
-  }>;
+  mtmReconciliation?: NflStandingsImportResponseMtmReconciliationItem[];
 }

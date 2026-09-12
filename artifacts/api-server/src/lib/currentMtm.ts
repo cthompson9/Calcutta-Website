@@ -1029,7 +1029,7 @@ export function buildCurrentMtmResolution(args: {
       available: false, versionId: null, sourceSnapshotId: null, markType: null,
       status: null, actualsStateHash: null, provisionalEventId: null, provisionalOutcome: null,
       actualsAsOf: null, mtmAsOf: null, teams: [], owners: [],
-      incorporatedGames: [], pendingGames: [], staleReason: "No current MTM version is available.",
+      incorporatedGames: [], pendingGames: [], staleReason: "No current coherent MTM version is available.",
     };
   }
   const teams = (args.teamValues ?? []).map((team) => ({
@@ -1053,6 +1053,7 @@ export function buildCurrentMtmResolution(args: {
       bidderName: position.bidderName,
       holdings: [],
       grossExpectedPayout: 0,
+      signedCostBasis: 0,
       net: 0,
     };
     const value = calculateSignedOwnerValue(
@@ -1070,6 +1071,7 @@ export function buildCurrentMtmResolution(args: {
       net: value.net,
     });
     owner.grossExpectedPayout += value.gross;
+    owner.signedCostBasis += value.signedCostBasis;
     owner.net += value.net;
     ownersById.set(position.bidderId, owner);
   }
@@ -1088,7 +1090,10 @@ export function buildCurrentMtmResolution(args: {
     owners: [...ownersById.values()],
     incorporatedGames: (args.games ?? []).filter((game) => game.linkageStatus !== "pending"),
     pendingGames: (args.games ?? []).filter((game) => game.linkageStatus === "pending"),
-    staleReason: args.version.staleReason ?? null,
+    staleReason: args.version.staleReason ??
+      (args.version.markType === "pending_recalculation"
+        ? "Current MTM version is pending recalculation."
+        : null),
   };
 }
 

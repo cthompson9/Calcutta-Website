@@ -6,26 +6,22 @@ import {
   mtmSnapshotTable,
   mtmEntryValuationTable,
   mtmMarketQuoteTable,
-  mtmCanonicalPeriodSelectionTable,
   calcuttaEntriesTable,
   teamsTable,
-  seasonsTable,
-  calcuttasTable,
 } from "@workspace/db";
 import { loadSeasonOwnership } from "./seasonOwnership";
-import { getMtmPipelineStatus } from "./mtmPipeline";
+import { resolveCalcuttaId } from "./calcuttaContext";
+import { resolveSeasonIdForSport } from "./calcuttaContext";
 import {
   calculateMidpointDrift,
-  calculateSignedOwnerValue,
-  chooseProvisionalOutcome,
   computeValuationInvariants,
   deriveGameEvSwings,
   deriveOwnerGameEvSwings,
 } from "./mtmValuationHelpers";
+import { resolveCurrentMtm } from "./currentMtm";
 
-// The durable current-version resolver is shared by internal server callers.
-// Legacy consumers remain on this module's existing normalized read model
-// until their migration is explicitly scheduled.
+// The durable current-version resolver is shared by all displayed valuation
+// consumers. Raw snapshots remain evidence-only read paths.
 export {
   resolveCurrentMtm,
   buildCurrentMtmResolution,
@@ -72,22 +68,61 @@ export async function getNormalizedMtmValuation(args: {
   markType?: MtmMarkType;
   owner?: string;
 }) {
-  const status = await getMtmPipelineStatus(args.season, args.calcuttaId);
-  if (!status?.currentSnapshotId) {
+  const seasonId = await resolveSeasonIdForSport(db, { year: args.season, sport: "NFL" });
+  const poolId = seasonId == null
+    ? null
+    : await resolveCalcuttaId(db, { seasonId, sport: "NFL", calcuttaId: args.calcuttaId });
+  const resolution = poolId == null
+    ? {
+        available: false,
+        versionId: null,
+        sourceSnapshotId: null,
+        status: null,
+        actualsStateHash: null,
+        markType: null,
+        provisionalEventId: null,
+        provisionalOutcome: null,
+        actualsAsOf: null,
+        mtmAsOf: null,
+        teams: [],
+        owners: [],
+        incorporatedGames: [],
+        pendingGames: [],
+        staleReason: "No NFL Calcutta is available for the requested season.",
+      }
+    : await resolveCurrentMtm(poolId);
+  const unavailableMark = {
+    versionId: resolution.versionId,
+    sourceSnapshotId: resolution.sourceSnapshotId,
+    status: resolution.status,
+    type: resolution.markType ?? args.markType ?? "authoritative",
+    approximate: resolution.markType === "provisional",
+    quality: "insufficient" as const,
+    stale: true,
+    staleReasons: [resolution.staleReason ?? "No current coherent MTM version is available."],
+    reason: resolution.staleReason ?? "No current coherent MTM version is available.",
+    actualsStateHash: resolution.actualsStateHash,
+    provisionalEventId: resolution.provisionalEventId,
+    provisionalOutcome: resolution.provisionalOutcome,
+    actualsAsOf: resolution.actualsAsOf,
+    mtmAsOf: resolution.mtmAsOf,
+  };
+  if (!resolution.available || resolution.sourceSnapshotId == null) {
     return {
       available: false,
-      mark: {
-        type: args.markType ?? "authoritative",
-        approximate: false,
-        quality: "insufficient",
-        stale: true,
-        staleReasons: status?.staleReasons?.length
-          ? status.staleReasons
-          : ["No successful MTM snapshot is available."],
-        reason: "No successful MTM snapshot is available.",
-      },
+      mark: unavailableMark,
+      versionId: resolution.versionId,
+      sourceSnapshotId: resolution.sourceSnapshotId,
+      markType: resolution.markType,
+      provisionalEventId: resolution.provisionalEventId,
+      provisionalOutcome: resolution.provisionalOutcome,
+      actualsAsOf: resolution.actualsAsOf,
+      mtmAsOf: resolution.mtmAsOf,
+      incorporatedGames: resolution.incorporatedGames,
+      pendingGames: resolution.pendingGames,
+      staleReason: resolution.staleReason,
       teams: [], owners: [], conditionalPayouts: {}, gameEvSwings: [],
-      diagnostics: status?.diagnostics ?? null,
+      diagnostics: null,
       invariants: {
         teamGrossPoolConservation: { status: "unavailable" },
         entryNetVersusAuctionProceeds: { status: "unavailable" },
@@ -95,51 +130,54 @@ export async function getNormalizedMtmValuation(args: {
       },
     };
   }
-  const wantsCanonical = args.markType === "canonical" || args.markType === "authoritative" || args.markType === "provisional";
-  let selectedType: MtmMarkType = status.currentSelectionType ?? "latest";
-  const selectedSnapshotId = status.currentSnapshotId;
-  const snapshot = selectedSnapshotId == null ? undefined
-    : (await db.select().from(mtmSnapshotTable).where(eq(mtmSnapshotTable.id, selectedSnapshotId)).limit(1))[0];
-  if (!snapshot) throw new Error("The selected MTM snapshot disappeared.");
+  const snapshot = (await db.select().from(mtmSnapshotTable)
+    .where(eq(mtmSnapshotTable.id, resolution.sourceSnapshotId)).limit(1))[0];
+  if (!snapshot) {
+    const mark = { ...unavailableMark, reason: "Current MTM source snapshot is missing.",
+      staleReasons: ["Current MTM source snapshot is missing."] };
+    return {
+      available: false, mark, teams: [], owners: [], conditionalPayouts: {}, gameEvSwings: [],
+      versionId: resolution.versionId,
+      sourceSnapshotId: resolution.sourceSnapshotId,
+      markType: resolution.markType,
+      provisionalEventId: resolution.provisionalEventId,
+      provisionalOutcome: resolution.provisionalOutcome,
+      actualsAsOf: resolution.actualsAsOf,
+      mtmAsOf: resolution.mtmAsOf,
+      incorporatedGames: resolution.incorporatedGames,
+      pendingGames: resolution.pendingGames,
+      staleReason: resolution.staleReason,
+      diagnostics: null,
+      invariants: {
+        teamGrossPoolConservation: { status: "unavailable" },
+        entryNetVersusAuctionProceeds: { status: "unavailable" },
+        ownerSecondaryTradeCash: { status: "unavailable" },
+      },
+    };
+  }
+  const selectedSnapshotId = snapshot.id;
+  const currentStaleReason = resolution.staleReason ??
+    (resolution.markType === "pending_recalculation"
+      ? "Current MTM version is pending recalculation."
+      : null);
   const entries = await db.select({
     entryId: calcuttaEntriesTable.id, teamId: calcuttaEntriesTable.teamId, teamName: teamsTable.name,
   }).from(calcuttaEntriesTable).innerJoin(teamsTable, eq(teamsTable.id, calcuttaEntriesTable.teamId))
-    .where(eq(calcuttaEntriesTable.calcuttaId, status.poolId));
-  const entryIds = entries.map((entry) => entry.entryId);
-  const rows = await db.select().from(mtmEntryValuationTable)
-    .where(and(eq(mtmEntryValuationTable.snapshotId, snapshot.id), inArray(mtmEntryValuationTable.entryId, entryIds)));
-  const seasonRow = (await db.select({ seasonId: seasonsTable.id }).from(seasonsTable)
-    .innerJoin(calcuttasTable, eq(calcuttasTable.seasonId, seasonsTable.id))
-    .where(eq(calcuttasTable.id, status.poolId)).limit(1))[0];
-  if (!seasonRow) throw new Error("The selected MTM Calcutta has no season.");
-  const ownership = await loadSeasonOwnership(seasonRow.seasonId, status.poolId);
+    .where(eq(calcuttaEntriesTable.calcuttaId, poolId!));
+  const ownership = await loadSeasonOwnership(seasonId!, poolId!);
   const entryById = new Map(entries.map((entry) => [entry.entryId, entry]));
-  let teams = rows.map((row) => {
-    const entry = entryById.get(row.entryId);
-    const gross = Number(row.expectedPayout ?? 0);
-    return {
-      entryId: row.entryId, teamId: entry?.teamId ?? null, teamName: entry?.teamName ?? null,
-      grossExpectedPayout: gross, auctionPrice: row.auctionPrice == null ? null : Number(row.auctionPrice),
-      net: row.auctionPrice == null ? null : gross - Number(row.auctionPrice),
-    };
-  });
-  const buildOwners = () => [...ownership.byBidder.entries()].map(([bidderId, positions]) => {
-    const holdings = [...positions.entries()].map(([teamId, position]) => {
-      const team = teams.find((item) => item.teamId === teamId);
-       const value = calculateSignedOwnerValue(
-         team?.grossExpectedPayout ?? 0,
-         position.effectiveShare,
-         position.originalCostBasis,
-         position.tradePaid,
-         position.tradeReceived,
-       );
-       return { teamId, signedShare: position.effectiveShare, grossExpectedPayout: value.gross, signedCostBasis: value.signedCostBasis, net: value.net };
-    });
-    return { bidderId, bidderName: ownership.bidderNames.get(bidderId) ?? "Unknown", holdings,
-      grossExpectedPayout: holdings.reduce((n, h) => n + h.grossExpectedPayout, 0),
-      signedCostBasis: holdings.reduce((n, h) => n + h.signedCostBasis, 0),
-      net: holdings.reduce((n, h) => n + h.net, 0) };
-   }).filter((owner) => !args.owner || owner.bidderName.toLocaleLowerCase().includes(args.owner.toLocaleLowerCase()));
+  // The durable resolver is the sole authority for current team and owner
+  // values. In particular, do not rebuild provisional values from live events.
+  const teams = resolution.teams.map((team: Record<string, any>) => ({
+    entryId: team.entryId,
+    teamId: team.teamId,
+    teamName: team.teamName,
+    grossExpectedPayout: Number(team.currentMtm ?? team.grossExpectedPayout),
+    auctionPrice: team.auctionPrice == null ? null : Number(team.auctionPrice),
+    net: team.net == null ? null : Number(team.net),
+  }));
+  const owners = resolution.owners
+    .filter((owner: Record<string, any>) => !args.owner || String(owner.bidderName).toLocaleLowerCase().includes(args.owner.toLocaleLowerCase()));
   const conditionals = await db.select().from(mtmGameConditionalTable)
     .where(eq(mtmGameConditionalTable.snapshotId, snapshot.id));
   const conditionalEventIds = [...new Set(conditionals.map((row) => row.eventId))];
@@ -180,55 +218,6 @@ export async function getNormalizedMtmValuation(args: {
     item.outcomes[row.outcome] = outcome;
     conditionalPayouts[key] = item;
   }
-  let provisionalSuppressionReason: string | null = null;
-  if (args.markType === "provisional") {
-    const quality = new Map<string, Array<{ qualityStatus: string; grossConditional: number | null }>>();
-    for (const row of conditionals) {
-      const key = `${row.eventId}:${row.outcome}`;
-      const bucket = quality.get(key) ?? [];
-      bucket.push({
-        qualityStatus: row.qualityStatus,
-        grossConditional: row.grossConditional == null ? null : Number(row.grossConditional),
-      });
-      quality.set(key, bucket);
-    }
-    const choice = chooseProvisionalOutcome({
-      actualAnchor: snapshot.actualAnchor,
-      candidates: conditionalEvents.map((event) => ({
-        eventId: event.id,
-        final: ["final", "completed", "post"].includes(event.status.toLowerCase()),
-        completeIdentity: event.home != null && event.away != null,
-        completeScore: event.homeScore != null && event.awayScore != null,
-        observedAt: event.updatedAt,
-        actualAnchor: snapshot.actualAnchor,
-        homeScore: event.homeScore,
-        awayScore: event.awayScore,
-      })),
-      conditionalQuality: quality,
-    });
-    if (choice.selected) {
-      const provisionalRows = conditionals.filter((row) =>
-        row.eventId === choice.eventId && row.outcome === choice.outcome
-      );
-      const grossByEntry = new Map(provisionalRows.map((row) => [
-        row.entryId,
-        row.grossConditional == null ? null : Number(row.grossConditional),
-      ]));
-      teams = teams.map((team) => {
-        const gross = grossByEntry.get(team.entryId);
-        if (gross == null) return team;
-        return {
-          ...team,
-          grossExpectedPayout: gross,
-          net: team.auctionPrice == null ? null : gross - team.auctionPrice,
-        };
-      });
-      selectedType = "provisional";
-      provisionalSuppressionReason = null;
-    } else {
-      provisionalSuppressionReason = `${choice.reason}; authoritative values returned.`;
-    }
-  }
   for (const event of Object.values(conditionalPayouts)) {
     for (const outcome of Object.values(event.outcomes) as any[]) {
       const grossByTeam = new Map(outcome.teams.map((team: any) => [team.team_id, team.gross_expected_payout]));
@@ -251,7 +240,6 @@ export async function getNormalizedMtmValuation(args: {
       positions,
     })),
   );
-  const owners = buildOwners();
   const expectedPot = Number((snapshot.stateJson as Record<string, unknown> | null)?.pot ?? 0);
   const secondaryTradePaid = [...ownership.byBidder.values()].reduce((sum, positions) =>
     sum + [...positions.values()].reduce((inner, position) => inner + position.tradePaid, 0), 0);
@@ -259,36 +247,48 @@ export async function getNormalizedMtmValuation(args: {
     sum + [...positions.values()].reduce((inner, position) => inner + position.tradeReceived, 0), 0);
   const invariants = computeValuationInvariants({
     expectedPot,
-    teams: teams.map((team) => ({ gross: team.grossExpectedPayout, auctionPrice: team.auctionPrice ?? 0 })),
+    teams: teams.map((team: { grossExpectedPayout: number; auctionPrice: number | null }) => ({ gross: team.grossExpectedPayout, auctionPrice: team.auctionPrice ?? 0 })),
     secondaryTradePaid,
     secondaryTradeReceived,
   });
   return {
     available: true,
     mark: {
-      snapshotId: snapshot.id,
-      type: selectedType,
-      approximate: selectedType === "provisional",
+       snapshotId: snapshot.id,
+       versionId: resolution.versionId,
+       sourceSnapshotId: resolution.sourceSnapshotId,
+       status: resolution.status,
+       type: resolution.markType ?? "official",
+       approximate: resolution.markType === "provisional",
       quality: snapshot.calibrationStatus ?? "insufficient",
-      stale: status.stale,
-      staleReasons: status.staleReasons,
-      asOf: snapshot.asOf.toISOString(),
+       stale: resolution.markType === "pending_recalculation" || Boolean(currentStaleReason),
+       staleReasons: currentStaleReason ? [currentStaleReason] : [],
+       asOf: resolution.mtmAsOf,
+       actualsAsOf: resolution.actualsAsOf,
+       mtmAsOf: resolution.mtmAsOf,
+       actualsStateHash: resolution.actualsStateHash,
+       provisionalEventId: resolution.provisionalEventId,
+       provisionalOutcome: resolution.provisionalOutcome,
       inputHash: snapshot.inputHash,
       model: { name: snapshot.methodVersion, seed: snapshot.randomSeed },
       pathCount: snapshot.pathCount,
-      selectionReason: selectedType === "canonical"
-        ? "latest append-only canonical period selection"
-        : selectedType === "provisional"
-          ? "single final-conditioned estimate; final margin is not incorporated"
-          : wantsCanonical
-            ? "no canonical selection available; latest successful snapshot used"
-            : "latest successful snapshot requested",
-      provisionalSuppressionReason,
+       selectionReason: "promoted coherent current MTM version",
+       provisionalSuppressionReason: null,
     },
+     versionId: resolution.versionId,
+     sourceSnapshotId: resolution.sourceSnapshotId,
+     markType: resolution.markType,
+     provisionalEventId: resolution.provisionalEventId,
+     provisionalOutcome: resolution.provisionalOutcome,
+     actualsAsOf: resolution.actualsAsOf,
+     mtmAsOf: resolution.mtmAsOf,
+     incorporatedGames: resolution.incorporatedGames,
+     pendingGames: resolution.pendingGames,
+      staleReason: currentStaleReason,
     teams, owners, conditionalPayouts, gameEvSwings,
     diagnostics: {
       market_calibration: snapshot.diagnostics?.market_calibration ?? { status: snapshot.calibrationStatus ?? "insufficient" },
-      market_drift: await assessMarketDrift(snapshot.id),
+       market_drift: await assessMarketDrift(snapshot.id),
     },
     invariants,
   };

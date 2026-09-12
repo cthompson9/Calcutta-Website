@@ -5,6 +5,7 @@
  * NFL Auction Manager API
  * OpenAPI spec version: 0.1.0
  */
+import type { CurrentMtmVersion } from './currentMtmVersion';
 import type { OwnerResultRowMarketStatus } from './ownerResultRowMarketStatus';
 import type { TeamResultRow } from './teamResultRow';
 
@@ -32,5 +33,6 @@ export interface OwnerResultRow {
      */
   marketStatus: OwnerResultRowMarketStatus;
   marketStatusReasons: string[];
+  currentMtmVersion: CurrentMtmVersion | null;
   teams: TeamResultRow[];
 }

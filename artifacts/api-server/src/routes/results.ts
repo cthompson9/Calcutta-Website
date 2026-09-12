@@ -46,7 +46,7 @@ import { loadCalcuttaConsortiums, loadSeasonConsortiums } from "../lib/consortiu
 import { resolveCalcuttaId } from "../lib/calcuttaContext";
 import { calculateOwnerResultEconomics } from "../lib/ownerResultEconomics";
 import { requireAdmin } from "../middlewares/requireAdmin";
-import { getMtmPipelineStatus } from "../lib/mtmPipeline";
+import { resolveCurrentMtm } from "../lib/currentMtm";
 
 const router: IRouter = Router();
 const weekZeroBaselineInFlight = new Map<number, Promise<void>>();
@@ -147,9 +147,24 @@ type CurrentPipelineMtm = {
   marketStatusReasons: string[];
 };
 
+type CurrentMtmVersionMetadata = {
+  versionId: number | null;
+  sourceSnapshotId: number | null;
+  markType: string | null;
+  status: string | null;
+  provisionalEventId: number | null;
+  provisionalOutcome: string | null;
+  pendingGames: unknown[];
+  incorporatedGames: unknown[];
+  actualsAsOf: string | null;
+  mtmAsOf: string | null;
+  staleReason: string | null;
+};
+
 type CurrentPipelineMtmSet = {
   values: Map<number, CurrentPipelineMtm>;
   unavailableReasons: string[];
+  currentMtmVersion: CurrentMtmVersionMetadata;
 };
 
 async function loadCurrentPipelineMtmByTeam(
@@ -157,31 +172,24 @@ async function loadCurrentPipelineMtmByTeam(
   calcuttaId: number,
   expectedTeamIds: number[],
 ): Promise<CurrentPipelineMtmSet | null> {
-  const status = await getMtmPipelineStatus(seasonYear, calcuttaId);
-  // A pool with no pipeline history retains its existing historical reporting
-  // behavior. Once a pipeline attempt exists, however, that ledger is
-  // authoritative and Results must not silently fall back to another MTM source.
-  if (!status) return null;
-  // Match Live Tracker: retain the latest complete successful mark after a
-  // failed attempt, while carrying the failure/staleness reasons explicitly.
-  if (!status.currentSnapshotId) {
-    return {
-      values: new Map(),
-      unavailableReasons: status.staleReasons.length > 0
-        ? status.staleReasons
-        : ["No successful MTM snapshot is available."],
-    };
-  }
+  const current = await resolveCurrentMtm(calcuttaId);
+  const unavailableReasons = !current.available
+    ? [current.staleReason ?? "No current coherent MTM version is available."]
+    : current.staleReason
+      ? [current.staleReason]
+      : [];
 
   const values = new Map<number, CurrentPipelineMtm>();
-  for (const valuation of status.valuations) {
+  for (const valuation of current.teams) {
     const teamId = Number(valuation.teamId);
-    const grossReturn = Number(valuation.expectedPayout);
+    const grossReturn = Number(valuation.currentMtm ?? valuation.grossExpectedPayout);
     if (!Number.isInteger(teamId) || !Number.isFinite(grossReturn)) continue;
     values.set(teamId, {
       grossReturn,
-      marketStatus: status.stale ? "stale" : "live",
-      marketStatusReasons: status.staleReasons,
+      marketStatus: current.markType === "pending_recalculation" || current.staleReason ? "stale" : "live",
+      marketStatusReasons: current.markType === "pending_recalculation" && !current.staleReason
+        ? ["Current MTM version is pending recalculation."]
+        : unavailableReasons,
     });
   }
 
@@ -191,10 +199,39 @@ async function loadCurrentPipelineMtmByTeam(
   if (!expectedTeamIds.every((teamId) => values.has(teamId))) {
     return {
       values: new Map(),
-      unavailableReasons: ["The latest MTM snapshot does not cover every team in this Calcutta."],
+      currentMtmVersion: {
+        versionId: current.versionId,
+        sourceSnapshotId: current.sourceSnapshotId,
+        markType: current.markType,
+        status: current.status,
+        provisionalEventId: current.provisionalEventId,
+        provisionalOutcome: current.provisionalOutcome,
+        pendingGames: current.pendingGames,
+        incorporatedGames: current.incorporatedGames,
+        actualsAsOf: current.actualsAsOf,
+        mtmAsOf: current.mtmAsOf,
+        staleReason: current.staleReason,
+      },
+        unavailableReasons: ["The current coherent MTM version does not cover every team in this Calcutta."],
     };
   }
-  return { values, unavailableReasons: [] };
+  return {
+    values,
+    unavailableReasons: [],
+    currentMtmVersion: {
+      versionId: current.versionId,
+      sourceSnapshotId: current.sourceSnapshotId,
+      markType: current.markType,
+      status: current.status,
+      provisionalEventId: current.provisionalEventId,
+      provisionalOutcome: current.provisionalOutcome,
+      pendingGames: current.pendingGames,
+      incorporatedGames: current.incorporatedGames,
+      actualsAsOf: current.actualsAsOf,
+      mtmAsOf: current.mtmAsOf,
+      staleReason: current.staleReason,
+    },
+  };
 }
 
 function currentPipelineTeamMtm(
@@ -355,6 +392,7 @@ function buildTeamResult(
   owners: TeamOwnerEconomicPosition[],
   ownershipSegments: OwnershipSegment[],
   cost: number,
+  currentMtmVersion?: CurrentMtmVersionMetadata,
 ) {
   const base = {
     teamId: team.id,
@@ -380,6 +418,7 @@ function buildTeamResult(
     }),
     ownershipSegments,
     cost,
+    currentMtmVersion: currentMtmVersion ?? null,
   };
 
   if (!result) {
@@ -452,6 +491,7 @@ function buildOwnerTeamResult(
     effectiveShare: number;
     ownerCost: number;
     ownershipSegments: OwnershipSegment[];
+    currentMtmVersion?: CurrentMtmVersionMetadata;
   },
 ) {
   const {
@@ -460,6 +500,7 @@ function buildOwnerTeamResult(
     effectiveShare,
     ownerCost,
     ownershipSegments,
+    currentMtmVersion,
   } = args;
 
   const economics = calculateOwnerResultEconomics({
@@ -484,6 +525,7 @@ function buildOwnerTeamResult(
     owners,
     ownershipSegments,
     cost: Math.round(ownerCost * 100) / 100,
+    currentMtmVersion: currentMtmVersion ?? null,
   };
 
   if (!result) {
@@ -748,6 +790,7 @@ router.get("/results", async (req, res): Promise<void> => {
         currentOwners,
         ownershipSegments,
         cost,
+         currentPipelineMtmByTeam?.currentMtmVersion,
       );
     });
 
@@ -946,6 +989,7 @@ router.get("/results/by-owner", async (req, res): Promise<void> => {
             ownershipSegments: (
               ownership.ownershipSegmentsByTeam.get(teamId) ?? []
             ).filter((segment) => segment.bidderId === bidderId),
+             currentMtmVersion: currentPipelineMtmByTeam?.currentMtmVersion,
           }),
         );
       }
@@ -956,6 +1000,7 @@ router.get("/results/by-owner", async (req, res): Promise<void> => {
     .filter((o) => Math.abs(o.teamCount) > 0.00005 || o.totalCost !== 0)
     .map((o) => ({
       ...o,
+      currentMtmVersion: currentPipelineMtmByTeam?.currentMtmVersion ?? null,
       teamCount: Math.round(o.teamCount * 100) / 100,
       totalCost: Math.round(o.totalCost * 100) / 100,
       totalRealizedReturn: Math.round(o.totalRealizedReturn * 100) / 100,

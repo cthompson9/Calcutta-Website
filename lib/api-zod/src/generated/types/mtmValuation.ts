@@ -8,14 +8,36 @@
 import type { MtmGameEvSwing } from './mtmGameEvSwing';
 import type { MtmValuationConditionalPayouts } from './mtmValuationConditionalPayouts';
 import type { MtmValuationDiagnostics } from './mtmValuationDiagnostics';
+import type { MtmValuationIncorporatedGamesItem } from './mtmValuationIncorporatedGamesItem';
 import type { MtmValuationInvariants } from './mtmValuationInvariants';
 import type { MtmValuationMark } from './mtmValuationMark';
+import type { MtmValuationMarkType } from './mtmValuationMarkType';
 import type { MtmValuationOwnersItem } from './mtmValuationOwnersItem';
+import type { MtmValuationPendingGamesItem } from './mtmValuationPendingGamesItem';
+import type { MtmValuationProvisionalOutcome } from './mtmValuationProvisionalOutcome';
 import type { MtmValuationTeamsItem } from './mtmValuationTeamsItem';
 
 export interface MtmValuation {
   available: boolean;
   mark: MtmValuationMark;
+  /** @nullable */
+  versionId?: number | null;
+  /** @nullable */
+  sourceSnapshotId?: number | null;
+  /** @nullable */
+  markType?: MtmValuationMarkType;
+  /** @nullable */
+  provisionalEventId?: number | null;
+  /** @nullable */
+  provisionalOutcome?: MtmValuationProvisionalOutcome;
+  /** @nullable */
+  actualsAsOf?: string | null;
+  /** @nullable */
+  mtmAsOf?: string | null;
+  incorporatedGames?: MtmValuationIncorporatedGamesItem[];
+  pendingGames?: MtmValuationPendingGamesItem[];
+  /** @nullable */
+  staleReason?: string | null;
   teams: MtmValuationTeamsItem[];
   owners: MtmValuationOwnersItem[];
   conditionalPayouts: MtmValuationConditionalPayouts;

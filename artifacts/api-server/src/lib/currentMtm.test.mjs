@@ -301,3 +301,33 @@ test("resolver reconciles signed owner totals to team MTM", () => {
   assert.equal(result.owners.find((owner) => owner.bidderId === 8).grossExpectedPayout, -50);
   assert.equal(result.owners.find((owner) => owner.bidderId === 8).net, -40);
 });
+
+test("resolver exposes promoted version identity and pending/provisional state", () => {
+  const result = buildCurrentMtmResolution({
+    version: {
+      id: 19,
+      sourceSnapshotId: 51,
+      status: "current",
+      markType: "pending_recalculation",
+      actualsStateHash: "hash",
+      actualsAsOf: "2026-01-05T00:00:00Z",
+      mtmAsOf: "2026-01-06T00:00:00Z",
+      provisionalEventId: null,
+      provisionalOutcome: null,
+      staleReason: "A finalized game is pending recalculation.",
+    },
+    games: [
+      { eventId: 7, week: 1, linkageStatus: "incorporated" },
+      { eventId: 8, week: 2, linkageStatus: "pending" },
+    ],
+  });
+  assert.equal(result.available, true);
+  assert.equal(result.versionId, 19);
+  assert.equal(result.sourceSnapshotId, 51);
+  assert.equal(result.markType, "pending_recalculation");
+  assert.equal(result.actualsAsOf, "2026-01-05T00:00:00.000Z");
+  assert.equal(result.mtmAsOf, "2026-01-06T00:00:00.000Z");
+  assert.deepEqual(result.incorporatedGames.map((game) => game.eventId), [7]);
+  assert.deepEqual(result.pendingGames.map((game) => game.eventId), [8]);
+  assert.equal(result.staleReason, "A finalized game is pending recalculation.");
+});

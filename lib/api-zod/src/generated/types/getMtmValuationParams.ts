@@ -10,6 +10,9 @@ import type { GetMtmValuationMarkType } from './getMtmValuationMarkType';
 export type GetMtmValuationParams = {
 season: number;
 calcuttaId?: number;
+/**
+ * Compatibility selector; provisional reads return the already-promoted coherent current version and never recompute from live events.
+ */
 markType?: GetMtmValuationMarkType;
 owner?: string;
 };

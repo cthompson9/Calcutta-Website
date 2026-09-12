@@ -6,13 +6,13 @@
  * OpenAPI spec version: 0.1.0
  */
 
-export type MtmValuationMarkType = typeof MtmValuationMarkType[keyof typeof MtmValuationMarkType];
+/**
+ * @nullable
+ */
+export type CurrentMtmVersionMarkType = typeof CurrentMtmVersionMarkType[keyof typeof CurrentMtmVersionMarkType] | null;
 
 
-export const MtmValuationMarkType = {
-  authoritative: 'authoritative',
-  latest: 'latest',
-  canonical: 'canonical',
+export const CurrentMtmVersionMarkType = {
   official: 'official',
   provisional: 'provisional',
   pending_recalculation: 'pending_recalculation',

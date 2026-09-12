@@ -6,19 +6,43 @@
  * OpenAPI spec version: 0.1.0
  */
 import type { MtmValuationMarkModel } from './mtmValuationMarkModel';
+import type { MtmValuationMarkProvisionalOutcome } from './mtmValuationMarkProvisionalOutcome';
 import type { MtmValuationMarkQuality } from './mtmValuationMarkQuality';
+import type { MtmValuationMarkStatus } from './mtmValuationMarkStatus';
 import type { MtmValuationMarkType } from './mtmValuationMarkType';
 
 export type MtmValuationMark = {
   /** @nullable */
   snapshotId?: number | null;
   type: MtmValuationMarkType;
+  /**
+     * Durable coherent current-version identity.
+     * @nullable
+     */
+  versionId?: number | null;
+  /**
+     * Immutable source snapshot used by the version.
+     * @nullable
+     */
+  sourceSnapshotId?: number | null;
+  /** @nullable */
+  status?: MtmValuationMarkStatus;
   approximate: boolean;
   quality: MtmValuationMarkQuality;
   stale: boolean;
   staleReasons: string[];
   /** @nullable */
   asOf?: string | null;
+  /** @nullable */
+  actualsAsOf?: string | null;
+  /** @nullable */
+  mtmAsOf?: string | null;
+  /** @nullable */
+  actualsStateHash?: string | null;
+  /** @nullable */
+  provisionalEventId?: number | null;
+  /** @nullable */
+  provisionalOutcome?: MtmValuationMarkProvisionalOutcome;
   /** @nullable */
   inputHash?: string | null;
   /** @nullable */

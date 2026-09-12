@@ -452,29 +452,40 @@ function buildMcpServer(isAdmin: boolean) {
     async ({ team, season, calcuttaId }) => {
       const matchedTeam = await findTeam(team);
       if (!matchedTeam) return text(JSON.stringify({ available: false, reason: `Team not found: ${team}` }));
-      const status = await getMtmPipelineStatus(season, calcuttaId);
       const normalized = await getNormalizedMtmValuation({ season, calcuttaId });
+      const normalizedMark = normalized.mark as any;
       const normalizedTeam = normalized.teams.find((row: any) => row.teamId === matchedTeam.id);
       if (normalizedTeam) {
-        const pipelineValuation = status?.valuations.find((row) => row.teamId === matchedTeam.id) as Record<string, any> | undefined;
-        const selectedSnapshotId = normalized.mark.snapshotId ?? status?.currentSnapshotId ?? null;
-        const snapshotState = selectedSnapshotId == null ? null : (await db.select({
+        const selectedSnapshotId = normalized.mark.sourceSnapshotId ?? null;
+        const [sourceSnapshot] = selectedSnapshotId == null ? [] : await db.select({
+          methodVersion: mtmSnapshotTable.methodVersion,
           stateJson: mtmSnapshotTable.stateJson,
-        }).from(mtmSnapshotTable).where(eq(mtmSnapshotTable.id, selectedSnapshotId)).limit(1))[0]?.stateJson;
+        }).from(mtmSnapshotTable).where(eq(mtmSnapshotTable.id, selectedSnapshotId)).limit(1);
+        const snapshotState = sourceSnapshot?.stateJson;
         const teamCode = (Array.isArray(snapshotState?.entries) ? snapshotState.entries : [])
-          .find((entry: any) => String(entry?.entry_id) === String(pipelineValuation?.entryId))?.team;
-        const projection = teamCode && status ? status.projections[String(teamCode)] : null;
-        const selectedPoint = pipelineValuation?.history?.find((point: any) =>
-          point.snapshotId === selectedSnapshotId
-        ) ?? pipelineValuation?.history?.at(-1);
+          .find((entry: any) => String(entry?.entry_id) === String(normalizedTeam.entryId))?.team;
+        const [projection] = teamCode && selectedSnapshotId != null
+          ? await db.select().from(mtmTeamProjectionTable).where(and(
+            eq(mtmTeamProjectionTable.snapshotId, selectedSnapshotId),
+            eq(mtmTeamProjectionTable.team, String(teamCode)),
+          )).limit(1)
+          : [];
+        const remainingWeeks = Array.isArray(snapshotState?.remaining_schedule)
+          ? snapshotState.remaining_schedule
+            .map((game: any) => Number(game?.week))
+            .filter((week: number) => Number.isInteger(week) && week > 0)
+          : [];
+        const week = Array.isArray(snapshotState?.remaining_schedule)
+          ? `Week ${remainingWeeks.length === 0 ? 18 : Math.max(0, Math.min(...remainingWeeks) - 1)}`
+          : null;
         return text(JSON.stringify({
           available: true, basis: "mtm", default_measure: "net_mtm", team: matchedTeam.name,
           gross_mtm: normalizedTeam.grossExpectedPayout, cost_basis: normalizedTeam.auctionPrice,
           net_mtm: normalizedTeam.net, source: "normalized_mtm_valuation",
-          snapshot_id: normalized.mark.snapshotId ?? null,
-          method_version: normalized.mark.model?.name ?? null,
-          as_of: normalized.mark.asOf ?? null,
-          week: selectedPoint?.label ?? null,
+           snapshot_id: normalized.mark.sourceSnapshotId ?? null,
+            method_version: normalizedMark.model?.name ?? sourceSnapshot?.methodVersion ?? null,
+           as_of: normalizedMark.asOf ?? null,
+          week,
           mark: normalized.mark, diagnostics: normalized.diagnostics,
           conditional_payouts: Object.values(normalized.conditionalPayouts).filter((row: any) =>
             row.home === matchedTeam.id || row.away === matchedTeam.id),
@@ -486,57 +497,16 @@ function buildMcpServer(isAdmin: boolean) {
             super_bowl_berth: projection.pSbBerth == null ? null : Number(projection.pSbBerth),
             super_bowl_win: projection.pSbWin == null ? null : Number(projection.pSbWin),
           } : null,
-          stale: normalized.mark.stale, stale_reasons: status?.staleReasons ?? [],
+           stale: normalized.mark.stale, stale_reasons: normalized.mark.staleReasons ?? [],
         }, null, 2));
       }
-      const valuation = status?.valuations.find((row) => row.teamId === matchedTeam.id) as Record<string, any> | undefined;
-      const current = valuation?.history?.at(-1);
-      if (!status || !valuation || !current || current.netPayout == null || current.auctionPrice == null) {
-        return text(JSON.stringify({
-          available: false,
-          basis: "mtm",
-          default_measure: "net_mtm",
-          team: matchedTeam.name,
-          reason: status?.staleReasons?.[0] ?? "No complete Live Tracker pipeline mark is available.",
-        }, null, 2));
-      }
-      const snapshotId = status.currentSnapshotId!;
-      const [snapshot] = snapshotId
-        ? await db.select({
-            methodVersion: mtmSnapshotTable.methodVersion,
-          }).from(mtmSnapshotTable).where(eq(mtmSnapshotTable.id, snapshotId)).limit(1)
-        : [];
-      const netMtm = Number(current.netPayout);
-      const costBasis = Number(current.auctionPrice);
-      const snapshotState = (await db.select({
-        stateJson: mtmSnapshotTable.stateJson,
-      }).from(mtmSnapshotTable).where(eq(mtmSnapshotTable.id, snapshotId)).limit(1))[0]?.stateJson;
-      const teamCode = (Array.isArray(snapshotState?.entries) ? snapshotState.entries : [])
-        .find((entry: any) => String(entry?.entry_id) === String(valuation.entryId))?.team;
-      const projection = teamCode ? status.projections[String(teamCode)] : null;
       return text(JSON.stringify({
-        available: true,
+        available: false,
         basis: "mtm",
         default_measure: "net_mtm",
         team: matchedTeam.name,
-        gross_mtm: netMtm + costBasis,
-        cost_basis: costBasis,
-        net_mtm: netMtm,
-        week: current.label,
-        as_of: current.asOf,
-        snapshot_id: snapshotId,
-        method_version: snapshot?.methodVersion ?? null,
-        source: "live_mtm_pipeline",
-        projection_available: Boolean(projection),
-        playoff_odds: projection ? {
-          playoff_berth: projection.pBerth == null ? null : Number(projection.pBerth),
-          divisional_round: projection.pDivisional == null ? null : Number(projection.pDivisional),
-          conference_championship: projection.pConf == null ? null : Number(projection.pConf),
-          super_bowl_berth: projection.pSbBerth == null ? null : Number(projection.pSbBerth),
-          super_bowl_win: projection.pSbWin == null ? null : Number(projection.pSbWin),
-        } : null,
-        stale: status.stale,
-        stale_reasons: status.staleReasons,
+        reason: normalized.mark.staleReasons?.[0] ?? "No current coherent MTM version is available.",
+        mark: normalized.mark,
       }, null, 2));
     },
   );
@@ -544,80 +514,68 @@ function buildMcpServer(isAdmin: boolean) {
   const loadCurrentOwnerValuation = async (owner: string, season: number, calcuttaId?: number) => {
     const bidder = await findBidder(owner);
     if (!bidder) return { available: false, reason: `Owner not found: ${owner}` };
-    const seasonId = await resolveSeasonId(season);
-    const status = await getMtmPipelineStatus(season, calcuttaId);
-    if (!seasonId || !status?.currentSnapshotId) {
+    const normalized = await getNormalizedMtmValuation({ season, calcuttaId });
+    if (!normalized.available) {
       return {
         available: false,
         basis: "mtm",
         default_measure: "net_mtm",
         owner: bidder.name,
-        reason: status?.staleReasons?.[0] ?? "No complete Live Tracker pipeline mark is available.",
+        reason: normalized.mark.staleReasons?.[0] ?? "No current coherent MTM version is available.",
+        mark: normalized.mark,
       };
     }
-    const ownership = await loadSeasonOwnership(seasonId, status.poolId);
-    const positions = ownership.byBidder.get(bidder.id);
-    const normalized = await getNormalizedMtmValuation({ season, calcuttaId, owner: bidder.name });
     const normalizedOwners = normalized.owners as Array<{
       bidderId: number; grossExpectedPayout: number; signedCostBasis: number; net: number;
+      holdings: Array<{
+        teamId: number; signedShare: number; grossExpectedPayout: number;
+        signedCostBasis: number; net: number;
+      }>;
     }>;
     const normalizedTeams = normalized.teams as Array<{
-      teamId: number | null; grossExpectedPayout: number;
+      entryId: number; teamId: number | null; teamName?: string | null; grossExpectedPayout: number;
     }>;
     const normalizedOwner = normalizedOwners.find((row) => row.bidderId === bidder.id);
     const normalizedTeamById = new Map(normalizedTeams.map((row) => [row.teamId, row]));
+    const sourceSnapshotId = normalized.mark.sourceSnapshotId;
+    if (sourceSnapshotId == null) {
+      return {
+        available: false,
+        basis: "mtm",
+        default_measure: "net_mtm",
+        owner: bidder.name,
+        reason: "Current MTM source snapshot is unavailable.",
+        mark: normalized.mark,
+      };
+    }
     const [snapshot] = await db.select({
       methodVersion: mtmSnapshotTable.methodVersion,
       stateJson: mtmSnapshotTable.stateJson,
-    }).from(mtmSnapshotTable).where(eq(mtmSnapshotTable.id, status.currentSnapshotId)).limit(1);
+    }).from(mtmSnapshotTable).where(eq(mtmSnapshotTable.id, sourceSnapshotId)).limit(1);
     const teamCodeByEntryId = new Map(
       (Array.isArray(snapshot?.stateJson?.entries) ? snapshot.stateJson.entries : [])
         .map((entry: any) => [String(entry?.entry_id), String(entry?.team)]),
     );
-    let grossMtm = 0;
-    let signedCostBasis = 0;
-    let complete = true;
-    const holdings = [...(positions?.entries() ?? [])].map(([teamId, position]) => {
-      const valuation = status.valuations.find((row) => row.teamId === teamId) as Record<string, any> | undefined;
-      const point = valuation?.history?.at(-1);
-      const previousPoint = valuation?.history?.at(-2);
+    const sourceProjections = await db.select().from(mtmTeamProjectionTable)
+      .where(eq(mtmTeamProjectionTable.snapshotId, sourceSnapshotId));
+    const projectionsByTeam = new Map(sourceProjections.map((projection) => [projection.team, projection]));
+    const holdings = (normalizedOwner?.holdings ?? []).map((holding) => {
+      const teamId = holding.teamId;
       const normalizedTeam = normalizedTeamById.get(teamId);
-      const teamGross = normalizedTeam?.grossExpectedPayout
-        ?? (point?.netPayout == null || point?.auctionPrice == null
-          ? null
-          : Number(point.netPayout) + Number(point.auctionPrice));
-      const previousTeamGross = previousPoint?.netPayout == null || previousPoint?.auctionPrice == null
-        ? null
-        : Number(previousPoint.netPayout) + Number(previousPoint.auctionPrice);
-      const cost = position.originalCostBasis + position.tradePaid - position.tradeReceived;
-      const teamCode = valuation ? teamCodeByEntryId.get(String(valuation.entryId)) ?? null : null;
-      const projection = teamCode ? status.projections[teamCode] : null;
-      signedCostBasis += cost;
-      if (teamGross == null) complete = false;
-      else grossMtm += teamGross * position.effectiveShare;
+      const teamCode = normalizedTeam ? teamCodeByEntryId.get(String((normalizedTeam as any).entryId)) ?? null : null;
+      const projection = teamCode ? projectionsByTeam.get(teamCode) : null;
       return {
-        team: valuation?.teamName ?? `Team ${teamId}`,
+        team: normalizedTeam?.teamName ?? `Team ${teamId}`,
         team_code: teamCode,
-        signed_share: position.effectiveShare,
-        gross_mtm_share: teamGross == null ? null : teamGross * position.effectiveShare,
-        signed_cost_basis: cost,
-        net_mtm: teamGross == null ? null : teamGross * position.effectiveShare - cost,
-        previous_comparable_refresh: previousPoint ? {
-          snapshot_id: previousPoint.snapshotId,
-          week: previousPoint.label,
-          as_of: previousPoint.asOf,
-        } : null,
+        signed_share: holding.signedShare,
+        gross_mtm_share: holding.grossExpectedPayout,
+        signed_cost_basis: holding.signedCostBasis,
+        net_mtm: holding.net,
+         previous_comparable_refresh: null,
         net_mtm_change_percentage: (() => {
-          if (teamGross == null || previousTeamGross == null) return null;
-          const currentNet = teamGross * position.effectiveShare - cost;
-          const previousNet = previousTeamGross * position.effectiveShare - cost;
-          return previousNet === 0
-            ? (currentNet === 0 ? 0 : null)
-            : ((currentNet - previousNet) / Math.abs(previousNet)) * 100;
+           return null;
         })(),
-        signed_gross_mtm_change: teamGross == null || previousTeamGross == null
-          ? null
-          : (teamGross - previousTeamGross) * position.effectiveShare,
+         signed_gross_mtm_change: null,
         projection_available: Boolean(projection),
         playoff_odds: projection ? {
           playoff_berth: projection.pBerth == null ? null : Number(projection.pBerth),
@@ -628,25 +586,32 @@ function buildMcpServer(isAdmin: boolean) {
         } : null,
       };
     });
-    const latestPoint = (status.valuations[0] as Record<string, any> | undefined)?.history?.at(-1);
+    const remainingWeeks = Array.isArray(snapshot?.stateJson?.remaining_schedule)
+      ? snapshot.stateJson.remaining_schedule
+        .map((game: any) => Number(game?.week))
+        .filter((week: number) => Number.isInteger(week) && week > 0)
+      : [];
+    const week = Array.isArray(snapshot?.stateJson?.remaining_schedule)
+      ? `Week ${remainingWeeks.length === 0 ? 18 : Math.max(0, Math.min(...remainingWeeks) - 1)}`
+      : null;
     return {
-      available: normalizedOwner != null && complete,
+      available: normalizedOwner != null,
       basis: "mtm",
       default_measure: "net_mtm",
       owner: bidder.name,
-      gross_mtm: normalizedOwner?.grossExpectedPayout ?? (complete ? grossMtm : null),
-      signed_cost_basis: normalizedOwner?.signedCostBasis ?? signedCostBasis,
-      net_mtm: normalizedOwner?.net ?? (complete ? grossMtm - signedCostBasis : null),
+      gross_mtm: normalizedOwner?.grossExpectedPayout ?? null,
+      signed_cost_basis: normalizedOwner?.signedCostBasis ?? null,
+      net_mtm: normalizedOwner?.net ?? null,
       holdings,
-      week: latestPoint?.label ?? null,
-      as_of: normalized.mark.asOf ?? status.currentAsOf,
-      snapshot_id: normalized.mark.snapshotId ?? status.currentSnapshotId,
-      method_version: normalized.mark.model?.name ?? snapshot?.methodVersion ?? null,
-      source: normalizedOwner ? "normalized_mtm_valuation" : "live_mtm_pipeline",
+      week,
+      as_of: (normalized.mark as any).mtmAsOf ?? (normalized.mark as any).asOf ?? null,
+      snapshot_id: normalized.mark.sourceSnapshotId ?? null,
+      method_version: (normalized.mark as any).model?.name ?? snapshot?.methodVersion ?? null,
+      source: "normalized_mtm_valuation",
       mark: normalized.mark,
       diagnostics: normalized.diagnostics,
       stale: normalized.mark.stale,
-      stale_reasons: status.staleReasons,
+      stale_reasons: normalized.mark.staleReasons ?? [],
     };
   };
 

@@ -5,6 +5,7 @@
  * NFL Auction Manager API
  * OpenAPI spec version: 0.1.0
  */
+import type { CurrentMtmVersion } from './currentMtmVersion';
 import type { OwnershipSegment } from './ownershipSegment';
 import type { ResultTeamOwner } from './resultTeamOwner';
 import type { TeamResultRowMarketStatus } from './teamResultRowMarketStatus';
@@ -54,6 +55,7 @@ export interface TeamResultRow {
   marketStatus: TeamResultRowMarketStatus;
   /** Human-readable warnings explaining stale MTM inputs. */
   marketStatusReasons: string[];
+  currentMtmVersion: CurrentMtmVersion | null;
   /**
      * Playoff seed within conference (1–7). Null if team missed playoffs or seed not yet set.
      * @nullable

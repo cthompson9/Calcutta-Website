@@ -513,6 +513,19 @@ export const GetResultsResponseItem = zod.object({
   "ptsToBreakeven": zod.number().nullable().describe('Remaining realized points needed to reach 1.0x cost, rounded to whole points.'),
   "marketStatus": zod.union([zod.literal('live'),zod.literal('stale'),zod.literal(null)]).nullable().describe('Quality of the authoritative Kalshi MTM inputs; null when MTM coverage is unavailable.'),
   "marketStatusReasons": zod.array(zod.string()).describe('Human-readable warnings explaining stale MTM inputs.'),
+  "currentMtmVersion": zod.object({
+  "versionId": zod.number().nullable(),
+  "sourceSnapshotId": zod.number().nullable(),
+  "markType": zod.union([zod.literal('official'),zod.literal('provisional'),zod.literal('pending_recalculation'),zod.literal(null)]).nullable(),
+  "status": zod.string().nullable(),
+  "provisionalEventId": zod.number().nullable(),
+  "provisionalOutcome": zod.union([zod.literal('home_win'),zod.literal('away_win'),zod.literal('tie'),zod.literal(null)]).nullable(),
+  "pendingGames": zod.array(zod.record(zod.string(), zod.unknown())),
+  "incorporatedGames": zod.array(zod.record(zod.string(), zod.unknown())),
+  "actualsAsOf": zod.coerce.date().nullable(),
+  "mtmAsOf": zod.coerce.date().nullable(),
+  "staleReason": zod.string().nullable()
+}).nullable().describe('Coherent promoted current-MTM version used for every numeric MTM field in this row.'),
   "seed": zod.number().nullish().describe('Playoff seed within conference (1–7). Null if team missed playoffs or seed not yet set.')
 })
 export const GetResultsResponse = zod.array(GetResultsResponseItem)
@@ -692,6 +705,19 @@ export const GetResultsByOwnerResponseItem = zod.object({
   "totalNetMtm": zod.number().describe('Total MTM gross return minus signed cost basis.'),
   "marketStatus": zod.union([zod.literal('live'),zod.literal('stale'),zod.literal(null)]).nullable().describe('Worst authoritative MTM quality among this owner\'s teams.'),
   "marketStatusReasons": zod.array(zod.string()),
+  "currentMtmVersion": zod.object({
+  "versionId": zod.number().nullable(),
+  "sourceSnapshotId": zod.number().nullable(),
+  "markType": zod.union([zod.literal('official'),zod.literal('provisional'),zod.literal('pending_recalculation'),zod.literal(null)]).nullable(),
+  "status": zod.string().nullable(),
+  "provisionalEventId": zod.number().nullable(),
+  "provisionalOutcome": zod.union([zod.literal('home_win'),zod.literal('away_win'),zod.literal('tie'),zod.literal(null)]).nullable(),
+  "pendingGames": zod.array(zod.record(zod.string(), zod.unknown())),
+  "incorporatedGames": zod.array(zod.record(zod.string(), zod.unknown())),
+  "actualsAsOf": zod.coerce.date().nullable(),
+  "mtmAsOf": zod.coerce.date().nullable(),
+  "staleReason": zod.string().nullable()
+}).nullable().describe('Coherent promoted current-MTM version used for every numeric MTM field in this row.'),
   "teams": zod.array(zod.object({
   "teamId": zod.number(),
   "teamName": zod.string(),
@@ -740,6 +766,19 @@ export const GetResultsByOwnerResponseItem = zod.object({
   "ptsToBreakeven": zod.number().nullable().describe('Remaining realized points needed to reach 1.0x cost, rounded to whole points.'),
   "marketStatus": zod.union([zod.literal('live'),zod.literal('stale'),zod.literal(null)]).nullable().describe('Quality of the authoritative Kalshi MTM inputs; null when MTM coverage is unavailable.'),
   "marketStatusReasons": zod.array(zod.string()).describe('Human-readable warnings explaining stale MTM inputs.'),
+  "currentMtmVersion": zod.object({
+  "versionId": zod.number().nullable(),
+  "sourceSnapshotId": zod.number().nullable(),
+  "markType": zod.union([zod.literal('official'),zod.literal('provisional'),zod.literal('pending_recalculation'),zod.literal(null)]).nullable(),
+  "status": zod.string().nullable(),
+  "provisionalEventId": zod.number().nullable(),
+  "provisionalOutcome": zod.union([zod.literal('home_win'),zod.literal('away_win'),zod.literal('tie'),zod.literal(null)]).nullable(),
+  "pendingGames": zod.array(zod.record(zod.string(), zod.unknown())),
+  "incorporatedGames": zod.array(zod.record(zod.string(), zod.unknown())),
+  "actualsAsOf": zod.coerce.date().nullable(),
+  "mtmAsOf": zod.coerce.date().nullable(),
+  "staleReason": zod.string().nullable()
+}).nullable().describe('Coherent promoted current-MTM version used for every numeric MTM field in this row.'),
   "seed": zod.number().nullish().describe('Playoff seed within conference (1–7). Null if team missed playoffs or seed not yet set.')
 }))
 })
@@ -809,12 +848,12 @@ export const ApplyNflStandingsImportResponse = zod.object({
   "importedTeams": zod.number(),
   "replay": zod.boolean(),
   "mtmReconciliation": zod.array(zod.object({
-    "poolId": zod.number(),
-    "status": zod.enum(["promoted", "unchanged", "skipped", "warning"]),
-    "markType": zod.enum(["official", "provisional", "pending_recalculation"]).optional(),
-    "versionId": zod.number().optional(),
-    "warning": zod.string().optional(),
-  })).optional()
+  "poolId": zod.number().optional(),
+  "status": zod.enum(['promoted', 'unchanged', 'skipped', 'warning']).optional(),
+  "markType": zod.enum(['official', 'provisional', 'pending_recalculation']).optional(),
+  "versionId": zod.number().optional(),
+  "warning": zod.string().optional()
+})).optional()
 })
 
 
@@ -1007,6 +1046,19 @@ export const UpsertTeamResultResponse = zod.object({
   "ptsToBreakeven": zod.number().nullable().describe('Remaining realized points needed to reach 1.0x cost, rounded to whole points.'),
   "marketStatus": zod.union([zod.literal('live'),zod.literal('stale'),zod.literal(null)]).nullable().describe('Quality of the authoritative Kalshi MTM inputs; null when MTM coverage is unavailable.'),
   "marketStatusReasons": zod.array(zod.string()).describe('Human-readable warnings explaining stale MTM inputs.'),
+  "currentMtmVersion": zod.object({
+  "versionId": zod.number().nullable(),
+  "sourceSnapshotId": zod.number().nullable(),
+  "markType": zod.union([zod.literal('official'),zod.literal('provisional'),zod.literal('pending_recalculation'),zod.literal(null)]).nullable(),
+  "status": zod.string().nullable(),
+  "provisionalEventId": zod.number().nullable(),
+  "provisionalOutcome": zod.union([zod.literal('home_win'),zod.literal('away_win'),zod.literal('tie'),zod.literal(null)]).nullable(),
+  "pendingGames": zod.array(zod.record(zod.string(), zod.unknown())),
+  "incorporatedGames": zod.array(zod.record(zod.string(), zod.unknown())),
+  "actualsAsOf": zod.coerce.date().nullable(),
+  "mtmAsOf": zod.coerce.date().nullable(),
+  "staleReason": zod.string().nullable()
+}).nullable().describe('Coherent promoted current-MTM version used for every numeric MTM field in this row.'),
   "seed": zod.number().nullish().describe('Playoff seed within conference (1–7). Null if team missed playoffs or seed not yet set.')
 })
 
@@ -1500,7 +1552,7 @@ export const getMtmValuationQueryMarkTypeDefault = `authoritative`;
 export const GetMtmValuationQueryParams = zod.object({
   "season": zod.coerce.number(),
   "calcuttaId": zod.coerce.number().optional(),
-  "markType": zod.enum(['authoritative', 'latest', 'canonical', 'provisional']).default(getMtmValuationQueryMarkTypeDefault),
+  "markType": zod.enum(['authoritative', 'latest', 'canonical', 'provisional']).default(getMtmValuationQueryMarkTypeDefault).describe('Compatibility selector; provisional reads return the already-promoted coherent current version and never recompute from live events.'),
   "owner": zod.coerce.string().optional()
 })
 
@@ -1508,12 +1560,20 @@ export const GetMtmValuationResponse = zod.object({
   "available": zod.boolean(),
   "mark": zod.object({
   "snapshotId": zod.number().nullish(),
-  "type": zod.enum(['authoritative', 'latest', 'canonical', 'provisional']),
+  "type": zod.enum(['authoritative', 'latest', 'canonical', 'official', 'provisional', 'pending_recalculation']),
+  "versionId": zod.number().nullish().describe('Durable coherent current-version identity.'),
+  "sourceSnapshotId": zod.number().nullish().describe('Immutable source snapshot used by the version.'),
+  "status": zod.union([zod.literal('candidate'),zod.literal('current'),zod.literal('superseded'),zod.literal(null)]).nullish(),
   "approximate": zod.boolean(),
   "quality": zod.enum(['good', 'warning', 'insufficient']),
   "stale": zod.boolean(),
   "staleReasons": zod.array(zod.string()),
   "asOf": zod.string().nullish(),
+  "actualsAsOf": zod.string().nullish(),
+  "mtmAsOf": zod.string().nullish(),
+  "actualsStateHash": zod.string().nullish(),
+  "provisionalEventId": zod.number().nullish(),
+  "provisionalOutcome": zod.union([zod.literal('home_win'),zod.literal('away_win'),zod.literal('tie'),zod.literal(null)]).nullish(),
   "inputHash": zod.string().nullish(),
   "pathCount": zod.number().nullish(),
   "selectionReason": zod.string().nullish(),
@@ -1523,6 +1583,16 @@ export const GetMtmValuationResponse = zod.object({
   "seed": zod.number().nullish()
 }).optional()
 }),
+  "versionId": zod.number().nullish(),
+  "sourceSnapshotId": zod.number().nullish(),
+  "markType": zod.union([zod.literal('official'),zod.literal('provisional'),zod.literal('pending_recalculation'),zod.literal(null)]).nullish(),
+  "provisionalEventId": zod.number().nullish(),
+  "provisionalOutcome": zod.union([zod.literal('home_win'),zod.literal('away_win'),zod.literal('tie'),zod.literal(null)]).nullish(),
+  "actualsAsOf": zod.string().nullish(),
+  "mtmAsOf": zod.string().nullish(),
+  "incorporatedGames": zod.array(zod.record(zod.string(), zod.unknown())).optional(),
+  "pendingGames": zod.array(zod.record(zod.string(), zod.unknown())).optional(),
+  "staleReason": zod.string().nullish(),
   "teams": zod.array(zod.object({
   "entryId": zod.number(),
   "teamId": zod.number().nullish(),

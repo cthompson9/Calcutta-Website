@@ -21,6 +21,7 @@ let mtmSnapshotTable;
 let mtmEntryValuationTable;
 let mtmTeamProjectionTable;
 let mtmMarketQuoteTable;
+let validateAndPromoteCurrentMtm;
 
 if (canRun) {
   ({
@@ -36,9 +37,10 @@ if (canRun) {
     mtmSnapshotTable,
     mtmEntryValuationTable,
     mtmTeamProjectionTable,
-    mtmMarketQuoteTable,
+      mtmMarketQuoteTable,
   } = await import("@workspace/db"));
   ({ default: app } = await import("../app.ts"));
+  ({ validateAndPromoteCurrentMtm } = await import("../lib/currentMtm.ts"));
 }
 
 function startServer(expressApp) {
@@ -87,6 +89,7 @@ describe("MCP Live Tracker valuation contract", { skip: !canRun }, () => {
   let team;
   let livePool;
   let missingPool;
+  let liveEntry;
   let liveSnapshot;
   let sourceUrl;
   const methodVersion = "mcp-contract-test-v1";
@@ -95,7 +98,7 @@ describe("MCP Live Tracker valuation contract", { skip: !canRun }, () => {
   before(async () => {
     await runDatabaseMigrations();
     const fixtureId = `${Date.now()}-${Math.random().toString(36).slice(2)}`;
-    const baseYear = 7000 + (Date.now() % 1000);
+    const baseYear = 7000 + (Date.now() % 1000) + Math.floor(Math.random() * 900000);
     years = [baseYear, baseYear + 1];
     const seasons = await db.insert(seasonsTable).values(years.map((year) => ({
       year,
@@ -105,10 +108,9 @@ describe("MCP Live Tracker valuation contract", { skip: !canRun }, () => {
     }))).returning();
     seasonIds = seasons.map((season) => season.id);
 
-    [team] = await db.select({ id: teamsTable.id, name: teamsTable.name })
-      .from(teamsTable)
-      .where(ilike(teamsTable.name, "%Buffalo%"))
-      .limit(1);
+    const allTeams = await db.select({ id: teamsTable.id, name: teamsTable.name })
+      .from(teamsTable);
+    [team] = allTeams.filter((row) => /Buffalo/i.test(row.name));
     assert.ok(team, "the Buffalo NFL team must be seeded");
 
     [bidder] = await db.insert(biddersTable)
@@ -136,20 +138,25 @@ describe("MCP Live Tracker valuation contract", { skip: !canRun }, () => {
       { seasonId: seasonIds[0], teamId: team.id, bidAmount: "100.00" },
       { seasonId: seasonIds[1], teamId: team.id, bidAmount: "100.00" },
     ]);
-    const [liveEntry, missingEntry] = await db.insert(calcuttaEntriesTable).values([
-      {
+    const liveEntries = await db.insert(calcuttaEntriesTable).values(
+      allTeams.map((row) => ({
         calcuttaId: livePool.id,
-        teamId: team.id,
-        realizedReturn: "999.00",
-        markToMarket: "777.00",
-      },
-      {
+        teamId: row.id,
+        realizedReturn: row.id === team.id ? "999.00" : "0.00",
+        markToMarket: row.id === team.id ? "777.00" : "0.00",
+      })),
+    ).returning();
+    const missingEntries = await db.insert(calcuttaEntriesTable).values(
+      allTeams.map((row) => ({
         calcuttaId: missingPool.id,
-        teamId: team.id,
-        realizedReturn: "999.00",
-        markToMarket: "777.00",
-      },
-    ]).returning();
+        teamId: row.id,
+        realizedReturn: row.id === team.id ? "999.00" : "0.00",
+        markToMarket: row.id === team.id ? "777.00" : "0.00",
+      })),
+    ).returning();
+    liveEntry = liveEntries.find((row) => row.teamId === team.id);
+    const missingEntry = missingEntries.find((row) => row.teamId === team.id);
+    assert.ok(liveEntry && missingEntry);
     await db.insert(positionsTable).values([
       {
         entryId: liveEntry.id,
@@ -177,9 +184,13 @@ describe("MCP Live Tracker valuation contract", { skip: !canRun }, () => {
       methodVersion,
       diagnostics: { fixture: true },
       stateJson: {
-        pot: 100,
+         pot: 8000,
         rubric: { win: 10, super_bowl_win: 800 },
-        entries: [{ team: "BUF", price: 100, entry_id: String(liveEntry.id) }],
+         entries: allTeams.map((row) => ({
+           team: row.id === team.id ? "BUF" : `TEAM-${row.id}`,
+           price: 250,
+           entry_id: String(liveEntries.find((entry) => entry.teamId === row.id).id),
+         })),
         remaining_schedule: [{ week: 1 }],
       },
       inputProvenance: {
@@ -189,15 +200,17 @@ describe("MCP Live Tracker valuation contract", { skip: !canRun }, () => {
         standings: [],
       },
     }).returning();
-    await db.insert(mtmEntryValuationTable).values({
-      snapshotId: liveSnapshot.id,
-      entryId: liveEntry.id,
-      expectedPoints: "42.00",
-      expectedShare: "1.000000",
-      expectedPayout: "250.00",
-      auctionPrice: "100.00",
-      mtmMultiple: "2.500",
-    });
+    await db.insert(mtmEntryValuationTable).values(
+      liveEntries.map((entry) => ({
+        snapshotId: liveSnapshot.id,
+        entryId: entry.id,
+        expectedPoints: "42.00",
+        expectedShare: "1.000000",
+        expectedPayout: "250.00",
+        auctionPrice: entry.id === liveEntry.id ? "100.00" : "250.00",
+        mtmMultiple: "1.000",
+      })),
+    );
     await db.insert(mtmTeamProjectionTable).values({
       snapshotId: liveSnapshot.id,
       team: "BUF",
@@ -225,6 +238,11 @@ describe("MCP Live Tracker valuation contract", { skip: !canRun }, () => {
       fetchedAt: new Date("2099-08-01T14:59:00.000Z"),
       rawQuote: { must_not_leak: "secret fixture payload" },
     });
+    await validateAndPromoteCurrentMtm({
+      poolId: livePool.id,
+      sourceSnapshotId: liveSnapshot.id,
+      markType: "official",
+    });
 
     ({ server, baseUrl } = await startServer(app));
   });
@@ -234,9 +252,9 @@ describe("MCP Live Tracker valuation contract", { skip: !canRun }, () => {
       await new Promise((resolve, reject) =>
         server.close((error) => error ? reject(error) : resolve()));
     }
-    if (seasonIds?.length) {
-      await db.delete(seasonsTable).where(inArray(seasonsTable.id, seasonIds));
-    }
+    // Current-version publication rows and their source snapshots are
+    // append-only. Keep this disposable fixture isolated rather than
+    // attempting a cascading delete that the publication guard rejects.
     if (bidder) await db.delete(biddersTable).where(eq(biddersTable.id, bidder.id));
   });
 
@@ -299,11 +317,17 @@ describe("MCP Live Tracker valuation contract", { skip: !canRun }, () => {
     assert.equal(teamValuation.net_mtm, 150);
     assert.equal(teamValuation.snapshot_id, liveSnapshot.id);
     assert.equal(teamValuation.method_version, methodVersion);
+    assert.equal(teamValuation.mark.versionId > 0, true);
+    assert.equal(teamValuation.mark.sourceSnapshotId, liveSnapshot.id);
+    assert.equal(teamValuation.mark.type, "official");
+    assert.equal(teamValuation.mark.status, "current");
     assert.equal(teamValuation.week, "Week 0");
     assert.equal(ownerValuation.available, true);
     assert.equal(ownerValuation.gross_mtm, 250);
     assert.equal(ownerValuation.signed_cost_basis, 100);
     assert.equal(ownerValuation.net_mtm, 150);
+    assert.equal(ownerValuation.mark.sourceSnapshotId, liveSnapshot.id);
+    assert.equal(ownerValuation.mark.type, "official");
     assert.equal(ownerValuation.holdings[0].team_code, "BUF");
     assert.equal(ownerValuation.holdings[0].projection_available, true);
     assert.equal(ownerValuation.holdings[0].playoff_odds.playoff_berth, 0.72);
@@ -313,6 +337,128 @@ describe("MCP Live Tracker valuation contract", { skip: !canRun }, () => {
     assert.equal(legacyOwner, ownerValuation.net_mtm);
     assert.notEqual(teamValuation.net_mtm, 999, "realized return must not be substituted");
     assert.notEqual(teamValuation.net_mtm, 777, "legacy manual MTM must not be substituted");
+  });
+
+  test("all current-value consumers stay on the promoted source after newer raw attempts", async () => {
+    const [failedSource] = await db.insert(mtmSnapshotTable).values({
+      poolId: livePool.id,
+      asOf: new Date("2099-08-02T15:00:00.000Z"),
+      asOfHour: new Date("2099-08-02T15:00:00.000Z"),
+      trigger: "scheduled",
+      status: "failed",
+      methodVersion: "newer-failed-fixture",
+      error: "fixture failure",
+    }).returning();
+    const [incompleteSource] = await db.insert(mtmSnapshotTable).values({
+      poolId: livePool.id,
+      asOf: new Date("2099-08-03T15:00:00.000Z"),
+      asOfHour: new Date("2099-08-03T15:00:00.000Z"),
+      trigger: "scheduled",
+      status: "ok",
+      methodVersion: "newer-incomplete-fixture",
+      stateJson: { entries: [{ team: "BUF", entry_id: String(liveEntry.id) }] },
+    }).returning();
+    await db.insert(mtmEntryValuationTable).values({
+      snapshotId: incompleteSource.id,
+      entryId: liveEntry.id,
+      expectedPoints: "9999.00",
+      expectedPayout: "9999.00",
+      auctionPrice: "1.00",
+      mtmMultiple: "9999.000",
+    });
+    await db.insert(mtmTeamProjectionTable).values({
+      snapshotId: incompleteSource.id,
+      team: "BUF",
+      eWinsTotal: "0.00",
+      eRemainingWins: "0.00",
+      pBerth: "0.0100",
+      pDivisional: "0.0200",
+      pConf: "0.0300",
+      pSbBerth: "0.0400",
+      pSbWin: "0.0500",
+    });
+    assert.ok(failedSource.id < incompleteSource.id);
+
+    const valuationResponse = await fetch(
+      `${baseUrl}/api/mtm/valuation?season=${years[0]}&calcuttaId=${livePool.id}`,
+    );
+    assert.equal(valuationResponse.status, 200);
+    const valuation = await valuationResponse.json();
+    assert.equal(valuation.versionId > 0, true);
+    assert.equal(valuation.sourceSnapshotId, liveSnapshot.id);
+    assert.equal(valuation.mark.sourceSnapshotId, liveSnapshot.id);
+    assert.equal(valuation.mark.type, "official");
+    assert.equal(valuation.mark.model.name, methodVersion);
+    const valuationTeam = valuation.teams.find((row) => row.teamId === team.id);
+    const valuationOwner = valuation.owners.find((row) => row.bidderId === bidder.id);
+    assert.equal(valuationTeam.grossExpectedPayout, 250);
+    assert.equal(valuationTeam.net, 150);
+    assert.equal(valuationOwner.grossExpectedPayout, 250);
+    assert.equal(valuationOwner.net, 150);
+
+    const [teamValuation, ownerValuation, resultTeams, resultOwners] = await Promise.all([
+      mcpCall(baseUrl, 41, "get_current_team_valuation", {
+        team: team.name, season: years[0], calcuttaId: livePool.id,
+      }).then(JSON.parse),
+      mcpCall(baseUrl, 42, "get_current_owner_valuation", {
+        owner: bidder.name, season: years[0], calcuttaId: livePool.id,
+      }).then(JSON.parse),
+      fetch(`${baseUrl}/api/results?season=${years[0]}&calcuttaId=${livePool.id}&basis=mtm`)
+        .then((response) => response.json()),
+      fetch(`${baseUrl}/api/results/by-owner?season=${years[0]}&calcuttaId=${livePool.id}&basis=mtm`)
+        .then((response) => response.json()),
+    ]);
+    assert.equal(teamValuation.snapshot_id, liveSnapshot.id);
+    assert.equal(teamValuation.mark.sourceSnapshotId, liveSnapshot.id);
+    assert.equal(teamValuation.method_version, methodVersion);
+    assert.equal(teamValuation.gross_mtm, 250);
+    assert.equal(teamValuation.net_mtm, 150);
+    assert.equal(teamValuation.playoff_odds.playoff_berth, 0.72);
+    assert.equal(teamValuation.playoff_odds.super_bowl_win, 0.0625);
+    assert.equal(ownerValuation.snapshot_id, liveSnapshot.id);
+    assert.equal(ownerValuation.mark.sourceSnapshotId, liveSnapshot.id);
+    assert.equal(ownerValuation.method_version, methodVersion);
+    assert.equal(ownerValuation.gross_mtm, 250);
+    assert.equal(ownerValuation.signed_cost_basis, 100);
+    assert.equal(ownerValuation.net_mtm, 150);
+    assert.equal(ownerValuation.holdings[0].gross_mtm_share, 250);
+    assert.equal(ownerValuation.holdings[0].net_mtm, 150);
+    assert.equal(ownerValuation.holdings[0].playoff_odds.playoff_berth, 0.72);
+    assert.equal(ownerValuation.holdings[0].playoff_odds.super_bowl_win, 0.0625);
+    assert.notEqual(teamValuation.snapshot_id, failedSource.id);
+    assert.notEqual(teamValuation.snapshot_id, incompleteSource.id);
+    assert.notEqual(ownerValuation.snapshot_id, failedSource.id);
+    assert.notEqual(ownerValuation.snapshot_id, incompleteSource.id);
+    assert.notEqual(teamValuation.method_version, "newer-failed-fixture");
+    assert.notEqual(teamValuation.method_version, "newer-incomplete-fixture");
+    assert.notEqual(ownerValuation.method_version, "newer-failed-fixture");
+    assert.notEqual(ownerValuation.method_version, "newer-incomplete-fixture");
+    assert.notEqual(teamValuation.gross_mtm, 9999);
+    assert.notEqual(ownerValuation.gross_mtm, 9999);
+    assert.notEqual(teamValuation.playoff_odds.playoff_berth, 0.01);
+    assert.notEqual(ownerValuation.holdings[0].playoff_odds.playoff_berth, 0.01);
+    const resultTeam = resultTeams.find((row) => row.teamName === team.name);
+    const resultOwner = resultOwners.find((row) => row.bidderName === bidder.name);
+    assert.equal(resultTeam.markToMarket, 250);
+    assert.equal(resultTeam.netMtm, 150);
+    assert.equal(resultTeam.currentMtmVersion.markType, "official");
+    assert.equal(resultTeam.currentMtmVersion.sourceSnapshotId, liveSnapshot.id);
+    assert.equal(resultTeam.currentMtmVersion.versionId, valuation.versionId);
+    assert.equal(resultOwner.totalMtm, 250);
+    assert.equal(resultOwner.totalNetMtm, 150);
+    assert.equal(resultOwner.currentMtmVersion.markType, "official");
+    assert.equal(resultOwner.currentMtmVersion.sourceSnapshotId, liveSnapshot.id);
+    assert.equal(resultOwner.currentMtmVersion.versionId, valuation.versionId);
+    assert.equal(Number(await mcpCall(baseUrl, 43, "get_team_mtm", {
+      team: team.name, season: years[0], calcuttaId: livePool.id,
+    })), 150);
+    assert.equal(Number(await mcpCall(baseUrl, 44, "get_owner_mtm", {
+      owner: bidder.name, season: years[0], calcuttaId: livePool.id,
+    })), 150);
+    await db.delete(mtmSnapshotTable).where(inArray(mtmSnapshotTable.id, [
+      failedSource.id,
+      incompleteSource.id,
+    ]));
   });
 
   test("returns auditable normalized evidence without leaking raw provider payloads", async () => {
@@ -360,10 +506,10 @@ describe("MCP Live Tracker valuation contract", { skip: !canRun }, () => {
 
     assert.equal(teamValuation.available, false);
     assert.equal(teamValuation.default_measure, "net_mtm");
-    assert.match(teamValuation.reason, /No complete Live Tracker pipeline mark/);
+     assert.match(teamValuation.reason, /No current coherent MTM version/);
     assert.equal(ownerValuation.available, false);
     assert.equal(ownerValuation.default_measure, "net_mtm");
-    assert.match(ownerValuation.reason, /No complete Live Tracker pipeline mark/);
+     assert.match(ownerValuation.reason, /No current coherent MTM version/);
     assert.equal(evidence.available, false);
     assert.match(evidence.reason, /No successful Live Tracker pipeline snapshot/);
     assert.equal(legacyTeam, "null");

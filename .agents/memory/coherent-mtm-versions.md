@@ -11,6 +11,8 @@ At most one post-anchor finalized game may use a stored one-game conditional. Tw
 
 Finalized-actual refreshes compare canonical event identity, teams, week, and scores against the source snapshot after the event transaction commits. Corrections and incomplete/withdrawn evidence publish `pending_recalculation`; only one genuinely new, fully supported final may be provisional. Provider event rows are durable semantic identities and are updated or tombstoned, never deleted and recreated.
 
-**Why:** Stored conditionals are one-game marginals from the original simulation population, not a joint distribution. Combining them can produce unsupported economics, while separately advancing actuals and MTM creates internally inconsistent reports. Stable event IDs are also required to preserve immutable snapshot provenance and version linkage across provider corrections.
+Displayed Results, normalized HTTP valuation, and MCP current team/owner valuation resolve dollars and associated metadata from the promoted coherent version only. Pipeline snapshots, histories, and projections are evidence unless explicitly tied to that version’s source snapshot; unavailable current versions fail closed.
+
+**Why:** Stored conditionals are one-game marginals from the original simulation population, not a joint distribution. Combining them can produce unsupported economics, while separately advancing actuals and MTM creates internally inconsistent reports. Stable event IDs are also required to preserve immutable snapshot provenance and version linkage across provider corrections. Mixing promoted dollars with independently selected snapshot metadata or projections would recreate the same inconsistency at the read boundary.
 
 **How to apply:** Route future actuals-refresh promotion and every Results/MCP valuation consumer through the shared current-version promotion and resolver boundary. Do not duplicate team values in version rows or mutate referenced snapshot evidence.

@@ -686,6 +686,61 @@ export interface TeamUpdate {
   owners?: OwnerInput[];
 }
 
+/**
+ * @nullable
+ */
+export type CurrentMtmVersionMarkType = typeof CurrentMtmVersionMarkType[keyof typeof CurrentMtmVersionMarkType] | null;
+
+
+export const CurrentMtmVersionMarkType = {
+  official: 'official',
+  provisional: 'provisional',
+  pending_recalculation: 'pending_recalculation',
+} as const;
+
+/**
+ * @nullable
+ */
+export type CurrentMtmVersionProvisionalOutcome = typeof CurrentMtmVersionProvisionalOutcome[keyof typeof CurrentMtmVersionProvisionalOutcome] | null;
+
+
+export const CurrentMtmVersionProvisionalOutcome = {
+  home_win: 'home_win',
+  away_win: 'away_win',
+  tie: 'tie',
+} as const;
+
+export type CurrentMtmVersionPendingGamesItem = { [key: string]: unknown };
+
+export type CurrentMtmVersionIncorporatedGamesItem = { [key: string]: unknown };
+
+/**
+ * Coherent promoted current-MTM version used for every numeric MTM field in this row.
+ * @nullable
+ */
+export type CurrentMtmVersion = {
+  /** @nullable */
+  versionId: number | null;
+  /** @nullable */
+  sourceSnapshotId: number | null;
+  /** @nullable */
+  markType: CurrentMtmVersionMarkType;
+  /** @nullable */
+  status: string | null;
+  /** @nullable */
+  provisionalEventId: number | null;
+  /** @nullable */
+  provisionalOutcome: CurrentMtmVersionProvisionalOutcome;
+  pendingGames: CurrentMtmVersionPendingGamesItem[];
+  incorporatedGames: CurrentMtmVersionIncorporatedGamesItem[];
+  /** @nullable */
+  actualsAsOf: string | null;
+  /** @nullable */
+  mtmAsOf: string | null;
+  /** @nullable */
+  staleReason: string | null;
+} | null;
+
 export type TeamResultRowPlayoffStatus = typeof TeamResultRowPlayoffStatus[keyof typeof TeamResultRowPlayoffStatus];
 
 
@@ -752,6 +807,7 @@ export interface TeamResultRow {
   marketStatus: TeamResultRowMarketStatus;
   /** Human-readable warnings explaining stale MTM inputs. */
   marketStatusReasons: string[];
+  currentMtmVersion: CurrentMtmVersion | null;
   /**
      * Playoff seed within conference (1–7). Null if team missed playoffs or seed not yet set.
      * @nullable
@@ -812,6 +868,33 @@ export interface NflStandingsImportPreview {
   teams: NflStandingsImportTeamPreview[];
 }
 
+export type NflStandingsImportResponseMtmReconciliationItemStatus = typeof NflStandingsImportResponseMtmReconciliationItemStatus[keyof typeof NflStandingsImportResponseMtmReconciliationItemStatus];
+
+
+export const NflStandingsImportResponseMtmReconciliationItemStatus = {
+  promoted: 'promoted',
+  unchanged: 'unchanged',
+  skipped: 'skipped',
+  warning: 'warning',
+} as const;
+
+export type NflStandingsImportResponseMtmReconciliationItemMarkType = typeof NflStandingsImportResponseMtmReconciliationItemMarkType[keyof typeof NflStandingsImportResponseMtmReconciliationItemMarkType];
+
+
+export const NflStandingsImportResponseMtmReconciliationItemMarkType = {
+  official: 'official',
+  provisional: 'provisional',
+  pending_recalculation: 'pending_recalculation',
+} as const;
+
+export type NflStandingsImportResponseMtmReconciliationItem = {
+  poolId?: number;
+  status?: NflStandingsImportResponseMtmReconciliationItemStatus;
+  markType?: NflStandingsImportResponseMtmReconciliationItemMarkType;
+  versionId?: number;
+  warning?: string;
+};
+
 export interface NflStandingsImportResponse {
   seasonYear: number;
   source: string;
@@ -820,6 +903,7 @@ export interface NflStandingsImportResponse {
   fetchedAt: string;
   importedTeams: number;
   replay: boolean;
+  mtmReconciliation?: NflStandingsImportResponseMtmReconciliationItem[];
 }
 
 export interface SportPeriod {
@@ -1036,6 +1120,7 @@ export interface OwnerResultRow {
      */
   marketStatus: OwnerResultRowMarketStatus;
   marketStatusReasons: string[];
+  currentMtmVersion: CurrentMtmVersion | null;
   teams: TeamResultRow[];
 }
 
@@ -1756,7 +1841,21 @@ export const MtmValuationMarkType = {
   authoritative: 'authoritative',
   latest: 'latest',
   canonical: 'canonical',
+  official: 'official',
   provisional: 'provisional',
+  pending_recalculation: 'pending_recalculation',
+} as const;
+
+/**
+ * @nullable
+ */
+export type MtmValuationMarkStatus = typeof MtmValuationMarkStatus[keyof typeof MtmValuationMarkStatus] | null;
+
+
+export const MtmValuationMarkStatus = {
+  candidate: 'candidate',
+  current: 'current',
+  superseded: 'superseded',
 } as const;
 
 export type MtmValuationMarkQuality = typeof MtmValuationMarkQuality[keyof typeof MtmValuationMarkQuality];
@@ -1766,6 +1865,18 @@ export const MtmValuationMarkQuality = {
   good: 'good',
   warning: 'warning',
   insufficient: 'insufficient',
+} as const;
+
+/**
+ * @nullable
+ */
+export type MtmValuationMarkProvisionalOutcome = typeof MtmValuationMarkProvisionalOutcome[keyof typeof MtmValuationMarkProvisionalOutcome] | null;
+
+
+export const MtmValuationMarkProvisionalOutcome = {
+  home_win: 'home_win',
+  away_win: 'away_win',
+  tie: 'tie',
 } as const;
 
 export type MtmValuationMarkModel = {
@@ -1778,12 +1889,34 @@ export type MtmValuationMark = {
   /** @nullable */
   snapshotId?: number | null;
   type: MtmValuationMarkType;
+  /**
+     * Durable coherent current-version identity.
+     * @nullable
+     */
+  versionId?: number | null;
+  /**
+     * Immutable source snapshot used by the version.
+     * @nullable
+     */
+  sourceSnapshotId?: number | null;
+  /** @nullable */
+  status?: MtmValuationMarkStatus;
   approximate: boolean;
   quality: MtmValuationMarkQuality;
   stale: boolean;
   staleReasons: string[];
   /** @nullable */
   asOf?: string | null;
+  /** @nullable */
+  actualsAsOf?: string | null;
+  /** @nullable */
+  mtmAsOf?: string | null;
+  /** @nullable */
+  actualsStateHash?: string | null;
+  /** @nullable */
+  provisionalEventId?: number | null;
+  /** @nullable */
+  provisionalOutcome?: MtmValuationMarkProvisionalOutcome;
   /** @nullable */
   inputHash?: string | null;
   /** @nullable */
@@ -1794,6 +1927,22 @@ export type MtmValuationMark = {
   provisionalSuppressionReason?: string | null;
   model?: MtmValuationMarkModel;
 };
+
+/**
+ * @nullable
+ */
+export type MtmValuationProvisionalOutcome = typeof MtmValuationProvisionalOutcome[keyof typeof MtmValuationProvisionalOutcome] | null;
+
+
+export const MtmValuationProvisionalOutcome = {
+  home_win: 'home_win',
+  away_win: 'away_win',
+  tie: 'tie',
+} as const;
+
+export type MtmValuationIncorporatedGamesItem = { [key: string]: unknown };
+
+export type MtmValuationPendingGamesItem = { [key: string]: unknown };
 
 export type MtmValuationTeamsItem = {
   entryId: number;
@@ -1944,6 +2093,24 @@ export interface MtmGameEvSwing {
 export interface MtmValuation {
   available: boolean;
   mark: MtmValuationMark;
+  /** @nullable */
+  versionId?: number | null;
+  /** @nullable */
+  sourceSnapshotId?: number | null;
+  /** @nullable */
+  markType?: MtmValuationMarkType;
+  /** @nullable */
+  provisionalEventId?: number | null;
+  /** @nullable */
+  provisionalOutcome?: MtmValuationProvisionalOutcome;
+  /** @nullable */
+  actualsAsOf?: string | null;
+  /** @nullable */
+  mtmAsOf?: string | null;
+  incorporatedGames?: MtmValuationIncorporatedGamesItem[];
+  pendingGames?: MtmValuationPendingGamesItem[];
+  /** @nullable */
+  staleReason?: string | null;
   teams: MtmValuationTeamsItem[];
   owners: MtmValuationOwnersItem[];
   conditionalPayouts: MtmValuationConditionalPayouts;
@@ -2484,6 +2651,9 @@ teamId?: number | null;
 export type GetMtmValuationParams = {
 season: number;
 calcuttaId?: number;
+/**
+ * Compatibility selector; provisional reads return the already-promoted coherent current version and never recompute from live events.
+ */
 markType?: GetMtmValuationMarkType;
 owner?: string;
 };
