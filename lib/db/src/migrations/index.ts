@@ -38,3 +38,6 @@ export { mtmCurrentVersionMigration } from "./0042MtmCurrentVersion";
 export { mtmCurrentVersionGuardsMigration } from "./0043MtmCurrentVersionGuards";
 export { mtmCurrentPromotionIntegrityMigration } from "./0044MtmCurrentPromotionIntegrity";
 export { mtmCurrentCanonicalGamesMigration } from "./0045MtmCurrentCanonicalGames";
+export { mtmPendingReplacementMigration } from "./0044MtmPendingReplacement";
+export { mtmPendingEvidenceIntegrityMigration } from "./0047MtmPendingEvidenceIntegrity";
+export { mtmRetainedEvidenceIdentityMigration } from "./0048MtmRetainedEvidenceIdentity";

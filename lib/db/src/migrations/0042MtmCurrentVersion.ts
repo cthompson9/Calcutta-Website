@@ -183,7 +183,8 @@ export const mtmCurrentVersionMigration = {
             coalesce((select input_provenance->'realized_results'
                       from mtm_snapshot where id = new.source_snapshot_id), '[]'::jsonb)
           ) into raw_source_games;
-          if raw_source_games <> source_games or source_games <> linked_source_games or exists (
+           if new.mark_type <> 'pending_recalculation' and
+              (raw_source_games <> source_games or source_games <> linked_source_games or exists (
             with source_actuals as (
               select e.id as event_id, e.week, e.home_team_id, e.away_team_id,
                      (actual->>'home_score')::integer as home_score,
@@ -209,9 +210,30 @@ export const mtmCurrentVersionMigration = {
               union all
               (select * from linked_source except select * from source_actuals)
             ) differences
-          ) then
+           )) then
             raise exception 'Current MTM incorporated game set does not exactly match the source snapshot actuals';
           end if;
+           if new.mark_type = 'pending_recalculation' and exists (
+             with source_actuals as (
+               select e.id as event_id
+               from jsonb_array_elements(
+                 coalesce((select input_provenance->'realized_results'
+                           from mtm_snapshot where id = new.source_snapshot_id), '[]'::jsonb)
+               ) actual
+               join events e
+                 on e.season_id = (select season_id from calcuttas where id = new.pool_id)
+                and e.sport = 'NFL'
+                and e.competition = 'NFL_REGULAR_SEASON'
+                and e.source = actual->>'provider'
+                and e.source_event_id = actual->>'source_id'
+             )
+             select event_id from source_actuals
+             except
+             select event_id from mtm_valuation_game
+             where version_id = new.id and linkage_status in ('incorporated', 'pending')
+           ) then
+             raise exception 'Pending MTM linkage must retain every source event or provide a same-event replacement';
+           end if;
 
           select count(*) filter (
             where e.id is null

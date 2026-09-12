@@ -9,6 +9,8 @@ Owner resolution uses signed ownership economics, including original cost basis 
 
 At most one post-anchor finalized game may use a stored one-game conditional. Two or more post-anchor finals must retain the prior valid MTM and publish a `pending_recalculation` version; one-game marginal swings must never be added or sequentially chained.
 
-**Why:** Stored conditionals are one-game marginals from the original simulation population, not a joint distribution. Combining them can produce unsupported economics, while separately advancing actuals and MTM creates internally inconsistent reports.
+Finalized-actual refreshes compare canonical event identity, teams, week, and scores against the source snapshot after the event transaction commits. Corrections and incomplete/withdrawn evidence publish `pending_recalculation`; only one genuinely new, fully supported final may be provisional. Provider event rows are durable semantic identities and are updated or tombstoned, never deleted and recreated.
+
+**Why:** Stored conditionals are one-game marginals from the original simulation population, not a joint distribution. Combining them can produce unsupported economics, while separately advancing actuals and MTM creates internally inconsistent reports. Stable event IDs are also required to preserve immutable snapshot provenance and version linkage across provider corrections.
 
 **How to apply:** Route future actuals-refresh promotion and every Results/MCP valuation consumer through the shared current-version promotion and resolver boundary. Do not duplicate team values in version rows or mutate referenced snapshot evidence.

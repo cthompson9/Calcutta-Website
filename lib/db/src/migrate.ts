@@ -41,6 +41,9 @@ import {
   mtmCurrentVersionGuardsMigration,
   mtmCurrentPromotionIntegrityMigration,
   mtmCurrentCanonicalGamesMigration,
+  mtmPendingReplacementMigration,
+  mtmPendingEvidenceIntegrityMigration,
+  mtmRetainedEvidenceIdentityMigration,
 } from "./migrations";
 
 const migrations = [
@@ -84,6 +87,9 @@ const migrations = [
   mtmCurrentVersionGuardsMigration,
   mtmCurrentPromotionIntegrityMigration,
   mtmCurrentCanonicalGamesMigration,
+  mtmPendingReplacementMigration,
+  mtmPendingEvidenceIntegrityMigration,
+  mtmRetainedEvidenceIdentityMigration,
 ] as const;
 
 /**

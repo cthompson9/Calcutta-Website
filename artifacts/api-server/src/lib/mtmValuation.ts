@@ -36,6 +36,8 @@ export {
   mapSourceActualsForPool,
   mapSourceActuals,
   normalizeSourceActuals,
+  reconcileNflCurrentMtm,
+  planNflMtmReconciliation,
 } from "./currentMtm";
 
 export type MtmMarkType = "authoritative" | "latest" | "canonical" | "provisional";

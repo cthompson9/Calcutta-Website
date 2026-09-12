@@ -369,18 +369,9 @@ export async function syncNflEventsAndRealizedMetricsTx(
   };
 
   let projected = 0;
-  // Both ledgers are provider slices derived from the same validated payload.
-  // Replacement handles provider ID corrections and withdrawn games cleanly.
-  await tx.delete(nflGamesTable).where(and(
-    eq(nflGamesTable.seasonId, seasonId),
-    eq(nflGamesTable.source, "espn"),
-  ));
-  await tx.delete(eventsTable).where(and(
-    eq(eventsTable.seasonId, seasonId),
-    eq(eventsTable.sport, NFL_SPORT),
-    eq(eventsTable.competition, NFL_REGULAR_SEASON),
-    eq(eventsTable.source, "espn"),
-  ));
+  // The source natural key is also the durable identity used by MTM and
+  // conditional valuation foreign keys. Never delete/reinsert the provider
+  // slice: corrections must update the existing row in place.
   for (const event of parsed) {
       const awayTeamId = resolveTeamId(event.awayAbbreviation);
       const homeTeamId = resolveTeamId(event.homeAbbreviation);
@@ -426,7 +417,42 @@ export async function syncNflEventsAndRealizedMetricsTx(
           set: gameRow,
         });
         projected += 1;
+      } else {
+        await tx.update(nflGamesTable).set({
+          status: "cancelled",
+          updatedAt: new Date(),
+        }).where(and(
+          eq(nflGamesTable.seasonId, seasonId),
+          eq(nflGamesTable.source, "espn"),
+          eq(nflGamesTable.sourceGameId, event.sourceEventId),
+        ));
       }
+  }
+  // Provider event IDs are durable semantic identities in persisted MTM input
+  // provenance even before a valuation-version FK exists. Never delete this
+  // slice; a complete payload may only tombstone withdrawn rows.
+  const currentProviderRows = await tx.select({
+    id: eventsTable.id,
+    sourceEventId: eventsTable.sourceEventId,
+  }).from(eventsTable).where(and(
+    eq(eventsTable.seasonId, seasonId),
+    eq(eventsTable.sport, NFL_SPORT),
+    eq(eventsTable.competition, NFL_REGULAR_SEASON),
+    eq(eventsTable.source, "espn"),
+  ));
+  const presentIds = new Set(parsed.map((event) => event.sourceEventId));
+  for (const row of currentProviderRows) {
+    if (!presentIds.has(row.sourceEventId)) {
+      await tx.update(eventsTable).set({
+        status: "cancelled",
+        updatedAt: new Date(),
+      }).where(eq(eventsTable.id, row.id));
+      await tx.update(nflGamesTable).set({ status: "cancelled", updatedAt: new Date() }).where(and(
+        eq(nflGamesTable.seasonId, seasonId),
+        eq(nflGamesTable.source, "espn"),
+        eq(nflGamesTable.sourceGameId, row.sourceEventId),
+      ));
+    }
   }
   const metricsUpserted = await rebuildRealizedMetrics(tx, seasonId);
   return {

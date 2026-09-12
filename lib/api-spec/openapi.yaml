@@ -2489,6 +2489,23 @@ components:
           type: number
         replay:
           type: boolean
+        mtmReconciliation:
+          type: array
+          items:
+            type: object
+            properties:
+              poolId:
+                type: number
+              status:
+                type: string
+                enum: [promoted, unchanged, skipped, warning]
+              markType:
+                type: string
+                enum: [official, provisional, pending_recalculation]
+              versionId:
+                type: number
+              warning:
+                type: string
       required: [seasonYear, source, sourceUrl, sourceHash, fetchedAt, importedTeams, replay]
 
     SportPeriod:

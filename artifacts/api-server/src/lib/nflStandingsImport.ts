@@ -13,6 +13,7 @@ import {
 } from "./nflEventSync";
 import { resolveSeasonIdForSport } from "./calcuttaContext";
 import { OWNERSHIP_SEASON_LOCK_NAMESPACE } from "./ownershipShares";
+import { reconcileNflCurrentMtm } from "./currentMtm";
 
 export const NFL_STANDINGS_PHASE = "REG" as const;
 export const NFL_STANDINGS_SOURCE = "nfl_standings_reg";
@@ -451,7 +452,7 @@ export async function applyNflStandingsImport(args: {
     );
   }
   const seasonId = await resolveSeasonId(args.seasonYear);
-  return db.transaction(async (tx) => {
+  const imported = await db.transaction(async (tx) => {
     await tx.execute(
       sql`select pg_advisory_xact_lock(${OWNERSHIP_SEASON_LOCK_NAMESPACE}, ${seasonId})`,
     );
@@ -542,4 +543,15 @@ export async function applyNflStandingsImport(args: {
       ...(eventSync ? { eventSync } : {}),
     };
   });
+  let mtmReconciliation;
+  try {
+    // This runs strictly after the standings/event transaction commits. A
+    // reconciliation failure must never roll back successful actuals import.
+    mtmReconciliation = await reconcileNflCurrentMtm({ seasonId });
+  } catch (error) {
+    const warning = error instanceof Error ? error.message : String(error);
+    console.warn("NFL MTM post-commit reconciliation warning", { seasonId, warning });
+    mtmReconciliation = [{ poolId: 0, status: "warning" as const, warning }];
+  }
+  return { ...imported, mtmReconciliation };
 }

@@ -13,6 +13,7 @@ import {
   teamsTable,
 } from "@workspace/db";
 import { loadSeasonOwnership } from "./seasonOwnership";
+import { TEAM_ABBREVIATION_ALIASES } from "./nflEventSync";
 import {
   calculateSignedOwnerValue,
   canonicalizeActuals,
@@ -93,11 +94,18 @@ export function normalizeSourceActuals(
     week: number;
     homeTeamId: number;
     awayTeamId: number;
+    homeTeamCode?: string;
+    awayTeamCode?: string;
   }>,
 ): NormalizedSourceActual[] {
   const byProviderSource = new Map<string, any>(
     events.map((event) => [`${event.source}:${event.sourceEventId}`, event]),
   );
+  const teamCodeToId = new Map<string, number>();
+  for (const event of events) {
+    if (event.homeTeamCode) teamCodeToId.set(event.homeTeamCode, event.homeTeamId);
+    if (event.awayTeamCode) teamCodeToId.set(event.awayTeamCode, event.awayTeamId);
+  }
   const mapped: NormalizedSourceActual[] = [];
   for (const actual of sourceActuals(snapshot)) {
     const provider = String((actual as any).provider ?? (actual as any).source ?? "");
@@ -109,11 +117,18 @@ export function normalizeSourceActuals(
     if (!Number.isFinite(homeScore) || !Number.isFinite(awayScore)) {
       throw new Error(`Persisted actual ${provider}:${sourceId} has an invalid score.`);
     }
+    const sourceWeek = Number((actual as any).week);
+    const sourceHomeTeamId = Number((actual as any).homeTeamId);
+    const sourceAwayTeamId = Number((actual as any).awayTeamId);
     mapped.push({
       eventId: event.id,
-      week: event.week,
-      homeTeamId: event.homeTeamId,
-      awayTeamId: event.awayTeamId,
+      week: Number.isInteger(sourceWeek) ? sourceWeek : event.week,
+      homeTeamId: Number.isInteger(sourceHomeTeamId)
+        ? sourceHomeTeamId
+        : teamCodeToId.get(String((actual as any).home ?? "")) ?? event.homeTeamId,
+      awayTeamId: Number.isInteger(sourceAwayTeamId)
+        ? sourceAwayTeamId
+        : teamCodeToId.get(String((actual as any).away ?? "")) ?? event.awayTeamId,
       homeScore,
       awayScore,
     });
@@ -151,6 +166,16 @@ export async function mapSourceActualsForPool(
     eq(eventsTable.sport, "NFL"),
     eq(eventsTable.competition, "NFL_REGULAR_SEASON"),
   ));
+  const teams = await executor.select({ id: teamsTable.id, name: teamsTable.name }).from(teamsTable);
+  const codeByTeamId = new Map<number, string>();
+  for (const [code, name] of Object.entries(TEAM_ABBREVIATION_ALIASES)) {
+    const team = teams.find((row: { id: number; name: string }) => row.name === name);
+    if (team) codeByTeamId.set(team.id, code);
+  }
+  for (const event of events) {
+    event.homeTeamCode = codeByTeamId.get(event.homeTeamId);
+    event.awayTeamCode = codeByTeamId.get(event.awayTeamId);
+  }
   return normalizeSourceActuals(snapshot, events);
 }
 
@@ -246,10 +271,19 @@ export function validateCurrentMtmVersion(args: CurrentMtmValidationArgs): {
   const allLinked = [...incorporatedCanonical, ...pendingCanonical];
   const linkedIds = new Set(allLinked.map((game) => game.game_id));
   if (linkedIds.size !== allLinked.length) errors.push("Version game linkage contains duplicate game identities.");
+  const linkedById = new Map(allLinked.map((game) => [game.game_id, game]));
   if (version.markType === "pending_recalculation") {
     if (!pendingCanonical.length) errors.push("Pending recalculation must identify unincorporated games.");
     if (!sameActualSet([...incorporatedCanonical, ...pendingCanonical].sort(compareActuals), actualCanonical)) {
       errors.push("Pending version game linkage must exactly cover incorporated and unincorporated actuals.");
+    }
+    for (const sourceGame of sourceCanonical) {
+      const linked = linkedById.get(sourceGame.game_id);
+      if (!linked) errors.push(`Pending version lost source event ${sourceGame.game_id}.`);
+      else if (!pendingCanonical.some((game) => game.game_id === sourceGame.game_id) &&
+          JSON.stringify(linked) !== JSON.stringify(sourceGame)) {
+        errors.push(`Incorporated source event ${sourceGame.game_id} changed without a pending replacement.`);
+      }
     }
     if (!version.staleReason) errors.push("Pending recalculation must include a stale reason.");
   } else if (pendingCanonical.length || !sameActualSet(incorporatedCanonical, actualCanonical)) {
@@ -262,8 +296,13 @@ export function validateCurrentMtmVersion(args: CurrentMtmValidationArgs): {
     const nonProvisional = args.incorporatedGames
       .filter((game) => !game.isProvisional);
     try {
-      if (!sameActualSet(canonicalLinkage(nonProvisional), sourceCanonical)) {
-        errors.push("Provisional values must retain the complete source snapshot game set.");
+      const nonProvisionalCanonical = canonicalLinkage(nonProvisional);
+      for (const sourceGame of sourceCanonical) {
+        if (String(sourceGame.game_id) === String(version.provisionalEventId)) continue;
+        if (!nonProvisionalCanonical.some((game) => JSON.stringify(game) === JSON.stringify(sourceGame))) {
+          errors.push("Provisional values must retain the complete source snapshot game set.");
+          break;
+        }
       }
     } catch {
       // The detailed canonicalization error was already reported above.
@@ -425,8 +464,21 @@ function linkageRow(game: LinkageGame, versionId: number, isProvisional = false)
 export async function validateAndPromoteCurrentMtm(
   args: PromoteCurrentMtmArgs,
 ): Promise<{ versionId: number; sourceSnapshotId: number; status: "current" }> {
-  return db.transaction(async (tx) => {
+  return db.transaction((tx) => promoteCurrentMtmInTransaction(tx, args, true), {
+    isolationLevel: "serializable",
+  });
+}
+
+type MtmTransaction = Parameters<Parameters<typeof db.transaction>[0]>[0];
+
+async function promoteCurrentMtmInTransaction(
+  tx: MtmTransaction,
+  args: PromoteCurrentMtmArgs,
+  lock = false,
+): Promise<{ versionId: number; sourceSnapshotId: number; status: "current" }> {
+  if (lock) {
     await tx.execute(sql`select pg_advisory_xact_lock(${CURRENT_MTM_LOCK_NAMESPACE}, ${args.poolId})`);
+  }
     const [sourceSnapshot] = await tx.select().from(mtmSnapshotTable)
       .where(eq(mtmSnapshotTable.id, args.sourceSnapshotId)).limit(1);
     if (!sourceSnapshot) throw new Error("Source MTM snapshot was not found.");
@@ -462,19 +514,32 @@ export async function validateAndPromoteCurrentMtm(
         eq(eventsTable.competition, "NFL_REGULAR_SEASON"),
       ))
       : [];
-    if (pendingEvents.length !== requestedPendingIds.length ||
-        pendingEvents.some((event) => event.homeScore == null || event.awayScore == null)) {
-      throw new Error("Pending games must be finalized canonical events for the pool season.");
+    if (pendingEvents.length !== requestedPendingIds.length) {
+      throw new Error("Pending games must be canonical events for the pool season.");
     }
-    const pendingGames: LinkageGame[] = pendingEvents.map((event) => ({
-      eventId: event.id,
-      week: event.week,
-      homeTeamId: event.homeTeamId,
-      awayTeamId: event.awayTeamId,
-      homeScore: event.homeScore!,
-      awayScore: event.awayScore!,
-      linkageStatus: "pending",
-    }));
+    const sourceActualById = new Map(sourceActuals.map((actual) => [Number(actual.eventId), actual]));
+    const pendingGames: LinkageGame[] = pendingEvents.map((event) => {
+      if (event.homeScore != null && event.awayScore != null) {
+        return {
+          eventId: event.id,
+          week: event.week,
+          homeTeamId: event.homeTeamId,
+          awayTeamId: event.awayTeamId,
+          homeScore: event.homeScore,
+          awayScore: event.awayScore,
+          linkageStatus: "pending" as const,
+        };
+      }
+      const retained = sourceActualById.get(event.id);
+      if (!retained) {
+        throw new Error("Incomplete pending evidence must retain a finalized result from the source snapshot.");
+      }
+      return {
+        ...retained,
+        eventId: event.id,
+        linkageStatus: "pending" as const,
+      };
+    });
     let provisionalGame: LinkageGame | null = null;
     if (args.provisionalEventId != null) {
       const [event] = await tx.select().from(eventsTable)
@@ -492,17 +557,19 @@ export async function validateAndPromoteCurrentMtm(
         isProvisional: true,
       };
     }
-    const incorporatedGames: LinkageGame[] = sourceActuals.map((actual) => ({
+    const replacementIds = new Set([
+      ...requestedPendingIds,
+      ...(args.provisionalEventId == null ? [] : [args.provisionalEventId]),
+    ]);
+    const incorporatedGames: LinkageGame[] = sourceActuals
+      .filter((actual) => !replacementIds.has(Number(actual.eventId)))
+      .map((actual) => ({
       ...actual,
       eventId: Number(actual.eventId),
       isProvisional: false,
-    }));
+      }));
     if (provisionalGame) incorporatedGames.push(provisionalGame);
-    const actuals = args.actuals ?? [
-      ...sourceActuals,
-      ...pendingGames,
-      ...(provisionalGame ? [provisionalGame] : []),
-    ];
+    const actuals = args.actuals ?? [...incorporatedGames, ...pendingGames];
     const sourceDate = sourceSnapshot.asOf instanceof Date ? sourceSnapshot.asOf : new Date(sourceSnapshot.asOf);
     const candidateValues = {
       poolId: args.poolId,
@@ -516,6 +583,29 @@ export async function validateAndPromoteCurrentMtm(
       provisionalEventId: args.provisionalEventId ?? null,
       provisionalOutcome: args.provisionalOutcome ?? null,
     };
+    const [existingCurrent] = await tx.select({
+      id: mtmValuationVersionTable.id,
+      sourceSnapshotId: mtmValuationVersionTable.sourceSnapshotId,
+      markType: mtmValuationVersionTable.markType,
+      actualsStateHash: mtmValuationVersionTable.actualsStateHash,
+      provisionalEventId: mtmValuationVersionTable.provisionalEventId,
+      provisionalOutcome: mtmValuationVersionTable.provisionalOutcome,
+    }).from(mtmValuationVersionTable).where(and(
+      eq(mtmValuationVersionTable.poolId, args.poolId),
+      eq(mtmValuationVersionTable.status, "current"),
+    )).limit(1);
+    if (existingCurrent &&
+        existingCurrent.sourceSnapshotId === candidateValues.sourceSnapshotId &&
+        existingCurrent.markType === candidateValues.markType &&
+        existingCurrent.actualsStateHash === candidateValues.actualsStateHash &&
+        existingCurrent.provisionalEventId === candidateValues.provisionalEventId &&
+        existingCurrent.provisionalOutcome === candidateValues.provisionalOutcome) {
+      return {
+        versionId: existingCurrent.id,
+        sourceSnapshotId: existingCurrent.sourceSnapshotId,
+        status: "current" as const,
+      };
+    }
     const [candidate] = await tx.insert(mtmValuationVersionTable).values(candidateValues)
       .returning({ id: mtmValuationVersionTable.id });
     if (!candidate) throw new Error("Failed to create MTM candidate.");
@@ -544,11 +634,335 @@ export async function validateAndPromoteCurrentMtm(
       .set({ status: "current" })
       .where(eq(mtmValuationVersionTable.id, candidate.id));
     return { versionId: candidate.id, sourceSnapshotId: args.sourceSnapshotId, status: "current" as const };
-  }, { isolationLevel: "serializable" });
 }
 
 export const validateAndPromoteCurrentMtmVersion = validateAndPromoteCurrentMtm;
 export const mapSourceActuals = mapSourceActualsForPool;
+
+export type NflMtmReconciliationResult = {
+  poolId: number;
+  status: "promoted" | "unchanged" | "skipped" | "warning";
+  markType?: "official" | "provisional" | "pending_recalculation";
+  versionId?: number;
+  warning?: string;
+};
+
+export type NflMtmReconciliationPlan = {
+  markType: "official" | "provisional" | "pending_recalculation";
+  provisionalEventId?: number;
+  provisionalOutcome?: Outcome;
+  staleReason?: string | null;
+};
+
+export function sameCanonicalActual(left: FinalizedActual, right: FinalizedActual): boolean {
+  const [a] = canonicalizeActuals([left]);
+  const [b] = canonicalizeActuals([right]);
+  return Boolean(a && b && JSON.stringify(a) === JSON.stringify(b));
+}
+
+export function classifyCanonicalNflFinals(args: {
+  sourceActuals: FinalizedActual[];
+  canonicalFinals: FinalizedActual[];
+}): {
+  incorporated: FinalizedActual[];
+  pending: FinalizedActual[];
+  incompleteSourceEventIds: Array<string | number>;
+  correctedEventIds: Array<string | number>;
+} {
+  const sourceById = new Map(canonicalizeActuals(args.sourceActuals).map((actual) => [actual.game_id, actual]));
+  const finalsById = new Map(canonicalizeActuals(args.canonicalFinals).map((actual) => [actual.game_id, actual]));
+  const finalsOriginalById = new Map(args.canonicalFinals.map((actual) => [
+    canonicalizeActuals([actual])[0]!.game_id,
+    actual,
+  ]));
+  const incorporated: FinalizedActual[] = [];
+  const pending: FinalizedActual[] = [];
+  const correctedEventIds: Array<string | number> = [];
+  for (const source of args.sourceActuals) {
+    const current = finalsById.get(canonicalizeActuals([source])[0]!.game_id);
+    if (!current) continue;
+    if (sameCanonicalActual(source, current)) incorporated.push(source);
+    else {
+      pending.push(finalsOriginalById.get(current.game_id)!);
+      correctedEventIds.push(current.game_id);
+    }
+  }
+  for (const current of args.canonicalFinals) {
+    const id = canonicalizeActuals([current])[0]!.game_id;
+    if (!sourceById.has(id)) pending.push(current);
+  }
+  const incompleteSourceEventIds = [...sourceById.keys()]
+    .filter((id) => !finalsById.has(id));
+  return { incorporated, pending, incompleteSourceEventIds, correctedEventIds };
+}
+
+/** Pure decision boundary used by the post-commit reconciler and its tests. */
+export function planNflMtmReconciliation(args: {
+  postAnchorFinalEventIds: number[];
+  conditionalEvidenceValid: boolean;
+  provisionalOutcome?: Outcome;
+}): NflMtmReconciliationPlan {
+  if (args.postAnchorFinalEventIds.length === 0) {
+    return { markType: "official", staleReason: null };
+  }
+  if (args.postAnchorFinalEventIds.length === 1 && args.conditionalEvidenceValid &&
+      args.provisionalOutcome) {
+    return {
+      markType: "provisional",
+      provisionalEventId: args.postAnchorFinalEventIds[0],
+      provisionalOutcome: args.provisionalOutcome,
+      staleReason: null,
+    };
+  }
+  return {
+    markType: "pending_recalculation",
+    staleReason: args.postAnchorFinalEventIds.length > 1
+      ? "Multiple finalized NFL games require recalculation."
+      : "Conditional evidence is missing, incomplete, weak, or unreconciled.",
+  };
+}
+
+/**
+ * Reconcile canonical NFL finals after an actuals import has committed.  This
+ * deliberately reads the event ledger rather than trusting import callers for
+ * pending metadata.  It never runs a model: one new final may use the source
+ * snapshot conditional; every other case retains the source/value basis and
+ * publishes a pending marker.
+ */
+export async function reconcileNflCurrentMtm(args: {
+  seasonId: number;
+}): Promise<NflMtmReconciliationResult[]> {
+  const pools = await db.select({ id: calcuttasTable.id }).from(calcuttasTable)
+    .where(and(
+      eq(calcuttasTable.seasonId, args.seasonId),
+      eq(calcuttasTable.sport, "NFL"),
+      eq(calcuttasTable.competitionFormat, "NFL_REGULAR_SEASON"),
+      eq(calcuttasTable.isCanonical, true),
+    ))
+    .orderBy(calcuttasTable.id);
+  const results: NflMtmReconciliationResult[] = [];
+  for (const pool of pools) {
+    try {
+      let reconciled: NflMtmReconciliationResult | undefined;
+      for (let attempt = 0; attempt < 3 && !reconciled; attempt += 1) {
+        try {
+          reconciled = await reconcileNflPoolCurrentMtm(pool.id, args.seasonId);
+        } catch (error) {
+          const code = (error as { code?: string }).code;
+          if (code !== "40001" && !String(error).toLowerCase().includes("serialization")) throw error;
+          if (attempt === 2) throw error;
+        }
+      }
+      if (reconciled) results.push(reconciled);
+    } catch (error) {
+      const warning = error instanceof Error ? error.message : String(error);
+      console.warn("NFL MTM post-commit reconciliation warning", {
+        poolId: pool.id,
+        seasonId: args.seasonId,
+        warning,
+      });
+      results.push({ poolId: pool.id, status: "warning", warning });
+    }
+  }
+  return results;
+}
+
+type MtmBasis = {
+  snapshot: any;
+  sourceActuals: NormalizedSourceActual[];
+};
+
+async function inspectMtmSnapshotBasis(
+  tx: MtmTransaction,
+  poolId: number,
+  snapshot: any,
+): Promise<MtmBasis | null> {
+  if (snapshot.poolId !== poolId || snapshot.status !== "ok" ||
+      snapshot.methodVersion === "mtm-v3-review" || snapshot.runKind === "review") return null;
+  let sourceActuals: NormalizedSourceActual[];
+  try {
+    sourceActuals = await mapSourceActualsForPool(tx, poolId, snapshot);
+  } catch {
+    return null;
+  }
+  const [entries, valuations] = await Promise.all([
+    tx.select({ entryId: calcuttaEntriesTable.id }).from(calcuttaEntriesTable)
+      .where(eq(calcuttaEntriesTable.calcuttaId, poolId)),
+    tx.select().from(mtmEntryValuationTable)
+      .where(eq(mtmEntryValuationTable.snapshotId, snapshot.id)),
+  ]);
+  const poolValue = Number((snapshot.stateJson as Record<string, any> | null)?.pot);
+  const valid = entries.length === 32 && valuations.length === 32 &&
+    new Set(valuations.map((row) => row.entryId)).size === 32 &&
+    entries.every((entry) => valuations.some((row) => row.entryId === entry.entryId)) &&
+    valuations.every((row) => Number.isFinite(Number(row.expectedPayout)) && Number(row.expectedPayout) >= 0) &&
+    Number.isFinite(poolValue) &&
+    Math.abs(valuations.reduce((sum, row) => sum + Number(row.expectedPayout), 0) - poolValue) <= 0.01;
+  return valid ? { snapshot, sourceActuals } : null;
+}
+
+async function inspectMtmBasis(
+  tx: MtmTransaction,
+  poolId: number,
+  version: any,
+): Promise<MtmBasis | null> {
+  const [snapshot] = await tx.select().from(mtmSnapshotTable)
+    .where(eq(mtmSnapshotTable.id, version.sourceSnapshotId)).limit(1);
+  const basis = snapshot ? await inspectMtmSnapshotBasis(tx, poolId, snapshot) : null;
+  if (!basis) return null;
+  const [games, conditionalRows, entries, valuations] = await Promise.all([
+    tx.select().from(mtmValuationGameTable).where(eq(mtmValuationGameTable.versionId, version.id)),
+    tx.select().from(mtmGameConditionalTable).where(eq(mtmGameConditionalTable.snapshotId, snapshot.id)),
+    tx.select({ entryId: calcuttaEntriesTable.id }).from(calcuttaEntriesTable)
+      .where(eq(calcuttaEntriesTable.calcuttaId, poolId)),
+    tx.select().from(mtmEntryValuationTable).where(eq(mtmEntryValuationTable.snapshotId, snapshot.id)),
+  ]);
+  const actuals = games.map((game) => ({
+    eventId: game.eventId, week: game.week, homeTeamId: game.homeTeamId,
+    awayTeamId: game.awayTeamId, homeScore: game.homeScore, awayScore: game.awayScore,
+  }));
+  const validation = validateCurrentMtmVersion({
+    version: {
+      ...version,
+      markType: version.markType as "official" | "provisional" | "pending_recalculation",
+      status: version.status as "candidate" | "current" | "superseded",
+      provisionalOutcome: version.provisionalOutcome as Outcome | null,
+    },
+    sourceSnapshot: snapshot,
+    sourceActuals: basis.sourceActuals,
+    actuals,
+    incorporatedGames: games.filter((game) => game.linkageStatus !== "pending").map((game) => ({
+      ...game, eventId: game.eventId,
+      linkageStatus: game.linkageStatus as "incorporated" | "pending",
+    })),
+    pendingGames: games.filter((game) => game.linkageStatus === "pending").map((game) => ({
+      ...game, eventId: game.eventId,
+      linkageStatus: game.linkageStatus as "incorporated" | "pending",
+    })),
+    conditionalRows,
+    officialValuations: valuations,
+    expectedEntryIds: entries.map((entry) => entry.entryId),
+    poolValue: Number((snapshot.stateJson as Record<string, any> | null)?.pot),
+  });
+  return validation.valid ? basis : null;
+}
+
+async function reconcileNflPoolCurrentMtm(
+  poolId: number,
+  seasonId: number,
+): Promise<NflMtmReconciliationResult> {
+  return db.transaction(async (tx) => {
+    await tx.execute(sql`select pg_advisory_xact_lock(${CURRENT_MTM_LOCK_NAMESPACE}, ${poolId})`);
+    let [version] = await tx.select().from(mtmValuationVersionTable)
+      .where(and(eq(mtmValuationVersionTable.poolId, poolId), eq(mtmValuationVersionTable.status, "current")))
+      .orderBy(desc(mtmValuationVersionTable.id)).limit(1);
+    let basis = version
+      ? await inspectMtmBasis(tx, poolId, version)
+      : null;
+    if (version && !basis) {
+      return { poolId, status: "warning", warning: "Current MTM source/value basis is invalid; no replacement was published." };
+    }
+    if (!basis) {
+      const snapshots = await tx.select().from(mtmSnapshotTable).where(and(
+        eq(mtmSnapshotTable.poolId, poolId),
+        eq(mtmSnapshotTable.status, "ok"),
+      )).orderBy(desc(mtmSnapshotTable.asOf), desc(mtmSnapshotTable.id));
+      for (const snapshot of snapshots) {
+        const candidate = await inspectMtmSnapshotBasis(tx, poolId, snapshot);
+        if (candidate) {
+          basis = candidate;
+          break;
+        }
+      }
+      if (!basis) return { poolId, status: "skipped", warning: "No valid complete successful source snapshot exists." };
+    }
+    const snapshot = basis.snapshot;
+    const sourceActuals = basis.sourceActuals;
+    const events = await tx.select().from(eventsTable).where(and(
+      eq(eventsTable.seasonId, seasonId),
+      eq(eventsTable.sport, "NFL"),
+      eq(eventsTable.competition, "NFL_REGULAR_SEASON"),
+      eq(eventsTable.status, "final"),
+    ));
+    const canonicalFinals = events
+      .filter((event) => event.homeScore != null && event.awayScore != null)
+      .sort((left, right) => left.id - right.id)
+      .map((event) => ({
+        eventId: event.id, week: event.week, homeTeamId: event.homeTeamId,
+        awayTeamId: event.awayTeamId, homeScore: event.homeScore!, awayScore: event.awayScore!,
+      }));
+    const classified = classifyCanonicalNflFinals({ sourceActuals, canonicalFinals });
+    const incompleteIds = new Set(classified.incompleteSourceEventIds.map(String));
+    const incompletePending = sourceActuals.filter((actual) =>
+      incompleteIds.has(String(actual.eventId)));
+    const pendingGames: LinkageGame[] = [...classified.pending, ...incompletePending].map((actual) => ({
+      ...actual, eventId: Number(actual.eventId), linkageStatus: "pending",
+    }));
+    const provisionalEvent = pendingGames.length === 1 ? pendingGames[0] : null;
+    let provisionalOutcome = provisionalEvent
+      ? outcomeForScores(Number(provisionalEvent.homeScore), Number(provisionalEvent.awayScore))
+      : undefined;
+    let conditionalEvidenceValid = false;
+    if (provisionalEvent &&
+        classified.correctedEventIds.length === 0 &&
+        classified.incompleteSourceEventIds.length === 0) {
+      const [entries] = await Promise.all([
+        tx.select({ entryId: calcuttaEntriesTable.id }).from(calcuttaEntriesTable)
+          .where(eq(calcuttaEntriesTable.calcuttaId, poolId)),
+      ]);
+      const conditionalRows = await tx.select().from(mtmGameConditionalTable).where(and(
+        eq(mtmGameConditionalTable.snapshotId, snapshot.id),
+        eq(mtmGameConditionalTable.eventId, Number(provisionalEvent.eventId)),
+        eq(mtmGameConditionalTable.outcome, provisionalOutcome!),
+      ));
+      const expectedEntries = new Set(entries.map((entry) => String(entry.entryId)));
+      const payoutTotal = conditionalRows.reduce((sum, row) => sum + Number(row.grossConditional), 0);
+      const poolValue = Number((snapshot.stateJson as Record<string, any> | null)?.pot);
+      conditionalEvidenceValid = conditionalRows.length === 32 &&
+        new Set(conditionalRows.map((row) => String(row.entryId))).size === 32 &&
+        expectedEntries.size === 32 && [...expectedEntries].every((id) =>
+          conditionalRows.some((row) => String(row.entryId) === id)) &&
+        conditionalRows.every((row) => ["good", "warning"].includes(row.qualityStatus)) &&
+        conditionalRows.every((row) => {
+          const payout = Number(row.grossConditional);
+          const baseline = Number(row.grossBaseline);
+          return Number.isFinite(payout) && payout >= 0 && Number.isFinite(baseline) && baseline >= 0;
+        }) && Number.isFinite(poolValue) && Math.abs(payoutTotal - poolValue) <= 0.01;
+    }
+    const plan = planNflMtmReconciliation({
+      postAnchorFinalEventIds: pendingGames.map((game) => Number(game.eventId)),
+      conditionalEvidenceValid,
+      provisionalOutcome,
+    });
+    const markType = plan.markType;
+    if (classified.incompleteSourceEventIds.length > 0) {
+      plan.staleReason = "Canonical final evidence is incomplete; recalculation is required.";
+    } else if (classified.correctedEventIds.length > 0) {
+      plan.staleReason = "A finalized NFL result was corrected; recalculation is required.";
+    }
+    provisionalOutcome = plan.provisionalOutcome;
+    const actuals = markType === "provisional"
+      ? [...classified.incorporated, ...pendingGames]
+      : [...classified.incorporated, ...pendingGames];
+    const promotion = await promoteCurrentMtmInTransaction(tx, {
+      poolId, sourceSnapshotId: snapshot.id, markType,
+      provisionalEventId: plan.provisionalEventId,
+      provisionalOutcome, pendingGames: markType === "provisional" ? [] : pendingGames,
+      actuals,
+      actualsAsOf: new Date(Math.max(
+        snapshot.actualAnchor?.getTime() ?? snapshot.asOf.getTime(),
+        ...events.map((event) => event.updatedAt.getTime()),
+      )),
+      staleReason: plan.staleReason,
+    });
+    return {
+      poolId,
+      status: version && promotion.versionId === version.id ? "unchanged" : "promoted",
+      markType,
+      versionId: promotion.versionId,
+    };
+  }, { isolationLevel: "serializable" });
+}
 
 export type CurrentMtmResolution = {
   available: boolean;

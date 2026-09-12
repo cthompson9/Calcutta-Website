@@ -2,7 +2,9 @@ import assert from "node:assert/strict";
 import test from "node:test";
 import {
   buildCurrentMtmResolution,
+  classifyCanonicalNflFinals,
   normalizeSourceActuals,
+  planNflMtmReconciliation,
   validateCurrentMtmVersion,
 } from "./currentMtm.ts";
 import {
@@ -54,6 +56,78 @@ test("production realized_results map provider/source_id to canonical event and 
     eventId: 77, week: 3, homeTeamId: 1001, awayTeamId: 1002,
     homeScore: 17, awayScore: 14,
   });
+});
+
+test("source normalization preserves persisted week and team identity for corrections", () => {
+  const [actual] = normalizeSourceActuals({
+    inputProvenance: {
+      realized_results: [{
+        provider: "espn", source_id: "x", week: 2,
+        home: "OLD", away: "AWY", homeTeamId: 99, home_score: 10, away_score: 7,
+      }],
+    },
+  }, [{
+    id: 9, source: "espn", sourceEventId: "x", week: 3,
+    homeTeamId: 20, awayTeamId: 21, homeTeamCode: "NEW", awayTeamCode: "AWY",
+  }]);
+  assert.deepEqual(actual, {
+    eventId: 9, week: 2, homeTeamId: 99, awayTeamId: 21,
+    homeScore: 10, awayScore: 7,
+  });
+});
+
+test("NFL MTM reconciliation plans official when there are no new finals", () => {
+  assert.deepEqual(planNflMtmReconciliation({
+    postAnchorFinalEventIds: [],
+    conditionalEvidenceValid: false,
+  }), { markType: "official", staleReason: null });
+});
+
+test("NFL MTM reconciliation plans one supported final as provisional", () => {
+  assert.deepEqual(planNflMtmReconciliation({
+    postAnchorFinalEventIds: [77],
+    conditionalEvidenceValid: true,
+    provisionalOutcome: "home_win",
+  }), {
+    markType: "provisional",
+    provisionalEventId: 77,
+    provisionalOutcome: "home_win",
+    staleReason: null,
+  });
+});
+
+test("NFL MTM reconciliation plans pending for multiple or weak finals", () => {
+  assert.equal(planNflMtmReconciliation({
+    postAnchorFinalEventIds: [77, 78],
+    conditionalEvidenceValid: true,
+    provisionalOutcome: "home_win",
+  }).markType, "pending_recalculation");
+  assert.equal(planNflMtmReconciliation({
+    postAnchorFinalEventIds: [77],
+    conditionalEvidenceValid: false,
+    provisionalOutcome: "home_win",
+  }).markType, "pending_recalculation");
+});
+
+test("canonical final classification detects corrected scores and identities without kickoff gating", () => {
+  const sourceActual = game(77, 10, 7);
+  const corrected = { ...sourceActual, homeScore: 11 };
+  const classified = classifyCanonicalNflFinals({
+    sourceActuals: [sourceActual],
+    canonicalFinals: [corrected, game(78, 3, 0)],
+  });
+  assert.equal(classified.incorporated.length, 0);
+  assert.deepEqual(classified.pending.map((row) => row.eventId), [77, 78]);
+  assert.deepEqual(classified.incompleteSourceEventIds, []);
+  assert.deepEqual(classified.correctedEventIds, ["77"]);
+});
+
+test("missing canonical source final is explicit incomplete evidence", () => {
+  const classified = classifyCanonicalNflFinals({
+    sourceActuals: [game(77)],
+    canonicalFinals: [],
+  });
+  assert.deepEqual(classified.incompleteSourceEventIds, ["77"]);
 });
 
 test("official version validates against its immutable source and exact game set", () => {

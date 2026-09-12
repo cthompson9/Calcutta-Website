@@ -807,7 +807,14 @@ export const ApplyNflStandingsImportResponse = zod.object({
   "sourceHash": zod.string(),
   "fetchedAt": zod.string(),
   "importedTeams": zod.number(),
-  "replay": zod.boolean()
+  "replay": zod.boolean(),
+  "mtmReconciliation": zod.array(zod.object({
+    "poolId": zod.number(),
+    "status": zod.enum(["promoted", "unchanged", "skipped", "warning"]),
+    "markType": zod.enum(["official", "provisional", "pending_recalculation"]).optional(),
+    "versionId": zod.number().optional(),
+    "warning": zod.string().optional(),
+  })).optional()
 })
 
 

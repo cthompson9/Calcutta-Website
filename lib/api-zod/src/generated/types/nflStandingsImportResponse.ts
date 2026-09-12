@@ -14,4 +14,11 @@ export interface NflStandingsImportResponse {
   fetchedAt: string;
   importedTeams: number;
   replay: boolean;
+  mtmReconciliation?: Array<{
+    poolId: number;
+    status: "promoted" | "unchanged" | "skipped" | "warning";
+    markType?: "official" | "provisional" | "pending_recalculation";
+    versionId?: number;
+    warning?: string;
+  }>;
 }
