@@ -709,7 +709,11 @@ async function runEngine(state: MtmState): Promise<EngineSnapshot> {
   const outPath = resolve(dir, "snapshot.json");
   try {
     await writeFile(statePath, JSON.stringify(state), "utf8");
-    await execFileAsync("python3", ["run_mtm.py", "--config", CONFIG_PATH, "--state", statePath, "--out", outPath], { cwd: ENGINE_DIR, timeout: 120_000 });
+    await execFileAsync(
+      "python3",
+      ["run_mtm.py", "--config", CONFIG_PATH, "--state", statePath, "--out", outPath],
+      { cwd: ENGINE_DIR, timeout: 300_000 },
+    );
     return JSON.parse(await readFile(outPath, "utf8")) as EngineSnapshot;
   } catch (error) {
     try {
