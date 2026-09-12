@@ -272,7 +272,7 @@ export default function MtmTracker() {
         outcome: "success",
         year,
       });
-      toast.success("In-season MTM mark recalculated.");
+      toast.success("Actuals and in-season MTM mark refreshed.");
       await loadPipelineStatus();
       void refetchValuation();
     } catch (error) {

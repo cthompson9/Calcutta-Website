@@ -13,6 +13,8 @@ Finalized-actual refreshes compare canonical event identity, teams, week, and sc
 
 Displayed Results, normalized HTTP valuation, and MCP current team/owner valuation resolve dollars and associated metadata from the promoted coherent version only. Pipeline snapshots, histories, and projections are evidence unless explicitly tied to that version’s source snapshot; unavailable current versions fail closed.
 
+The commissioner Recalculate action is an ordered full refresh: fetch and commit standings plus canonical events, reconcile actuals, then run MTM, validate and promote the successful snapshot, and refresh the display. If actuals refresh fails, MTM must not run.
+
 **Why:** Stored conditionals are one-game marginals from the original simulation population, not a joint distribution. Combining them can produce unsupported economics, while separately advancing actuals and MTM creates internally inconsistent reports. Stable event IDs are also required to preserve immutable snapshot provenance and version linkage across provider corrections. Mixing promoted dollars with independently selected snapshot metadata or projections would recreate the same inconsistency at the read boundary.
 
-**How to apply:** Route future actuals-refresh promotion and every Results/MCP valuation consumer through the shared current-version promotion and resolver boundary. Do not duplicate team values in version rows or mutate referenced snapshot evidence.
+**How to apply:** Route future actuals-refresh promotion and every Results/MCP valuation consumer through the shared current-version promotion and resolver boundary. Keep the commissioner button on the complete ordered refresh path. Do not duplicate team values in version rows or mutate referenced snapshot evidence.

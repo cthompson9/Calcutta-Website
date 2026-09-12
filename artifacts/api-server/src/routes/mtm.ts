@@ -55,6 +55,7 @@ import {
 import { z } from "zod/v4";
 import { getNormalizedMtmValuation } from "../lib/mtmValuation";
 import { validateAndPromoteCurrentMtm } from "../lib/currentMtm";
+import { runNflStandingsRefresh } from "../lib/nflStandingsRefresh";
 
 const router: IRouter = Router();
 
@@ -275,44 +276,61 @@ router.post("/mtm/pipeline/recalc", requireAdmin, async (req, res): Promise<void
     seasonYear: parsed.data.season,
     calcuttaId: parsed.data.calcuttaId,
   };
-  const locked = await withMtmLock(lockInput, async () => {
-    const current = await getMtmPipelineStatus(parsed.data.season, parsed.data.calcuttaId);
-    if (current && Date.now() - Date.parse(current.asOf) < 5 * 60 * 1000) {
-      return { cooldown: true as const };
-    }
-    const result = await runMtmPipeline({
-      seasonYear: parsed.data.season,
-      calcuttaId: parsed.data.calcuttaId,
-      trigger: "manual",
+  try {
+    const locked = await withMtmLock(lockInput, async () => {
+      const current = await getMtmPipelineStatus(parsed.data.season, parsed.data.calcuttaId);
+      if (current && Date.now() - Date.parse(current.asOf) < 5 * 60 * 1000) {
+        return { cooldown: true as const };
+      }
+      const actualsRefresh = await runNflStandingsRefresh({
+        seasonYear: parsed.data.season,
+        requestedBy: "admin_mtm_recalculation",
+      });
+      const result = await runMtmPipeline({
+        seasonYear: parsed.data.season,
+        calcuttaId: parsed.data.calcuttaId,
+        trigger: "manual",
+      });
+      if (result.status !== "ok" || result.currentSnapshotId == null) {
+        return {
+          cooldown: false as const,
+          actualsRefresh,
+          result,
+          currentMtmVersion: null,
+        };
+      }
+      const currentMtmVersion = await validateAndPromoteCurrentMtm({
+        poolId: result.poolId,
+        sourceSnapshotId: result.currentSnapshotId,
+        markType: "official",
+      });
+      return {
+        cooldown: false as const,
+        actualsRefresh,
+        result,
+        currentMtmVersion,
+      };
     });
-    if (result.status !== "ok" || result.currentSnapshotId == null) {
-      return { cooldown: false as const, result, currentMtmVersion: null };
+    if (!locked.acquired) {
+      sendParsedJson(res, ErrorResponse, { error: "An MTM calculation is already running." }, 409);
+      return;
     }
-    const currentMtmVersion = await validateAndPromoteCurrentMtm({
-      poolId: result.poolId,
-      sourceSnapshotId: result.currentSnapshotId,
-      markType: "official",
+    if (locked.value.cooldown) {
+      sendParsedJson(res, ErrorResponse, {
+        error: "An MTM calculation has already been requested in the last five minutes.",
+      }, 409);
+      return;
+    }
+    res.status(locked.value.result.status === "ok" ? 200 : 502).json({
+      ...locked.value.result,
+      actualsRefresh: locked.value.actualsRefresh,
+      currentMtmVersion: locked.value.currentMtmVersion,
     });
-    return {
-      cooldown: false as const,
-      result,
-      currentMtmVersion,
-    };
-  });
-  if (!locked.acquired) {
-    sendParsedJson(res, ErrorResponse, { error: "An MTM calculation is already running." }, 409);
-    return;
-  }
-  if (locked.value.cooldown) {
+  } catch (error) {
     sendParsedJson(res, ErrorResponse, {
-      error: "An MTM calculation has already been requested in the last five minutes.",
-    }, 409);
-    return;
+      error: error instanceof Error ? error.message : "Full recalculation failed unexpectedly.",
+    }, 502);
   }
-  res.status(locked.value.result.status === "ok" ? 200 : 502).json({
-    ...locked.value.result,
-    currentMtmVersion: locked.value.currentMtmVersion,
-  });
 });
 
 /**
