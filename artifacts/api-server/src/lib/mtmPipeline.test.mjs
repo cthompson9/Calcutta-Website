@@ -20,6 +20,52 @@ test("normalizes Kalshi fixed-point and legacy cent quotes", () => {
   );
 });
 
+test("preserves settled win contracts and fixed-point volume for the engine", () => {
+  const config = {
+    kalshi: { series: {
+      win_totals: "KXNFLWINS",
+      stage_of_elimination: "KXNFLSTAGEOFELIM",
+    } },
+  };
+  const raw = [
+    {
+      series: "KXNFLWINS",
+      team: "SEA",
+      market: {
+        ticker: "KXNFLWINS-27SEA-1",
+        floor_strike: 1,
+        yes_bid_dollars: "0.0000",
+        yes_ask_dollars: "1.0000",
+        volume_fp: "2139.21",
+        status: "finalized",
+        result: "yes",
+      },
+    },
+    ...["REG", "WC", "DIV", "CONF", "FL", "FW"].map((suffix) => ({
+      series: "KXNFLSTAGEOFELIM",
+      team: "SEA",
+      market: {
+        ticker: `KXNFLSTAGEOFELIM-27SEA-${suffix}`,
+        yes_bid_dollars: "0.1000",
+      },
+    })),
+  ];
+  const derived = mtmPipelineTestUtils.deriveQuoteState(
+    config,
+    [{ code: "SEA", name: "Seattle Seahawks" }],
+    raw,
+  );
+  assert.deepEqual(derived.winLadders.SEA[0], {
+    strike: 1,
+    yes_bid: 0,
+    yes_ask: 1,
+    volume: 2139,
+    status: "finalized",
+    result: "yes",
+  });
+  assert.equal(mtmPipelineTestUtils.quoteVolume({ volume_fp: "81.75", volume: 2 }), 81);
+});
+
 test("persists the exact Kalshi event request URL with every nested market", () => {
   const originalUrl = mtmPipelineTestUtils.kalshiEventUrl(
     "https://historical.example.test/trade-api/v2/",

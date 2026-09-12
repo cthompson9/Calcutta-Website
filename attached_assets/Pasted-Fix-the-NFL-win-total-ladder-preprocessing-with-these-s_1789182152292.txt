@@ -1,0 +1,69 @@
+Fix the NFL win-total ladder preprocessing with these specific changes:
+
+1. Handle settled Kalshi contracts correctly
+
+* If a win-total market is finalized/settled YES, set its probability to 1.0.
+* If finalized/settled NO, set its probability to 0.0.
+* Do not use bid/ask for settled markets.
+* Preserve status and result in the engine-facing win-ladder data.
+
+This fixes the Seattle/SF issue where a settled 1+ wins = YES market was incorrectly midpointed from 0 bid / 1 ask to 50%.
+
+2. Replace the current running-minimum monotonic cleanup
+    The current logic effectively does:
+
+cleaned[k] = min(raw[k], cleaned[k-1])
+
+Remove this.
+
+Instead, fit the full 1–17 cumulative win curve using non-increasing isotonic regression:
+
+P(W>=1) >= P(W>=2) >= ... >= P(W>=17)
+
+Use the active-market midpoint as the observation for each strike.
+
+Settled markets must remain fixed at exactly 0 or 1.
+
+3. Downweight wide bid/ask spreads
+    For active markets, give tighter markets more weight in the isotonic fit than wide markets.
+
+A simple implementation is fine: weight inversely with spread, with sensible caps so weights do not explode.
+
+If a market has no usable quote, treat it as missing rather than assigning an arbitrary probability.
+
+4. Fix volume ingestion
+    The Kalshi payload uses volume_fp in places where the current transformation is reading volume.
+
+Store the available volume correctly. This is mainly for diagnostics; it does not need to affect expected-wins calculations yet.
+
+5. Keep expected-wins math unchanged
+    After building the corrected monotonic ladder:
+
+expected_wins = sum(P(W>=k) for k=1..17)
+
+Do not change this formula.
+
+6. Add regression tests for the exact known failures
+    Test snapshot-281-style cases:
+
+* SEA strike 1 finalized YES → probability must be 1.0; expected wins must be around 10, not 6.535.
+* SF strike 1 finalized YES → expected wins must be around 10.4, not 6.600.
+* NE strike 17 finalized NO → probability must be 0.0.
+* Synthetic ladder:
+    * 8+ = 0.87
+    * 9+ = 0.70
+    * 10+ = 0.75
+
+The isotonic fit should reconcile 9+/10+ jointly rather than simply forcing 10+ down to 0.70.
+
+7. Validate against snapshot 281
+    After the change, run only the deterministic win-ladder preprocessing for all 32 teams and report:
+
+* old expected wins
+* corrected expected wins
+* difference
+* settled contracts used
+
+Do not change the v3 simulation/calibration logic yet.
+
+Once the market inputs are validated, we will rerun the simulation separately.

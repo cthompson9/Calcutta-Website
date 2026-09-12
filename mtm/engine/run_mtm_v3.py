@@ -61,7 +61,8 @@ def build_review_snapshot(config: dict, state: dict) -> dict:
         win_diagnostics = {}
         for team in teams:
             rungs = [wins.Rung(row["strike"], row.get("yes_bid"), row.get("yes_ask"),
-                               row.get("volume", 0))
+                               row.get("volume", 0), row.get("status"),
+                               row.get("result"))
                      for row in state["win_ladders"][team]]
             result = wins.expected_wins_from_ladder(
                 rungs, config["games_per_team"], config["pricing"]["max_spread_for_mid"])

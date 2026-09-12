@@ -22,45 +22,78 @@ class Rung:
     yes_bid: Optional[float]    # prob units (0-1), None if no bid
     yes_ask: Optional[float]
     volume: int = 0
+    status: Optional[str] = None
+    result: Optional[str] = None
+
+    def observation(self) -> tuple[Optional[float], Optional[float], bool]:
+        """Return probability, isotonic weight, and whether it is fixed."""
+        status = (self.status or "").strip().lower()
+        result = (self.result or "").strip().lower()
+        if status in {"finalized", "settled"} and result in {"yes", "no"}:
+            return (1.0 if result == "yes" else 0.0), None, True
+        if self.yes_bid is None or self.yes_ask is None:
+            return None, None, False
+        bid, ask = float(self.yes_bid), float(self.yes_ask)
+        if not (0.0 <= bid <= ask <= 1.0):
+            return None, None, False
+        spread = ask - bid
+        weight = min(100.0, max(1.0, 1.0 / max(spread, 0.01)))
+        return (bid + ask) / 2.0, weight, False
 
     def mid(self, max_spread: float = 0.15) -> Optional[float]:
-        if self.yes_bid is not None and self.yes_ask is not None:
-            if (self.yes_ask - self.yes_bid) <= max_spread:
-                return (self.yes_bid + self.yes_ask) / 2.0
-        # one-sided or too wide: usable but flagged by caller via diagnostics
-        if self.yes_bid is not None and self.yes_ask is not None:
-            return (self.yes_bid + self.yes_ask) / 2.0  # wide, still best available
-        if self.yes_bid is not None:
-            return min(self.yes_bid + 0.01, 0.99)
-        if self.yes_ask is not None:
-            return max(self.yes_ask - 0.01, 0.01)
-        return None
+        """Compatibility accessor; settled results override active quotes."""
+        value, _, _ = self.observation()
+        return value
 
 
-def _monotone_clamp(curve: list[Optional[float]]) -> list[Optional[float]]:
-    """Force non-increasing left-to-right among known values (running min)."""
-    out = list(curve)
-    prev = 1.0
-    for i, v in enumerate(out):
-        if v is None:
-            continue
-        v = min(v, prev)
-        out[i] = v
-        prev = v
-    return out
+def _weighted_isotonic(observations: list[tuple[int, float, float, bool]]
+                       ) -> dict[int, float]:
+    """Weighted non-increasing PAVA with exact fixed 0/1 observations."""
+    blocks = []
+    for strike, value, weight, fixed in observations:
+        blocks.append({
+            "strikes": [strike], "value": value, "weight": weight,
+            "fixed": value if fixed else None,
+        })
+        while len(blocks) >= 2 and blocks[-2]["value"] < blocks[-1]["value"]:
+            right = blocks.pop()
+            left = blocks.pop()
+            fixed_values = [
+                block["fixed"] for block in (left, right)
+                if block["fixed"] is not None
+            ]
+            if len(set(fixed_values)) > 1:
+                raise ValueError("settled win-total results violate monotonicity")
+            fixed_value = fixed_values[0] if fixed_values else None
+            weight_sum = left["weight"] + right["weight"]
+            value = (
+                fixed_value if fixed_value is not None else
+                (left["value"] * left["weight"] +
+                 right["value"] * right["weight"]) / weight_sum
+            )
+            blocks.append({
+                "strikes": left["strikes"] + right["strikes"],
+                "value": value, "weight": weight_sum, "fixed": fixed_value,
+            })
+    return {
+        strike: float(block["value"])
+        for block in blocks
+        for strike in block["strikes"]
+    }
 
 
-def _interpolate(curve: list[Optional[float]]) -> list[float]:
-    """Linear-fill Nones. Index i holds P(W >= i). Anchors: [0]=1.0, [-1]=0.0."""
-    out = list(curve)
-    out[0] = 1.0
-    out[-1] = 0.0
-    known = [i for i, v in enumerate(out) if v is not None]
+def _interpolate_observed(fitted: dict[int, float], games: int) -> list[float]:
+    """Fill missing strikes linearly between fixed endpoint/observed anchors."""
+    anchors = {0: 1.0, games + 1: 0.0, **fitted}
+    known = sorted(anchors)
+    curve = [0.0] * (games + 2)
     for a, b in zip(known, known[1:]):
-        for i in range(a + 1, b):
-            frac = (i - a) / (b - a)
-            out[i] = out[a] + frac * (out[b] - out[a])
-    return [float(v) for v in out]
+        curve[a] = anchors[a]
+        for strike in range(a + 1, b):
+            fraction = (strike - a) / (b - a)
+            curve[strike] = anchors[a] + fraction * (anchors[b] - anchors[a])
+    curve[known[-1]] = anchors[known[-1]]
+    return curve
 
 
 def expected_wins_from_ladder(rungs: list[Rung], games: int = 17,
@@ -69,40 +102,35 @@ def expected_wins_from_ladder(rungs: list[Rung], games: int = 17,
 
     curve[k] = P(W >= k) for k in 0..games+1 after cleaning.
     """
-    curve: list[Optional[float]] = [None] * (games + 2)  # indices 0..games+1
+    observations: list[tuple[int, float, float, bool]] = []
     priced = 0
     wide = 0
+    settled = []
     for r in rungs:
         if 1 <= r.strike <= games:
-            m = r.mid(max_spread)
-            if m is not None:
-                curve[r.strike] = m
+            value, weight, fixed = r.observation()
+            if value is not None:
+                observations.append((r.strike, value, weight or 1.0, fixed))
                 priced += 1
-                if r.yes_bid is not None and r.yes_ask is not None \
+                if fixed:
+                    settled.append({"strike": r.strike, "result": r.result})
+                elif r.yes_bid is not None and r.yes_ask is not None \
                         and (r.yes_ask - r.yes_bid) > max_spread:
                     wide += 1
 
-    diagnostics = {"rungs_priced": priced, "rungs_wide_spread": wide}
+    diagnostics = {
+        "rungs_priced": priced, "rungs_wide_spread": wide,
+        "rungs_missing": games - priced, "settled_contracts_used": settled,
+    }
 
-    if priced >= 4:
-        clamped = _monotone_clamp(curve)
-        full = _interpolate(clamped)
+    if priced:
+        by_strike = {}
+        for observation in observations:
+            by_strike[observation[0]] = observation
+        fitted = _weighted_isotonic([by_strike[k] for k in sorted(by_strike)])
+        full = _interpolate_observed(fitted, games)
         e_wins = sum(full[1:games + 1])
         return {"e_wins": round(e_wins, 3), "method": "ladder_sum",
                 "curve": [round(v, 4) for v in full], "diagnostics": diagnostics}
-
-    # Fallback: single rung nearest 50c. If P(W >= k) = p and the crossing is
-    # roughly uniform, E[W] ~= (k - 1) + p.
-    best = None
-    for k in range(1, games + 1):
-        v = curve[k]
-        if v is None:
-            continue
-        if best is None or abs(v - 0.5) < abs(best[1] - 0.5):
-            best = (k, v)
-    if best is None:
-        return {"e_wins": None, "method": "unpriced", "curve": None,
-                "diagnostics": diagnostics}
-    k, p = best
-    return {"e_wins": round((k - 1) + p, 3), "method": "single_rung_fallback",
-            "curve": None, "diagnostics": {**diagnostics, "rung_used": k}}
+    return {"e_wins": None, "method": "unpriced", "curve": None,
+            "diagnostics": diagnostics}

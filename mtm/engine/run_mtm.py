@@ -48,7 +48,8 @@ def build_snapshot(config: dict, state: dict) -> dict:
     e_wins, win_diags = {}, {}
     for t in teams:
         rungs = [wins.Rung(r["strike"], r.get("yes_bid"), r.get("yes_ask"),
-                           r.get("volume", 0)) for r in state["win_ladders"][t]]
+                           r.get("volume", 0), r.get("status"), r.get("result"))
+                 for r in state["win_ladders"][t]]
         res = wins.expected_wins_from_ladder(rungs, games,
                                              config["pricing"]["max_spread_for_mid"])
         if res["e_wins"] is None:

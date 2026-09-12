@@ -72,7 +72,14 @@ type MtmState = {
     away_score: number;
   }>;
   divisions: Record<string, string[]>;
-  win_ladders: Record<string, Array<{ strike: number; yes_bid: number | null; yes_ask: number | null; volume: number }>>;
+  win_ladders: Record<string, Array<{
+    strike: number;
+    yes_bid: number | null;
+    yes_ask: number | null;
+    volume: number;
+    status: string | null;
+    result: string | null;
+  }>>;
   elimination_quotes: Record<string, Record<string, number>>;
 };
 
@@ -272,6 +279,12 @@ function quoteValue(market: any, field: string): number | null {
   return Number.isFinite(number) ? number / 100 : null;
 }
 
+function quoteVolume(market: any): number {
+  const value = market?.volume_fp ?? market?.volume;
+  const parsed = Number(value);
+  return Number.isFinite(parsed) ? Math.trunc(parsed) : 0;
+}
+
 function classifyEliminationMarket(market: any): string | null {
   const text = `${market?.ticker ?? ""} ${market?.title ?? ""} ${market?.subtitle ?? ""}`.toLowerCase();
   const suffix = String(market?.ticker ?? "").split("-").at(-1);
@@ -337,7 +350,9 @@ function deriveQuoteState(
         strike,
         yes_bid: quoteValue(market, "yes_bid"),
         yes_ask: quoteValue(market, "yes_ask"),
-        volume: Math.trunc(asNumber(market.volume)),
+        volume: quoteVolume(market),
+        status: market.status == null ? null : String(market.status),
+        result: market.result == null ? null : String(market.result),
       }));
     if (ladders.length === 0) throw new Error(`No win-total ladder was discovered for ${team.code}.`);
     winLadders[team.code] = ladders;
@@ -854,7 +869,7 @@ function buildMarketQuoteRows(
     strike: quoteStrike(market),
     yesBid: quoteValue(market, "yes_bid") == null ? null : String(quoteValue(market, "yes_bid")),
     yesAsk: quoteValue(market, "yes_ask") == null ? null : String(quoteValue(market, "yes_ask")),
-    volume: market.volume == null ? null : Math.trunc(asNumber(market.volume)),
+    volume: market.volume_fp == null && market.volume == null ? null : quoteVolume(market),
     fetchedAt,
     rawQuote: market,
     };
@@ -1316,6 +1331,8 @@ export const mtmPipelineTestUtils = {
   classifyEliminationMarket,
   hourStart,
   quoteValue,
+  quoteVolume,
+  deriveQuoteState,
   validateCompleteEngineSnapshot,
   mergeTeamQuoteResults,
   validateScheduleIdentitySets,

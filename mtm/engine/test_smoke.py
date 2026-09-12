@@ -18,18 +18,54 @@ def test_wins_ladder():
     res = wins.expected_wins_from_ladder(rungs)
     assert res["method"] == "ladder_sum", res
     assert abs(res["e_wins"] - 10.2) < 0.15, res["e_wins"]
-    # thin ladder falls back
+    # A thin ladder remains an observation; missing strikes are interpolated.
     thin = [wins.Rung(10, 0.48, 0.56)]
     res2 = wins.expected_wins_from_ladder(thin)
-    assert res2["method"] == "single_rung_fallback"
-    assert abs(res2["e_wins"] - (9 + 0.52)) < 1e-6
-    # monotonicity violation gets clamped, not propagated
-    messy = [wins.Rung(8, 0.70, 0.74), wins.Rung(9, 0.80, 0.84),  # violates
-             wins.Rung(10, 0.40, 0.44), wins.Rung(11, 0.20, 0.24),
-             wins.Rung(12, 0.10, 0.12)]
+    assert res2["method"] == "ladder_sum"
+    assert all(res2["curve"][i] >= res2["curve"][i+1] - 1e-9
+               for i in range(len(res2["curve"]) - 1))
+    # A local inversion is reconciled jointly by weighted isotonic regression.
+    messy = [wins.Rung(8, 0.86, 0.88), wins.Rung(9, 0.69, 0.71),
+             wins.Rung(10, 0.74, 0.76)]
     res3 = wins.expected_wins_from_ladder(messy)
     c = res3["curve"]
     assert all(c[i] >= c[i+1] - 1e-9 for i in range(len(c)-1)), c
+    assert abs(c[9] - .725) < 1e-9 and abs(c[10] - .725) < 1e-9, c
+
+    sea = [wins.Rung(k, bid, ask, status=status, result=result)
+           for k, bid, ask, status, result in [
+               (1, 0, 1, "finalized", "yes"),
+               (2, .99, 1, "active", ""),
+               (3, .95, 1, "active", ""),
+               (4, .95, 1, "active", ""),
+               (5, .94, .97, "active", ""),
+               (6, .92, 1, "active", ""),
+               (7, .88, .98, "active", ""),
+               (8, .82, .92, "active", ""),
+               (9, .77, .81, "active", ""),
+               (10, .66, .67, "active", ""),
+               (11, .53, .55, "active", ""),
+               (12, .41, .44, "active", ""),
+               (13, .27, .33, "active", ""),
+               (14, .18, .21, "active", ""),
+               (15, .06, .07, "active", ""),
+               (16, 0, .07, "active", ""),
+               (17, 0, .03, "active", ""),
+           ]]
+    sea_result = wins.expected_wins_from_ladder(sea)
+    assert sea_result["curve"][1] == 1.0
+    assert 10.0 < sea_result["e_wins"] < 11.0, sea_result
+
+    sf = [wins.Rung(r.strike, r.yes_bid, r.yes_ask, r.volume,
+                    r.status, r.result) for r in sea]
+    sf[10] = wins.Rung(11, .58, .60)
+    sf_result = wins.expected_wins_from_ladder(sf)
+    assert sf_result["e_wins"] > 10.0, sf_result
+
+    ne = [wins.Rung(k, .5, .5) for k in range(1, 17)]
+    ne.append(wins.Rung(17, 0, 1, status="finalized", result="no"))
+    ne_result = wins.expected_wins_from_ladder(ne)
+    assert ne_result["curve"][17] == 0.0
     print(f"wins ok: binomial E[W]={res['e_wins']} (true 10.2), fallback={res2['e_wins']}")
 
 
