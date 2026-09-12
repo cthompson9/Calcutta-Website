@@ -776,6 +776,7 @@ function SwingTeamRow({ swing }: { swing: MtmTeamEvSwing }) {
 }
 
 function OwnerSwingRow({ swing }: { swing: MtmOwnerTeamEvSwing }) {
+  const isShort = swing.signedShare < 0;
   if (!swing.available) {
     return (
       <div className="flex items-center justify-between gap-3 py-2" data-testid="ev-swing-owner-holding">
@@ -797,20 +798,50 @@ function OwnerSwingRow({ swing }: { swing: MtmOwnerTeamEvSwing }) {
         </span>
       </div>
       <div className="mt-2 grid grid-cols-2 gap-2 text-[11px]">
-        <div className="border border-emerald-500/25 bg-emerald-500/10 px-2 py-1.5">
-          <p className="font-mono text-[9px] font-bold uppercase tracking-wider text-emerald-700 dark:text-emerald-300">
-            Benefit of win
+        <div className={cn(
+          "border px-2 py-1.5",
+          isShort
+            ? "border-red-500/25 bg-red-500/10"
+            : "border-emerald-500/25 bg-emerald-500/10",
+        )}>
+          <p className={cn(
+            "font-mono text-[9px] font-bold uppercase tracking-wider",
+            isShort
+              ? "text-red-700 dark:text-red-300"
+              : "text-emerald-700 dark:text-emerald-300",
+          )}>
+            {isShort ? "Cost of win" : "Benefit of win"}
           </p>
-          <p className="mt-0.5 font-mono font-bold text-emerald-700 dark:text-emerald-300">
-            {ownerCurrency(swing.benefitOfWin ?? 0)}
+          <p className={cn(
+            "mt-0.5 font-mono font-bold",
+            isShort
+              ? "text-red-700 dark:text-red-300"
+              : "text-emerald-700 dark:text-emerald-300",
+          )}>
+            {formatCurrency(Math.abs(swing.benefitOfWin ?? 0))}
           </p>
         </div>
-        <div className="border border-red-500/25 bg-red-500/10 px-2 py-1.5 text-right">
-          <p className="font-mono text-[9px] font-bold uppercase tracking-wider text-red-700 dark:text-red-300">
-            Cost of loss
+        <div className={cn(
+          "border px-2 py-1.5 text-right",
+          isShort
+            ? "border-emerald-500/25 bg-emerald-500/10"
+            : "border-red-500/25 bg-red-500/10",
+        )}>
+          <p className={cn(
+            "font-mono text-[9px] font-bold uppercase tracking-wider",
+            isShort
+              ? "text-emerald-700 dark:text-emerald-300"
+              : "text-red-700 dark:text-red-300",
+          )}>
+            {isShort ? "Benefit of loss" : "Cost of loss"}
           </p>
-          <p className="mt-0.5 font-mono font-bold text-red-700 dark:text-red-300">
-            {ownerCurrency(swing.costOfLoss ?? 0)}
+          <p className={cn(
+            "mt-0.5 font-mono font-bold",
+            isShort
+              ? "text-emerald-700 dark:text-emerald-300"
+              : "text-red-700 dark:text-red-300",
+          )}>
+            {formatCurrency(Math.abs(swing.costOfLoss ?? 0))}
           </p>
         </div>
       </div>

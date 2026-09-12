@@ -166,10 +166,12 @@ describe("UpcomingEvSwings", () => {
     expect(owner).toHaveTextContent("Bills");
     expect(owner).toHaveTextContent("−$14 swing");
     expect(owner).not.toHaveTextContent("Short 25%");
-    expect(owner).toHaveTextContent("Benefit of win");
-    expect(owner).toHaveTextContent("Cost of loss");
-    expect(owner).toHaveTextContent("−$8");
-    expect(owner).toHaveTextContent("−$6");
+    expect(owner).toHaveTextContent("Cost of win");
+    expect(owner).toHaveTextContent("Benefit of loss");
+    expect(owner).toHaveTextContent("$8");
+    expect(owner).toHaveTextContent("$6");
+    expect(owner).not.toHaveTextContent("Benefit of win");
+    expect(owner).not.toHaveTextContent("Cost of loss");
     expect(owner).not.toHaveTextContent("+$");
 
     render(<UpcomingEvSwings games={[game(4, 4, "Weak Team", "Other", false)]} />);
@@ -213,9 +215,9 @@ describe("UpcomingEvSwings", () => {
     ]);
     const ownerRows = screen.getAllByTestId("ev-swing-owner");
     expect(ownerRows.map((row) => row.textContent)).toEqual([
-      expect.stringMatching(/^Week 8Alpha Team.*swing.*Benefit of win.*Cost of loss/s),
-      expect.stringMatching(/^Week 8Beta Team.*swing.*Benefit of win.*Cost of loss/s),
-      expect.stringMatching(/^Week 8Zebra Team.*swing.*Benefit of win.*Cost of loss/s),
+      expect.stringMatching(/^Week 8Alpha Team.*swing.*Cost of win.*Benefit of loss/s),
+      expect.stringMatching(/^Week 8Beta Team.*swing.*Cost of win.*Benefit of loss/s),
+      expect.stringMatching(/^Week 8Zebra Team.*swing.*Cost of win.*Benefit of loss/s),
     ]);
 
     const ownerFilter = screen.getByRole("searchbox", { name: "Filter owners and teams" });
