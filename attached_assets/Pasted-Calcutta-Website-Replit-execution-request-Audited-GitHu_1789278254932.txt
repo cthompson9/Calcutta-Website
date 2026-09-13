@@ -1,0 +1,34 @@
+Calcutta-Website — Replit execution request
+Audited GitHub baseline: 964694aa7e6fa05f6c0f2cf2d1dc3feaadad85f1.
+Use the verified development checkout and reviewed predecessor batches.
+
+STANDING EXECUTION CONTRACT
+
+Implement only the numbered batch supplied with this contract. Architecture decisions below are fixed. Do not conduct a broad audit, redesign adjacent systems, add features, or invoke another AI service to perform runtime valuations. Read the named files and their immediate dependencies only as needed.
+
+Work in the verified development checkout. The audited application is under root `artifacts/`, `lib/`, and `mtm/`; do not edit the nested duplicate `Calcutta-Website/` directory unless the verified build path proves it is active. Preserve unrelated changes. Add forward-only migrations; never rewrite an already-applied migration or backfill missing historical evidence with current data.
+
+Maintain existing API compatibility except for explicitly identified bug fixes or additive fields. Keep the official NFL model's financial behavior unchanged unless this batch explicitly changes it. No new package, infrastructure product, or deployment type without returning the concrete need to Codex first. Prefer existing PostgreSQL and repository tooling.
+
+Do not publish, change production settings, migrate production, alter real results/trades, or start an unrequested full simulation. New worker, provisional, and pregame scheduling features default OFF until the final development verification batch. Pure tests and isolated test-database fixtures are allowed. Verify database identity before migrations or fixture writes; never use production for tests.
+
+Run only the checks relevant to this batch. Existing local evidence at the audited revision: 39 MTM unit tests, 17 Tracker/Results UI tests, two schema source checks, and the Python smoke suite passed. Do not repeat them merely to rediscover that baseline. Repeat affected tests after changes and add the specific new acceptance checks below. Most new tests should use small fixtures and an injected clock, not a 100,000-path run.
+
+Return: batch ID; exact starting and ending revision or an accessible diff; changed files; migration IDs; exact checks and pass/fail/skip counts; any remaining failure with the relevant error excerpt; and a short statement of feature-flag state. Keep the narrative under 250 words, with evidence attached separately if necessary. Do not claim deployment success, historical completeness, or token savings without evidence.
+
+Stop after this batch. If an assumption is contradicted, return the exact file/line or runtime evidence and the smallest blocking question to Codex. Do not choose a different financial model or expand scope yourself. Skip a requirement only if you show it already exists and passes its acceptance check.
+
+## Batch 00 — Verify the execution environment, read-only
+
+Objective: establish only the environment facts missing from the GitHub audit. Do not modify code/data, fetch markets, run migrations, or start a simulation.
+
+Return:
+
+1. Development checkout branch, commit SHA, and dirty-file names. Confirm whether audited revision `964694a` is an ancestor; report changed files in the MTM/MCP paths since then. Do not reset or discard changes.
+2. Supported Git/update handoff: repository and branch association, whether reviewed commits can be pulled into this development checkout, and any existing uncommitted changes that would conflict. Never include credentials.
+3. Development API/worker execution arrangement, available CPU/RAM, Python version, and relevant process entry points. Identify whether a durable worker already exists.
+4. Database environment identity and applied MTM migration IDs. Read metadata only; do not expose connection strings or secrets.
+5. Existing Actuals/full-MTM scheduler jobs: entry point, cadence, scope, and enabled state. Do not create or modify jobs.
+6. At most the three most recent existing full-MTM attempts: timestamps, source/current snapshot IDs, duration if recorded, success/failure, path count, and bounded error excerpt. Identify any currently running calculation. Do not generate new evidence by running one.
+
+Output at most 30 factual lines. If a field is unavailable, say unavailable. Stop and return the evidence; do not implement any other batch.
