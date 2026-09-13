@@ -222,6 +222,53 @@ describe("UpcomingEvSwings", () => {
     expect(holdings.at(-1)).not.toHaveTextContent("$0.00");
   });
 
+  it("combines bidders mapped to the same consortium into one exposure row", async () => {
+    const user = userEvent.setup();
+    const consortiumGame = game(9, 9, "Bills", "Jets");
+    const firstHolding = consortiumGame.owners[0].holdings[0];
+    consortiumGame.owners = [
+      {
+        bidderId: 1,
+        bidderName: "Alice",
+        holdings: [{
+          ...firstHolding,
+          signedShare: -0.25,
+          benefitOfWin: -7.5,
+          costOfLoss: -6.25,
+          totalEvSwing: -13.75,
+        }],
+      },
+      {
+        bidderId: 2,
+        bidderName: "Bob",
+        holdings: [{
+          ...firstHolding,
+          signedShare: -0.15,
+          benefitOfWin: -2.5,
+          costOfLoss: -3.75,
+          totalEvSwing: -16.25,
+        }],
+      },
+    ];
+    render(
+      <UpcomingEvSwings
+        games={[consortiumGame]}
+        consortiumByName={new Map([
+          ["Alice", "Alpha Consortium"],
+          ["Bob", "Alpha Consortium"],
+        ])}
+      />,
+    );
+
+    await user.click(screen.getByRole("button", { name: "By Owner" }));
+    expect(screen.getAllByTestId("ev-swing-owner-group")).toHaveLength(1);
+    expect(screen.getByTestId("ev-swing-owner-group")).toHaveTextContent("Alpha Consortium");
+    expect(screen.getAllByTestId("ev-swing-owner")).toHaveLength(1);
+    expect(screen.getByTestId("ev-swing-owner")).toHaveTextContent("−$30 swing");
+    expect(screen.queryByText("Alice")).not.toBeInTheDocument();
+    expect(screen.queryByText("Bob")).not.toBeInTheDocument();
+  });
+
   it("filters both views and orders owner exposure by consortium then team", async () => {
     const user = userEvent.setup();
     const ownerGame = game(8, 8, "Zebra Team", "Alpha Team");
@@ -261,7 +308,7 @@ describe("UpcomingEvSwings", () => {
       expect.stringMatching(/^Week 8Zebra Team.*swing.*Cost of win.*Benefit of loss/s),
     ]);
 
-    const ownerFilter = screen.getByRole("searchbox", { name: "Filter owners and teams" });
+    const ownerFilter = screen.getByRole("searchbox", { name: "Filter consortiums and teams" });
     await user.type(ownerFilter, "Zulu");
     expect(screen.getAllByTestId("ev-swing-owner")).toHaveLength(1);
     expect(screen.getByTestId("ev-swing-owner-group")).toHaveTextContent("Zulu Consortium");

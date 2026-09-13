@@ -13,6 +13,21 @@ export type ReleaseNote = {
 
 export const releaseNotes: ReleaseNote[] = [
   {
+    date: "September 13, 2026",
+    updates: [
+      {
+        title: "New MTM engine",
+        description:
+          "Live Tracker values now come from a schedule-aware simulation that combines completed results, the remaining NFL schedule, and current win and playoff markets. Team and consortium values advance together only after a complete, validated recalculation.",
+      },
+      {
+        title: "EV Swing what-if analysis",
+        description:
+          "Explore how upcoming games could change each team and consortium’s expected value. Select the next available weeks to compare the benefit of a win, cost of a loss, and total value at stake for every matchup.",
+      },
+    ],
+  },
+  {
     date: "September 11, 2026",
     updates: [
       {

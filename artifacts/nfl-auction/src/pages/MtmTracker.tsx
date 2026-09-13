@@ -699,7 +699,10 @@ function PipelineMarkPanel({
         </>
       )}
 
-      <UpcomingEvSwings games={valuation.gameEvSwings ?? []} />
+      <UpcomingEvSwings
+        games={valuation.gameEvSwings ?? []}
+        consortiumByName={consortiumByName}
+      />
     </section>
   );
 }
@@ -854,7 +857,49 @@ function OwnerSwingRow({ swing }: { swing: MtmOwnerTeamEvSwing }) {
   );
 }
 
-export function UpcomingEvSwings({ games }: { games: MtmGameEvSwing[] }) {
+function sumOwnerSwingValue(left: number | null, right: number | null) {
+  return left == null || right == null ? null : left + right;
+}
+
+function mergeConsortiumHolding(
+  left: MtmOwnerTeamEvSwing,
+  right: MtmOwnerTeamEvSwing,
+): MtmOwnerTeamEvSwing {
+  const available = left.available && right.available;
+  return {
+    ...left,
+    signedShare: left.signedShare + right.signedShare,
+    available,
+    qualityStatus: available ? left.qualityStatus : right.qualityStatus,
+    baselineOwnedExpectedPayout: sumOwnerSwingValue(
+      left.baselineOwnedExpectedPayout,
+      right.baselineOwnedExpectedPayout,
+    ),
+    winOwnedExpectedPayout: sumOwnerSwingValue(
+      left.winOwnedExpectedPayout,
+      right.winOwnedExpectedPayout,
+    ),
+    lossOwnedExpectedPayout: sumOwnerSwingValue(
+      left.lossOwnedExpectedPayout,
+      right.lossOwnedExpectedPayout,
+    ),
+    benefitOfWin: sumOwnerSwingValue(left.benefitOfWin, right.benefitOfWin),
+    costOfLoss: sumOwnerSwingValue(left.costOfLoss, right.costOfLoss),
+    totalEvSwing: sumOwnerSwingValue(left.totalEvSwing, right.totalEvSwing),
+    effectiveSampleSize:
+      left.effectiveSampleSize == null || right.effectiveSampleSize == null
+        ? null
+        : Math.min(left.effectiveSampleSize, right.effectiveSampleSize),
+  };
+}
+
+export function UpcomingEvSwings({
+  games,
+  consortiumByName = new Map(),
+}: {
+  games: MtmGameEvSwing[];
+  consortiumByName?: Map<string, string>;
+}) {
   const [view, setView] = useState<"team" | "owner">("team");
   const [filter, setFilter] = useState("");
   const filterQuery = filter.trim().toLocaleLowerCase();
@@ -883,6 +928,7 @@ export function UpcomingEvSwings({ games }: { games: MtmGameEvSwing[] }) {
       }
       return game.owners.some((owner) =>
         owner.bidderName.toLocaleLowerCase().includes(filterQuery) ||
+        ownerLabel(owner.bidderName, consortiumByName).toLocaleLowerCase().includes(filterQuery) ||
         owner.holdings.some((holding) =>
           (holding.teamName ?? "").toLocaleLowerCase().includes(filterQuery),
         ),
@@ -898,8 +944,7 @@ export function UpcomingEvSwings({ games }: { games: MtmGameEvSwing[] }) {
       ) ||
       a.eventId - b.eventId
     );
-  const ownerGroupMap = new Map<number, {
-    bidderId: number;
+  const ownerGroupMap = new Map<string, {
     bidderName: string;
     rows: Array<{
       week: number;
@@ -910,21 +955,33 @@ export function UpcomingEvSwings({ games }: { games: MtmGameEvSwing[] }) {
   for (const game of visible) {
     if (game.week == null) continue;
     for (const owner of game.owners) {
+      const consortiumName = ownerLabel(owner.bidderName, consortiumByName);
       const rows = owner.holdings
         .filter((holding) =>
           !filterQuery ||
           owner.bidderName.toLocaleLowerCase().includes(filterQuery) ||
+          consortiumName.toLocaleLowerCase().includes(filterQuery) ||
           (holding.teamName ?? "").toLocaleLowerCase().includes(filterQuery),
         )
         .map((holding) => ({ week: game.week as number, eventId: game.eventId, holding }));
       if (!rows.length) continue;
-      const group = ownerGroupMap.get(owner.bidderId) ?? {
-        bidderId: owner.bidderId,
-        bidderName: owner.bidderName,
+      const group = ownerGroupMap.get(consortiumName) ?? {
+        bidderName: consortiumName,
         rows: [],
       };
-      group.rows.push(...rows);
-      ownerGroupMap.set(owner.bidderId, group);
+      for (const row of rows) {
+        const existing = group.rows.find(
+          (candidate) =>
+            candidate.eventId === row.eventId &&
+            candidate.holding.teamId === row.holding.teamId,
+        );
+        if (existing) {
+          existing.holding = mergeConsortiumHolding(existing.holding, row.holding);
+        } else {
+          group.rows.push(row);
+        }
+      }
+      ownerGroupMap.set(consortiumName, group);
     }
   }
   const ownerGroups = [...ownerGroupMap.values()]
@@ -988,24 +1045,24 @@ export function UpcomingEvSwings({ games }: { games: MtmGameEvSwing[] }) {
       </div>
       <label className="relative mt-3 block sm:max-w-sm">
         <Search className="pointer-events-none absolute left-2.5 top-2.5 h-3.5 w-3.5 text-muted-foreground" />
-        <span className="sr-only">Filter {view === "team" ? "teams" : "owners and teams"}</span>
+        <span className="sr-only">Filter {view === "team" ? "teams" : "consortiums and teams"}</span>
         <input
           type="search"
           value={filter}
           onChange={(event) => setFilter(event.target.value)}
-          placeholder={view === "team" ? "Filter teams…" : "Filter owners or teams…"}
+          placeholder={view === "team" ? "Filter teams…" : "Filter consortiums or teams…"}
           className="w-full border border-border bg-background py-2 pl-8 pr-3 font-mono text-xs outline-none focus:border-primary focus:ring-1 focus:ring-primary"
         />
       </label>
       <div className="mt-4 space-y-5">
         {!visible.length && (
           <p className="border border-dashed border-border bg-background p-4 text-xs text-muted-foreground">
-            No {view === "team" ? "teams" : "owners or teams"} match this filter.
+            No {view === "team" ? "teams" : "consortiums or teams"} match this filter.
           </p>
         )}
         {view === "owner" ? ownerGroups.map((group) => (
           <details
-            key={group.bidderId}
+            key={group.bidderName}
             open
             className="border border-border bg-background"
             data-testid="ev-swing-owner-group"
