@@ -1103,7 +1103,7 @@ function DesktopOwnerDetail({
   }, [onClose]);
 
   const ownerName = ownerLabelById(owner.bidderId, owner.bidderName, consortiumByBidderId);
-  const series = mtmData?.owners.find((item) => item.bidderName === owner.bidderName);
+  const series = mtmData?.owners?.find((item) => item.bidderName === owner.bidderName);
   const currentPositionTeamIds = owner.teams
     .filter((team) => {
       const position = effectivePositionsForTeam(team).find(
@@ -1112,8 +1112,8 @@ function DesktopOwnerDetail({
       return Math.abs(position) >= 0.00005;
     })
     .map((team) => team.teamId);
-  const trendWeeks = mtmData?.weeks.slice(-8) ?? [];
-  const trendStartIndex = (mtmData?.weeks.length ?? 0) - trendWeeks.length;
+  const trendWeeks = mtmData?.weeks?.slice(-8) ?? [];
+  const trendStartIndex = (mtmData?.weeks?.length ?? 0) - trendWeeks.length;
   const trendValues = trendWeeks.map((week, index) => {
     const hasEveryPosition = currentPositionTeamIds.every((teamId) =>
       week.teamValues.some((team) => team.teamId === teamId),
@@ -1205,6 +1205,17 @@ function DesktopOwnerDetail({
               .sort((a, b) => b.markToMarket - a.markToMarket)
               .map((team) => {
                 const position = team.owners.find((entry) => entry.bidderId === owner.bidderId)?.ownershipShare ?? 0;
+                const ownerSourceSegments = team.ownershipSegments.filter(
+                  (segment) => segment.bidderId === owner.bidderId,
+                );
+                const sourceSegments = ownerSourceSegments.length > 0
+                  ? ownerSourceSegments
+                  : [{
+                      bidderId: owner.bidderId,
+                      bidderName: owner.bidderName,
+                      ownershipShare: position,
+                      source: "primary" as const,
+                    }];
                 return (
                   <div key={team.teamId} className="py-2.5">
                     <div className="flex items-center justify-between gap-2">
@@ -1230,16 +1241,36 @@ function DesktopOwnerDetail({
                         Realized pts to BE <BreakevenPoints points={team.ptsToBreakeven} />
                       </span>
                     </div>
-                    <div className="mt-1 flex gap-3 font-mono text-[10px]">
-                      <Link
-                        href={auctionResultHref(seasonYear, team.teamId)}
-                        className="inline-flex items-center gap-1 text-primary hover:underline focus:outline-none focus:ring-1 focus:ring-primary"
-                      >
-                        Auction <ExternalLink className="h-2.5 w-2.5" />
-                      </Link>
-                      {team.ownershipSegments.some((segment) => segment.source === "trade" && segment.tradeId != null) && (
-                        <span className="text-muted-foreground">Trade source linked in ownership</span>
-                      )}
+                    <div className="mt-1 flex flex-wrap gap-3 font-mono text-[10px]">
+                      {sourceSegments.map((segment, index) => {
+                        const isTrade = segment.source === "trade";
+                        const hasTradeSource = isTrade && segment.tradeId != null;
+                        const href = hasTradeSource
+                          ? tradeHref(seasonYear, segment.tradeId!)
+                          : auctionResultHref(seasonYear, team.teamId);
+                        const label = isTrade
+                          ? `Trade${segment.tradeId != null ? ` #${segment.tradeId}` : ""}`
+                          : "Auction";
+                        const description = hasTradeSource
+                          ? `View trade #${segment.tradeId} for ${team.teamName}`
+                          : isTrade
+                            ? `Trade source unavailable; view original auction result for ${team.teamName}`
+                            : `View original auction result for ${team.teamName}`;
+                        return (
+                          <Link
+                            key={`${segment.source}-${segment.tradeId ?? "auction"}-${index}`}
+                            href={href}
+                            aria-label={description}
+                            title={description}
+                            className={cn(
+                              "inline-flex items-center gap-1 text-primary hover:underline focus:outline-none focus:ring-1 focus:ring-primary",
+                              isTrade && "text-sky-600 dark:text-sky-400",
+                            )}
+                          >
+                            {label} <ExternalLink className="h-2.5 w-2.5" aria-hidden="true" />
+                          </Link>
+                        );
+                      })}
                     </div>
                   </div>
                 );

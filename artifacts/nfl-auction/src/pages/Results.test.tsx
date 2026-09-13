@@ -167,6 +167,7 @@ const liveOwnerRows = [
     teams: [],
   },
 ];
+let liveOwnerRowsOverride: Array<Record<string, unknown>> | undefined;
 
 const liveTeamRows = [
   {
@@ -250,7 +251,7 @@ vi.mock("@workspace/api-client-react", () => {
       isLoading: false,
     }),
     useGetResults: () => ({ data: liveTeamRows, isLoading: false }),
-    useGetResultsByOwner: () => ({ data: liveOwnerRows, isLoading: false }),
+    useGetResultsByOwner: () => ({ data: liveOwnerRowsOverride ?? liveOwnerRows, isLoading: false }),
     useGetBidders: () => ({
       data: [
         { id: 80, name: "Live Owner", consortium: "Zach L. / Greg K." },
@@ -294,6 +295,7 @@ function renderResults() {
 describe("Results Calcutta data source", () => {
   beforeEach(() => {
     mtmValuation = undefined;
+    liveOwnerRowsOverride = undefined;
     localStorage.clear();
     window.history.replaceState(null, "", "/");
   });
@@ -400,6 +402,38 @@ describe("Results Calcutta data source", () => {
         name: "View original auction result for Buffalo Bills",
       }),
     ).toBeInTheDocument();
+  });
+
+  it("links a trade-derived consortium position to its trade instead of the auction", async () => {
+    const user = userEvent.setup();
+    const tradeTeam = {
+      ...liveTeamRows[0],
+      ownershipSegments: [{
+        bidderId: 80,
+        bidderName: "Live Owner",
+        ownershipShare: 0.5,
+        source: "trade" as const,
+        tradeId: 44,
+      }],
+    };
+    liveOwnerRowsOverride = [{
+      ...liveOwnerRows[0],
+      teams: [tradeTeam],
+    }];
+    renderResults();
+
+    await user.click(screen.getByRole("button", { name: /Zach L\. \/ Greg K\./i }));
+
+    expect(
+      await screen.findByRole("link", {
+        name: "View trade #44 for Buffalo Bills",
+      }),
+    ).toHaveAttribute("href", expect.stringContaining("/trades"));
+    expect(
+      screen.queryByRole("link", {
+        name: "View original auction result for Buffalo Bills",
+      }),
+    ).not.toBeInTheDocument();
   });
 
   it("filters consortium rows without retaining non-matching co-owners", async () => {
