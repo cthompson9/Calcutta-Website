@@ -196,3 +196,45 @@ mtime_ms = 1787882415000
 storage_uri = "gcs://replit-rams-assets-picard/rams/assets/repl:20ced4e6-12f6-4285-a30b-9d56cdf8826c/10bc9cdf-16ba-496c-9b69-b3cfb4285939/c2075684-9515-4f0f-bfef-aadd05d049b9"
 storage_version_token = "1788468919702537"
 content_type = "application/octet-stream"
+
+[[outputs]]
+id = "X3PuD4Z0sf11Z-WsXFs5a"
+uri = "file://attached_assets/private-evidence/attempt-639-stored-inputs.json"
+type = "unspecified"
+title = "Attempt 639 stored inputs"
+description = "Private development-database export of stored state_json and input_provenance. No captured configuration was present."
+logical_id = "ec6994f7-e559-49e3-bf6b-3cb3d28a2c65"
+content_hash = "sha256:a6453077bf180427e7b99a7ad636e2b92d14ed3555ebafc4a7b3de63f789cc5c"
+size = 252516
+mtime_ms = 1789278719535
+storage_uri = "gcs://replit-rams-assets-picard/rams/assets/repl:20ced4e6-12f6-4285-a30b-9d56cdf8826c/ec6994f7-e559-49e3-bf6b-3cb3d28a2c65/9b809415-171c-42a8-b038-593390a7505d"
+storage_version_token = "1789278729735860"
+content_type = "application/octet-stream"
+
+[[outputs]]
+id = "xn1Q5siJQ-Az-m45lqlzT"
+uri = "file://attached_assets/private-evidence/source-383-stored-inputs.json"
+type = "unspecified"
+title = "Source 383 stored inputs"
+description = "Private development-database export of stored state_json and input_provenance. No captured configuration was present."
+logical_id = "cc581bf9-bac9-4a2c-87f8-83cb078dab62"
+content_hash = "sha256:769c763e65ba612e06f6c4774bf495e92bc0991e55eaa69f2fa8c0cac3d691e7"
+size = 252574
+mtime_ms = 1789278720043
+storage_uri = "gcs://replit-rams-assets-picard/rams/assets/repl:20ced4e6-12f6-4285-a30b-9d56cdf8826c/cc581bf9-bac9-4a2c-87f8-83cb078dab62/004c27a0-91e0-462a-b455-28fd0d9a4b87"
+storage_version_token = "1789278730345721"
+content_type = "application/octet-stream"
+
+[[outputs]]
+id = "iNkytA294TnQ-PwH2DiJa"
+uri = "file://attached_assets/private-evidence/current-season-config-2026-not-historical.json"
+type = "unspecified"
+title = "Current 2026 configuration — not historical"
+description = "Current configuration; not verified as the configuration used by either historical attempt."
+logical_id = "6c4a9f4e-8c3c-466f-8f0a-f2c9365ab30f"
+content_hash = "sha256:8ee5e77dcebc3ebcbe4c0156d8e3beba4f2a730450849558df0a3c0f7441638d"
+size = 3301
+mtime_ms = 1789278720443
+storage_uri = "gcs://replit-rams-assets-picard/rams/assets/repl:20ced4e6-12f6-4285-a30b-9d56cdf8826c/6c4a9f4e-8c3c-466f-8f0a-f2c9365ab30f/12028266-6f5a-40d0-aa35-2ba7e232b9d2"
+storage_version_token = "1789278730986853"
+content_type = "application/octet-stream"
