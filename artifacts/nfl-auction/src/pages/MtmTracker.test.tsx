@@ -2,7 +2,38 @@ import { render, screen, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { describe, expect, it } from "vitest";
 import type { MtmGameEvSwing, MtmTeamEvSwing } from "@workspace/api-client-react";
-import { NetPayoutHistoryChart, PipelineFailureNotice, UpcomingEvSwings } from "./MtmTracker";
+import {
+  NetPayoutHistoryChart,
+  PipelineFailureNotice,
+  UpcomingEvSwings,
+} from "./MtmTracker";
+import { momentumBaselineNetPayout } from "@/lib/mtmMomentum";
+
+describe("momentumBaselineNetPayout", () => {
+  it("uses the closest mark at or before seven days before the latest refresh", () => {
+    expect(momentumBaselineNetPayout([
+      { asOf: "2026-09-01T12:00:00.000Z", netPayout: 10 },
+      { asOf: "2026-09-03T12:00:00.000Z", netPayout: 20 },
+      { asOf: "2026-09-08T11:00:00.000Z", netPayout: 30 },
+      { asOf: "2026-09-10T12:00:00.000Z", netPayout: 40 },
+    ])).toBe(20);
+  });
+
+  it("falls back to the first mark when less than seven days of history exists", () => {
+    expect(momentumBaselineNetPayout([
+      { asOf: "2026-09-10T12:00:00.000Z", netPayout: 10 },
+      { asOf: "2026-09-13T12:00:00.000Z", netPayout: 25 },
+    ])).toBe(10);
+  });
+
+  it("orders refreshes by timestamp before choosing the baseline", () => {
+    expect(momentumBaselineNetPayout([
+      { asOf: "2026-09-13T12:00:00.000Z", netPayout: 30 },
+      { asOf: "2026-09-01T12:00:00.000Z", netPayout: 5 },
+      { asOf: "2026-09-06T12:00:00.000Z", netPayout: 15 },
+    ])).toBe(15);
+  });
+});
 
 function swing(teamId: number, teamName: string, available = true): MtmTeamEvSwing {
   return {

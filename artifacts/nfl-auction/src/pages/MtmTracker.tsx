@@ -29,6 +29,8 @@ import {
   ownerLabel,
 } from "@/lib/ownerDisplay";
 import { ConsortiumLabel } from "@/components/ConsortiumLabel";
+import { Tooltip, TooltipContent, TooltipTrigger } from "@/components/ui/tooltip";
+import { momentumBaselineNetPayout } from "@/lib/mtmMomentum";
 
 const OWNER_COLORS = [
   "#3b82f6", // blue
@@ -374,7 +376,7 @@ function PipelineMarkPanel({
   onRecalculate: () => void;
   consortiumByName: Map<string, string>;
 }) {
-  type SortKey = "team" | "owner" | "points" | "payout" | "price" | "multiple" | "prior";
+  type SortKey = "team" | "owner" | "points" | "payout" | "price" | "multiple" | "momentum";
   const [search, setSearch] = useState("");
   const [sortKey, setSortKey] = useState<SortKey>("payout");
   const [sortAsc, setSortAsc] = useState(false);
@@ -416,11 +418,9 @@ function PipelineMarkPanel({
       .join(" / ");
   }
 
-  function previousNetPayout(teamId: number | null | undefined) {
+  function momentumBaseline(teamId: number | null | undefined) {
     const pipelineTeam = status?.valuations.find(v => v.teamId === teamId || v.entryId === teamId);
-    const history = pipelineTeam?.history ?? [];
-    const prior = history[history.length - 2];
-    return prior?.netPayout ?? null;
+    return momentumBaselineNetPayout(pipelineTeam?.history ?? []);
   }
 
   const baseItems = valuation?.teams ?? [];
@@ -435,8 +435,8 @@ function PipelineMarkPanel({
   const displayTeams = [...filtered].sort((a, b) => {
     const netA = a.net ?? null;
     const netB = b.net ?? null;
-    const priorNetA = previousNetPayout(a.teamId);
-    const priorNetB = previousNetPayout(b.teamId);
+    const priorNetA = momentumBaseline(a.teamId);
+    const priorNetB = momentumBaseline(b.teamId);
     const priceA = a.auctionPrice ?? null;
     const priceB = b.auctionPrice ?? null;
     const multipleA = priceA && priceA > 0 ? (a.grossExpectedPayout / priceA) : null;
@@ -446,7 +446,7 @@ function PipelineMarkPanel({
       payout: [netA ?? -Infinity, netB ?? -Infinity],
       price: [priceA ?? -Infinity, priceB ?? -Infinity],
       multiple: [multipleA ?? -Infinity, multipleB ?? -Infinity],
-      prior: [
+      momentum: [
         netA == null || priorNetA == null ? -Infinity : netA - priorNetA,
         netB == null || priorNetB == null ? -Infinity : netB - priorNetB,
       ],
@@ -623,14 +623,30 @@ function PipelineMarkPanel({
                 <th className="px-3 py-2 text-right"><SortButton label="Net payout" value="payout" /></th>
                 <th className="px-3 py-2 text-right"><SortButton label="Auction price" value="price" /></th>
                 <th className="px-3 py-2 text-right"><SortButton label="Multiple" value="multiple" /></th>
-                <th className="px-4 py-2 text-right"><SortButton label="Vs prior" value="prior" /></th>
+                <th className="px-4 py-2 text-right">
+                  <span className="inline-flex items-center justify-end gap-1">
+                    <SortButton label="Momentum" value="momentum" />
+                    <Tooltip>
+                      <TooltipTrigger asChild>
+                        <button
+                          type="button"
+                          aria-label="About Momentum"
+                          className="inline-flex text-muted-foreground hover:text-foreground focus:outline-none focus:ring-1 focus:ring-primary"
+                        >
+                          <Info className="h-3 w-3" aria-hidden="true" />
+                        </button>
+                      </TooltipTrigger>
+                      <TooltipContent>Change, Last 7 Days</TooltipContent>
+                    </Tooltip>
+                  </span>
+                </th>
               </tr>
             </thead>
             <tbody className="divide-y divide-border">
               {displayTeams.map((teamItem) => {
                 const price = teamItem.auctionPrice ?? null;
                 const payout = teamItem.net ?? null;
-                const previousPayout = previousNetPayout(teamItem.teamId);
+                const previousPayout = momentumBaseline(teamItem.teamId);
                 const delta = payout == null || previousPayout == null
                   ? null
                   : payout - previousPayout;
