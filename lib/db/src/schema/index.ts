@@ -32,4 +32,5 @@ export * from "./historicalCalcuttaRosters";
 export * from "./mtmPipeline";
 export * from "./mtmCurrentVersion";
 export * from "./mtmCanonical";
+export * from "./mtmJobLeases";
 export * from "./calcuttaCalendar";

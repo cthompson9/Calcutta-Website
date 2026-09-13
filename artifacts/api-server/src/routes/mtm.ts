@@ -323,7 +323,7 @@ router.post("/mtm/pipeline/recalc", requireAdmin, async (req, res): Promise<void
         const locked = await withMtmLock({
           seasonYear: parsed.data.season,
           calcuttaId: parsed.data.calcuttaId,
-        }, async () => {
+        }, async (lease) => {
           const current = await getMtmPipelineStatus(parsed.data.season, parsed.data.calcuttaId);
           if (current && Date.now() - Date.parse(current.asOf) < 5 * 60 * 1000) {
             throw new Error("An MTM calculation has already been requested in the last five minutes.");
@@ -336,14 +336,20 @@ router.post("/mtm/pipeline/recalc", requireAdmin, async (req, res): Promise<void
             seasonYear: parsed.data.season,
             calcuttaId: parsed.data.calcuttaId,
             trigger: "manual",
+            lease,
           });
           if (result.status !== "ok" || result.currentSnapshotId == null) {
             throw new Error(result.error ?? "MTM recalculation failed.");
           }
+          await lease.assertOwned();
           await validateAndPromoteCurrentMtm({
             poolId: result.poolId,
             sourceSnapshotId: result.currentSnapshotId,
             markType: "official",
+            lease: {
+              runId: lease.runId,
+              ownerToken: lease.ownerToken,
+            },
           });
           return result.currentSnapshotId;
         });
@@ -376,10 +382,14 @@ router.post("/mtm/pipeline/review", requireAdmin, async (req, res): Promise<void
   }
   const locked = await withMtmLock(
     { seasonYear: parsed.data.season, calcuttaId: parsed.data.calcuttaId },
-    () => runMtmV3Review({
-      seasonYear: parsed.data.season,
-      calcuttaId: parsed.data.calcuttaId,
-    }),
+    async (lease) => {
+      const result = await runMtmV3Review({
+        seasonYear: parsed.data.season,
+        calcuttaId: parsed.data.calcuttaId,
+      });
+      await lease.assertOwned();
+      return result;
+    },
   );
   if (!locked.acquired) {
     sendParsedJson(res, ErrorResponse, { error: "An MTM calculation is already running." }, 409);

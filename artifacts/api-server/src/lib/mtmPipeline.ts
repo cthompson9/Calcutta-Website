@@ -4,7 +4,7 @@ import { mkdtemp, readFile, rm, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { resolve } from "node:path";
 import { promisify } from "node:util";
-import { createHash } from "node:crypto";
+import { createHash, randomUUID } from "node:crypto";
 import { and, asc, eq, inArray, ne, sql } from "drizzle-orm";
 import {
   calcuttaEntriesTable,
@@ -25,7 +25,6 @@ import {
   positionsTable,
   seasonsTable,
   teamsTable,
-  pool,
   eventsTable,
   mtmCanonicalPeriodSelectionTable,
   mtmValuationVersionTable,
@@ -44,9 +43,10 @@ const WORKSPACE_ROOT = existsSync(resolve(process.cwd(), "mtm"))
   : resolve(process.cwd(), "../..");
 const ENGINE_DIR = resolve(WORKSPACE_ROOT, "mtm/engine");
 const CONFIG_PATH = resolve(WORKSPACE_ROOT, "mtm/season-config-2026.json");
-const MTM_LOCK_NAMESPACE = 7_143;
 const CONDITIONAL_PERSISTENCE_BATCH_SIZE = 500;
 const ENGINE_TIMEOUT_MS = 15 * 60_000;
+const MTM_LEASE_DURATION_MS = 5 * 60_000;
+const MTM_LEASE_HEARTBEAT_MS = 60_000;
 const ESPN_TEAM_CODE: Record<string, string> = { JAX: "JAC", WSH: "WAS" };
 const TEAM_CODE_BY_NAME: Record<string, string> = {
   "Arizona Cardinals": "ARI", "Atlanta Falcons": "ATL", "Baltimore Ravens": "BAL",
@@ -1012,25 +1012,247 @@ function buildMarketQuoteRows(
   });
 }
 
+export type MtmLease = {
+  poolId: number;
+  runId: string;
+  ownerToken: string;
+  assertOwned: () => Promise<void>;
+  attachSnapshot: (snapshotId: number) => Promise<void>;
+};
+
+async function assertMtmLeaseOwnedInTransaction(
+  tx: Parameters<Parameters<typeof db.transaction>[0]>[0],
+  lease: MtmLease,
+): Promise<void> {
+  const owned = await tx.execute<{ run_id: string }>(sql`
+    select run_id
+    from mtm_job_leases
+    where pool_id = ${lease.poolId}
+      and owner_token = ${lease.ownerToken}
+      and run_id = ${lease.runId}
+      and lease_until > clock_timestamp()
+    for update
+  `);
+  if (owned.rows.length === 0) {
+    throw new Error("MTM lease was lost before publication; this worker cannot publish its result.");
+  }
+}
+
+function classifyMtmRunFailure(error: unknown): string {
+  const message = error instanceof Error ? error.message : String(error);
+  if (/lease (?:was )?lost|lease expired/i.test(message)) return "lease_lost";
+  if (/engine exceeded|python3 run_mtm|termination signal/i.test(message)) return "engine";
+  if (/timeout|timed out|aborted/i.test(message)) return "external_timeout";
+  if (/postgres|database|connection|ECONNRESET/i.test(message)) return "database";
+  if (/validation|calibration|coverage|invariant|incomplete/i.test(message)) return "validation";
+  return "unknown";
+}
+
 async function withMtmLock<T>(
   input: { seasonYear: number; calcuttaId?: number },
-  run: () => Promise<T>,
+  run: (lease: MtmLease) => Promise<T>,
 ): Promise<{ acquired: true; value: T } | { acquired: false }> {
   const poolId = await resolveMtmPoolId(input.seasonYear, input.calcuttaId);
   if (poolId == null) throw new Error(`NFL Calcutta for season ${input.seasonYear} was not found.`);
-  const client = await pool.connect();
+  const ownerToken = randomUUID();
+  const runId = randomUUID();
+  const acquired = await db.transaction(async (tx) => {
+    const result = await tx.execute<{ run_id: string }>(sql`
+      insert into mtm_job_leases (
+        pool_id, owner_token, run_id, lease_until, heartbeat_at, started_at, updated_at
+      ) values (
+        ${poolId}, ${ownerToken}, ${runId},
+        clock_timestamp() + (${MTM_LEASE_DURATION_MS} * interval '1 millisecond'),
+        clock_timestamp(), clock_timestamp(), clock_timestamp()
+      )
+      on conflict (pool_id) do update set
+        owner_token = excluded.owner_token,
+        run_id = excluded.run_id,
+        lease_until = excluded.lease_until,
+        heartbeat_at = excluded.heartbeat_at,
+        started_at = excluded.started_at,
+        updated_at = clock_timestamp()
+      where mtm_job_leases.lease_until <= clock_timestamp()
+      returning run_id
+    `);
+    if (result.rows.length === 0) return false;
+    await tx.execute(sql`
+      update mtm_job_runs as run
+      set status = case
+            when exists (
+              select 1 from mtm_valuation_version version
+              where version.source_snapshot_id = run.snapshot_id
+                and version.status = 'current'
+            ) then 'completed'
+            else 'abandoned'
+          end,
+          failure_kind = case
+            when exists (
+              select 1 from mtm_valuation_version version
+              where version.source_snapshot_id = run.snapshot_id
+                and version.status = 'current'
+            ) then null
+            else 'lease_expired'
+          end,
+          error = case
+            when exists (
+              select 1 from mtm_valuation_version version
+              where version.source_snapshot_id = run.snapshot_id
+                and version.status = 'current'
+            ) then null
+            else 'MTM worker stopped renewing its lease before completion.'
+          end,
+          completed_at = clock_timestamp()
+      where run.pool_id = ${poolId}
+        and run.status = 'running'
+        and run.lease_until <= clock_timestamp()
+    `);
+    await tx.execute(sql`
+      insert into mtm_job_runs (
+        run_id, pool_id, owner_token, status, started_at, heartbeat_at, lease_until
+      ) values (
+        ${runId}, ${poolId}, ${ownerToken}, 'running',
+        clock_timestamp(), clock_timestamp(),
+        clock_timestamp() + (${MTM_LEASE_DURATION_MS} * interval '1 millisecond')
+      )
+    `);
+    return true;
+  });
+  if (!acquired) return { acquired: false };
+
+  const renew = async (): Promise<boolean> => db.transaction(async (tx) => {
+    const result = await tx.execute<{ run_id: string }>(sql`
+      update mtm_job_leases
+      set lease_until = clock_timestamp() + (${MTM_LEASE_DURATION_MS} * interval '1 millisecond'),
+          heartbeat_at = clock_timestamp(),
+          updated_at = clock_timestamp()
+      where pool_id = ${poolId}
+        and owner_token = ${ownerToken}
+        and run_id = ${runId}
+        and lease_until > clock_timestamp()
+      returning run_id
+    `);
+    if (result.rows.length === 0) return false;
+    await tx.execute(sql`
+      update mtm_job_runs
+      set heartbeat_at = clock_timestamp(),
+          lease_until = clock_timestamp() + (${MTM_LEASE_DURATION_MS} * interval '1 millisecond')
+      where run_id = ${runId} and owner_token = ${ownerToken} and status = 'running'
+    `);
+    return true;
+  });
+
+  let leaseLost = false;
+  let heartbeatRunning = false;
+  const heartbeat = setInterval(() => {
+    if (heartbeatRunning || leaseLost) return;
+    heartbeatRunning = true;
+    void renew()
+      .then((renewed) => {
+        if (!renewed) leaseLost = true;
+      })
+      .catch((error) => {
+        console.error("[mtm lease] heartbeat failed; ownership will be rechecked", error);
+      })
+      .finally(() => {
+        heartbeatRunning = false;
+      });
+  }, MTM_LEASE_HEARTBEAT_MS);
+  heartbeat.unref();
+
+  const lease: MtmLease = {
+    poolId,
+    runId,
+    ownerToken,
+    assertOwned: async () => {
+      if (leaseLost || !(await renew())) {
+        leaseLost = true;
+        throw new Error("MTM lease was lost before publication; this worker cannot promote its result.");
+      }
+    },
+    attachSnapshot: async (snapshotId) => {
+      const attached = await db.execute<{ run_id: string }>(sql`
+        update mtm_job_runs
+        set snapshot_id = ${snapshotId}
+        where run_id = ${runId}
+          and owner_token = ${ownerToken}
+          and status = 'running'
+        returning run_id
+      `);
+      if (attached.rows.length === 0) {
+        throw new Error("MTM lease run is no longer active; snapshot cannot be attached.");
+      }
+    },
+  };
+
   try {
-    const lock = await client.query<{ acquired: boolean }>(
-      "select pg_try_advisory_lock($1, $2) as acquired",
-      [MTM_LOCK_NAMESPACE, poolId],
-    );
-    if (!lock.rows[0]?.acquired) return { acquired: false };
-    try { return { acquired: true, value: await run() }; }
-    finally { await client.query("select pg_advisory_unlock($1, $2)", [MTM_LOCK_NAMESPACE, poolId]); }
-  } finally { client.release(); }
+    const value = await run(lease);
+    await lease.assertOwned();
+    const snapshotId =
+      Number.isInteger(value)
+        ? Number(value)
+        : value && typeof value === "object" && "id" in value && Number.isInteger(Number(value.id))
+        ? Number(value.id)
+        : null;
+    const returnedError =
+      value && typeof value === "object" && "error" in value && typeof value.error === "string"
+        ? value.error
+        : null;
+    await db.transaction(async (tx) => {
+      await assertMtmLeaseOwnedInTransaction(tx, lease);
+      const terminal = await tx.execute<{ run_id: string }>(sql`
+        update mtm_job_runs
+        set status = ${returnedError ? "failed" : "completed"},
+            failure_kind = ${returnedError ? classifyMtmRunFailure(returnedError) : null},
+            error = ${returnedError},
+            snapshot_id = ${snapshotId},
+            completed_at = clock_timestamp()
+        where run_id = ${runId} and owner_token = ${ownerToken} and status = 'running'
+        returning run_id
+      `);
+      if (terminal.rows.length === 0) {
+        throw new Error("MTM run could not be finalized by its active lease owner.");
+      }
+      await tx.execute(sql`
+        delete from mtm_job_leases
+        where pool_id = ${poolId} and owner_token = ${ownerToken} and run_id = ${runId}
+      `);
+    });
+    return { acquired: true, value };
+  } catch (error) {
+    await db.transaction(async (tx) => {
+      const terminal = await tx.execute<{ run_id: string }>(sql`
+        update mtm_job_runs
+        set status = 'failed',
+            failure_kind = ${classifyMtmRunFailure(error)},
+            error = ${error instanceof Error ? error.message : String(error)},
+            completed_at = clock_timestamp()
+        where run_id = ${runId} and owner_token = ${ownerToken} and status = 'running'
+        returning run_id
+      `);
+      if (terminal.rows.length > 0) {
+        await tx.execute(sql`
+          delete from mtm_job_leases
+          where pool_id = ${poolId} and owner_token = ${ownerToken} and run_id = ${runId}
+        `);
+      }
+    }).catch((recordError) => {
+      console.error("[mtm lease] failed to record terminal run state; lease will expire", recordError);
+    });
+    throw error;
+  } finally {
+    clearInterval(heartbeat);
+  }
 }
 
-export async function runMtmPipeline(input: { seasonYear: number; calcuttaId?: number; trigger: "scheduled" | "manual"; now?: Date }): Promise<MtmPipelineResult> {
+export async function assertMtmLeaseForPublication(
+  tx: Parameters<Parameters<typeof db.transaction>[0]>[0],
+  lease: MtmLease,
+): Promise<void> {
+  await assertMtmLeaseOwnedInTransaction(tx, lease);
+}
+
+export async function runMtmPipeline(input: { seasonYear: number; calcuttaId?: number; trigger: "scheduled" | "manual"; now?: Date; lease?: MtmLease }): Promise<MtmPipelineResult> {
   const now = input.now ?? new Date();
   const asOfHour = hourStart(now);
   const config = await loadConfig();
@@ -1068,6 +1290,7 @@ export async function runMtmPipeline(input: { seasonYear: number; calcuttaId?: n
     inputProvenance,
   }).returning({ id: mtmSnapshotTable.id });
   const snapshotId = snapshot[0]!.id;
+  if (input.lease) await input.lease.attachSnapshot(snapshotId);
   if (rawQuotes.length) {
     await db.insert(mtmMarketQuoteTable).values(buildMarketQuoteRows(snapshotId, rawQuotes));
   }
@@ -1227,6 +1450,7 @@ export async function runMtmPipeline(input: { seasonYear: number; calcuttaId?: n
   }
   try {
     await db.transaction(async (tx) => {
+      if (input.lease) await assertMtmLeaseOwnedInTransaction(tx, input.lease);
       const projections = Object.entries(engine.projections ?? {}).map(([team, projection]) => ({
         snapshotId, team, eWinsTotal: String(asNumber(projection.e_wins_total)), eRemainingWins: String(asNumber(projection.e_remaining_wins)),
         pBerth: String(asNumber((projection.p_stage as any)?.berth)), pDivisional: String(asNumber((projection.p_stage as any)?.divisional)),

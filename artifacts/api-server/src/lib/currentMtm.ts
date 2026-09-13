@@ -432,6 +432,10 @@ export type PromoteCurrentMtmArgs = {
   actualsAsOf?: Date;
   mtmAsOf?: Date;
   staleReason?: string | null;
+  lease?: {
+    runId: string;
+    ownerToken: string;
+  };
 };
 
 function outcomeForScores(homeScore: number, awayScore: number): Outcome {
@@ -478,6 +482,20 @@ async function promoteCurrentMtmInTransaction(
 ): Promise<{ versionId: number; sourceSnapshotId: number; status: "current" }> {
   if (lock) {
     await tx.execute(sql`select pg_advisory_xact_lock(${CURRENT_MTM_LOCK_NAMESPACE}, ${args.poolId})`);
+  }
+  if (args.lease) {
+    const owned = await tx.execute<{ run_id: string }>(sql`
+      select run_id
+      from mtm_job_leases
+      where pool_id = ${args.poolId}
+        and owner_token = ${args.lease.ownerToken}
+        and run_id = ${args.lease.runId}
+        and lease_until > clock_timestamp()
+      for update
+    `);
+    if (owned.rows.length === 0) {
+      throw new Error("MTM lease was lost before official promotion.");
+    }
   }
     const [sourceSnapshot] = await tx.select().from(mtmSnapshotTable)
       .where(eq(mtmSnapshotTable.id, args.sourceSnapshotId)).limit(1);
