@@ -3,7 +3,7 @@ import http from "node:http";
 import { after, before, describe, test } from "node:test";
 import { eq, ilike, inArray } from "drizzle-orm";
 
-const DATABASE_URL = process.env.DATABASE_URL;
+const DATABASE_URL = process.env.MCP_VALUATION_TEST_DATABASE_URL;
 const MCP_KEY = process.env.MCP_API_KEY;
 const canRun = Boolean(DATABASE_URL && MCP_KEY);
 
@@ -24,6 +24,7 @@ let mtmMarketQuoteTable;
 let validateAndPromoteCurrentMtm;
 
 if (canRun) {
+  process.env.DATABASE_URL = DATABASE_URL;
   ({
     db,
     runDatabaseMigrations,
@@ -252,9 +253,8 @@ describe("MCP Live Tracker valuation contract", { skip: !canRun }, () => {
       await new Promise((resolve, reject) =>
         server.close((error) => error ? reject(error) : resolve()));
     }
-    // Current-version publication rows and their source snapshots are
-    // append-only. Keep this disposable fixture isolated rather than
-    // attempting a cascading delete that the publication guard rejects.
+    // This contract test is restricted to a dedicated disposable database
+    // because promoted MTM publication records are intentionally append-only.
     if (bidder) await db.delete(biddersTable).where(eq(biddersTable.id, bidder.id));
   });
 
