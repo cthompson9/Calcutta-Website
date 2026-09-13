@@ -108,7 +108,7 @@ export default function Faq() {
                         {index === 2 && (
                           <p className="mt-2 border-l-2 border-primary pl-2 text-foreground">
                             Connector URL:{" "}
-                            <code className="break-all font-mono">https://nfl-calcutta.replit.app/api/mcp</code>
+                            <code className="break-all font-mono">https://thecalcutta.app/api/mcp</code>
                           </p>
                         )}
                       </figcaption>
