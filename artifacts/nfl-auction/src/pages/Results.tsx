@@ -1262,10 +1262,7 @@ function DesktopOwnerDetail({
                             href={href}
                             aria-label={description}
                             title={description}
-                            className={cn(
-                              "inline-flex items-center gap-1 text-primary hover:underline focus:outline-none focus:ring-1 focus:ring-primary",
-                              isTrade && "text-sky-600 dark:text-sky-400",
-                            )}
+                            className="inline-flex items-center gap-1 text-sky-600 hover:underline focus:outline-none focus:ring-1 focus:ring-primary dark:text-sky-400"
                           >
                             {label} <ExternalLink className="h-2.5 w-2.5" aria-hidden="true" />
                           </Link>
