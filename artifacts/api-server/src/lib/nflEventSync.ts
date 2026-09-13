@@ -144,6 +144,8 @@ export function parseEspnRegularSeasonEvents(
         provider: "espn",
         statusName: statusType?.name ?? null,
         kickoffTimeConfirmed: competition?.timeValid !== false,
+        sourceUrl: payload.provenance?.sourceUrl ?? null,
+        sourceFetchedAt: payload.provenance?.fetchedAt ?? null,
       },
       sourceUrl: payload.provenance?.sourceUrl ?? null,
       sourceFetchedAt: payload.provenance?.fetchedAt

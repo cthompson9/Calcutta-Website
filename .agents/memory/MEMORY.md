@@ -46,3 +46,4 @@
 - [MTM contract test isolation](mtm-contract-test-isolation.md) — tests that promote append-only valuation versions must use a dedicated database, never shared development data.
 - [MTM advisory lock lifetime](mtm-advisory-lock-lifetime.md) — production MTM must not hold one PostgreSQL session across external fetches and long Python runs.
 - [MTM calibration bands](mtm-calibration-bands.md) — fit playoff marginals into the existing acceptance bands; exact point fitting can cycle on incompatible market targets.
+- [Canonical MTM schedule](canonical-mtm-schedule.md) — after the complete event refresh, MTM exports remaining games only from canonical events; unconfirmed kickoffs are never marquee.

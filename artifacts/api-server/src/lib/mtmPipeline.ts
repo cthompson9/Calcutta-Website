@@ -47,7 +47,6 @@ const CONDITIONAL_PERSISTENCE_BATCH_SIZE = 500;
 const ENGINE_TIMEOUT_MS = 15 * 60_000;
 const MTM_LEASE_DURATION_MS = 5 * 60_000;
 const MTM_LEASE_HEARTBEAT_MS = 60_000;
-const ESPN_TEAM_CODE: Record<string, string> = { JAX: "JAC", WSH: "WAS" };
 const TEAM_CODE_BY_NAME: Record<string, string> = {
   "Arizona Cardinals": "ARI", "Atlanta Falcons": "ATL", "Baltimore Ravens": "BAL",
   "Buffalo Bills": "BUF", "Carolina Panthers": "CAR", "Chicago Bears": "CHI",
@@ -149,6 +148,68 @@ type MtmInputProvenance = {
     sources: InputSource[];
   }>;
 };
+
+type CanonicalScheduleEvent = {
+  id: number;
+  source: string;
+  sourceEventId: string;
+  week: number;
+  kickoffAt: Date | null;
+  sourceData: Record<string, unknown> | null;
+  updatedAt: Date;
+  homeTeamId: number;
+  awayTeamId: number;
+};
+
+export function buildCanonicalRemainingSchedule(
+  events: CanonicalScheduleEvent[],
+  teamCodeById: Map<number, string>,
+): {
+  schedule: MtmState["remaining_schedule"];
+  provenance: MtmInputProvenance["schedule"];
+} {
+  const rows = events.map((event) => {
+    const home = teamCodeById.get(event.homeTeamId);
+    const away = teamCodeById.get(event.awayTeamId);
+    if (!home || !away) {
+      throw new Error(`Canonical NFL event ${event.id} references a team outside the selected Calcutta.`);
+    }
+    const kickoffTimeConfirmed =
+      event.kickoffAt != null && event.sourceData?.kickoffTimeConfirmed !== false;
+    const marquee = kickoffTimeConfirmed
+      ? isNflMarqueeKickoff(event.kickoffAt!)
+      : false;
+    const sourceUrl =
+      typeof event.sourceData?.sourceUrl === "string" ? event.sourceData.sourceUrl : null;
+    const sourceFetchedAt =
+      typeof event.sourceData?.sourceFetchedAt === "string"
+        ? event.sourceData.sourceFetchedAt
+        : event.updatedAt.toISOString();
+    return {
+      game: {
+        event_id: event.id,
+        home,
+        away,
+        marquee,
+        week: event.week,
+      },
+      source: {
+        provider: event.source,
+        source_url: sourceUrl,
+        source_id: event.sourceEventId,
+        fetched_at: sourceFetchedAt,
+        week: event.week,
+        home,
+        away,
+        marquee,
+      },
+    };
+  });
+  return {
+    schedule: rows.map((row) => row.game),
+    provenance: rows.map((row) => row.source),
+  };
+}
 
 function mergeTeamQuoteResults(
   teamCode: string,
@@ -437,75 +498,6 @@ function deriveQuoteState(
   return { winLadders, elimination };
 }
 
-async function fetchEspnRemainingSchedule(
-  seasonYear: number,
-): Promise<{
-  schedule: Array<Omit<MtmState["remaining_schedule"][number], "event_id">>;
-  provenance: MtmInputProvenance["schedule"];
-}> {
-  const weeks = await Promise.all(Array.from({ length: 18 }, async (_, index) => {
-    const week = index + 1;
-    const url = new URL("https://site.api.espn.com/apis/site/v2/sports/football/nfl/scoreboard");
-    url.searchParams.set("dates", String(seasonYear));
-    url.searchParams.set("seasontype", "2");
-    url.searchParams.set("week", String(week));
-    url.searchParams.set("limit", "100");
-    const response = await fetch(url, {
-      headers: { Accept: "application/json", "User-Agent": "calcutta-mtm/1.0" },
-      signal: AbortSignal.timeout(20_000),
-    });
-    if (!response.ok) throw new Error(`ESPN NFL schedule week ${week} returned HTTP ${response.status}.`);
-    const payload = await response.json() as {
-      events?: Array<{
-        id?: string;
-        date?: string;
-        week?: { number?: number };
-        status?: { type?: { completed?: boolean } };
-        competitions?: Array<{
-          competitors?: Array<{ homeAway?: string; team?: { abbreviation?: string } }>;
-        }>;
-      }>;
-    };
-    const fetchedAt = new Date();
-    return (payload.events ?? []).flatMap((event) => {
-      if (event.status?.type?.completed || !event.date) return [];
-      const competitors = event.competitions?.[0]?.competitors ?? [];
-      const providerHome = competitors.find((team) => team.homeAway === "home")?.team?.abbreviation;
-      const providerAway = competitors.find((team) => team.homeAway === "away")?.team?.abbreviation;
-      if (!providerHome || !providerAway) return [];
-      const home = ESPN_TEAM_CODE[providerHome] ?? providerHome;
-      const away = ESPN_TEAM_CODE[providerAway] ?? providerAway;
-      return [{
-        providerId: event.id ?? `${week}:${away}:${home}:${event.date}`,
-        sourceUrl: url.toString(),
-        fetchedAt,
-        home,
-        away,
-        marquee: isNflMarqueeKickoff(event.date),
-        week: event.week?.number ?? week,
-      }];
-    });
-  }));
-  const allGames = weeks.flat();
-  const identities = new Set(allGames.map((game) => game.providerId));
-  if (identities.size !== allGames.length) {
-    throw new Error("ESPN returned duplicate NFL schedule events.");
-  }
-  return {
-    schedule: allGames.map(({ providerId: _providerId, sourceUrl: _sourceUrl, fetchedAt: _fetchedAt, ...game }) => game),
-    provenance: allGames.map((game) => ({
-      provider: "espn",
-      source_url: game.sourceUrl,
-      source_id: game.providerId,
-      fetched_at: game.fetchedAt.toISOString(),
-      week: game.week,
-      home: game.home,
-      away: game.away,
-      marquee: game.marquee,
-    })),
-  };
-}
-
 async function exportState(seasonYear: number, calcuttaId?: number): Promise<{
   poolId: number;
   state: MtmState;
@@ -560,38 +552,26 @@ async function exportState(seasonYear: number, calcuttaId?: number): Promise<{
     actualKickoffAt: game.kickoff,
     status: game.status,
   })));
-  const scheduleCapture = await fetchEspnRemainingSchedule(seasonYear);
-  const remainingSchedule = scheduleCapture.schedule;
   const eventRows = await db.select({
     id: eventsTable.id,
+    source: eventsTable.source,
     sourceEventId: eventsTable.sourceEventId,
     week: eventsTable.week,
+    kickoffAt: eventsTable.kickoffAt,
+    sourceData: eventsTable.sourceData,
+    updatedAt: eventsTable.updatedAt,
     homeTeamId: eventsTable.homeTeamId,
     awayTeamId: eventsTable.awayTeamId,
   }).from(eventsTable).where(and(
     eq(eventsTable.seasonId, poolRow.seasonId),
     eq(eventsTable.sport, "NFL"),
     eq(eventsTable.competition, "NFL_REGULAR_SEASON"),
+    ne(eventsTable.status, "final"),
   ));
-  const eventBySource = new Map(eventRows.map((event) => [event.sourceEventId, event]));
-  const eventByMatchup = new Map(eventRows.map((event) =>
-    [`${event.week}:${event.awayTeamId}:${event.homeTeamId}`, event] as const,
-  ));
-  const canonicalSchedule = remainingSchedule.map((game) => {
-    const source = scheduleCapture.provenance.find((item) =>
-      item.week === game.week && item.home === game.home && item.away === game.away);
-    const awayEntry = entries.find((entry) => TEAM_CODE_BY_NAME[entry.name] === game.away);
-    const homeEntry = entries.find((entry) => TEAM_CODE_BY_NAME[entry.name] === game.home);
-    const event = (source ? eventBySource.get(source.source_id) : undefined)
-      ?? (awayEntry && homeEntry
-        ? eventByMatchup.get(`${game.week}:${awayEntry.teamId}:${homeEntry.teamId}`)
-        : undefined);
-    if (!event) throw new Error(`Remaining NFL event ${game.week}:${game.away}:${game.home} has no canonical events.id.`);
-    return { ...game, event_id: event.id };
-  });
-  // The engine state is deliberately provider-neutral: only the canonical
-  // events.id is exported, never an ESPN/provider identifier.
-  const remainingScheduleWithIds = canonicalSchedule;
+  const teamCodeById = new Map(entries.map((entry) =>
+    [entry.teamId, TEAM_CODE_BY_NAME[entry.name]] as const));
+  const scheduleCapture = buildCanonicalRemainingSchedule(eventRows, teamCodeById);
+  const remainingScheduleWithIds = scheduleCapture.schedule;
   const completedGames = games.filter((game) =>
     game.period >= 1 &&
     game.period <= 18 &&
