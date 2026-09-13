@@ -38,7 +38,10 @@ import valuation
 import wins
 
 
-def build_snapshot(config: dict, state: dict) -> dict:
+def _build_snapshot(config: dict, state: dict,
+                    runtime: simulate.RuntimeDiagnostics | None = None,
+                    *, enforce_gate: bool = True) -> dict:
+    runtime = runtime or simulate.RuntimeDiagnostics()
     rubric = config["rubric"]
     games = config["games_per_team"]
     simcfg = config["sim"]
@@ -46,33 +49,38 @@ def build_snapshot(config: dict, state: dict) -> dict:
 
     # ---- wins: ladder -> E[W total] -> E[remaining] ----
     e_wins, win_diags = {}, {}
-    for t in teams:
-        rungs = [wins.Rung(r["strike"], r.get("yes_bid"), r.get("yes_ask"),
-                           r.get("volume", 0), r.get("status"), r.get("result"))
-                 for r in state["win_ladders"][t]]
-        res = wins.expected_wins_from_ladder(rungs, games,
-                                             config["pricing"]["max_spread_for_mid"])
-        if res["e_wins"] is None:
-            raise ValueError(f"unpriced win ladder for {t}")
-        e_wins[t] = res["e_wins"]
-        win_diags[t] = {"method": res["method"], **res["diagnostics"]}
+    with runtime.stage("wins"):
+        for t in teams:
+            rungs = [wins.Rung(r["strike"], r.get("yes_bid"), r.get("yes_ask"),
+                               r.get("volume", 0), r.get("status"), r.get("result"))
+                     for r in state["win_ladders"][t]]
+            res = wins.expected_wins_from_ladder(rungs, games,
+                                                 config["pricing"]["max_spread_for_mid"])
+            if res["e_wins"] is None:
+                raise ValueError(f"unpriced win ladder for {t}")
+            e_wins[t] = res["e_wins"]
+            win_diags[t] = {"method": res["method"], **res["diagnostics"]}
 
     # ---- playoffs: elimination -> reach -> power-normalized ----
-    reach_raw = {t: playoffs.reach_from_elimination(state["elimination_quotes"][t])
-                 for t in teams}
-    norm = playoffs.normalize_all(reach_raw, config["stage_targets"])
+    with runtime.stage("playoff_normalization"):
+        reach_raw = {t: playoffs.reach_from_elimination(state["elimination_quotes"][t])
+                     for t in teams}
+        norm = playoffs.normalize_all(reach_raw, config["stage_targets"])
 
     # ---- point differential: market-calibrated ratings -> analytic E[diff] ----
     target_remaining = {t: max(e_wins[t] - state["realized"][t]["wins"], 0.0)
                         for t in teams}
-    fit = simulate.fit_ratings(target_remaining,
-                               [simulate.Game(**g) for g in state["remaining_schedule"]],
-                               hfa=simcfg["hfa_points"], margin_sd=simcfg["margin_sd"],
-                               lr=simcfg["rating_fit_lr"], iters=simcfg["rating_fit_iters"])
-    diffs = simulate.expected_remaining_diff(
-        fit["ratings"],
-        [simulate.Game(**g) for g in state["remaining_schedule"]],
-        hfa=simcfg["hfa_points"])
+    with runtime.stage("rating_fit"):
+        fit = simulate.fit_ratings(
+            target_remaining,
+            [simulate.Game(**g) for g in state["remaining_schedule"]],
+            hfa=simcfg["hfa_points"], margin_sd=simcfg["margin_sd"],
+            lr=simcfg["rating_fit_lr"], iters=simcfg["rating_fit_iters"],
+            diagnostics=runtime)
+        diffs = simulate.expected_remaining_diff(
+            fit["ratings"],
+            [simulate.Game(**g) for g in state["remaining_schedule"]],
+            hfa=simcfg["hfa_points"])
 
     # ---- assemble projections ----
     projections = {}
@@ -87,36 +95,40 @@ def build_snapshot(config: dict, state: dict) -> dict:
             "rating": fit["ratings"][t],
         }
 
-    valued = valuation.value_pool(rubric, state["realized"], projections,
-                                  state["entries"], state["pot"])
+    with runtime.stage("analytic_valuation"):
+        valued = valuation.value_pool(rubric, state["realized"], projections,
+                                      state["entries"], state["pot"])
     # The simulated, path-normalized mark is authoritative.  The analytic
     # valuation above remains in the snapshot for backwards compatibility and
     # audit comparison.
     schedule = [simulate.Game(**g) for g in state["remaining_schedule"]]
     seed = simcfg.get("seed", 20260829)
-    fitted_total_wins = simulate.implied_total_wins(
-        fit["ratings"], schedule,
-        {t: state["realized"][t]["wins"] for t in teams},
-        hfa=simcfg["hfa_points"], margin_sd=simcfg["margin_sd"])
-    mc = simulate.monte_carlo(
-        fit["ratings"], schedule,
-        {t: state["realized"][t]["wins"] for t in teams},
-        state.get("divisions", {}), hfa=simcfg["hfa_points"],
-        margin_sd=simcfg["margin_sd"], runs=simcfg["monte_carlo_runs"],
-        seed=seed, rubric=rubric, pot=state["pot"],
-        realized_stats=state["realized"], stage_targets=norm["probs"],
-        calibration_tolerance=simcfg.get("calibration_tolerance", 0.03),
-        calibration_iters=simcfg.get("calibration_iters", 500),
-        support_runs_per_team=simcfg.get("support_runs_per_team", 0),
-        support_prior_weight=simcfg.get("support_prior_weight", 0.01))
-    if not mc.get("calibration_converged", False):
+    with runtime.stage("monte_carlo"):
+        fitted_total_wins = simulate.implied_total_wins(
+            fit["ratings"], schedule,
+            {t: state["realized"][t]["wins"] for t in teams},
+            hfa=simcfg["hfa_points"], margin_sd=simcfg["margin_sd"])
+        mc = simulate.monte_carlo(
+            fit["ratings"], schedule,
+            {t: state["realized"][t]["wins"] for t in teams},
+            state.get("divisions", {}), hfa=simcfg["hfa_points"],
+            margin_sd=simcfg["margin_sd"], runs=simcfg["monte_carlo_runs"],
+            seed=seed, rubric=rubric, pot=state["pot"],
+            realized_stats=state["realized"], stage_targets=norm["probs"],
+            calibration_tolerance=simcfg.get("calibration_tolerance", 0.03),
+            calibration_iters=simcfg.get("calibration_iters", 500),
+            support_runs_per_team=simcfg.get("support_runs_per_team", 0),
+            support_prior_weight=simcfg.get("support_prior_weight", 0.01),
+            diagnostics=runtime)
+    if enforce_gate and not mc.get("calibration_converged", False):
         worst = max((abs(value) for value in mc.get("calibration_residuals", {}).values()),
                     default=float("inf"))
         raise ValueError(f"playoff market calibration failed; max residual {worst:.6f}")
-    sim_valued = valuation.value_simulation(
-        rubric, state["entries"], state["pot"], mc, schedule,
-        min_conditional_samples=simcfg.get("min_conditional_samples", 100),
-        min_conditional_share=simcfg.get("min_conditional_share", 0.01))
+    with runtime.stage("simulation_valuation"):
+        sim_valued = valuation.value_simulation(
+            rubric, state["entries"], state["pot"], mc, schedule,
+            min_conditional_samples=simcfg.get("min_conditional_samples", 100),
+            min_conditional_share=simcfg.get("min_conditional_share", 0.01))
     # Keep legacy point fields stable for consumers while replacing only the
     # payout mark with the path-normalized result.
     legacy_by_entry = {r["entry_id"]: r for r in valued["entries"]}
@@ -162,7 +174,7 @@ def build_snapshot(config: dict, state: dict) -> dict:
                                 "effective_sample_size": mc.get("effective_sample_size", mc["runs"]),
                                 "quality_status": "good" if abs(sim-target) <= tolerance else "warning"})
     failed_calibration = [row for row in calibration if row["quality_status"] != "good"]
-    if failed_calibration:
+    if failed_calibration and enforce_gate:
         worst = max(abs(row["residual"]) for row in failed_calibration)
         raise ValueError(
             f"market calibration failed for {len(failed_calibration)} metrics; "
@@ -170,7 +182,7 @@ def build_snapshot(config: dict, state: dict) -> dict:
         )
 
     return {
-        "status": "ok",
+        "status": "ok" if enforce_gate else "candidate",
         "as_of": datetime.now(timezone.utc).isoformat(),
         "config_season": config["season"],
         "projections": projections,
@@ -182,13 +194,16 @@ def build_snapshot(config: dict, state: dict) -> dict:
                   "hfa_points": simcfg["hfa_points"]},
         "conditional_payouts": sim_valued["conditional_payouts"],
         "diagnostics": {
+            "runtime": runtime.snapshot(),
             "wins": win_diags,
             "playoff_alphas": norm["alphas"],
             "playoff_residuals": norm["residuals"],
             "rating_fit_max_win_error": fit["max_abs_win_error"],
+            "rating_fit": fit.get("fit_diagnostics", {}),
             **valued["diagnostics"],
             "simulation": sim_valued["diagnostics"],
             "support_sampling": mc.get("support_sampling", {}),
+            "calibration": mc.get("calibration_diagnostics", {}),
             "market_calibration": {"metrics": calibration,
                 "status": "good" if all(v["quality_status"] == "good"
                                         for v in calibration) else "warning",
@@ -196,6 +211,12 @@ def build_snapshot(config: dict, state: dict) -> dict:
                     v["quality_status"] == "good" for v in calibration) else "warning"},
         },
     }
+
+
+def build_snapshot(config: dict, state: dict,
+                   runtime: simulate.RuntimeDiagnostics | None = None) -> dict:
+    """Build an official snapshot; production callers always enforce the gate."""
+    return _build_snapshot(config, state, runtime=runtime, enforce_gate=True)
 
 
 def main() -> int:
@@ -210,11 +231,14 @@ def main() -> int:
     with open(args.state) as f:
         state = json.load(f)
 
+    runtime = simulate.RuntimeDiagnostics()
+    simulate.install_sigterm_diagnostics(runtime)
     try:
-        snapshot = build_snapshot(config, state)
+        snapshot = build_snapshot(config, state, runtime=runtime)
     except Exception as e:  # failed snapshot: repo keeps serving the prior one
         snapshot = {"status": "failed", "error": str(e),
-                    "as_of": datetime.now(timezone.utc).isoformat()}
+                    "as_of": datetime.now(timezone.utc).isoformat(),
+                    "diagnostics": {"runtime": runtime.snapshot()}}
     with open(args.out, "w") as f:
         json.dump(snapshot, f, indent=2)
     print(f"snapshot: {snapshot['status']}")

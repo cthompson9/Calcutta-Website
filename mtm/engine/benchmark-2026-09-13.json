@@ -1,0 +1,99 @@
+{
+  "purpose": "Select the smallest production path count that passes unchanged MTM quality gates and remains stable against the 100000-path reference.",
+  "state_sha256": "e15313fff7974b138300263c9b7a535e9f3cca3f245e2e23837947828b3f4768",
+  "state_summary": {
+    "teams": 32,
+    "entries": 32,
+    "remaining_games": 270,
+    "market_quote_rows": 736
+  },
+  "method": {
+    "command": "python3 benchmark_mtm.py --config ../season-config-2026.json --state <matching-state> --runs <count>",
+    "seed": 20260829,
+    "reference_runs": 100000,
+    "conditional_comparison": "Absolute gross expected payout differences for outcome/team cells rated good in both candidates.",
+    "note": "Runs used identical state, targets, model settings, and seed. Only monte_carlo_runs changed. Raw state is intentionally not committed."
+  },
+  "selection_thresholds": {
+    "official_gate_would_accept": true,
+    "conservation_status": "ok",
+    "minimum_effective_sample_size": 1000,
+    "maximum_mean_entry_payout_difference_vs_100000": 30,
+    "maximum_entry_payout_difference_vs_100000": 100,
+    "maximum_mean_good_conditional_difference_vs_100000": 75,
+    "maximum_p95_good_conditional_difference_vs_100000": 200
+  },
+  "results": [
+    {
+      "runs": 20000,
+      "cpu_seconds": 27.991,
+      "peak_rss_mb": 85.5,
+      "official_gate_would_accept": true,
+      "conservation_status": "ok",
+      "effective_sample_size": 509.46,
+      "max_calibration_residual": 0.029997286,
+      "mean_entry_payout_difference_vs_100000": 53.12,
+      "max_entry_payout_difference_vs_100000": 166.21,
+      "mean_good_conditional_difference_vs_100000": 118.01,
+      "p95_good_conditional_difference_vs_100000": 337.69,
+      "selected": false
+    },
+    {
+      "runs": 40000,
+      "cpu_seconds": 55.525,
+      "peak_rss_mb": 135.6,
+      "official_gate_would_accept": true,
+      "conservation_status": "ok",
+      "effective_sample_size": 1034.76,
+      "max_calibration_residual": 0.029990362,
+      "mean_entry_payout_difference_vs_100000": 25.70,
+      "max_entry_payout_difference_vs_100000": 99.84,
+      "mean_good_conditional_difference_vs_100000": 65.07,
+      "p95_good_conditional_difference_vs_100000": 182.58,
+      "selected": true
+    },
+    {
+      "runs": 60000,
+      "cpu_seconds": 82.597,
+      "peak_rss_mb": 193.2,
+      "official_gate_would_accept": true,
+      "conservation_status": "ok",
+      "effective_sample_size": 1205.94,
+      "max_calibration_residual": 0.029998183,
+      "mean_entry_payout_difference_vs_100000": 44.86,
+      "max_entry_payout_difference_vs_100000": 157.06,
+      "mean_good_conditional_difference_vs_100000": 86.07,
+      "p95_good_conditional_difference_vs_100000": 255.89,
+      "selected": false
+    },
+    {
+      "runs": 80000,
+      "cpu_seconds": 110.736,
+      "peak_rss_mb": 248.5,
+      "official_gate_would_accept": true,
+      "conservation_status": "ok",
+      "effective_sample_size": 934.16,
+      "max_calibration_residual": 0.029987222,
+      "mean_entry_payout_difference_vs_100000": 47.69,
+      "max_entry_payout_difference_vs_100000": 184.62,
+      "mean_good_conditional_difference_vs_100000": 88.44,
+      "p95_good_conditional_difference_vs_100000": 267.12,
+      "selected": false
+    },
+    {
+      "runs": 100000,
+      "cpu_seconds": 139.334,
+      "peak_rss_mb": 304.0,
+      "official_gate_would_accept": true,
+      "conservation_status": "ok",
+      "effective_sample_size": 2426.99,
+      "max_calibration_residual": 0.029998901,
+      "mean_entry_payout_difference_vs_100000": 0,
+      "max_entry_payout_difference_vs_100000": 0,
+      "mean_good_conditional_difference_vs_100000": 0,
+      "p95_good_conditional_difference_vs_100000": 0,
+      "selected": false
+    }
+  ],
+  "decision": "40000 is the smallest count meeting every declared threshold. 20000 fails ESS and both entry and conditional stability thresholds."
+}

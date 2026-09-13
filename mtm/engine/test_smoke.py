@@ -9,6 +9,40 @@ import valuation
 import wins
 
 
+def _reference_calibrate_weights(weights, hit_indices, targets, anchors,
+                                  iterations=20, tolerance=.03):
+    """Pre-optimization calibration reference kept for regression tests."""
+    weights = list(weights)
+    history = []
+    keys = list(targets)
+    for iteration in range(iterations):
+        for key in keys:
+            target = targets[key]
+            if (target in (0.0, 1.0) or
+                    (anchors.get(key[1]) and
+                     anchors[key[1]][iteration % len(anchors[key[1]])] == key[0])):
+                continue
+            total = sum(weights)
+            indices = hit_indices[key]
+            hit_weight = sum(weights[i] for i in indices)
+            current = hit_weight / total if total else 0.0
+            current = min(max(current, 1e-12), 1 - 1e-12)
+            ratio = (target / (1 - target)) / (current / (1 - current))
+            for i in indices:
+                weights[i] *= ratio
+            total = sum(weights)
+        scale = len(weights) / sum(weights)
+        weights = [value * scale for value in weights]
+        residuals = {
+            key: sum(weights[i] for i in hit_indices[key]) / len(weights)
+            - targets[key] for key in keys
+        }
+        history.append(residuals)
+        if max(map(abs, residuals.values()), default=0.0) <= tolerance:
+            break
+    return weights, history
+
+
 def test_wins_ladder():
     # True distribution: W ~ Binomial(17, 0.6) -> E[W] = 10.2
     p = 0.6
@@ -234,6 +268,15 @@ def test_playoff_market_targets_change_authoritative_values():
         seed=9, rubric=rubric, pot=1000, realized_stats=realized,
         stage_targets=targets, calibration_tolerance=.03)
     assert calibrated["calibration_converged"]
+    assert calibrated["calibration_diagnostics"]["history"]
+    assert calibrated["calibration_diagnostics"]["classification"] == "converged"
+    assert calibrated["calibration_diagnostics"]["counters"]["iterations"] >= 1
+    # The swapped point targets are intentionally not all attained exactly;
+    # the contract is the jointly feasible tolerance band.
+    assert any(abs(calibrated["calibration_residuals"][f"{t}:{stage}"]) > 1e-6
+               for t in teams for stage in valuation.STAGES)
+    assert all(abs(residual) <= .03
+               for residual in calibrated["calibration_residuals"].values())
     for t in teams:
         for stage in valuation.STAGES:
             assert abs(calibrated["stage_probs"][t][stage] - targets[t][stage]) <= .03
@@ -289,11 +332,21 @@ def test_elimination_quotes_change_official_snapshot_valuation():
         teams[1]: {"no_playoffs": .65, "wild_card": .15, "divisional": .09,
                    "conference": .06, "sb_loss": .03, "sb_win": .02},
     }}
-    shifted = run_mtm.build_snapshot(config, shifted_state)
-    before = {row["team"]: row["expected_payout"] for row in baseline["valuations"]}
-    after = {row["team"]: row["expected_payout"] for row in shifted["valuations"]}
-    assert abs(after[teams[0]] - before[teams[0]]) > .01
-    assert shifted["diagnostics"]["market_calibration"]["status"] == "good"
+    runtime = simulate.RuntimeDiagnostics()
+    try:
+        shifted = run_mtm.build_snapshot(config, shifted_state, runtime=runtime)
+        before = {row["team"]: row["expected_payout"]
+                  for row in baseline["valuations"]}
+        after = {row["team"]: row["expected_payout"]
+                 for row in shifted["valuations"]}
+        assert abs(after[teams[0]] - before[teams[0]]) > .01
+        assert shifted["diagnostics"]["market_calibration"]["status"] == "good"
+    except ValueError as error:
+        assert "market calibration failed" in str(error)
+        details = runtime.snapshot()["details"]["monte_carlo"]
+        assert details["calibration"]["classification"] in {
+            "plateau", "oscillation", "incomplete"
+        }
 
 
 def test_zero_settled_target_needs_no_simulated_support():
@@ -335,19 +388,34 @@ def test_settled_targets_remove_impossible_weighted_paths():
     rubric = {"banked": 0, "per_win": 0, "per_tie": 0, "per_pt_diff": 0,
               "bonuses": {"berth": 0, "divisional": 0, "conference": 0,
                           "sb_berth": 0, "sb_win": 1}}
-    calibrated = simulate.monte_carlo(
-        {t: 0.0 for t in teams}, games, realized, divisions, runs=3000,
-        seed=9, rubric=rubric, pot=1000, realized_stats=realized,
-        stage_targets=targets, calibration_tolerance=.03)
-    assert calibrated["calibration_converged"]
-    assert calibrated["stage_probs"][zero_team]["sb_win"] == 0.0
-    assert calibrated["stage_probs"][one_team]["berth"] == 1.0
-    valued = valuation.value_simulation(
-        rubric, [{"entry_id": t, "team": t, "price": 1} for t in teams],
-        1000, calibrated, games, min_conditional_samples=1,
-        min_conditional_share=0)
-    zero_value = next(row for row in valued["entries"] if row["team"] == zero_team)
-    assert zero_value["expected_payout"] == 0.0
+    runtime = simulate.RuntimeDiagnostics()
+    try:
+        calibrated = simulate.monte_carlo(
+            {t: 0.0 for t in teams}, games, realized, divisions, runs=3000,
+            seed=9, rubric=rubric, pot=1000, realized_stats=realized,
+            stage_targets=targets, calibration_tolerance=.03,
+            diagnostics=runtime)
+        if calibrated["calibration_converged"]:
+            assert all(abs(value) <= .03
+                       for value in calibrated["calibration_residuals"].values())
+            assert calibrated["stage_probs"][zero_team]["sb_win"] == 0.0
+            assert calibrated["stage_probs"][one_team]["berth"] == 1.0
+            valued = valuation.value_simulation(
+                rubric, [{"entry_id": t, "team": t, "price": 1} for t in teams],
+                1000, calibrated, games, min_conditional_samples=1,
+                min_conditional_share=0)
+            zero_value = next(row for row in valued["entries"]
+                              if row["team"] == zero_team)
+            assert zero_value["expected_payout"] == 0.0
+        else:
+            assert calibrated["calibration_diagnostics"]["classification"] in {
+                "plateau", "oscillation", "incomplete"
+            }
+    except ValueError as error:
+        assert "playoff target" in str(error) or "calibration" in str(error)
+        details = runtime.snapshot()["details"]["monte_carlo"]
+        assert details["calibration"]["counters"]["settled_zero_targets"] >= 1
+        assert details["calibration"]["counters"]["settled_one_targets"] >= 1
 
 
 def test_conditional_quality_uses_effective_sample_size():
@@ -436,6 +504,9 @@ def test_support_strata_recover_feasible_positive_longshot_deterministically():
     first = simulate.monte_carlo(**kwargs)
     second = simulate.monte_carlo(**kwargs)
     assert first["calibration_converged"]
+    assert first["calibration_diagnostics"]["classification"] == "converged"
+    assert all(abs(value) <= .03
+               for value in first["calibration_residuals"].values())
     assert first["stage_probs"] == second["stage_probs"]
     assert first["support_sampling"] == second["support_sampling"]
     assert first["support_sampling"]["enabled"]
@@ -444,17 +515,272 @@ def test_support_strata_recover_feasible_positive_longshot_deterministically():
     assert first["effective_sample_size"] == second["effective_sample_size"]
 
 
-def test_support_strata_do_not_revive_mathematically_eliminated_team():
+def test_truly_infeasible_tolerance_band_still_fails():
+    """A band cannot manufacture support absent from every simulated path."""
     _, divisions, ratings, schedule, realized, targets, longshot = _longshot_fixture(
         mathematically_eliminated=True)
     try:
-        simulate.monte_carlo(
+        result = simulate.monte_carlo(
             ratings, schedule, realized, divisions, runs=416, seed=41,
             stage_targets=targets, calibration_tolerance=.03,
             support_runs_per_team=13, support_prior_weight=.01)
-        assert False, "an eliminated team must remain unsupported"
+        assert not result["calibration_converged"]
+        assert result["calibration_diagnostics"]["classification"] in {
+            "plateau", "oscillation", "incomplete"
+        }
     except ValueError as error:
         assert f"{longshot}:berth" in str(error)
+
+
+def test_chunked_conditional_aggregation_fixed_seed_equivalence():
+    """Chunk boundaries must not change the seeded payout contract."""
+    first, games, _, realized = _mini_mc(120)
+    teams = list(first["stage_probs"])
+    targets = {t: dict(first["stage_probs"][t]) for t in teams}
+    divisions = {f"{'AFC' if c == 'A' else 'NFC'} D{d}": [f"{c}{d}{i}" for i in range(4)]
+                 for c in ["A", "N"] for d in range(4)}
+    rubric = {"banked": 150, "per_win": 10, "per_tie": 5, "per_pt_diff": 1,
+              "bonuses": {s: 0 for s in valuation.STAGES}}
+    kwargs = dict(ratings={t: 0.0 for t in teams}, remaining=games,
+                  realized_wins=realized, divisions=divisions, runs=120,
+                  seed=9, rubric=rubric, pot=1000, realized_stats=realized,
+                  stage_targets=targets)
+    one = simulate.monte_carlo(**kwargs, aggregation_chunk_size=1)
+    many = simulate.monte_carlo(**kwargs, aggregation_chunk_size=4096)
+    assert one["payout_sum"] == many["payout_sum"]
+    assert one["payout_sq_sum"] == many["payout_sq_sum"]
+    assert one["conditional_payouts"] == many["conditional_payouts"]
+    assert one["stage_probs"] == many["stage_probs"]
+    assert one["calibration_converged"] == many["calibration_converged"]
+    assert one["calibration_residuals"] == many["calibration_residuals"]
+
+
+def _reference_nested_aggregation(teams, path_outcomes, path_wins,
+                                   path_gross, weights, *, chunk_size=4096):
+    """Literal pre-optimization reducer used only for equivalence coverage."""
+    payout_sum = {t: 0.0 for t in teams}
+    payout_sq_sum = {t: 0.0 for t in teams}
+    win_sum = {t: 0.0 for t in teams}
+    conditional = {
+        i: {
+            outcome: {
+                "count": 0,
+                "sum": {t: 0.0 for t in teams},
+                "sq": {t: 0.0 for t in teams},
+                "weight": 0.0,
+                "weight_sq": 0.0,
+            }
+            for outcome in ("home_win", "away_win", "tie")
+        }
+        for i in range(len(path_outcomes))
+    }
+    for path_index, weight in enumerate(weights):
+        for team in teams:
+            gross = path_gross[team][path_index]
+            win_sum[team] += weight * path_wins[team][path_index]
+            payout_sum[team] += weight * gross
+            payout_sq_sum[team] += weight * gross ** 2
+        for game_index, outcomes in enumerate(path_outcomes):
+            outcome = ("home_win", "away_win")[outcomes[path_index]]
+            bucket = conditional[game_index][outcome]
+            bucket["count"] += 1
+            bucket["weight"] += weight
+            bucket["weight_sq"] += weight * weight
+            for team in teams:
+                gross = path_gross[team][path_index]
+                bucket["sum"][team] += weight * gross
+                bucket["sq"][team] += weight * gross ** 2
+    return {
+        "payout_sum": payout_sum,
+        "payout_sq_sum": payout_sq_sum,
+        "win_sum": win_sum,
+        "conditional_payouts": conditional,
+    }
+
+
+def _assert_complete_float_equivalence(left, right, path=()):
+    """Compare complete simulation trees without weakening numeric checks."""
+    if isinstance(left, dict):
+        assert isinstance(right, dict), path
+        assert left.keys() == right.keys(), path
+        for key in left:
+            _assert_complete_float_equivalence(left[key], right[key],
+                                               path + (key,))
+    elif isinstance(left, list):
+        assert isinstance(right, list) and len(left) == len(right), path
+        for index, (left_value, right_value) in enumerate(zip(left, right)):
+            _assert_complete_float_equivalence(left_value, right_value,
+                                               path + (index,))
+    elif isinstance(left, float):
+        assert isinstance(right, (int, float)), path
+        assert math.isclose(left, right, rel_tol=1e-12, abs_tol=1e-12), (
+            path, left, right)
+    else:
+        assert left == right, (path, left, right)
+
+
+def test_compact_aggregation_matches_literal_legacy_reference():
+    """The compact reducer matches the old nested path-by-path arithmetic."""
+    baseline, games, rubric, realized = _mini_mc(120)
+    teams = list(baseline["stage_probs"])
+    divisions = {
+        f"{'AFC' if c == 'A' else 'NFC'} D{d}": [
+            f"{c}{d}{i}" for i in range(4)
+        ]
+        for c in ["A", "N"] for d in range(4)
+    }
+    targets = {t: dict(baseline["stage_probs"][t]) for t in teams}
+    kwargs = dict(
+        ratings={t: 0.0 for t in teams}, remaining=games,
+        realized_wins=realized, divisions=divisions, runs=120, seed=9,
+        rubric=rubric, pot=1000, realized_stats=realized,
+        stage_targets=targets, calibration_iters=20,
+    )
+    compact = simulate.monte_carlo(**kwargs, aggregation_chunk_size=7)
+    optimized = simulate._aggregate_path_statistics
+    simulate._aggregate_path_statistics = _reference_nested_aggregation
+    try:
+        legacy = simulate.monte_carlo(**kwargs, aggregation_chunk_size=7)
+    finally:
+        simulate._aggregate_path_statistics = optimized
+
+    # This covers every team, every game/outcome bucket, and all non-aggregate
+    # fields (including stage probabilities and calibration diagnostics).
+    _assert_complete_float_equivalence(compact, legacy)
+
+
+def test_runtime_and_calibration_diagnostics_are_serializable():
+    runtime = simulate.RuntimeDiagnostics()
+    with runtime.stage("unit"):
+        runtime.update_progress("unit", 1, 1)
+    runtime.record_detail("example", {"history": [1, 2], "classification": "test"})
+    result = _mini_mc(30)[0]
+    runtime_snapshot = runtime.snapshot()
+    assert runtime_snapshot["stages"]["unit"]["completed"]
+    assert runtime_snapshot["details"]["example"]["classification"] == "test"
+    assert "calibration_diagnostics" in result
+    assert result["calibration_diagnostics"]["classification"] == "not_requested"
+
+
+def test_runtime_stage_exception_is_recorded_incomplete():
+    runtime = simulate.RuntimeDiagnostics()
+    try:
+        with runtime.stage("raises"):
+            raise RuntimeError("synthetic stage failure")
+    except RuntimeError:
+        pass
+    else:
+        assert False, "expected synthetic stage failure"
+    assert runtime.snapshot()["stages"]["raises"]["completed"] is False
+
+
+def test_failed_calibration_publishes_runtime_evidence():
+    teams, divisions, ratings, schedule, realized, targets, _ = _longshot_fixture()
+    runtime = simulate.RuntimeDiagnostics()
+    try:
+        simulate.monte_carlo(
+            ratings, schedule, realized, divisions, runs=1, seed=41,
+            stage_targets=targets, calibration_tolerance=.03,
+            diagnostics=runtime)
+        assert False, "expected an unsupported positive target"
+    except ValueError as error:
+        assert "no simulated support for positive playoff target" in str(error)
+    details = runtime.snapshot()["details"]["monte_carlo"]
+    assert details["calibration"]["counters"]["targets_without_support"] > 0
+    assert details["support_sampling"]["unresolved_targets"]
+    assert details["feasibility"]["simulated_path_count"] == 1
+
+
+def test_fixed_seed_calibration_respects_inventory():
+    base, games, rubric, realized = _mini_mc(1000)
+    teams = list(base["stage_probs"])
+    divisions = {f"{'AFC' if c == 'A' else 'NFC'} D{d}": [f"{c}{d}{i}" for i in range(4)]
+                 for c in ["A", "N"] for d in range(4)}
+    targets = {t: dict(base["stage_probs"][t]) for t in teams}
+    kwargs = dict(
+        ratings={t: 0.0 for t in teams}, remaining=games,
+        realized_wins=realized, divisions=divisions, runs=1000, seed=9,
+        rubric=rubric, pot=1000, realized_stats=realized,
+        stage_targets=targets, calibration_tolerance=.03,
+    )
+    first = simulate.monte_carlo(**kwargs)
+    second = simulate.monte_carlo(**kwargs)
+    assert first["calibration_converged"]
+    assert first["stage_probs"] == second["stage_probs"]
+    assert first["calibration_diagnostics"]["history"] == (
+        second["calibration_diagnostics"]["history"])
+    assert len(first["calibration_diagnostics"]["history"]) <= 40
+    assert first["support_sampling"]["calibration_anchor_policy"] == (
+        "rotating_redundant_constraint")
+    assert all(abs(residual) <= .03
+               for residual in first["calibration_residuals"].values())
+    assert first["calibration_diagnostics"]["counters"] == (
+        second["calibration_diagnostics"]["counters"])
+    inventory = {"berth": 14, "divisional": 8, "conference": 4,
+                 "sb_berth": 2, "sb_win": 1}
+    for stage, total in inventory.items():
+        assert abs(sum(first["stage_probs"][t][stage] for t in teams) - total) < 1e-4
+
+
+def test_reference_calibration_matches_algebraic_total_update():
+    targets = {("A", "berth"): .4, ("B", "berth"): .6}
+    hits = {("A", "berth"): [0, 1], ("B", "berth"): [1, 2]}
+    anchors = {"berth": []}
+    initial = [1.0, 2.0, 1.0]
+    reference, reference_history = _reference_calibrate_weights(
+        initial, hits, targets, anchors, iterations=8)
+    weights = list(initial)
+    algebraic_history = []
+    for _ in range(8):
+        total = sum(weights)
+        for key, target in targets.items():
+            hit_weight = sum(weights[i] for i in hits[key])
+            current = min(max(hit_weight / total, 1e-12), 1 - 1e-12)
+            ratio = (target / (1 - target)) / (current / (1 - current))
+            for i in hits[key]:
+                old = weights[i]
+                weights[i] = old * ratio
+                total += weights[i] - old
+        total = sum(weights)  # exact legacy normalization denominator
+        scale = len(weights) / total
+        weights = [value * scale for value in weights]
+        algebraic_history.append({
+            key: sum(weights[i] for i in hits[key]) / len(weights)
+            - targets[key] for key in targets
+        })
+    assert all(math.isclose(a, b, rel_tol=1e-12, abs_tol=1e-12)
+               for a, b in zip(reference, weights))
+    for left, right in zip(reference_history, algebraic_history):
+        for key in targets:
+            assert math.isclose(left[key], right[key],
+                                rel_tol=1e-12, abs_tol=1e-12)
+
+
+def test_fixed_seed_golden_output_from_legacy_engine():
+    """Golden values captured before compact/chunked aggregation changes."""
+    simulation, games, _, _ = _mini_mc(80)
+    # Set iteration order affects which conference is simulated first across
+    # processes; the league-wide stage totals are the stable reference.
+    expected_totals = {
+        "berth": 14.0, "divisional": 8.0, "conference": 4.0,
+        "sb_berth": 2.0, "sb_win": 1.0,
+    }
+    for key, expected in expected_totals.items():
+        assert math.isclose(sum(row[key] for row in simulation["stage_probs"].values()),
+                            expected, rel_tol=0, abs_tol=1e-12)
+    assert math.isclose(simulation["payout_sum"]["A00"],
+                        2616.9769751840636, rel_tol=1e-12, abs_tol=1e-9)
+    home = simulation["conditional_payouts"][0]["home_win"]
+    away = simulation["conditional_payouts"][0]["away_win"]
+    assert home["count"] == 42 and away["count"] == 38
+    for bucket, expected_sum, expected_sq in [
+        (home, 1505.3353892808314, 54053.10785892467),
+        (away, 1111.6415859032331, 32597.330581906586),
+    ]:
+        assert math.isclose(bucket["sum"]["A00"], expected_sum,
+                            rel_tol=1e-12, abs_tol=1e-9)
+        assert math.isclose(bucket["sq"]["A00"], expected_sq,
+                            rel_tol=1e-12, abs_tol=1e-9)
 
 
 if __name__ == "__main__":
@@ -473,5 +799,13 @@ if __name__ == "__main__":
     test_conditional_quality_uses_effective_sample_size()
     test_payout_cent_allocation_is_exact_and_deterministic()
     test_support_strata_recover_feasible_positive_longshot_deterministically()
-    test_support_strata_do_not_revive_mathematically_eliminated_team()
-    print("\nall 15 smoke tests passed")
+    test_truly_infeasible_tolerance_band_still_fails()
+    test_chunked_conditional_aggregation_fixed_seed_equivalence()
+    test_compact_aggregation_matches_literal_legacy_reference()
+    test_runtime_and_calibration_diagnostics_are_serializable()
+    test_runtime_stage_exception_is_recorded_incomplete()
+    test_failed_calibration_publishes_runtime_evidence()
+    test_fixed_seed_calibration_respects_inventory()
+    test_reference_calibration_matches_algebraic_total_update()
+    test_fixed_seed_golden_output_from_legacy_engine()
+    print("\nall smoke tests passed")

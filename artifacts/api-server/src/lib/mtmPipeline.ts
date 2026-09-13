@@ -727,10 +727,23 @@ async function runEngine(state: MtmState): Promise<EngineSnapshot> {
         signal?: string;
         stderr?: string;
       };
+      const stderr = processError.stderr?.trim() || "";
+      const lastProgress = stderr
+        .split(/\r?\n/)
+        .map((line) => {
+          try {
+            const parsed = JSON.parse(line) as Record<string, unknown>;
+            return parsed.event === "mtm_progress" ? parsed : null;
+          } catch {
+            return null;
+          }
+        })
+        .filter((value): value is Record<string, unknown> => value !== null)
+        .at(-1);
       const details = [
         processError.killed ? `Engine exceeded its ${ENGINE_TIMEOUT_MS / 60_000}-minute execution limit.` : null,
         processError.signal ? `Termination signal: ${processError.signal}.` : null,
-        processError.stderr?.trim() || null,
+        stderr || null,
       ].filter((detail): detail is string => Boolean(detail));
       return {
         status: "failed",
@@ -738,6 +751,9 @@ async function runEngine(state: MtmState): Promise<EngineSnapshot> {
         error: details.length
           ? `${processError.message}\n${details.join("\n")}`
           : processError.message,
+        diagnostics: lastProgress
+          ? { runtime: { progress: lastProgress, source: "stderr_fallback" } }
+          : undefined,
       };
     }
   } finally {

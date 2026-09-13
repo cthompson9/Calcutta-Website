@@ -23,8 +23,168 @@ monte_carlo(...)['diff_samples'] - expectations are not enough there.
 from __future__ import annotations
 
 import math
+import json
+import os
+import platform
 import random
+import signal
+import sys
+import time
+from array import array
+from contextlib import contextmanager
 from dataclasses import dataclass
+from pathlib import Path
+from typing import Iterator
+
+try:
+    import resource
+except ImportError:  # pragma: no cover - Windows
+    resource = None
+
+
+_ACTIVE_DIAGNOSTICS = None
+
+
+class RuntimeDiagnostics:
+    """Small, dependency-free run telemetry collector.
+
+    The collector intentionally contains only serializable values.  It is used
+    by the CLI as well as by tests and can therefore be included in a snapshot
+    even when a later stage fails.
+    """
+
+    def __init__(self):
+        self.started_wall = time.perf_counter()
+        self.started_cpu = time.process_time()
+        self.stages = {}
+        self.progress = {"stage": "starting", "completed": 0, "total": None}
+        self.details = {}
+
+    def record_detail(self, name: str, value):
+        """Record JSON-compatible run details for snapshots and failure paths."""
+        try:
+            json.dumps(value)
+        except (TypeError, ValueError) as error:
+            raise TypeError(f"runtime detail {name!r} is not serializable") from error
+        self.details[name] = value
+
+    def update_details(self, details: dict):
+        """Record several JSON-compatible detail fields atomically."""
+        for name, value in details.items():
+            self.record_detail(name, value)
+
+    @staticmethod
+    def _cgroup_value(*paths):
+        for path in paths:
+            try:
+                value = Path(path).read_text().strip()
+            except (OSError, ValueError):
+                continue
+            if value and value != "max":
+                try:
+                    return int(value)
+                except ValueError:
+                    continue
+        return None
+
+    @staticmethod
+    def _cgroup_cpu():
+        try:
+            text = Path("/sys/fs/cgroup/cpu.max").read_text().split()
+            if len(text) == 2 and text[0] != "max":
+                return {"quota_us": int(text[0]), "period_us": int(text[1]),
+                        "cpus": int(text[0]) / int(text[1])}
+        except (OSError, ValueError, ZeroDivisionError):
+            pass
+        quota = RuntimeDiagnostics._cgroup_value(
+            "/sys/fs/cgroup/cpu/cpu.cfs_quota_us")
+        period = RuntimeDiagnostics._cgroup_value(
+            "/sys/fs/cgroup/cpu/cpu.cfs_period_us")
+        if quota is not None and period:
+            return {"quota_us": quota, "period_us": period,
+                    "cpus": quota / period}
+        return {}
+
+    def _rss_bytes(self):
+        if resource is None:
+            return None
+        value = resource.getrusage(resource.RUSAGE_SELF).ru_maxrss
+        # Linux reports KiB, macOS reports bytes.
+        return int(value * 1024 if sys.platform != "darwin" else value)
+
+    @contextmanager
+    def stage(self, name: str) -> Iterator[None]:
+        wall = time.perf_counter()
+        cpu = time.process_time()
+        self.progress["stage"] = name
+        completed = False
+        try:
+            yield
+            completed = True
+        finally:
+            record = self.stages.setdefault(name, {
+                "wall_seconds": 0.0, "cpu_seconds": 0.0, "completed": False})
+            record["wall_seconds"] += time.perf_counter() - wall
+            record["cpu_seconds"] += time.process_time() - cpu
+            record["completed"] = completed
+
+    def record_stage(self, name: str, wall_seconds: float, cpu_seconds: float):
+        record = self.stages.setdefault(name, {
+            "wall_seconds": 0.0, "cpu_seconds": 0.0, "completed": False})
+        record["wall_seconds"] += wall_seconds
+        record["cpu_seconds"] += cpu_seconds
+        record["completed"] = True
+
+    def update_progress(self, stage: str, completed: int, total=None,
+                        *, force: bool = False):
+        self.progress = {"stage": stage, "completed": int(completed),
+                         "total": total}
+        # Progress is deliberately sparse; SIGTERM can force a final line.
+        if force or completed == total or (total and completed % max(1, total // 20) == 0):
+            self.emit_progress()
+
+    def emit_progress(self):
+        payload = {"event": "mtm_progress", **self.progress,
+                   "wall_seconds": round(time.perf_counter() - self.started_wall, 6)}
+        print(json.dumps(payload, separators=(",", ":")),
+              file=sys.stderr, flush=True)
+
+    def snapshot(self):
+        rss = self._rss_bytes()
+        return {
+            "wall_seconds": round(time.perf_counter() - self.started_wall, 6),
+            "cpu_seconds": round(time.process_time() - self.started_cpu, 6),
+            "peak_rss_bytes": rss,
+            "python": {"version": platform.python_version(),
+                       "implementation": platform.python_implementation()},
+            "platform": {"system": platform.system(), "release": platform.release(),
+                         "machine": platform.machine()},
+            "cpu_count": os.cpu_count(),
+            "cgroup": {
+                "cpu": self._cgroup_cpu(),
+                "memory_limit_bytes": self._cgroup_value(
+                    "/sys/fs/cgroup/memory.max",
+                    "/sys/fs/cgroup/memory/memory.limit_in_bytes"),
+                "memory_current_bytes": self._cgroup_value(
+                    "/sys/fs/cgroup/memory.current",
+                    "/sys/fs/cgroup/memory/memory.usage_in_bytes"),
+            },
+            "stages": self.stages,
+            "progress": self.progress,
+            "details": self.details,
+        }
+
+
+def install_sigterm_diagnostics(runtime: RuntimeDiagnostics):
+    """Flush a progress record before the process honors SIGTERM."""
+    global _ACTIVE_DIAGNOSTICS
+    _ACTIVE_DIAGNOSTICS = runtime
+
+    def _handler(_signum, _frame):
+        runtime.emit_progress()
+        raise RuntimeError("SIGTERM received")
+
+    signal.signal(signal.SIGTERM, _handler)
 
 
 def _phi(x: float) -> float:
@@ -45,7 +205,8 @@ def fit_ratings(target_remaining_wins: dict[str, float],
                 hfa: float = 1.6,
                 margin_sd: float = 13.5,
                 lr: float = 0.5,
-                iters: int = 200) -> dict:
+                 iters: int = 200,
+                 diagnostics: RuntimeDiagnostics | None = None) -> dict:
     """Solve r so implied remaining wins match market. Returns ratings + fit error.
 
     Gradient-free fixed point: nudge each rating by (target - implied) * lr *
@@ -68,9 +229,13 @@ def fit_ratings(target_remaining_wins: dict[str, float],
         return w
 
     err = float("inf")
-    for _ in range(iters):
+    history = []
+    for iteration in range(iters):
         w = implied()
         err = max(abs(w[t] - target_remaining_wins[t]) for t in teams) if teams else 0.0
+        history.append({"iteration": iteration + 1, "max_abs_win_error": err})
+        if diagnostics is not None:
+            diagnostics.update_progress("rating_fit", iteration + 1, iters)
         if err < 1e-4:
             break
         for t in teams:
@@ -80,8 +245,19 @@ def fit_ratings(target_remaining_wins: dict[str, float],
             r[t] += step
         mean = sum(r.values()) / len(r)
         r = {t: v - mean for t, v in r.items()}
-    return {"ratings": {t: round(v, 3) for t, v in r.items()},
-            "max_abs_win_error": round(err, 4)}
+    converged = err < 1e-4
+    if len(history) >= 4 and history[-1]["max_abs_win_error"] >= history[-2]["max_abs_win_error"]:
+        classification = "plateau"
+    else:
+        classification = "converged" if converged else "incomplete"
+    return {
+        "ratings": {t: round(v, 3) for t, v in r.items()},
+        "max_abs_win_error": round(err, 4),
+        "fit_diagnostics": {
+            "iterations": len(history), "converged": converged,
+            "classification": classification, "history": history,
+        },
+    }
 
 
 def expected_remaining_diff(ratings: dict[str, float],
@@ -118,6 +294,107 @@ def implied_total_wins(ratings: dict[str, float],
     return totals
 
 
+def _aggregate_path_statistics(teams, path_outcomes, path_wins, path_gross,
+                               weights, *, chunk_size=4096):
+    """Compactly reduce simulated paths to the public aggregate statistics.
+
+    The path arrays are deliberately kept as a private boundary: callers get
+    the same ordinary dictionaries as the legacy reducer, while the hot loop
+    can operate on the compact columnar representation.  Keeping this
+    reduction separate also makes it possible to regression-test the
+    arithmetic without duplicating the season simulator.
+    """
+    runs = len(weights)
+    payout_sum = {t: 0.0 for t in teams}
+    payout_sq_sum = {t: 0.0 for t in teams}
+    win_sum = {t: 0.0 for t in teams}
+    conditional = {
+        i: {
+            outcome: {
+                "count": 0,
+                "sum": {t: 0.0 for t in teams},
+                "sq": {t: 0.0 for t in teams},
+                "weight": 0.0,
+                "weight_sq": 0.0,
+            }
+            for outcome in ("home_win", "away_win", "tie")
+        }
+        for i in range(len(path_outcomes))
+    }
+
+    cond_count = cond_weight = cond_weight_sq = cond_sum = cond_sq = None
+    if path_gross is not None:
+        game_count = len(path_outcomes)
+        team_count = len(teams)
+        weighted_gross = {
+            t: array("d", (weights[i] * path_gross[t][i] for i in range(runs)))
+            for t in teams
+        }
+        weighted_gross_sq = {
+            t: array("d", (
+                weights[i] * path_gross[t][i] ** 2 for i in range(runs)))
+            for t in teams
+        }
+        cond_count = [[0, 0] for _ in range(game_count)]
+        cond_weight = [[0.0, 0.0] for _ in range(game_count)]
+        cond_weight_sq = [[0.0, 0.0] for _ in range(game_count)]
+        cond_sum = [[[0.0] * team_count, [0.0] * team_count]
+                    for _ in range(game_count)]
+        cond_sq = [[[0.0] * team_count, [0.0] * team_count]
+                   for _ in range(game_count)]
+
+    chunk_size = max(1, chunk_size)
+    for chunk_start in range(0, runs, chunk_size):
+        chunk_end = min(runs, chunk_start + chunk_size)
+        for ti, t in enumerate(teams):
+            gross_values = path_gross[t] if path_gross is not None else None
+            weighted_values = weighted_gross[t] if path_gross is not None else None
+            weighted_square_values = (
+                weighted_gross_sq[t] if path_gross is not None else None)
+            wins_values = path_wins[t]
+            for i in range(chunk_start, chunk_end):
+                weight = weights[i]
+                win_sum[t] += weight * wins_values[i]
+                if gross_values is not None:
+                    payout_sum[t] += weighted_values[i]
+                    payout_sq_sum[t] += weighted_square_values[i]
+            if gross_values is not None:
+                for gi, outcomes_for_game in enumerate(path_outcomes):
+                    sums = cond_sum[gi]
+                    squares = cond_sq[gi]
+                    for i in range(chunk_start, chunk_end):
+                        bucket = outcomes_for_game[i]
+                        sums[bucket][ti] += weighted_values[i]
+                        squares[bucket][ti] += weighted_square_values[i]
+        if path_gross is not None:
+            for gi, outcomes_for_game in enumerate(path_outcomes):
+                counts = cond_count[gi]
+                bucket_weights = cond_weight[gi]
+                bucket_weight_sq = cond_weight_sq[gi]
+                for i in range(chunk_start, chunk_end):
+                    bucket = outcomes_for_game[i]
+                    counts[bucket] += 1
+                    bucket_weights[bucket] += weights[i]
+                    bucket_weight_sq[bucket] += weights[i] * weights[i]
+
+    if path_gross is not None:
+        for gi in range(len(path_outcomes)):
+            for bucket, outcome in enumerate(("home_win", "away_win")):
+                target = conditional[gi][outcome]
+                target["count"] = cond_count[gi][bucket]
+                target["weight"] = cond_weight[gi][bucket]
+                target["weight_sq"] = cond_weight_sq[gi][bucket]
+                for ti, t in enumerate(teams):
+                    target["sum"][t] = cond_sum[gi][bucket][ti]
+                    target["sq"][t] = cond_sq[gi][bucket][ti]
+    return {
+        "payout_sum": payout_sum,
+        "payout_sq_sum": payout_sq_sum,
+        "win_sum": win_sum,
+        "conditional_payouts": conditional,
+    }
+
+
 def monte_carlo(ratings: dict[str, float],
                 remaining: list[Game],
                 realized_wins: dict[str, float],
@@ -133,7 +410,9 @@ def monte_carlo(ratings: dict[str, float],
                  calibration_tolerance: float = 0.03,
                  calibration_iters: int = 500,
                  support_runs_per_team: int = 0,
-                 support_prior_weight: float = 0.01) -> dict:
+                 support_prior_weight: float = 0.01,
+                 diagnostics: RuntimeDiagnostics | None = None,
+                 aggregation_chunk_size: int = 4096) -> dict:
     """Joint season simulator. Simplified seeding: division winners by wins
     (random tiebreak), wildcards by wins. Playoff games decided by Phi on
     neutral-adjusted ratings (home field to better seed until SB, SB neutral).
@@ -146,21 +425,19 @@ def monte_carlo(ratings: dict[str, float],
     stages = ("berth", "divisional", "conference", "sb_berth", "sb_win")
     stage_hits = {t: {"berth": 0, "divisional": 0, "conference": 0,
                       "sb_berth": 0, "sb_win": 0} for t in teams}
-    diff_samples: dict[str, list[float]] = {t: [] for t in teams}
+    # Arrays keep the large path library compact during a 100k-path run.  The
+    # public result is converted back to ordinary lists below.
+    diff_samples: dict[str, array] = {t: array("d") for t in teams}
     # These are deliberately aggregates, rather than paths.  They make the
     # simulator useful to the mark without turning the snapshot into a dump of
     # (potentially very large) simulated outcomes.
-    payout_sum = {t: 0.0 for t in teams}
-    payout_sq_sum = {t: 0.0 for t in teams}
-    win_sum = {t: 0.0 for t in teams}
-    conditional = {i: {o: {"count": 0, "sum": {t: 0.0 for t in teams},
-                            "sq": {t: 0.0 for t in teams}, "weight": 0.0,
-                            "weight_sq": 0.0}
-                     for o in ("home_win", "away_win", "tie")} for i in range(len(remaining))}
-    path_gross = []
-    path_outcomes = []
-    path_wins = []
-    hit_indices = {(t, s): [] for t in teams for s in stages}
+    # Outcomes are encoded as 0=home, 1=away, one byte per game/path.  Gross
+    # payout arrays are columnar (one array per team), avoiding R*G*T dicts.
+    path_outcomes = [bytearray() for _ in remaining]
+    path_wins = {t: array("H") for t in teams}
+    path_gross = ({t: array("d") for t in teams}
+                  if rubric is not None and pot else None)
+    hit_indices = {(t, s): array("I") for t in teams for s in stages}
     eligible_support_teams = sorted([
         t for t in teams
         if stage_targets and any(
@@ -201,6 +478,8 @@ def monte_carlo(ratings: dict[str, float],
         return (a, margin) if margin >= 0 else (b, -margin)
 
     for run_index in range(runs):
+        if diagnostics is not None:
+            diagnostics.update_progress("monte_carlo", run_index + 1, runs)
         if run_index == ordinary_runs and support_budget:
             ordinary_denominator = max(ordinary_runs, 1)
             support_deficits = {
@@ -254,9 +533,11 @@ def monte_carlo(ratings: dict[str, float],
             adjusted_margin = margin * (2 if g.marquee else 1)
             diff[g.home] += sgn * adjusted_margin
             diff[g.away] -= sgn * adjusted_margin
-            outcomes.append("home_win" if winner == g.home else "away_win")
+            outcome_code = 0 if winner == g.home else 1
+            path_outcomes[gi].append(outcome_code)
         for t in teams:
             diff_samples[t].append(diff[t])
+            path_wins[t].append(min(wins.get(t, 0), 65535))
 
         # seeding per conference
         path_stage = {t: {s: 0 for s in stage_hits[t]} for t in teams}
@@ -314,11 +595,11 @@ def monte_carlo(ratings: dict[str, float],
             total = sum(points.values())
             if total > 0:
                 gross = {t: pot * points[t] / total for t in teams}
-                path_gross.append(gross)
-        if rubric is None or not pot:
-            path_gross.append(None)
-        path_outcomes.append(outcomes)
-        path_wins.append(wins)
+                for t in teams:
+                    path_gross[t].append(gross[t])
+        elif path_gross is not None:
+            for t in teams:
+                path_gross[t].append(0.0)
         for t in teams:
             for s in stages:
                 if path_stage[t][s]:
@@ -329,6 +610,127 @@ def monte_carlo(ratings: dict[str, float],
     calibration_converged = True
     recovered_targets = []
     unresolved_targets = []
+    calibration_history = []
+    calibration_counters = {
+        "iterations": 0, "target_count": 0, "positive_targets": 0,
+        "settled_zero_targets": 0, "settled_one_targets": 0,
+        "weight_updates": 0, "unsupported_targets": 0,
+        "zero_weight_paths": 0, "feasible_path_count": 0,
+        "targets_with_support": 0, "targets_without_support": 0,
+    }
+    calibration_classification = "not_requested"
+    calibration_started_wall = time.perf_counter()
+    calibration_started_cpu = time.process_time()
+
+    def _sample_calibration_history(record: dict, *, force: bool = False):
+        """Keep first/periodic/last convergence records, never the full trace."""
+        limit = 40
+        iteration = int(record["iteration"])
+        interval = max(1, calibration_iters // (limit - 2))
+        if force or iteration == 1 or iteration % interval == 0:
+            if calibration_history and calibration_history[-1]["iteration"] == iteration:
+                calibration_history[-1] = record
+            else:
+                calibration_history.append(record)
+            # A very large configured iteration count can still produce more
+            # than the intended sparse trace; retain the first and newest
+            # records while pruning only the middle.
+            while len(calibration_history) > limit:
+                del calibration_history[1]
+
+    def _runtime_calibration_details():
+        target_keys = (
+            [(t, s) for t in teams for s in stages]
+            if stage_targets else []
+        )
+        target_support = {
+            f"{t}:{s}": {
+                "target": float(stage_targets[t][s]),
+                "hit_count": len(hit_indices[(t, s)]),
+                "support_path_count": sum(
+                    i in support_indices for i in hit_indices[(t, s)]
+                ),
+                "ordinary_path_count": sum(
+                    i not in support_indices for i in hit_indices[(t, s)]
+                ),
+            }
+            for t, s in target_keys
+        }
+        worst = sorted(
+            (
+                {
+                    "target": key,
+                    "residual": float(value),
+                    "absolute_residual": abs(float(value)),
+                    "estimated_probability": (
+                        float(stage_targets[key.rsplit(":", 1)[0]][
+                            key.rsplit(":", 1)[1]
+                        ]) + float(value)
+                    ),
+                }
+                for key, value in calibration_residuals.items()
+            ),
+            key=lambda item: (-item["absolute_residual"], item["target"]),
+        )[:10]
+        details = {
+            "calibration": {
+                "classification": calibration_classification,
+                "history": list(calibration_history),
+                "counters": dict(calibration_counters),
+                "worst_residual_targets": worst,
+            },
+            "support_sampling": {
+                "enabled": bool(support_indices),
+                "reserved_path_count": support_budget,
+                "path_count": len(support_indices),
+                "runs_per_team": support_runs_per_team,
+                "prior_weight": support_prior_weight,
+                "targeted_teams": list(support_teams),
+                "regular_season_targeted_teams": sorted(regular_support_teams),
+                "recovered_targets": list(recovered_targets),
+                "unresolved_targets": list(unresolved_targets),
+                "target_support": target_support,
+                "calibration_anchor_policy": "rotating_redundant_constraint",
+            },
+            "feasibility": {
+                "simulated_path_count": runs,
+                "feasible_path_count": calibration_counters[
+                    "feasible_path_count"
+                ],
+                "zero_weight_paths": calibration_counters["zero_weight_paths"],
+                "positive_target_count": calibration_counters["positive_targets"],
+                "positive_targets_with_support": calibration_counters[
+                    "targets_with_support"
+                ],
+                "positive_targets_without_support": calibration_counters[
+                    "targets_without_support"
+                ],
+                "stage_inventory": {
+                    s: sum(len(hit_indices[(t, s)]) for t in teams) / max(runs, 1)
+                    for s in stages
+                },
+                "stage_inventory_target": {
+                    s: sum(float(stage_targets[t][s]) for t in teams)
+                    if stage_targets else None
+                    for s in stages
+                },
+                "stage_inventory_residual": {
+                    s: sum(
+                        float(value) for key, value in calibration_residuals.items()
+                        if key.endswith(f":{s}")
+                    )
+                    for s in stages
+                },
+            },
+        }
+        if diagnostics is not None:
+            diagnostics.update_details({"monte_carlo": details})
+        return details
+
+    # Publish an initial record as soon as path support is known.  This makes
+    # failures during calibration (and SIGTERM) retain useful evidence.
+    _runtime_calibration_details()
+
     if stage_targets and weights:
         calibration_anchor_candidates = {
             s: sorted(
@@ -337,6 +739,28 @@ def monte_carlo(ratings: dict[str, float],
             )
             for s in stages
         }
+        # Every simulated path has the fixed inventory for a stage (14 berths,
+        # 8 divisional places, ...).  Once settled targets are filtered, the
+        # remaining positive target in each stage is mathematically redundant:
+        # the legacy deterministic rotating-anchor schedule is retained.
+        target_keys = [(t, s) for t in teams for s in stages]
+        calibration_counters["target_count"] = len(target_keys)
+        calibration_counters["positive_targets"] = sum(
+            0.0 < float(stage_targets[t][s]) < 1.0
+            for t, s in target_keys)
+        calibration_counters["band_skipped_updates"] = 0
+        calibration_counters["band_projected_updates"] = 0
+        # Keep projections strictly inside the public tolerance boundary so
+        # six-decimal published probabilities cannot round onto the gate.
+        calibration_band_margin = min(
+            1e-4,
+            max(1e-6, calibration_tolerance * 1e-3),
+        )
+        calibration_counters["tolerance_band_margin"] = calibration_band_margin
+        calibration_counters["settled_zero_targets"] = sum(
+            float(stage_targets[t][s]) == 0.0 for t, s in target_keys)
+        calibration_counters["settled_one_targets"] = sum(
+            float(stage_targets[t][s]) == 1.0 for t, s in target_keys)
         # Settled contracts are hard constraints, not ordinary calibration
         # targets. Remove impossible paths before fitting open probabilities;
         # later multiplicative updates cannot revive a zero-weight path.
@@ -350,17 +774,30 @@ def monte_carlo(ratings: dict[str, float],
                         weights[i] = 0.0
                 elif original_target == 1.0:
                     if not indices:
+                        unresolved_targets.append(f"{t}:{s}")
+                        _runtime_calibration_details()
                         raise ValueError(f"no simulated support for settled playoff target {t}:{s}=1")
                     hit_set = set(indices)
                     for i in all_indices - hit_set:
                         weights[i] = 0.0
         if sum(weights) <= 0:
+            _runtime_calibration_details()
             raise ValueError("settled playoff targets leave no jointly feasible simulated paths")
         scale = runs / sum(weights)
         weights = [w * scale for w in weights]
+        calibration_counters["zero_weight_paths"] = sum(w == 0.0 for w in weights)
+        calibration_counters["feasible_path_count"] = sum(w > 0.0 for w in weights)
+        calibration_counters["targets_with_support"] = sum(
+            bool(hit_indices[key]) for key in target_keys
+            if 0.0 < float(stage_targets[key[0]][key[1]]) < 1.0)
+        calibration_counters["targets_without_support"] = (
+            calibration_counters["positive_targets"]
+            - calibration_counters["targets_with_support"])
+        _runtime_calibration_details()
+
+        total_weight = sum(weights)
 
         for calibration_iteration in range(calibration_iters):
-            total_weight = sum(weights)
             for t in teams:
                 for s in stages:
                     original_target = float(stage_targets[t][s])
@@ -371,75 +808,174 @@ def monte_carlo(ratings: dict[str, float],
                     )
                     if original_target in (0.0, 1.0) or t == rotating_anchor:
                         continue
-                    target = min(max(original_target, 1e-7), 1 - 1e-7)
+                    # Project onto the open tolerance band rather than onto
+                    # an exact point.  The tiny interior margin keeps
+                    # floating-point roundoff from landing on the gate edge.
+                    lower_band = max(
+                        1e-7,
+                        original_target - calibration_tolerance
+                        + calibration_band_margin,
+                    )
+                    upper_band = min(
+                        1 - 1e-7,
+                        original_target + calibration_tolerance
+                        - calibration_band_margin,
+                    )
                     indices = hit_indices[(t, s)]
+                    # Preserve the legacy per-target hit sum.  Only the
+                    # redundant full-array total is eliminated below.
                     hit_weight = sum(weights[i] for i in indices)
                     current = hit_weight / total_weight if total_weight else 0.0
                     if not indices or current <= 0:
                         unresolved_targets.append(f"{t}:{s}")
+                        calibration_counters["unsupported_targets"] += 1
+                        _runtime_calibration_details()
                         raise ValueError(f"no simulated support for positive playoff target {t}:{s}")
                     current = min(max(current, 1e-12), 1 - 1e-12)
-                    odds_ratio = (target / (1 - target)) / (current / (1 - current))
+                    if lower_band <= current <= upper_band:
+                        calibration_counters["band_skipped_updates"] += 1
+                        continue
+                    projected_target = (
+                        lower_band if current < lower_band else upper_band
+                    )
+                    calibration_counters["band_projected_updates"] += 1
+                    odds_ratio = (
+                        (projected_target / (1 - projected_target))
+                        / (current / (1 - current))
+                    )
                     for i in indices:
-                        weights[i] *= odds_ratio
-                    total_weight = sum(weights)
-            scale = len(weights) / sum(weights)
-            weights = [w * scale for w in weights]
+                        old_weight = weights[i]
+                        new_weight = old_weight * odds_ratio
+                        weights[i] = new_weight
+                        total_weight += new_weight - old_weight
+                        calibration_counters["weight_updates"] += 1
+            # One exact pass preserves the legacy normalization denominator;
+            # the removed work is the redundant full pass after every hit set.
+            total_weight = sum(weights)
+            scale = len(weights) / total_weight
+            for i, old_weight in enumerate(weights):
+                weights[i] = old_weight * scale
+            total_weight = float(len(weights))
             calibration_residuals = {
-                f"{t}:{s}": sum(weights[i] for i in hit_indices[(t, s)]) / len(weights)
-                - float(stage_targets[t][s])
-                for t in teams for s in stages
+                f"{t}:{s}": sum(weights[i] for i in hit_indices[(t, s)])
+                / len(weights) - float(stage_targets[t][s])
+                for t, s in target_keys
             }
+            max_residual = max(
+                (abs(value) for value in calibration_residuals.values()), default=0.0)
+            rms_residual = math.sqrt(
+                sum(value * value for value in calibration_residuals.values())
+                / max(len(calibration_residuals), 1))
+            history_record = {
+                "iteration": calibration_iteration + 1,
+                "max_abs_residual": max_residual,
+                "rms_residual": rms_residual,
+            }
+            _sample_calibration_history(history_record)
+            calibration_counters["iterations"] = calibration_iteration + 1
+            _runtime_calibration_details()
             playoff_ok = max(
                 (abs(value) for value in calibration_residuals.values()),
                 default=0.0,
             ) <= calibration_tolerance
             if playoff_ok:
                 break
+        if calibration_history and (
+            calibration_history[-1]["iteration"] != calibration_counters["iterations"]
+        ):
+            _sample_calibration_history(history_record, force=True)
         calibration_converged = (
             max(
                 (abs(value) for value in calibration_residuals.values()),
                 default=0.0,
             ) <= calibration_tolerance
         )
+        if calibration_converged:
+            calibration_classification = "converged"
+        elif len(calibration_history) >= 4:
+            # Use a wider sampled window than the four-record legacy check:
+            # the bounded trace is periodic by construction, so a short tail
+            # can hide the alternating closure passes.
+            recent = [h["max_abs_residual"] for h in calibration_history[-12:]]
+            deltas = [recent[i] - recent[i - 1] for i in range(1, 4)]
+            alternating = (
+                sum(
+                    deltas[i] * deltas[i + 1] < 0
+                    for i in range(len(deltas) - 1)
+                ) >= max(3, len(deltas) // 2)
+                and max(recent) - min(recent) > max(
+                    calibration_tolerance * .1, 1e-9
+                )
+            )
+            if alternating:
+                calibration_classification = "oscillation"
+            elif max(recent) - min(recent) <= max(calibration_tolerance * .05, 1e-9):
+                calibration_classification = "plateau"
+            else:
+                calibration_classification = "incomplete"
+        else:
+            calibration_classification = "incomplete"
+        calibration_counters["settled_zero_targets"] = sum(
+            float(stage_targets[t][s]) == 0.0 for t, s in target_keys)
+        calibration_counters["settled_one_targets"] = sum(
+            float(stage_targets[t][s]) == 1.0 for t, s in target_keys)
         recovered_targets = [
             f"{t}:{s}" for t in teams for s in stages
             if 0.0 < float(stage_targets[t][s]) < 1.0
             and any(i in support_indices for i in hit_indices[(t, s)])
             and not any(i not in support_indices for i in hit_indices[(t, s)])
         ]
+        _runtime_calibration_details()
+    if diagnostics is not None:
+        diagnostics.record_stage(
+            "calibration", time.perf_counter() - calibration_started_wall,
+            time.process_time() - calibration_started_cpu)
 
+    aggregation_started_wall = time.perf_counter()
+    aggregation_started_cpu = time.process_time()
     weighted_stage_hits = {
-        t: {s: sum(weights[i] for i in hit_indices[(t, s)]) for s in stages}
+        t: {s: sum(weights[i] for i in hit_indices[(t, s)])
+            for s in stages}
         for t in teams
     }
-    for i, weight in enumerate(weights):
-        gross = path_gross[i]
-        wins = path_wins[i]
-        for t in teams:
-            win_sum[t] += weight * wins.get(t, 0)
-            if gross is not None:
-                payout_sum[t] += weight * gross[t]
-                payout_sq_sum[t] += weight * gross[t] ** 2
-        if gross is not None:
-          for gi, outcome in enumerate(path_outcomes[i]):
-            bucket = conditional[gi][outcome]
-            bucket["count"] += 1
-            bucket["weight"] += weight
-            bucket["weight_sq"] += weight * weight
-            for t in teams:
-                bucket["sum"][t] += weight * gross[t]
-                bucket["sq"][t] += weight * gross[t] ** 2
+    aggregates = _aggregate_path_statistics(
+        teams, path_outcomes, path_wins, path_gross, weights,
+        chunk_size=aggregation_chunk_size)
+    payout_sum = aggregates["payout_sum"]
+    payout_sq_sum = aggregates["payout_sq_sum"]
+    win_sum = aggregates["win_sum"]
+    conditional = aggregates["conditional_payouts"]
+    if diagnostics is not None:
+        diagnostics.record_stage(
+            "aggregation", time.perf_counter() - aggregation_started_wall,
+            time.process_time() - aggregation_started_cpu)
 
-    probs = {t: {s: round(h / max(sum(weights), 1), 6) for s, h in d.items()}
+    total_weight = sum(weights)
+    probs = {t: {s: round(h / max(total_weight, 1), 6) for s, h in d.items()}
              for t, d in weighted_stage_hits.items()}
     effective_sample_size = (
-        sum(weights) ** 2 / sum(w * w for w in weights) if weights else 0.0
+        total_weight ** 2 / sum(w * w for w in weights) if weights else 0.0
     )
-    out = {"stage_probs": probs, "diff_samples": diff_samples, "runs": runs,
+    runtime_details = _runtime_calibration_details()
+    out = {"stage_probs": probs,
+           "diff_samples": {t: list(values) for t, values in diff_samples.items()},
+           "runs": runs,
            "effective_sample_size": effective_sample_size,
            "calibration_converged": calibration_converged,
            "calibration_residuals": calibration_residuals,
+           "calibration_diagnostics": {
+               "classification": calibration_classification,
+               "converged": calibration_converged,
+               "history": calibration_history,
+               "counters": calibration_counters,
+                "worst_residual_targets": runtime_details["calibration"][
+                    "worst_residual_targets"
+                ],
+                "support_evidence": runtime_details["support_sampling"][
+                    "target_support"
+                ],
+                "feasibility": runtime_details["feasibility"],
+           },
            "support_sampling": {
                "enabled": bool(support_indices),
                "reserved_path_count": support_budget,
@@ -450,7 +986,10 @@ def monte_carlo(ratings: dict[str, float],
                "regular_season_targeted_teams": sorted(regular_support_teams),
                "recovered_targets": recovered_targets,
                "unresolved_targets": unresolved_targets,
-               "calibration_anchor_policy": "rotating_redundant_constraint",
+                "target_support": runtime_details["support_sampling"][
+                    "target_support"
+                ],
+                "calibration_anchor_policy": "rotating_redundant_constraint",
            }}
     if rubric is not None and pot:
         out["payout_sum"] = payout_sum
