@@ -7,6 +7,10 @@ The NFL standings refresh is request-driven: GitHub Actions calls the dedicated 
 
 **Why:** Full MTM recalculations must run on guaranteed CPU rather than a long-lived background promise inside an Autoscale request instance. A Reserved VM provides dedicated compute while preserving the website and its existing external scheduler.
 
+Use the 4 dedicated vCPU / 16 GB RAM Reserved VM configuration for production.
+
+**Why:** The commissioner selected additional dedicated CPU capacity for the Python MTM workload rather than the smallest Reserved VM size.
+
 Tuesday MTM ticks select the highest NFL `sport_periods` sequence with complete realized coverage across all 32 canonical entries. They do not infer the period from wall-clock week arithmetic. Canonical marks are keyed per period, with period 0 retaining the protected Week 0 key.
 
 **Why:** Regular-season and postseason intervals are not uniformly seven days, while completed realized coverage is the authoritative signal that a period is ready to mark. Stable period keys make duplicate external ticks and partial retries safe.
