@@ -1,0 +1,56 @@
+{
+  "purpose": "Same-state before-and-after benchmark for NumPy calibration and conditional aggregation kernels",
+  "candidate_only": true,
+  "published": false,
+  "state": {
+    "source": "production MTM audit snapshot 5",
+    "as_of": "2026-09-13T06:45:33.531Z",
+    "entries": 32,
+    "remaining_schedule_rows": 270
+  },
+  "configuration": {
+    "paths": 40000,
+    "seed": 20260829,
+    "calibration_tolerance": 0.03,
+    "support_runs_per_team": 25,
+    "support_prior_weight": 0.01
+  },
+  "legacy": {
+    "total_wall_seconds": 68.842858,
+    "total_cpu_seconds": 68.714914,
+    "peak_rss_mb": 114.8984375,
+    "stages": {
+      "calibration_wall_seconds": 3.44187371299995,
+      "calibration_cpu_seconds": 3.441478103999998,
+      "aggregation_wall_seconds": 47.098169837000114,
+      "aggregation_cpu_seconds": 47.05283039700001,
+      "monte_carlo_wall_seconds": 68.70438322399968,
+      "monte_carlo_cpu_seconds": 68.57647282799999
+    }
+  },
+  "optimized": {
+    "total_wall_seconds": 23.122711,
+    "total_cpu_seconds": 22.827817,
+    "peak_rss_mb": 130.27734375,
+    "final_calibration_residual": 0.029986019192070335,
+    "effective_sample_size": 2142.55,
+    "official_gate_would_accept": true,
+    "stages": {
+      "calibration_wall_seconds": 2.2968979689999287,
+      "calibration_cpu_seconds": 1.9448921449999972,
+      "aggregation_wall_seconds": 2.110530667999683,
+      "aggregation_cpu_seconds": 2.0929660870000006,
+      "monte_carlo_wall_seconds": 22.954883579000125,
+      "monte_carlo_cpu_seconds": 22.536700549000003
+    }
+  },
+  "equivalence": {
+    "schema_or_text_differences": 0,
+    "valuation_max_absolute_difference": 0.0,
+    "team_valuation_max_absolute_difference": 0.0,
+    "conditional_output_max_absolute_difference": 3.004596571543061e-12,
+    "calibration_output_max_absolute_difference": 9.559908420442298e-12,
+    "effective_sample_size_difference": 0.0,
+    "legacy_final_calibration_residual": 0.02998601919207211
+  }
+}

@@ -2,6 +2,8 @@
 import math
 import random
 
+import numpy as np
+
 import playoffs
 import run_mtm
 import simulate
@@ -11,26 +13,34 @@ import wins
 
 def _reference_calibrate_weights(weights, hit_indices, targets, anchors,
                                   iterations=20, tolerance=.03):
-    """Pre-optimization calibration reference kept for regression tests."""
+    """Pre-vectorization tolerance-band calibration reference."""
     weights = list(weights)
     history = []
     keys = list(targets)
+    band_margin = min(1e-4, max(1e-6, tolerance * 1e-3))
     for iteration in range(iterations):
+        total = sum(weights)
         for key in keys:
             target = targets[key]
             if (target in (0.0, 1.0) or
                     (anchors.get(key[1]) and
                      anchors[key[1]][iteration % len(anchors[key[1]])] == key[0])):
                 continue
-            total = sum(weights)
+            lower_band = max(1e-7, target - tolerance + band_margin)
+            upper_band = min(1 - 1e-7, target + tolerance - band_margin)
             indices = hit_indices[key]
             hit_weight = sum(weights[i] for i in indices)
             current = hit_weight / total if total else 0.0
             current = min(max(current, 1e-12), 1 - 1e-12)
-            ratio = (target / (1 - target)) / (current / (1 - current))
+            if lower_band <= current <= upper_band:
+                continue
+            projected_target = lower_band if current < lower_band else upper_band
+            ratio = ((projected_target / (1 - projected_target))
+                     / (current / (1 - current)))
             for i in indices:
-                weights[i] *= ratio
-            total = sum(weights)
+                old_weight = weights[i]
+                weights[i] = old_weight * ratio
+                total += weights[i] - old_weight
         scale = len(weights) / sum(weights)
         weights = [value * scale for value in weights]
         residuals = {
@@ -731,12 +741,20 @@ def test_reference_calibration_matches_algebraic_total_update():
         initial, hits, targets, anchors, iterations=8)
     weights = list(initial)
     algebraic_history = []
+    tolerance = .03
+    band_margin = min(1e-4, max(1e-6, tolerance * 1e-3))
     for _ in range(8):
         total = sum(weights)
         for key, target in targets.items():
             hit_weight = sum(weights[i] for i in hits[key])
             current = min(max(hit_weight / total, 1e-12), 1 - 1e-12)
-            ratio = (target / (1 - target)) / (current / (1 - current))
+            lower_band = max(1e-7, target - tolerance + band_margin)
+            upper_band = min(1 - 1e-7, target + tolerance - band_margin)
+            if lower_band <= current <= upper_band:
+                continue
+            projected_target = lower_band if current < lower_band else upper_band
+            ratio = ((projected_target / (1 - projected_target))
+                     / (current / (1 - current)))
             for i in hits[key]:
                 old = weights[i]
                 weights[i] = old * ratio
@@ -748,11 +766,72 @@ def test_reference_calibration_matches_algebraic_total_update():
             key: sum(weights[i] for i in hits[key]) / len(weights)
             - targets[key] for key in targets
         })
+        if max(map(abs, algebraic_history[-1].values()), default=0.0) <= tolerance:
+            break
     assert all(math.isclose(a, b, rel_tol=1e-12, abs_tol=1e-12)
                for a, b in zip(reference, weights))
     for left, right in zip(reference_history, algebraic_history):
         for key in targets:
             assert math.isclose(left[key], right[key],
+                                rel_tol=1e-12, abs_tol=1e-12)
+
+
+def test_fixed_seed_vectorized_calibration_matches_legacy_reference():
+    """Indexed NumPy updates preserve the seeded legacy calibration trace."""
+    rng = random.Random(20260829)
+    runs = 257
+    keys = [(f"T{i}", "berth") for i in range(7)]
+    initial = [0.25 + rng.random() for _ in range(runs)]
+    hits = {
+        key: sorted(rng.sample(range(runs), 70 + index * 9))
+        for index, key in enumerate(keys)
+    }
+    targets = {
+        key: 0.18 + (index + 1) * 0.07 for index, key in enumerate(keys)
+    }
+    anchors = {"berth": ["T0", "T1"]}
+    tolerance = .03
+    reference, reference_history = _reference_calibrate_weights(
+        initial, hits, targets, anchors, iterations=8, tolerance=tolerance,
+    )
+
+    weights = np.asarray(initial, dtype=np.float64)
+    indices = {key: np.asarray(value, dtype=np.intp)
+               for key, value in hits.items()}
+    total_weight = float(np.sum(weights, dtype=np.float64))
+    vectorized_history = []
+    for iteration in range(8):
+        for key in keys:
+            target = targets[key]
+            if anchors[key[1]][iteration % len(anchors[key[1]])] == key[0]:
+                continue
+            band_margin = min(1e-4, max(1e-6, tolerance * 1e-3))
+            lower_band = max(1e-7, target - tolerance + band_margin)
+            upper_band = min(1 - 1e-7, target + tolerance - band_margin)
+            hit_weight = float(np.sum(weights[indices[key]], dtype=np.float64))
+            current = min(max(hit_weight / total_weight, 1e-12), 1 - 1e-12)
+            if lower_band <= current <= upper_band:
+                continue
+            projected_target = lower_band if current < lower_band else upper_band
+            ratio = ((projected_target / (1 - projected_target))
+                     / (current / (1 - current)))
+            total_weight = simulate._apply_calibration_hit_update(
+                weights, indices[key], ratio, total_weight)
+        scale = len(weights) / float(np.sum(weights, dtype=np.float64))
+        weights *= scale
+        total_weight = float(len(weights))
+        _, residuals = simulate._calibration_residual_vector(
+            weights, [indices[key] for key in keys],
+            [targets[key] for key in keys],
+        )
+        vectorized_history.append(dict(zip(keys, residuals)))
+        if max(map(abs, residuals), default=0.0) <= tolerance:
+            break
+
+    assert np.allclose(weights, reference, rtol=1e-12, atol=1e-12)
+    for old_record, new_record in zip(reference_history, vectorized_history):
+        for key in keys:
+            assert math.isclose(old_record[key], new_record[key],
                                 rel_tol=1e-12, abs_tol=1e-12)
 
 
@@ -807,5 +886,6 @@ if __name__ == "__main__":
     test_failed_calibration_publishes_runtime_evidence()
     test_fixed_seed_calibration_respects_inventory()
     test_reference_calibration_matches_algebraic_total_update()
+    test_fixed_seed_vectorized_calibration_matches_legacy_reference()
     test_fixed_seed_golden_output_from_legacy_engine()
     print("\nall smoke tests passed")

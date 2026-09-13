@@ -36,6 +36,8 @@ from dataclasses import dataclass
 from pathlib import Path
 from typing import Iterator
 
+import numpy as np
+
 try:
     import resource
 except ImportError:  # pragma: no cover - Windows
@@ -305,6 +307,12 @@ def _aggregate_path_statistics(teams, path_outcomes, path_wins, path_gross,
     arithmetic without duplicating the season simulator.
     """
     runs = len(weights)
+    # These arrays are the compact path boundary.  Keep the reductions in
+    # NumPy rather than walking paths, teams, and outcome buckets in Python.
+    # ``chunk_size`` remains part of the API for callers that tune the
+    # simulator; the native reductions below operate on the already compact
+    # columns, so their summation order is independent of that tuning knob.
+    weight_values = np.asarray(weights, dtype=np.float64)
     payout_sum = {t: 0.0 for t in teams}
     payout_sq_sum = {t: 0.0 for t in teams}
     win_sum = {t: 0.0 for t in teams}
@@ -322,77 +330,82 @@ def _aggregate_path_statistics(teams, path_outcomes, path_wins, path_gross,
         for i in range(len(path_outcomes))
     }
 
-    cond_count = cond_weight = cond_weight_sq = cond_sum = cond_sq = None
     if path_gross is not None:
-        game_count = len(path_outcomes)
-        team_count = len(teams)
-        weighted_gross = {
-            t: array("d", (weights[i] * path_gross[t][i] for i in range(runs)))
-            for t in teams
-        }
-        weighted_gross_sq = {
-            t: array("d", (
-                weights[i] * path_gross[t][i] ** 2 for i in range(runs)))
-            for t in teams
-        }
-        cond_count = [[0, 0] for _ in range(game_count)]
-        cond_weight = [[0.0, 0.0] for _ in range(game_count)]
-        cond_weight_sq = [[0.0, 0.0] for _ in range(game_count)]
-        cond_sum = [[[0.0] * team_count, [0.0] * team_count]
-                    for _ in range(game_count)]
-        cond_sq = [[[0.0] * team_count, [0.0] * team_count]
-                   for _ in range(game_count)]
+        # Weights are multiplied once per compact payout column.  All public
+        # sums are converted back to Python floats below, preserving the
+        # historical dictionary schema.
+        weighted_gross = {}
+        weighted_gross_sq = {}
+        for t in teams:
+            gross_values = np.asarray(path_gross[t], dtype=np.float64)
+            weighted = weight_values * gross_values
+            weighted_gross[t] = weighted
+            weighted_gross_sq[t] = weight_values * np.square(gross_values)
+            payout_sum[t] = float(np.sum(weighted, dtype=np.float64))
+            payout_sq_sum[t] = float(
+                np.sum(weighted_gross_sq[t], dtype=np.float64)
+            )
 
-    chunk_size = max(1, chunk_size)
-    for chunk_start in range(0, runs, chunk_size):
-        chunk_end = min(runs, chunk_start + chunk_size)
-        for ti, t in enumerate(teams):
-            gross_values = path_gross[t] if path_gross is not None else None
-            weighted_values = weighted_gross[t] if path_gross is not None else None
-            weighted_square_values = (
-                weighted_gross_sq[t] if path_gross is not None else None)
-            wins_values = path_wins[t]
-            for i in range(chunk_start, chunk_end):
-                weight = weights[i]
-                win_sum[t] += weight * wins_values[i]
-                if gross_values is not None:
-                    payout_sum[t] += weighted_values[i]
-                    payout_sq_sum[t] += weighted_square_values[i]
-            if gross_values is not None:
-                for gi, outcomes_for_game in enumerate(path_outcomes):
-                    sums = cond_sum[gi]
-                    squares = cond_sq[gi]
-                    for i in range(chunk_start, chunk_end):
-                        bucket = outcomes_for_game[i]
-                        sums[bucket][ti] += weighted_values[i]
-                        squares[bucket][ti] += weighted_square_values[i]
-        if path_gross is not None:
-            for gi, outcomes_for_game in enumerate(path_outcomes):
-                counts = cond_count[gi]
-                bucket_weights = cond_weight[gi]
-                bucket_weight_sq = cond_weight_sq[gi]
-                for i in range(chunk_start, chunk_end):
-                    bucket = outcomes_for_game[i]
-                    counts[bucket] += 1
-                    bucket_weights[bucket] += weights[i]
-                    bucket_weight_sq[bucket] += weights[i] * weights[i]
-
-    if path_gross is not None:
-        for gi in range(len(path_outcomes)):
+        weights_sq = np.square(weight_values)
+        for game_index, outcomes_for_game in enumerate(path_outcomes):
+            outcomes = np.asarray(outcomes_for_game, dtype=np.uint8)
+            # The simulator currently emits only home/away (0/1), but retain
+            # a third slot so the public tie bucket remains explicit.
+            counts = np.bincount(outcomes, minlength=3)
+            bucket_weights = np.bincount(
+                outcomes, weights=weight_values, minlength=3)
+            bucket_weight_sq = np.bincount(
+                outcomes, weights=weights_sq, minlength=3)
+            bucket_sums = {
+                t: np.bincount(
+                    outcomes, weights=weighted_gross[t], minlength=3)
+                for t in teams
+            }
+            bucket_squares = {
+                t: np.bincount(
+                    outcomes, weights=weighted_gross_sq[t], minlength=3)
+                for t in teams
+            }
             for bucket, outcome in enumerate(("home_win", "away_win")):
-                target = conditional[gi][outcome]
-                target["count"] = cond_count[gi][bucket]
-                target["weight"] = cond_weight[gi][bucket]
-                target["weight_sq"] = cond_weight_sq[gi][bucket]
-                for ti, t in enumerate(teams):
-                    target["sum"][t] = cond_sum[gi][bucket][ti]
-                    target["sq"][t] = cond_sq[gi][bucket][ti]
+                target = conditional[game_index][outcome]
+                target["count"] = int(counts[bucket])
+                target["weight"] = float(bucket_weights[bucket])
+                target["weight_sq"] = float(bucket_weight_sq[bucket])
+                for t in teams:
+                    target["sum"][t] = float(bucket_sums[t][bucket])
+                    target["sq"][t] = float(bucket_squares[t][bucket])
+
+    # Win sums are needed even when no rubric/payout column was requested.
+    for t in teams:
+        win_values = np.asarray(path_wins[t], dtype=np.float64)
+        win_sum[t] = float(np.sum(weight_values * win_values, dtype=np.float64))
     return {
         "payout_sum": payout_sum,
         "payout_sq_sum": payout_sq_sum,
         "win_sum": win_sum,
         "conditional_payouts": conditional,
     }
+
+
+def _calibration_residual_vector(weights, target_indices, target_values):
+    """Return native achieved probabilities and residuals for hit columns."""
+    weight_values = np.asarray(weights, dtype=np.float64)
+    target_values = np.asarray(target_values, dtype=np.float64)
+    achieved = np.asarray(
+        [np.sum(weight_values[indices], dtype=np.float64)
+         for indices in target_indices],
+        dtype=np.float64,
+    ) / len(weight_values)
+    return achieved, achieved - target_values
+
+
+def _apply_calibration_hit_update(weights, indices, odds_ratio,
+                                  total_weight):
+    """Scale a hit subset with one native indexed operation."""
+    old_hit_weight = float(np.sum(weights[indices], dtype=np.float64))
+    weights[indices] *= odds_ratio
+    total_weight += float(np.sum(weights[indices], dtype=np.float64))
+    return total_weight - old_hit_weight
 
 
 def monte_carlo(ratings: dict[str, float],
@@ -605,7 +618,7 @@ def monte_carlo(ratings: dict[str, float],
                 if path_stage[t][s]:
                     hit_indices[(t, s)].append(run_index)
 
-    weights = proposal_weights
+    weights = np.asarray(proposal_weights, dtype=np.float64)
     calibration_residuals = {}
     calibration_converged = True
     recovered_targets = []
@@ -731,7 +744,7 @@ def monte_carlo(ratings: dict[str, float],
     # failures during calibration (and SIGTERM) retain useful evidence.
     _runtime_calibration_details()
 
-    if stage_targets and weights:
+    if stage_targets and len(weights):
         calibration_anchor_candidates = {
             s: sorted(
                 t for t in teams
@@ -744,6 +757,14 @@ def monte_carlo(ratings: dict[str, float],
         # remaining positive target in each stage is mathematically redundant:
         # the legacy deterministic rotating-anchor schedule is retained.
         target_keys = [(t, s) for t in teams for s in stages]
+        target_values = np.asarray(
+            [float(stage_targets[t][s]) for t, s in target_keys],
+            dtype=np.float64,
+        )
+        target_indices = [
+            np.asarray(hit_indices[key], dtype=np.intp) for key in target_keys
+        ]
+        target_index_by_key = dict(zip(target_keys, range(len(target_keys))))
         calibration_counters["target_count"] = len(target_keys)
         calibration_counters["positive_targets"] = sum(
             0.0 < float(stage_targets[t][s]) < 1.0
@@ -764,29 +785,31 @@ def monte_carlo(ratings: dict[str, float],
         # Settled contracts are hard constraints, not ordinary calibration
         # targets. Remove impossible paths before fitting open probabilities;
         # later multiplicative updates cannot revive a zero-weight path.
-        all_indices = set(range(runs))
-        for t in teams:
-            for s in stages:
-                original_target = float(stage_targets[t][s])
-                indices = hit_indices[(t, s)]
-                if original_target == 0.0:
-                    for i in indices:
-                        weights[i] = 0.0
-                elif original_target == 1.0:
-                    if not indices:
-                        unresolved_targets.append(f"{t}:{s}")
-                        _runtime_calibration_details()
-                        raise ValueError(f"no simulated support for settled playoff target {t}:{s}=1")
-                    hit_set = set(indices)
-                    for i in all_indices - hit_set:
-                        weights[i] = 0.0
-        if sum(weights) <= 0:
+        settled_one_mask = np.ones(runs, dtype=bool)
+        for key, original_target, indices in zip(
+                target_keys, target_values, target_indices):
+            t, s = key
+            if original_target == 0.0:
+                weights[indices] = 0.0
+            elif original_target == 1.0:
+                if not len(indices):
+                    unresolved_targets.append(f"{t}:{s}")
+                    _runtime_calibration_details()
+                    raise ValueError(
+                        f"no simulated support for settled playoff target {t}:{s}=1"
+                    )
+                allowed = np.zeros(runs, dtype=bool)
+                allowed[indices] = True
+                settled_one_mask &= allowed
+        weights[~settled_one_mask] = 0.0
+        if np.sum(weights, dtype=np.float64) <= 0:
             _runtime_calibration_details()
             raise ValueError("settled playoff targets leave no jointly feasible simulated paths")
-        scale = runs / sum(weights)
-        weights = [w * scale for w in weights]
-        calibration_counters["zero_weight_paths"] = sum(w == 0.0 for w in weights)
-        calibration_counters["feasible_path_count"] = sum(w > 0.0 for w in weights)
+        scale = runs / float(np.sum(weights, dtype=np.float64))
+        weights *= scale
+        calibration_counters["zero_weight_paths"] = int(np.count_nonzero(weights == 0.0))
+        calibration_counters["feasible_path_count"] = int(
+            np.count_nonzero(weights > 0.0))
         calibration_counters["targets_with_support"] = sum(
             bool(hit_indices[key]) for key in target_keys
             if 0.0 < float(stage_targets[key[0]][key[1]]) < 1.0)
@@ -795,7 +818,7 @@ def monte_carlo(ratings: dict[str, float],
             - calibration_counters["targets_with_support"])
         _runtime_calibration_details()
 
-        total_weight = sum(weights)
+        total_weight = float(np.sum(weights, dtype=np.float64))
 
         for calibration_iteration in range(calibration_iters):
             for t in teams:
@@ -821,12 +844,12 @@ def monte_carlo(ratings: dict[str, float],
                         original_target + calibration_tolerance
                         - calibration_band_margin,
                     )
-                    indices = hit_indices[(t, s)]
+                    indices = target_indices[target_index_by_key[(t, s)]]
                     # Preserve the legacy per-target hit sum.  Only the
                     # redundant full-array total is eliminated below.
-                    hit_weight = sum(weights[i] for i in indices)
+                    hit_weight = float(np.sum(weights[indices], dtype=np.float64))
                     current = hit_weight / total_weight if total_weight else 0.0
-                    if not indices or current <= 0:
+                    if not len(indices) or current <= 0:
                         unresolved_targets.append(f"{t}:{s}")
                         calibration_counters["unsupported_targets"] += 1
                         _runtime_calibration_details()
@@ -843,29 +866,26 @@ def monte_carlo(ratings: dict[str, float],
                         (projected_target / (1 - projected_target))
                         / (current / (1 - current))
                     )
-                    for i in indices:
-                        old_weight = weights[i]
-                        new_weight = old_weight * odds_ratio
-                        weights[i] = new_weight
-                        total_weight += new_weight - old_weight
-                        calibration_counters["weight_updates"] += 1
+                    total_weight = _apply_calibration_hit_update(
+                        weights, indices, odds_ratio, total_weight)
+                    calibration_counters["weight_updates"] += len(indices)
             # One exact pass preserves the legacy normalization denominator;
             # the removed work is the redundant full pass after every hit set.
-            total_weight = sum(weights)
+            total_weight = float(np.sum(weights, dtype=np.float64))
             scale = len(weights) / total_weight
-            for i, old_weight in enumerate(weights):
-                weights[i] = old_weight * scale
+            weights *= scale
             total_weight = float(len(weights))
+            achieved, residual_values = _calibration_residual_vector(
+                weights, target_indices, target_values)
             calibration_residuals = {
-                f"{t}:{s}": sum(weights[i] for i in hit_indices[(t, s)])
-                / len(weights) - float(stage_targets[t][s])
-                for t, s in target_keys
+                f"{t}:{s}": float(value)
+                for (t, s), value in zip(target_keys, residual_values)
             }
             max_residual = max(
                 (abs(value) for value in calibration_residuals.values()), default=0.0)
             rms_residual = math.sqrt(
-                sum(value * value for value in calibration_residuals.values())
-                / max(len(calibration_residuals), 1))
+                float(np.sum(np.square(residual_values), dtype=np.float64))
+                / max(len(residual_values), 1))
             history_record = {
                 "iteration": calibration_iteration + 1,
                 "max_abs_residual": max_residual,
@@ -934,8 +954,13 @@ def monte_carlo(ratings: dict[str, float],
     aggregation_started_wall = time.perf_counter()
     aggregation_started_cpu = time.process_time()
     weighted_stage_hits = {
-        t: {s: sum(weights[i] for i in hit_indices[(t, s)])
-            for s in stages}
+        t: {
+            s: float(np.sum(
+                weights[np.asarray(hit_indices[(t, s)], dtype=np.intp)],
+                dtype=np.float64,
+            ))
+            for s in stages
+        }
         for t in teams
     }
     aggregates = _aggregate_path_statistics(
@@ -950,11 +975,12 @@ def monte_carlo(ratings: dict[str, float],
             "aggregation", time.perf_counter() - aggregation_started_wall,
             time.process_time() - aggregation_started_cpu)
 
-    total_weight = sum(weights)
+    total_weight = float(np.sum(weights, dtype=np.float64))
     probs = {t: {s: round(h / max(total_weight, 1), 6) for s, h in d.items()}
              for t, d in weighted_stage_hits.items()}
     effective_sample_size = (
-        total_weight ** 2 / sum(w * w for w in weights) if weights else 0.0
+        total_weight ** 2 / float(np.sum(np.square(weights), dtype=np.float64))
+        if len(weights) else 0.0
     )
     runtime_details = _runtime_calibration_details()
     out = {"stage_probs": probs,
