@@ -1,11 +1,11 @@
 ---
 name: External refresh scheduling
-description: The Autoscale app uses an external GitHub Actions tick instead of a second Replit deployment.
+description: The Reserved VM app uses an external GitHub Actions tick instead of a second Replit deployment.
 ---
 
-The NFL standings refresh is request-driven: GitHub Actions calls the dedicated job endpoint every five minutes while the live NFL Auction app stays on Autoscale.
+The NFL standings refresh is request-driven: GitHub Actions calls the dedicated job endpoint every five minutes while the live NFL Auction app runs on a Reserved VM.
 
-**Why:** Replit's Publishing model cannot co-host an Autoscale website and a Scheduled Deployment in one project. An external tick preserves the live app and lets Autoscale wake only when needed.
+**Why:** Full MTM recalculations must run on guaranteed CPU rather than a long-lived background promise inside an Autoscale request instance. A Reserved VM provides dedicated compute while preserving the website and its existing external scheduler.
 
 Tuesday MTM ticks select the highest NFL `sport_periods` sequence with complete realized coverage across all 32 canonical entries. They do not infer the period from wall-clock week arithmetic. Canonical marks are keyed per period, with period 0 retaining the protected Week 0 key.
 
