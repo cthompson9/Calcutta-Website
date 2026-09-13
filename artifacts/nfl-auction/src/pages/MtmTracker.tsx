@@ -510,28 +510,9 @@ function PipelineMarkPanel({
             <h2 className="font-mono text-sm font-bold uppercase tracking-widest">
               Latest Mark
             </h2>
-            {valuation.mark.type && (
-              <span className="bg-primary/10 text-primary px-1.5 py-0.5 text-[10px] font-mono font-bold uppercase rounded-sm">
-                {valuation.mark.type}
-              </span>
-            )}
             {valuation.mark.approximate && (
               <span className="bg-amber-100 text-amber-800 px-1.5 py-0.5 text-[10px] font-mono font-bold uppercase rounded-sm">
                 Approximate
-              </span>
-            )}
-            {valuation.mark.quality && (
-              <span className={cn(
-                "px-1.5 py-0.5 text-[10px] font-mono font-bold uppercase rounded-sm",
-                valuation.mark.quality === 'good' ? 'bg-emerald-100 text-emerald-800' :
-                valuation.mark.quality === 'warning' ? 'bg-amber-100 text-amber-800' : 'bg-red-100 text-red-800'
-              )}>
-                Quality: {valuation.mark.quality}
-              </span>
-            )}
-            {valuation.mark.pathCount != null && (
-              <span className="bg-muted text-muted-foreground px-1.5 py-0.5 text-[10px] font-mono font-bold uppercase rounded-sm">
-                {valuation.mark.pathCount} paths
               </span>
             )}
           </div>
@@ -880,7 +861,17 @@ export function UpcomingEvSwings({ games }: { games: MtmGameEvSwing[] }) {
   const weeks = [...new Set(
     games.map((game) => game.week).filter((week): week is number => week != null),
   )].sort((a, b) => a - b).slice(0, 3);
-  const selectedWeeks = new Set(weeks);
+  const weekKey = weeks.join(",");
+  const [selectedWeekNumbers, setSelectedWeekNumbers] = useState<number[]>(() =>
+    weeks.length ? [weeks[0]] : [],
+  );
+  useEffect(() => {
+    setSelectedWeekNumbers((current) => {
+      const retained = current.filter((week) => weeks.includes(week));
+      return retained.length ? retained : weeks.length ? [weeks[0]] : [];
+    });
+  }, [weekKey]);
+  const selectedWeeks = new Set(selectedWeekNumbers);
   const visible = games
     .filter((game) => game.week != null && selectedWeeks.has(game.week))
     .filter((game) => {
@@ -958,7 +949,7 @@ export function UpcomingEvSwings({ games }: { games: MtmGameEvSwing[] }) {
             Upcoming game EV swings
           </h3>
           <p className="mt-1 text-xs text-muted-foreground">
-            Benefit of a win plus cost of a loss · next three available weeks
+            Benefit of a win plus cost of a loss
           </p>
         </div>
         <div className="flex flex-wrap items-center justify-end gap-3">
@@ -966,7 +957,33 @@ export function UpcomingEvSwings({ games }: { games: MtmGameEvSwing[] }) {
             <button type="button" onClick={() => setView("team")} aria-pressed={view === "team"} className={cn("px-2 py-1 font-mono text-[9px] font-bold uppercase tracking-wider", view === "team" ? "bg-primary text-primary-foreground" : "text-muted-foreground")}>By Team</button>
             <button type="button" onClick={() => setView("owner")} aria-pressed={view === "owner"} className={cn("px-2 py-1 font-mono text-[9px] font-bold uppercase tracking-wider", view === "owner" ? "bg-primary text-primary-foreground" : "text-muted-foreground")}>By Owner</button>
           </div>
-          <p className="font-mono text-[10px] uppercase tracking-wider text-muted-foreground">Weeks {weeks.join(", ")}</p>
+          <div className="flex items-center gap-1" aria-label="Filter by week">
+            {weeks.map((week) => {
+              const selected = selectedWeeks.has(week);
+              return (
+                <button
+                  key={week}
+                  type="button"
+                  aria-pressed={selected}
+                  onClick={() => {
+                    setSelectedWeekNumbers((current) =>
+                      current.includes(week)
+                        ? current.filter((value) => value !== week)
+                        : [...current, week].sort((a, b) => a - b),
+                    );
+                  }}
+                  className={cn(
+                    "border px-2 py-1 font-mono text-[9px] font-bold uppercase tracking-wider",
+                    selected
+                      ? "border-primary bg-primary text-primary-foreground"
+                      : "border-border bg-background text-muted-foreground hover:text-foreground",
+                  )}
+                >
+                  Week {week}
+                </button>
+              );
+            })}
+          </div>
         </div>
       </div>
       <label className="relative mt-3 block sm:max-w-sm">
@@ -1011,7 +1028,7 @@ export function UpcomingEvSwings({ games }: { games: MtmGameEvSwing[] }) {
               ))}
             </div>
           </details>
-        )) : weeks.map((week) => (
+        )) : selectedWeekNumbers.map((week) => (
           <div
             key={week}
             role="group"
@@ -1103,10 +1120,6 @@ export function NetPayoutHistoryChart({
   const minPrice = Math.min(...prices, 0);
   const maxPrice = Math.max(...prices, 1);
   const priceRange = Math.max(1, maxPrice - minPrice);
-  const currentTotal = valuations.reduce((sum, valuation) => {
-    const current = valuation.history?.[valuation.history.length - 1];
-    return current?.netPayout == null ? sum : sum + current.netPayout;
-  }, 0);
 
   function xPos(timestamp: number) {
     if (maxTimestamp === minTimestamp) return PAD.left + chartW / 2;
@@ -1130,18 +1143,6 @@ export function NetPayoutHistoryChart({
 
   return (
     <div className="mt-4">
-      <div className="mb-2 flex items-center justify-between gap-3 font-mono text-[10px] uppercase tracking-widest text-muted-foreground">
-        <span>{datedPoints.length === 1 ? "1 refresh point" : `${datedPoints.length} refresh points`}</span>
-        <span>
-          Current net total{" "}
-          <strong className={cn(
-            "text-foreground",
-            Math.abs(currentTotal) > 0.01 && "text-amber-700 dark:text-amber-300",
-          )}>
-            {formatCurrency(currentTotal)}
-          </strong>
-        </span>
-      </div>
       <div className="overflow-x-auto border border-border bg-background/40 p-2">
         <svg
           width="100%"

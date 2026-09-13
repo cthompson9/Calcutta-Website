@@ -134,7 +134,8 @@ describe("NetPayoutHistoryChart", () => {
     const path = screen.getByTestId("net-payout-path-7");
     expect(path.getAttribute("d")).toMatch(/^M[^L]+L/);
     expect(path).toHaveAttribute("stroke", "#00338D");
-    expect(screen.getByText("3 refresh points")).toBeInTheDocument();
+    expect(screen.queryByText("3 refresh points")).not.toBeInTheDocument();
+    expect(screen.queryByText(/Current net total/i)).not.toBeInTheDocument();
     const circles = [...container.querySelectorAll("circle")];
     expect(circles).toHaveLength(3);
     expect(circles[1]?.getAttribute("cx")).not.toBe(circles[2]?.getAttribute("cx"));
@@ -142,7 +143,8 @@ describe("NetPayoutHistoryChart", () => {
 });
 
 describe("UpcomingEvSwings", () => {
-  it("groups and sorts only the next three available weeks", () => {
+  it("defaults to the current week and lets users add either of the next two weeks", async () => {
+    const user = userEvent.setup();
     render(<UpcomingEvSwings games={[
       game(6, 6, "Late Away", "Late Home"),
       game(4, 4, "Zulu Away", "Home Four"),
@@ -151,9 +153,17 @@ describe("UpcomingEvSwings", () => {
       game(7, 5, "Week Five Away", "Week Five Home"),
     ]} />);
 
-    expect(screen.getByText("Weeks 3, 4, 5")).toBeInTheDocument();
     expect(screen.queryByText("Late Away @ Late Home")).not.toBeInTheDocument();
+    expect(screen.getByRole("button", { name: "Week 3" })).toHaveAttribute("aria-pressed", "true");
+    expect(screen.getByRole("button", { name: "Week 4" })).toHaveAttribute("aria-pressed", "false");
+    expect(screen.getByRole("button", { name: "Week 5" })).toHaveAttribute("aria-pressed", "false");
     expect(screen.getByRole("group", { name: "Week 3" })).toBeInTheDocument();
+    expect(screen.queryByRole("group", { name: "Week 4" })).not.toBeInTheDocument();
+    expect(screen.queryByRole("group", { name: "Week 5" })).not.toBeInTheDocument();
+
+    await user.click(screen.getByRole("button", { name: "Week 4" }));
+    await user.click(screen.getByRole("button", { name: "Week 5" }));
+
     expect(screen.getByRole("group", { name: "Week 4" })).toBeInTheDocument();
     expect(screen.getByRole("group", { name: "Week 5" })).toBeInTheDocument();
     expect(screen.getAllByRole("heading", { level: 4 }).map((heading) => heading.textContent)).toEqual([

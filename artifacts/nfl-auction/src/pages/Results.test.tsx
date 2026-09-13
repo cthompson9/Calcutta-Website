@@ -337,10 +337,11 @@ describe("Results Calcutta data source", () => {
     expect(screen.queryByText(/reports are not available yet/i)).not.toBeInTheDocument();
   });
 
-  it("keeps Calcutta VIII on the live Results command center", () => {
+  it("keeps Calcutta VIII on live Results without the retired command-center label or Compare tab", () => {
     renderResults();
 
-    expect(screen.getByText("Results command center · 2025")).toBeInTheDocument();
+    expect(screen.queryByText("Results command center · 2025")).not.toBeInTheDocument();
+    expect(screen.queryByRole("button", { name: "Compare" })).not.toBeInTheDocument();
     expect(screen.queryByTestId("historical-results-notice")).not.toBeInTheDocument();
   });
 

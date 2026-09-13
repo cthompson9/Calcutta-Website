@@ -8,8 +8,6 @@ import {
   getGetBiddersQueryKey,
   useGetSportPeriods,
   useGetSeasons,
-  useGetResultsCompare,
-  getGetResultsCompareQueryKey,
   useGetResultsAvailability,
   getGetResultsAvailabilityQueryKey,
   useGetAuctionSummary,
@@ -69,7 +67,7 @@ import { ReleaseNotes } from "@/components/ReleaseNotes";
 import { HistoricalResultsView } from "@/components/HistoricalResultsView";
 import { trackEvent } from "@/lib/analytics";
 
-type TabId = "byOwner" | "byTeam" | "historicalTrades" | "compare";
+type TabId = "byOwner" | "byTeam" | "historicalTrades";
 
 function readResultsReturnState(): {
   tab: TabId;
@@ -111,8 +109,6 @@ export default function Results() {
   const [tab, setTab] = useState<TabId>(returnState.tab);
   const [expandedOwner, setExpandedOwner] = useState<number | null>(null);
   const [period, setPeriod] = useState<number | undefined>(undefined);
-  const [compareSeasons, setCompareSeasons] = useState<number[]>([]);
-  const [compareGroupBy, setCompareGroupBy] = useState<"bidder" | "consortium">("consortium");
   const consortiumBasis = "mtm" as const;
   const teamBasis = "realized" as const;
   const viewBasis = tab === "byTeam" ? teamBasis : consortiumBasis;
@@ -185,23 +181,8 @@ export default function Results() {
   const selectedPeriod = period ?? availability?.latestPeriod ?? undefined;
 
   useEffect(() => {
-    if (allSeasons && compareSeasons.length === 0) {
-      const recent = [...allSeasons]
-        .filter((s) => s.isActive || s.isComplete)
-        .sort((a, b) => b.year - a.year)
-        .slice(0, 2)
-        .map((s) => s.year);
-      if (recent.length > 0) {
-        setCompareSeasons(recent);
-      }
-    }
-  }, [allSeasons, compareSeasons.length]);
-
-  useEffect(() => {
     setPeriod(undefined);
-    if (prefersHistoricalResults && tab === "compare") {
-      setTab("byOwner");
-    } else if (!prefersHistoricalResults && tab === "historicalTrades") {
+    if (!prefersHistoricalResults && tab === "historicalTrades") {
       setTab("byOwner");
     }
   }, [prefersHistoricalResults, selectedCalcutta?.id, tab]);
@@ -283,25 +264,6 @@ export default function Results() {
     },
   );
 
-  const compareParams = {
-    seasons: compareSeasons.join(","),
-    period,
-    basis: consortiumBasis,
-    groupBy: compareGroupBy,
-  };
-  const { data: compareResults, isLoading: loadingCompare } = useGetResultsCompare(
-    compareParams,
-    {
-      query: {
-        enabled:
-          !prefersHistoricalResults &&
-          tab === "compare" &&
-          compareSeasons.length >= 2,
-        queryKey: getGetResultsCompareQueryKey(compareParams),
-      },
-    },
-  );
-
   const { data: bidders } = useGetBidders(
     { season: year, calcuttaId },
     { query: { enabled: usesLiveResults, queryKey: getGetBiddersQueryKey({ season: year, calcuttaId }) } },
@@ -316,9 +278,7 @@ export default function Results() {
           loadingHistoricalTrades))
     : tab === "byTeam"
       ? loadingTeams
-      : tab === "byOwner"
-        ? loadingOwners
-        : loadingCompare;
+       : loadingOwners;
   const isStale = currentValuation?.mark?.stale ?? false;
   const staleMtmReasons = [
     ...(currentValuation?.mark?.staleReasons ?? []),
@@ -391,77 +351,15 @@ export default function Results() {
               </div>
             </div>
           </label>
-          {tab === "compare" && (
-            <div className="flex rounded-md border border-border/60 p-0.5 bg-muted/50">
-              {(["consortium", "bidder"] as const).map((value) => (
-                <button
-                  key={value}
-                  onClick={() => {
-                    trackEvent("results_compare_grouped", { group_by: value, year });
-                    setCompareGroupBy(value);
-                  }}
-                  className={cn(
-                    "flex-1 sm:flex-none rounded-sm px-3 py-1.5 text-[10px] md:text-xs font-mono font-bold uppercase tracking-widest transition-colors",
-                    compareGroupBy === value
-                      ? "bg-background text-foreground shadow-sm border border-border/50"
-                      : "text-muted-foreground hover:text-foreground",
-                  )}
-                >
-                  {value === "consortium" ? "By Consortium" : "By Bidder"}
-                </button>
-              ))}
-            </div>
-          )}
         </div>
       </div>
-      )}
-
-      {!prefersHistoricalResults && tab === "compare" && allSeasons && (
-        <div className="px-4 md:px-0">
-          <div className="flex flex-wrap items-center gap-1.5 rounded-none md:rounded-lg border-y md:border border-border bg-card p-3 -mx-4 md:mx-0 shadow-sm">
-            <span className="text-xs font-mono font-bold uppercase tracking-widest text-muted-foreground mr-2">
-              Compare Seasons
-            </span>
-            {allSeasons.map((s) => {
-              const isSelected = compareSeasons.includes(s.year);
-              const disabled = !isSelected && compareSeasons.length >= 6;
-              return (
-                <button
-                  key={s.id}
-                  disabled={disabled}
-                  onClick={() => {
-                    trackEvent("results_compare_season_toggled", {
-                      action: isSelected ? "removed" : "added",
-                      season: s.year,
-                      selected_count: isSelected ? compareSeasons.length - 1 : compareSeasons.length + 1,
-                    });
-                    setCompareSeasons((prev) =>
-                      isSelected
-                        ? prev.filter((y) => y !== s.year)
-                        : [...prev, s.year].sort((a, b) => b - a)
-                    );
-                  }}
-                  className={cn(
-                    "rounded px-3 py-1.5 text-xs font-mono font-bold transition-colors border",
-                    isSelected
-                      ? "bg-primary text-primary-foreground border-primary"
-                      : "bg-muted text-muted-foreground border-border/50 hover:bg-muted/80",
-                    disabled && "opacity-50 cursor-not-allowed"
-                  )}
-                >
-                  {s.year}
-                </button>
-              );
-            })}
-          </div>
-        </div>
       )}
 
       {/* Tabs */}
       <div className="flex border-b border-border overflow-x-auto no-scrollbar mx-4 md:mx-0">
         {(prefersHistoricalResults
           ? (["byOwner", "byTeam", "historicalTrades"] as TabId[])
-          : (["byOwner", "byTeam", "compare"] as TabId[])
+          : (["byOwner", "byTeam"] as TabId[])
         ).map((t) => (
           <button
             key={t}
@@ -489,12 +387,12 @@ export default function Results() {
                 ? "By Team"
                 : t === "historicalTrades"
                   ? "Trades"
-                  : "Compare"}
+                  : "Trades"}
           </button>
         ))}
       </div>
 
-      {!prefersHistoricalResults && tab !== "compare" && (isStale || staleMtmReasons.length > 0) && (
+      {!prefersHistoricalResults && (isStale || staleMtmReasons.length > 0) && (
         <div
           className="mx-4 flex items-start gap-3 border border-amber-300 bg-amber-50 px-4 py-3 text-amber-950 dark:border-amber-800 dark:bg-amber-950/40 dark:text-amber-100 md:mx-0"
           role="status"
@@ -556,18 +454,6 @@ export default function Results() {
               />
             </div>
           </>
-        ) : tab === "compare" ? (
-          compareSeasons.length < 2 ? (
-            <div className="flex flex-col items-center justify-center rounded-none md:rounded-lg border-y md:border border-dashed border-border bg-card/50 p-12 text-center text-muted-foreground mx-4 md:mx-0">
-              <Trophy className="h-8 w-8 mb-4 opacity-50" />
-              <p className="font-mono text-sm uppercase tracking-widest font-bold">Select seasons to compare</p>
-              <p className="mt-1 text-sm">Choose at least two seasons from the list above to view a comparison.</p>
-            </div>
-          ) : (
-            <CompareView
-              response={compareResults}
-            />
-          )
         ) : (
           <ByTeamView
             rows={teamResults ?? []}
@@ -914,9 +800,6 @@ function DesktopResultsCommandCenter({
       <section className="border border-border bg-card shadow-sm">
         <div className="flex flex-col gap-6 border-b border-border p-6 lg:flex-row lg:items-end lg:justify-between">
           <div>
-            <p className="font-mono text-[10px] font-bold uppercase tracking-[0.22em] text-primary">
-              Results command center · {seasonYear}
-            </p>
             <div className="mt-2 flex items-end gap-3">
               <h2 className="font-mono text-5xl font-bold tracking-tighter text-foreground">
                 {summary ? formatCurrency(summary.potSize) : "—"}
