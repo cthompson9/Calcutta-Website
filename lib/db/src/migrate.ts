@@ -48,6 +48,8 @@ import {
   mtmEvidenceStorageMigration,
   mtmAttemptDeletionMigration,
   mtmAttemptDeletionGuardReconciliationMigration,
+  mtmPeriodSelectionAttemptDeletionMigration,
+  mtmPendingTriggerReconciliationMigration,
 } from "./migrations";
 
 const migrations = [
@@ -98,6 +100,8 @@ const migrations = [
   mtmEvidenceStorageMigration,
   mtmAttemptDeletionMigration,
   mtmAttemptDeletionGuardReconciliationMigration,
+  mtmPeriodSelectionAttemptDeletionMigration,
+  mtmPendingTriggerReconciliationMigration,
 ] as const;
 
 /**

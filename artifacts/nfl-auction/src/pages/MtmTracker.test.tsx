@@ -1,14 +1,206 @@
-import { render, screen, within } from "@testing-library/react";
+import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
+import { render, screen, waitFor, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
-import { describe, expect, it } from "vitest";
+import { afterEach, describe, expect, it, vi } from "vitest";
 import type { MtmGameEvSwing, MtmQualityExposure, MtmTeamEvSwing } from "@workspace/api-client-react";
 import {
+  MtmEvidenceInspector,
   NetPayoutHistoryChart,
   PipelineFailureNotice,
   MtmQualitySummary,
   UpcomingEvSwings,
 } from "./MtmTracker";
 import { momentumBaselineNetPayout } from "@/lib/mtmMomentum";
+
+vi.mock("sonner", () => ({
+  toast: {
+    error: vi.fn(),
+    info: vi.fn(),
+    success: vi.fn(),
+  },
+}));
+
+vi.mock("@/lib/analytics", () => ({
+  trackEvent: vi.fn(),
+}));
+
+afterEach(() => {
+  vi.restoreAllMocks();
+});
+
+type EvidenceAttempt = {
+  id: number;
+  status: "ok" | "failed";
+  trigger: "scheduled" | "manual";
+  asOf: string;
+  createdAt: string;
+  methodVersion: string;
+  error: string | null;
+  quoteCount: number;
+  deletable: boolean;
+  deleteBlockedReason: string | null;
+};
+
+function evidenceAttempt(
+  id: number,
+  overrides: Partial<EvidenceAttempt> = {},
+): EvidenceAttempt {
+  return {
+    id,
+    status: "ok",
+    trigger: "manual",
+    asOf: "2026-09-12T12:00:00.000Z",
+    createdAt: `2026-09-12T12:${String(id).padStart(2, "0")}:00.000Z`,
+    methodVersion: "mtm-v3",
+    error: null,
+    quoteCount: 2,
+    deletable: true,
+    deleteBlockedReason: null,
+    ...overrides,
+  };
+}
+
+function evidenceResponse(attempts: EvidenceAttempt[], selectedId: number) {
+  const selected = attempts.find((attempt) => attempt.id === selectedId);
+  return {
+    attempts,
+    selectedAttempt: selected ? {
+      ...selected,
+      diagnostics: null,
+      receivedMarkets: [],
+      quotes: [],
+    } : null,
+  };
+}
+
+function renderEvidenceInspector(onDeleted = vi.fn(async () => undefined)) {
+  const queryClient = new QueryClient({
+    defaultOptions: {
+      queries: { retry: false },
+    },
+  });
+  render(
+    <QueryClientProvider client={queryClient}>
+      <MtmEvidenceInspector
+        year={2026}
+        calcuttaId={7}
+        adminKey="test-admin-key"
+        onDeleted={onDeleted}
+      />
+    </QueryClientProvider>,
+  );
+  return { onDeleted };
+}
+
+async function selectPriorAttempt(user: ReturnType<typeof userEvent.setup>) {
+  const attemptButtons = await screen.findAllByRole("button", { name: /Sep 12.*2 quotes/i });
+  await user.click(attemptButtons.at(-1)!);
+  await waitFor(() => expect(screen.getByRole("heading", { name: /^Attempt #11/ })).toBeInTheDocument());
+}
+
+describe("MtmEvidenceInspector deletion", () => {
+  it("shows the current published update as disabled with its explanation", async () => {
+    const current = evidenceAttempt(12, {
+      deletable: false,
+      deleteBlockedReason: "The current published update cannot be deleted.",
+    });
+    vi.spyOn(globalThis, "fetch").mockResolvedValue(
+      new Response(JSON.stringify(evidenceResponse([current], current.id)), { status: 200 }),
+    );
+
+    renderEvidenceInspector();
+
+    expect(await screen.findByRole("heading", { name: /^Attempt #12/ })).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: "Delete update" })).toBeDisabled();
+    expect(screen.getByText("The current published update cannot be deleted.")).toBeInTheDocument();
+  });
+
+  it("requires exact typed confirmation and refreshes history plus dependent MTM data after deletion", async () => {
+    const user = userEvent.setup();
+    const { toast } = await import("sonner");
+    const current = evidenceAttempt(12, {
+      deletable: false,
+      deleteBlockedReason: "The current published update cannot be deleted.",
+    });
+    const prior = evidenceAttempt(11);
+    let deleted = false;
+    let requestedDeletedAttemptAfterDeletion = false;
+    const fetchMock = vi.spyOn(globalThis, "fetch").mockImplementation(async (input, init) => {
+      const url = String(input);
+      if (init?.method === "DELETE") {
+        deleted = true;
+        return new Response(JSON.stringify({ deleted: true }), { status: 200 });
+      }
+      const selectedId = new URL(url, "http://localhost").searchParams.get("attemptId");
+      if (deleted && selectedId === String(prior.id)) {
+        requestedDeletedAttemptAfterDeletion = true;
+        return new Response(JSON.stringify({ error: "MTM update was not found." }), { status: 404 });
+      }
+      const attempts = deleted ? [current] : [current, prior];
+      return new Response(
+        JSON.stringify(evidenceResponse(attempts, Number(selectedId) || current.id)),
+        { status: 200 },
+      );
+    });
+    const { onDeleted } = renderEvidenceInspector();
+
+    await selectPriorAttempt(user);
+    await user.click(screen.getByRole("button", { name: "Delete update" }));
+
+    const confirmation = screen.getByLabelText("Type DELETE 11 to confirm");
+    const deleteButton = screen.getByRole("button", { name: "Delete permanently" });
+    expect(deleteButton).toBeDisabled();
+    await user.type(confirmation, "delete 11");
+    expect(deleteButton).toBeDisabled();
+    await user.clear(confirmation);
+    await user.type(confirmation, "DELETE 11");
+    expect(deleteButton).toBeEnabled();
+    await user.click(deleteButton);
+
+    await waitFor(() => expect(onDeleted).toHaveBeenCalledTimes(1));
+    await waitFor(() => expect(screen.getByRole("heading", { name: /^Attempt #12/ })).toBeInTheDocument());
+    expect(screen.queryByRole("heading", { name: /^Attempt #11/ })).not.toBeInTheDocument();
+    expect(fetchMock).toHaveBeenCalledWith(
+      "/api/mtm/pipeline/attempts/11",
+      expect.objectContaining({ method: "DELETE" }),
+    );
+    expect(requestedDeletedAttemptAfterDeletion).toBe(false);
+    expect(toast.error).not.toHaveBeenCalled();
+    expect(fetchMock.mock.calls.filter(([input]) => String(input).includes("/api/mtm/pipeline/evidence")).length)
+      .toBeGreaterThanOrEqual(3);
+  });
+
+  it("keeps an API error visible through the toast and leaves the selected update in place", async () => {
+    const user = userEvent.setup();
+    const { toast } = await import("sonner");
+    const current = evidenceAttempt(12, {
+      deletable: false,
+      deleteBlockedReason: "The current published update cannot be deleted.",
+    });
+    const prior = evidenceAttempt(11);
+    vi.spyOn(globalThis, "fetch").mockImplementation(async (input, init) => {
+      if (init?.method === "DELETE") {
+        return new Response(JSON.stringify({ error: "Deletion was rejected by the API." }), { status: 409 });
+      }
+      const selectedId = new URL(String(input), "http://localhost").searchParams.get("attemptId");
+      return new Response(
+        JSON.stringify(evidenceResponse([current, prior], Number(selectedId) || current.id)),
+        { status: 200 },
+      );
+    });
+    const { onDeleted } = renderEvidenceInspector();
+
+    await selectPriorAttempt(user);
+    await user.click(screen.getByRole("button", { name: "Delete update" }));
+    await user.type(screen.getByLabelText("Type DELETE 11 to confirm"), "DELETE 11");
+    await user.click(screen.getByRole("button", { name: "Delete permanently" }));
+
+    await waitFor(() => expect(toast.error).toHaveBeenCalledWith("Deletion was rejected by the API."));
+    expect(screen.getByRole("heading", { name: /^Attempt #11/ })).toBeInTheDocument();
+    expect(screen.getByLabelText("Type DELETE 11 to confirm")).toHaveValue("DELETE 11");
+    expect(onDeleted).not.toHaveBeenCalled();
+  });
+});
 
 describe("momentumBaselineNetPayout", () => {
   it("uses the closest mark at or before seven days before the latest refresh", () => {

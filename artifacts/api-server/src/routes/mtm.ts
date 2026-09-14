@@ -9,6 +9,7 @@ import {
   mtmMarketQuoteTable,
   mtmValuationVersionTable,
   mtmCanonicalPeriodSelectionTable,
+  calendarProjectionSnapshotsTable,
   seasonsTable,
   calcuttaEntriesTable,
   positionsTable,
@@ -351,6 +352,9 @@ router.delete("/mtm/pipeline/attempts/:attemptId", requireAdmin, async (req, res
       .for("update");
     if (currentVersions.length > 0) return { kind: "current" as const };
 
+    await tx
+      .delete(calendarProjectionSnapshotsTable)
+      .where(eq(calendarProjectionSnapshotsTable.mtmSnapshotId, attempt.id));
     const deletedSelections = await tx
       .delete(mtmCanonicalPeriodSelectionTable)
       .where(and(

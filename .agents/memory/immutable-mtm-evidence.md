@@ -7,4 +7,4 @@ Every MTM pipeline execution is a distinct, immutable audit attempt, including r
 
 **Why:** Commissioners need to inspect successful, failed, and incomplete executions independently. Coalescing retries by hour can erase the exact evidence and source failures that explain an earlier mark attempt.
 
-**How to apply:** Use hourly timestamps only for lookup and cooldown behavior. Any pipeline execution that reaches persistence must receive a new attempt identity, and finalized child evidence must be append-only.
+**How to apply:** Use hourly timestamps only for lookup and cooldown behavior. Any pipeline execution that reaches persistence must receive a new attempt identity, and finalized child evidence must be append-only. An explicitly authorized commissioner deletion is the narrow exception to immutability.

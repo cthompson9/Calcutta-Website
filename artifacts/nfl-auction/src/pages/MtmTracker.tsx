@@ -17,7 +17,7 @@ import type {
   MtmOwnerTeamEvSwing,
   MtmQualityExposure,
 } from "@workspace/api-client-react";
-import { useQuery } from "@tanstack/react-query";
+import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { formatCurrency } from "@/lib/utils";
 import { cn } from "@/lib/utils";
 import { useSeason } from "@/hooks/useSeason";
@@ -193,17 +193,20 @@ function useGetMtmPipelineEvidence(
   return useQuery<MtmPipelineEvidenceResponse>({
     queryKey: options.query.queryKey,
     enabled: options.query.enabled,
-    queryFn: async () => {
-      const search = new URLSearchParams({ season: String(params.season) });
-      if (params.calcuttaId != null) search.set("calcuttaId", String(params.calcuttaId));
-      if (params.attemptId != null) search.set("attemptId", String(params.attemptId));
-      const response = await fetch(`/api/mtm/pipeline/evidence?${search}`, {
-        headers: options.request.headers,
-      });
-      if (!response.ok) throw new Error("Unable to load MTM evidence.");
-      return response.json() as Promise<MtmPipelineEvidenceResponse>;
-    },
+    queryFn: () => fetchMtmPipelineEvidence(params, options.request.headers),
   });
+}
+
+async function fetchMtmPipelineEvidence(
+  params: { season: number; calcuttaId?: number; attemptId?: number },
+  headers: Record<string, string>,
+) {
+  const search = new URLSearchParams({ season: String(params.season) });
+  if (params.calcuttaId != null) search.set("calcuttaId", String(params.calcuttaId));
+  if (params.attemptId != null) search.set("attemptId", String(params.attemptId));
+  const response = await fetch(`/api/mtm/pipeline/evidence?${search}`, { headers });
+  if (!response.ok) throw new Error("Unable to load MTM evidence.");
+  return response.json() as Promise<MtmPipelineEvidenceResponse>;
 }
 
 function getGetMtmPipelineEvidenceQueryKey(
@@ -2493,7 +2496,7 @@ function formatEvidenceQuote(value: number | null) {
   return value == null ? "—" : value.toFixed(2);
 }
 
-function MtmEvidenceInspector({
+export function MtmEvidenceInspector({
   year,
   calcuttaId,
   adminKey,
@@ -2504,6 +2507,7 @@ function MtmEvidenceInspector({
   adminKey: string;
   onDeleted: () => Promise<void>;
 }) {
+  const queryClient = useQueryClient();
   const [attemptId, setAttemptId] = useState<number | undefined>(undefined);
   const [deleteConfirmOpen, setDeleteConfirmOpen] = useState(false);
   const [deleteConfirmation, setDeleteConfirmation] = useState("");
@@ -2513,7 +2517,7 @@ function MtmEvidenceInspector({
     setAttemptId(undefined);
   }, [year, calcuttaId]);
 
-  const { data, isLoading, error, isRefetching, refetch } = useGetMtmPipelineEvidence(
+  const { data, isLoading, error, isRefetching } = useGetMtmPipelineEvidence(
     { season: year, calcuttaId, attemptId },
     {
       query: {
@@ -2576,7 +2580,23 @@ function MtmEvidenceInspector({
       setAttemptId(undefined);
       setDeleteConfirmOpen(false);
       setDeleteConfirmation("");
-      await Promise.all([refetch(), onDeleted()]);
+      const defaultParams = { season: year, calcuttaId, attemptId: undefined };
+      const defaultQueryKey = getGetMtmPipelineEvidenceQueryKey(defaultParams);
+      queryClient.removeQueries({ queryKey: defaultQueryKey, exact: true });
+      try {
+        await Promise.all([
+          queryClient.fetchQuery({
+            queryKey: defaultQueryKey,
+            queryFn: () => fetchMtmPipelineEvidence(
+              defaultParams,
+              { Authorization: `Bearer ${adminKey}` },
+            ),
+          }),
+          onDeleted(),
+        ]);
+      } catch {
+        toast.error("The MTM update was deleted, but refreshed tracker data could not be loaded. Try refreshing the page.");
+      }
     } catch (deleteError) {
       toast.error(deleteError instanceof Error ? deleteError.message : "Unable to delete the MTM update.");
     } finally {

@@ -45,3 +45,5 @@ export { mtmDurableJobLeaseMigration } from "./0049MtmDurableJobLease";
 export { mtmEvidenceStorageMigration } from "./0050MtmEvidenceStorage";
 export { mtmAttemptDeletionMigration } from "./0051MtmAttemptDeletion";
 export { mtmAttemptDeletionGuardReconciliationMigration } from "./0052MtmAttemptDeletionGuardReconciliation";
+export { mtmPeriodSelectionAttemptDeletionMigration } from "./0053MtmPeriodSelectionAttemptDeletion";
+export { mtmPendingTriggerReconciliationMigration } from "./0054MtmPendingTriggerReconciliation";

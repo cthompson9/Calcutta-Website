@@ -15,7 +15,8 @@ export const mtmAttemptDeletionMigration = {
     drop trigger if exists mtm_valuation_version_append_only on mtm_valuation_version;
     drop trigger if exists mtm_valuation_version_delete_guard on mtm_valuation_version;
     create trigger mtm_valuation_version_append_only before insert or update on mtm_valuation_version
-      for each row execute function mtm_valuation_version_guard();
+      for each row when (new.mark_type <> 'pending_recalculation')
+      execute function mtm_valuation_version_guard();
     drop trigger if exists mtm_valuation_version_admin_delete on mtm_valuation_version;
     create trigger mtm_valuation_version_admin_delete before delete on mtm_valuation_version
       for each row execute function mtm_admin_attempt_delete_guard();

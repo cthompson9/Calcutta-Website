@@ -1,7 +1,7 @@
 import assert from "node:assert/strict";
 import http from "node:http";
 import { after, before, describe, test } from "node:test";
-import { eq } from "drizzle-orm";
+import { eq, sql } from "drizzle-orm";
 
 const canRun = Boolean(process.env.DATABASE_URL && process.env.ADMIN_API_KEY);
 const ADMIN_KEY = process.env.ADMIN_API_KEY;
@@ -13,6 +13,12 @@ let calcuttasTable;
 let mtmSnapshotTable;
 let mtmMarketQuoteTable;
 let mtmValuationVersionTable;
+let mtmCanonicalPeriodSelectionTable;
+let sportPeriodsTable;
+let calcuttaCalendarsTable;
+let calendarRoundsTable;
+let calendarSlotsTable;
+let calendarProjectionSnapshotsTable;
 let runDatabaseMigrations;
 
 if (canRun) {
@@ -23,6 +29,12 @@ if (canRun) {
     mtmSnapshotTable,
     mtmMarketQuoteTable,
     mtmValuationVersionTable,
+    mtmCanonicalPeriodSelectionTable,
+    sportPeriodsTable,
+    calcuttaCalendarsTable,
+    calendarRoundsTable,
+    calendarSlotsTable,
+    calendarProjectionSnapshotsTable,
     runDatabaseMigrations,
   } = await import("@workspace/db"));
   ({ default: app } = await import("../app.ts"));
@@ -44,6 +56,48 @@ function stopServer(server) {
   });
 }
 
+async function deleteTestSeason() {
+  await db.transaction(async (tx) => {
+    await tx.execute(sql`select set_config('app.mtm_attempt_delete', 'on', true)`);
+    await tx.execute(sql`
+      delete from calendar_projection_snapshots
+      where mtm_snapshot_id in (
+        select snapshot.id
+        from mtm_snapshot snapshot
+        join calcuttas pool on pool.id = snapshot.pool_id
+        join seasons season on season.id = pool.season_id
+        where season.year = 9877
+      )
+    `);
+    await tx.execute(sql`
+      delete from mtm_canonical_period_selection
+      where pool_id in (
+        select pool.id
+        from calcuttas pool
+        join seasons season on season.id = pool.season_id
+        where season.year = 9877
+      )
+    `);
+    await tx.execute(sql`
+      delete from mtm_valuation_version
+      where pool_id in (
+        select pool.id
+        from calcuttas pool
+        join seasons season on season.id = pool.season_id
+        where season.year = 9877
+      )
+    `);
+    await tx.execute(sql`
+      delete from seasons where year = 9877
+    `);
+    await tx.execute(sql`
+      delete from sport_periods
+      where sport = 'NFL'
+        and competition = 'mtm-evidence-route-test-9877'
+    `);
+  });
+}
+
 describe("MTM pipeline evidence", { skip: !canRun }, () => {
   let seasonId;
   let poolId;
@@ -51,12 +105,14 @@ describe("MTM pipeline evidence", { skip: !canRun }, () => {
   let failedAttemptId;
   let successfulAttemptId;
   let otherPoolAttemptId;
+  let sportPeriodId;
+  let projectionId;
   let server;
   let baseUrl;
 
   before(async () => {
     await runDatabaseMigrations();
-    await db.delete(seasonsTable).where(eq(seasonsTable.year, 9877));
+    await deleteTestSeason();
     const [season] = await db
       .insert(seasonsTable)
       .values({
@@ -168,19 +224,91 @@ describe("MTM pipeline evidence", { skip: !canRun }, () => {
       markType: "official",
       status: "candidate",
     });
+    const [sportPeriod] = await db
+      .insert(sportPeriodsTable)
+      .values({
+        sport: "NFL",
+        competition: "mtm-evidence-route-test-9877",
+        sequence: 1,
+        label: "Test period",
+      })
+      .returning();
+    sportPeriodId = sportPeriod.id;
+    await db.insert(mtmCanonicalPeriodSelectionTable).values({
+      poolId,
+      sportPeriodId,
+      snapshotId: successfulAttemptId,
+      selectedBy: "integration-test",
+    });
+    const [calendar] = await db
+      .insert(calcuttaCalendarsTable)
+      .values({
+        calcuttaId: poolId,
+        format: "nfl_single_elimination",
+        scheduleState: "loaded",
+      })
+      .returning();
+    const [round] = await db
+      .insert(calendarRoundsTable)
+      .values({
+        calendarId: calendar.id,
+        sequence: 1,
+        name: "Test round",
+        kind: "single_elimination",
+      })
+      .returning();
+    const [slot] = await db
+      .insert(calendarSlotsTable)
+      .values({ roundId: round.id, slotNumber: 1 })
+      .returning();
+    const [projection] = await db
+      .insert(calendarProjectionSnapshotsTable)
+      .values({
+        slotId: slot.id,
+        mtmSnapshotId: successfulAttemptId,
+        status: "unavailable",
+        unavailableReason: "Integration test projection dependency",
+      })
+      .returning();
+    projectionId = projection.id;
     ({ server, baseUrl } = await startServer(app));
   });
 
   after(async () => {
     if (server) await stopServer(server);
-    if (seasonId) {
-      await db.delete(seasonsTable).where(eq(seasonsTable.id, seasonId));
+    await deleteTestSeason();
+    if (sportPeriodId) {
+      await db.delete(sportPeriodsTable).where(eq(sportPeriodsTable.id, sportPeriodId));
     }
   });
 
   test("requires admin authorization", async () => {
     const response = await fetch(`${baseUrl}/api/mtm/pipeline/evidence?season=9877`);
     assert.equal(response.status, 401);
+  });
+
+  test("keeps pending recalculation versions on their specialized publication guard", async () => {
+    const triggerResult = await db.execute(sql`
+      select pg_get_triggerdef(oid) as definition
+      from pg_trigger
+      where tgrelid = 'mtm_valuation_version'::regclass
+        and tgname = 'mtm_valuation_version_append_only'
+        and not tgisinternal
+    `);
+    assert.equal(triggerResult.rows.length, 1);
+    assert.match(
+      triggerResult.rows[0].definition,
+      /WHEN .*new\.mark_type <> 'pending_recalculation'::text/,
+    );
+
+    const pendingGuardResult = await db.execute(sql`
+      select 1
+      from pg_trigger
+      where tgrelid = 'mtm_valuation_version'::regclass
+        and tgname = 'mtm_pending_replacement_guard'
+        and not tgisinternal
+    `);
+    assert.equal(pendingGuardResult.rows.length, 1);
   });
 
   test("selects immutable same-hour failed and successful attempts", async () => {
@@ -256,6 +384,40 @@ describe("MTM pipeline evidence", { skip: !canRun }, () => {
     assert.equal(
       (await db.select().from(mtmSnapshotTable).where(eq(mtmSnapshotTable.id, failedAttemptId))).length,
       1,
+    );
+  });
+
+  test("deletes a successful non-current attempt and all snapshot-dependent history", async () => {
+    const response = await fetch(
+      `${baseUrl}/api/mtm/pipeline/attempts/${successfulAttemptId}`,
+      {
+        method: "DELETE",
+        headers: {
+          Authorization: `Bearer ${ADMIN_KEY}`,
+          "Content-Type": "application/json",
+        },
+        body: JSON.stringify({ season: 9877, calcuttaId: poolId, confirmed: true }),
+      },
+    );
+    assert.equal(response.status, 200);
+    assert.deepEqual(await response.json(), {
+      deletedAttemptId: successfulAttemptId,
+      deletedVersionCount: 0,
+      deletedPeriodSelectionCount: 1,
+    });
+    assert.equal(
+      (await db.select().from(mtmSnapshotTable).where(eq(mtmSnapshotTable.id, successfulAttemptId))).length,
+      0,
+    );
+    assert.equal(
+      (await db.select().from(mtmCanonicalPeriodSelectionTable)
+        .where(eq(mtmCanonicalPeriodSelectionTable.snapshotId, successfulAttemptId))).length,
+      0,
+    );
+    assert.equal(
+      (await db.select().from(calendarProjectionSnapshotsTable)
+        .where(eq(calendarProjectionSnapshotsTable.id, projectionId))).length,
+      0,
     );
   });
 
