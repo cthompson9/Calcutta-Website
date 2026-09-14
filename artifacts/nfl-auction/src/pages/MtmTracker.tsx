@@ -786,6 +786,7 @@ function PipelineMarkPanel({
                 const delta = payout == null || previousPayout == null
                   ? null
                   : payout - previousPayout;
+                const roundedDelta = delta == null ? null : Math.round(delta);
                 const multiple = price && price > 0 ? (teamItem.grossExpectedPayout / price) : null;
                 const payoutIntensity = payout == null ? 0 : Math.abs(payout) / Math.max(1, Math.max(Math.abs(minPayout), Math.abs(maxPayout)));
                 const multipleIntensity = multiple == null
@@ -827,11 +828,15 @@ function PipelineMarkPanel({
                     </td>
                     <td className={cn(
                       "px-4 py-2 text-right font-mono font-semibold",
-                      delta != null && delta > 0 && "bg-emerald-500/15 text-emerald-700 dark:text-emerald-300",
-                      delta != null && delta < 0 && "bg-red-500/15 text-red-700 dark:text-red-300",
-                      delta === 0 && "text-muted-foreground",
+                      roundedDelta != null && roundedDelta > 0 && "bg-emerald-500/15 text-emerald-700 dark:text-emerald-300",
+                      roundedDelta != null && roundedDelta < 0 && "bg-red-500/15 text-red-700 dark:text-red-300",
+                      roundedDelta === 0 && "text-muted-foreground",
                     )}>
-                      {delta == null ? "—" : `${delta >= 0 ? "+" : ""}${formatCurrency(delta)}`}
+                      {delta == null
+                        ? "—"
+                        : roundedDelta === 0
+                          ? formatCurrency(0)
+                          : `${roundedDelta! > 0 ? "+" : ""}${formatCurrency(delta)}`}
                     </td>
                   </tr>
                 );

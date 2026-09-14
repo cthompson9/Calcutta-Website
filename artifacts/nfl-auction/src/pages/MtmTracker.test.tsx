@@ -225,9 +225,11 @@ describe("momentumBaselineNetPayout", () => {
     ])).toBe(10);
   });
 
-  it("falls back to the first mark when less than seven days of history exists", () => {
+  it("uses the earliest mark when multiple refreshes span less than seven days", () => {
     expect(momentumBaselineNetPayout([
       { asOf: "2026-09-10T12:00:00.000Z", netPayout: 10 },
+      { asOf: "2026-09-11T12:00:00.000Z", netPayout: 18 },
+      { asOf: "2026-09-12T12:00:00.000Z", netPayout: 22 },
       { asOf: "2026-09-13T12:00:00.000Z", netPayout: 25 },
     ])).toBe(10);
   });
