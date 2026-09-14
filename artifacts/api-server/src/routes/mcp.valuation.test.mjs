@@ -183,7 +183,23 @@ describe("MCP Live Tracker valuation contract", { skip: !canRun }, () => {
       trigger: "scheduled",
       status: "ok",
       methodVersion,
-      diagnostics: { fixture: true },
+      diagnostics: {
+        fixture: true,
+        publication_audit: {
+          policy_version: "test-policy",
+          status: "good",
+          publication_decision: "approved",
+          gate_results: {
+            capture_completeness: "passed", freshness: "passed", metadata: "passed",
+            final_ess: "passed", max_weight: "passed", precision: "not_applicable",
+            support: "not_applicable", win_market_quality: "passed",
+            playoff_market_calibration: "passed",
+          },
+          gate_reasons: [],
+          final_effective_sample_size: 100,
+          calibration: { status: "good" },
+        },
+      },
       stateJson: {
          pot: 8000,
         rubric: { win: 10, super_bowl_win: 800 },

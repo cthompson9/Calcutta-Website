@@ -208,6 +208,60 @@ function rowText(row: Record<string, any>, ...keys: string[]): string | null {
   return null;
 }
 
+const REQUIRED_OFFICIAL_PUBLICATION_GATES = [
+  "capture_completeness",
+  "freshness",
+  "metadata",
+  "final_ess",
+  "max_weight",
+  "precision",
+  "support",
+  "win_market_quality",
+  "playoff_market_calibration",
+] as const;
+
+export function sourceSnapshotHasCompletePublicationAudit(
+  snapshot: Record<string, any>,
+): boolean {
+  const diagnostics = snapshot.diagnostics;
+  if (!diagnostics || typeof diagnostics !== "object") return false;
+  const audit = (diagnostics as Record<string, any>).publication_audit ??
+    (diagnostics as Record<string, any>).publicationAudit;
+  if (!audit || typeof audit !== "object") return false;
+  const gateResults = audit.gate_results ?? audit.gateResults;
+  if (!gateResults || typeof gateResults !== "object") return false;
+  const status = String(audit.status ?? "").trim().toLowerCase();
+  const decision = String(
+    audit.publication_decision ?? audit.publicationDecision ?? "",
+  ).trim().toLowerCase();
+  const calibration = audit.calibration;
+  const calibrationStatus = String(
+    calibration && typeof calibration === "object"
+      ? calibration.status
+      : audit.calibration_status ?? audit.calibrationStatus ?? "",
+  ).trim().toLowerCase();
+  const policyVersion = String(audit.policy_version ?? audit.policyVersion ?? "").trim();
+  const finalEss = Number(
+    audit.final_effective_sample_size ??
+    audit.finalEffectiveSampleSize ??
+    (audit.final_ess && typeof audit.final_ess === "object" ? audit.final_ess.value : Number.NaN),
+  );
+  const reasons = audit.gate_reasons ?? audit.gateReasons;
+  return ["good", "ok", "passed"].includes(status) &&
+    ["approved", "official", "passed", "published"].includes(decision) &&
+    ["good", "ok", "passed"].includes(calibrationStatus) &&
+    policyVersion.length > 0 &&
+    Number.isFinite(finalEss) &&
+    finalEss > 0 &&
+    Array.isArray(reasons) &&
+    reasons.length === 0 &&
+    REQUIRED_OFFICIAL_PUBLICATION_GATES.every((gate) => {
+      const result = String(gateResults[gate] ?? "").trim().toLowerCase();
+      return result === "passed" ||
+        (["precision", "support"].includes(gate) && result === "not_applicable");
+    });
+}
+
 export function conditionalRowMeetsPublicationPolicy(row: Record<string, any>): boolean {
   const quality = rowText(row, "qualityStatus", "quality_status");
   const effectiveSampleSize = rowNumber(row, "effectiveSampleSize", "effective_sample_size");
@@ -261,6 +315,10 @@ export function validateCurrentMtmVersion(args: CurrentMtmValidationArgs): {
   if (sourceSnapshot.status !== "ok") errors.push("Source snapshot must be successful.");
   if (sourceSnapshot.methodVersion === "mtm-v3-review" || sourceSnapshot.runKind === "review") {
     errors.push("Review-only source snapshots cannot support a current MTM version.");
+  }
+  if (version.markType === "official" &&
+      !sourceSnapshotHasCompletePublicationAudit(sourceSnapshot)) {
+    errors.push("Official versions require a complete successful source publication audit.");
   }
   if (!["official", "provisional", "pending_recalculation"].includes(version.markType)) {
     errors.push("Unsupported MTM mark type.");
@@ -743,11 +801,17 @@ export function classifyCanonicalNflFinals(args: {
 /** Pure decision boundary used by the post-commit reconciler and its tests. */
 export function planNflMtmReconciliation(args: {
   postAnchorFinalEventIds: number[];
+  sourceRunComplete: boolean;
   conditionalEvidenceValid: boolean;
   provisionalOutcome?: Outcome;
 }): NflMtmReconciliationPlan {
   if (args.postAnchorFinalEventIds.length === 0) {
-    return { markType: "official", staleReason: null };
+    return args.sourceRunComplete
+      ? { markType: "official", staleReason: null }
+      : {
+          markType: "pending_recalculation",
+          staleReason: "Source valuation evidence is incomplete; recalculation is required.",
+        };
   }
   if (args.postAnchorFinalEventIds.length === 1 && args.conditionalEvidenceValid &&
       args.provisionalOutcome) {
@@ -975,6 +1039,7 @@ async function reconcileNflPoolCurrentMtm(
     }
     const plan = planNflMtmReconciliation({
       postAnchorFinalEventIds: pendingGames.map((game) => Number(game.eventId)),
+      sourceRunComplete: sourceSnapshotHasCompletePublicationAudit(snapshot),
       conditionalEvidenceValid,
       provisionalOutcome,
     });

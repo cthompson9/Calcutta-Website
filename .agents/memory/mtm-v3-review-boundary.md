@@ -7,4 +7,4 @@ The v3 MTM engine is review-only. A run may complete successfully while remainin
 
 **Why:** The retained 2026 state produced complete rare-event support and strong global ESS while still showing large playoff-market residuals and dollar instability. A residual gate alone would hide the underlying generative-model problem.
 
-**How to apply:** Persist full review diagnostics, label readiness separately, exclude review attempts from production latest-attempt/canonical selection, and require explicit commissioner approval before any v3 output can become an official mark.
+**How to apply:** Persist full review diagnostics, label readiness separately, and exclude review attempts from production latest-attempt/canonical selection. Official promotion and read-side “official” classification must use the same immutable complete-audit predicate; missing, malformed, or failed required gates fail closed.

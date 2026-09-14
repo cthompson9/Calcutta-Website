@@ -6,6 +6,7 @@ import {
   conditionalRowMeetsPublicationPolicy,
   normalizeSourceActuals,
   planNflMtmReconciliation,
+  sourceSnapshotHasCompletePublicationAudit,
   validateCurrentMtmVersion,
 } from "./currentMtm.ts";
 import {
@@ -20,6 +21,27 @@ const game = (eventId, homeScore = 10, awayScore = 7) => ({
 const source = (actuals = [game(1)]) => ({
   poolId: 9, status: "ok", methodVersion: "frozen-mtm-2026",
   stateJson: { pot: 32 }, finalizedGames: actuals,
+  diagnostics: {
+    publication_audit: {
+      policy_version: "test-policy",
+      status: "good",
+      publication_decision: "approved",
+      gate_results: {
+        capture_completeness: "passed",
+        freshness: "passed",
+        metadata: "passed",
+        final_ess: "passed",
+        max_weight: "passed",
+        precision: "not_applicable",
+        support: "not_applicable",
+        win_market_quality: "passed",
+        playoff_market_calibration: "passed",
+      },
+      gate_reasons: [],
+      final_effective_sample_size: 100,
+      calibration: { status: "good" },
+    },
+  },
 });
 const version = (actuals, extra = {}) => ({
   poolId: 9, sourceSnapshotId: 44,
@@ -81,13 +103,26 @@ test("source normalization preserves persisted week and team identity for correc
 test("NFL MTM reconciliation plans official when there are no new finals", () => {
   assert.deepEqual(planNflMtmReconciliation({
     postAnchorFinalEventIds: [],
+    sourceRunComplete: true,
     conditionalEvidenceValid: false,
   }), { markType: "official", staleReason: null });
+});
+
+test("NFL MTM reconciliation cannot label an incomplete source run official", () => {
+  assert.deepEqual(planNflMtmReconciliation({
+    postAnchorFinalEventIds: [],
+    sourceRunComplete: false,
+    conditionalEvidenceValid: false,
+  }), {
+    markType: "pending_recalculation",
+    staleReason: "Source valuation evidence is incomplete; recalculation is required.",
+  });
 });
 
 test("NFL MTM reconciliation plans one supported final as provisional", () => {
   assert.deepEqual(planNflMtmReconciliation({
     postAnchorFinalEventIds: [77],
+    sourceRunComplete: true,
     conditionalEvidenceValid: true,
     provisionalOutcome: "home_win",
   }), {
@@ -101,11 +136,13 @@ test("NFL MTM reconciliation plans one supported final as provisional", () => {
 test("NFL MTM reconciliation plans pending for multiple or weak finals", () => {
   assert.equal(planNflMtmReconciliation({
     postAnchorFinalEventIds: [77, 78],
+    sourceRunComplete: true,
     conditionalEvidenceValid: true,
     provisionalOutcome: "home_win",
   }).markType, "pending_recalculation");
   assert.equal(planNflMtmReconciliation({
     postAnchorFinalEventIds: [77],
+    sourceRunComplete: true,
     conditionalEvidenceValid: false,
     provisionalOutcome: "home_win",
   }).markType, "pending_recalculation");
@@ -157,6 +194,43 @@ test("official conservation is mandatory", () => {
   });
   assert.equal(result.valid, false);
   assert.match(result.errors.join("; "), /exactly the pool's 32 entries/);
+});
+
+test("official promotion requires the complete immutable publication audit", () => {
+  const actuals = [game(1)];
+  const incompleteSource = { ...source(actuals), diagnostics: {} };
+  assert.equal(sourceSnapshotHasCompletePublicationAudit(incompleteSource), false);
+  const result = validateCurrentMtmVersion({
+    version: version(actuals),
+    sourceSnapshot: incompleteSource,
+    actuals,
+    incorporatedGames: [link(actuals[0])],
+    officialValuations: officialValuations(),
+    poolValue: 32,
+  });
+  assert.equal(result.valid, false);
+  assert.match(result.errors.join("; "), /complete successful source publication audit/);
+});
+
+test("every official publication gate fails closed when missing or failed", () => {
+  const complete = source().diagnostics.publication_audit;
+  for (const gate of Object.keys(complete.gate_results)) {
+    for (const value of [undefined, "failed"]) {
+      const gateResults = { ...complete.gate_results };
+      if (value === undefined) delete gateResults[gate];
+      else gateResults[gate] = value;
+      assert.equal(sourceSnapshotHasCompletePublicationAudit({
+        diagnostics: {
+          publication_audit: { ...complete, gate_results: gateResults },
+        },
+      }), false, `${gate}=${value}`);
+    }
+  }
+  assert.equal(sourceSnapshotHasCompletePublicationAudit({
+    diagnostics: {
+      publication_audit: { ...complete, gate_reasons: undefined },
+    },
+  }), false);
 });
 
 function provisionalRows(eventId, count = 32, quality = "good") {
@@ -310,6 +384,7 @@ test("unstable single-game conditionals retain the prior value basis as pending"
     assert.equal(validation.valid, false);
     assert.equal(planNflMtmReconciliation({
       postAnchorFinalEventIds: [2],
+      sourceRunComplete: true,
       conditionalEvidenceValid: rows.every(conditionalRowMeetsPublicationPolicy),
       provisionalOutcome: "home_win",
     }).markType, "pending_recalculation");

@@ -19,7 +19,10 @@ import {
   deriveGameEvSwings,
   deriveOwnerGameEvSwings,
 } from "./mtmValuationHelpers";
-import { resolveCurrentMtm } from "./currentMtm";
+import {
+  resolveCurrentMtm,
+  sourceSnapshotHasCompletePublicationAudit,
+} from "./currentMtm";
 
 // The durable current-version resolver is shared by all displayed valuation
 // consumers. Raw snapshots remain evidence-only read paths.
@@ -246,6 +249,8 @@ export function buildMtmQualityExposure(args: {
     "max_weight",
     "precision",
     "support",
+    "win_market_quality",
+    "playoff_market_calibration",
   ];
   const failedAuditGates = requiredAuditGates.filter((gate) => {
     const result = String(auditGateResults[gate] ?? "").trim().toLowerCase();
@@ -255,6 +260,11 @@ export function buildMtmQualityExposure(args: {
     ? authoritativePublicationAudit.gate_reasons.filter((reason): reason is string => typeof reason === "string" && reason.trim().length > 0)
     : [];
   const missingAuditSignals = [
+    !sourceSnapshotHasCompletePublicationAudit({
+      ...(args.snapshot ?? {}),
+      diagnostics,
+    })
+      ? "Authoritative publication audit is incomplete; this mark cannot be verified as official." : null,
     Object.keys(authoritativePublicationAudit).length === 0
       ? "Authoritative publication audit is missing; this mark cannot be verified as official." : null,
     !auditStatusVerified
