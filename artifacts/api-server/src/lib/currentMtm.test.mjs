@@ -3,6 +3,7 @@ import test from "node:test";
 import {
   buildCurrentMtmResolution,
   classifyCanonicalNflFinals,
+  conditionalRowMeetsPublicationPolicy,
   normalizeSourceActuals,
   planNflMtmReconciliation,
   validateCurrentMtmVersion,
@@ -162,6 +163,7 @@ function provisionalRows(eventId, count = 32, quality = "good") {
   return Array.from({ length: count }, (_, index) => ({
     eventId, outcome: "home_win", entryId: index + 1,
     grossBaseline: 1, grossConditional: 1, qualityStatus: quality,
+    effectiveSampleSize: 100, standardError: 10, reconciliationResidual: 0.01,
   }));
 }
 
@@ -268,7 +270,50 @@ test("incomplete and poor-quality conditional rows are rejected", () => {
     officialValuations: officialValuations(),
   });
   assert.equal(result.valid, false);
-  assert.match(result.errors.join("; "), /complete 32-entry|acceptable quality/);
+  assert.match(result.errors.join("; "), /complete 32-entry|publication quality/);
+});
+
+test("warning conditionals publish only when every stability threshold passes", () => {
+  const acceptableWarning = provisionalRows(2, 32, "warning")[0];
+  assert.equal(conditionalRowMeetsPublicationPolicy(acceptableWarning), true);
+  for (const unstable of [
+    { ...acceptableWarning, effectiveSampleSize: 99.9999 },
+    { ...acceptableWarning, standardError: 10.000001 },
+    { ...acceptableWarning, reconciliationResidual: -0.010001 },
+    { ...acceptableWarning, effectiveSampleSize: null },
+    { ...acceptableWarning, standardError: null },
+    { ...acceptableWarning, reconciliationResidual: null },
+  ]) {
+    assert.equal(conditionalRowMeetsPublicationPolicy(unstable), false);
+  }
+});
+
+test("unstable single-game conditionals retain the prior value basis as pending", () => {
+  const actuals = [game(1), game(2)];
+  for (const patch of [
+    { effectiveSampleSize: 99 },
+    { standardError: 10.01 },
+    { reconciliationResidual: 0.010001 },
+  ]) {
+    const rows = provisionalRows(2, 32, "warning").map((row) => ({ ...row, ...patch }));
+    const validation = validateCurrentMtmVersion({
+      version: version(actuals, {
+        markType: "provisional", provisionalEventId: 2, provisionalOutcome: "home_win",
+      }),
+      sourceSnapshot: source([actuals[0]]),
+      actuals,
+      incorporatedGames: [link(actuals[0]), link(actuals[1], { isProvisional: true })],
+      conditionalRows: rows,
+      officialValuations: officialValuations(),
+      poolValue: 32,
+    });
+    assert.equal(validation.valid, false);
+    assert.equal(planNflMtmReconciliation({
+      postAnchorFinalEventIds: [2],
+      conditionalEvidenceValid: rows.every(conditionalRowMeetsPublicationPolicy),
+      provisionalOutcome: "home_win",
+    }).markType, "pending_recalculation");
+  }
 });
 
 test("resolver reconciles signed owner totals to team MTM", () => {

@@ -6,6 +6,7 @@ import {
   eventsTable,
   mtmEntryValuationTable,
   mtmGameConditionalTable,
+  MTM_CONDITIONAL_PUBLICATION_POLICY,
   mtmSnapshotTable,
   mtmValuationGameTable,
   mtmValuationVersionTable,
@@ -207,6 +208,29 @@ function rowText(row: Record<string, any>, ...keys: string[]): string | null {
   return null;
 }
 
+export function conditionalRowMeetsPublicationPolicy(row: Record<string, any>): boolean {
+  const quality = rowText(row, "qualityStatus", "quality_status");
+  const effectiveSampleSize = rowNumber(row, "effectiveSampleSize", "effective_sample_size");
+  const standardError = rowNumber(row, "standardError", "standard_error");
+  const reconciliationResidual = rowNumber(
+    row,
+    "reconciliationResidual",
+    "reconciliation_residual",
+  );
+  return ["good", "warning"].includes(quality ?? "") &&
+    effectiveSampleSize != null &&
+    Number.isFinite(effectiveSampleSize) &&
+    effectiveSampleSize >= MTM_CONDITIONAL_PUBLICATION_POLICY.minimumEffectiveSampleSize &&
+    standardError != null &&
+    Number.isFinite(standardError) &&
+    standardError <= MTM_CONDITIONAL_PUBLICATION_POLICY.maximumStandardError &&
+    standardError >= 0 &&
+    reconciliationResidual != null &&
+    Number.isFinite(reconciliationResidual) &&
+    Math.abs(reconciliationResidual) <=
+      MTM_CONDITIONAL_PUBLICATION_POLICY.maximumAbsoluteReconciliationResidual;
+}
+
 function canonicalLinkage(games: LinkageGame[]): CanonicalActual[] {
   return canonicalizeActuals(games.map((game) => ({
     ...game,
@@ -369,9 +393,10 @@ export function validateCurrentMtmVersion(args: CurrentMtmValidationArgs): {
       } else {
         conditionalTotal += payout;
       }
-      const quality = rowText(row, "qualityStatus", "quality_status");
-      if (!["good", "warning"].includes(quality ?? "")) {
-        errors.push("Conditional rows must have acceptable quality.");
+      if (!conditionalRowMeetsPublicationPolicy(row)) {
+        errors.push(
+          "Conditional rows must satisfy publication quality, effective sample size, standard error, and reconciliation residual thresholds.",
+        );
       }
     }
     const poolValue = args.poolValue ?? Number(sourceSnapshot.stateJson?.pot);
@@ -941,7 +966,7 @@ async function reconcileNflPoolCurrentMtm(
         new Set(conditionalRows.map((row) => String(row.entryId))).size === 32 &&
         expectedEntries.size === 32 && [...expectedEntries].every((id) =>
           conditionalRows.some((row) => String(row.entryId) === id)) &&
-        conditionalRows.every((row) => ["good", "warning"].includes(row.qualityStatus)) &&
+        conditionalRows.every(conditionalRowMeetsPublicationPolicy) &&
         conditionalRows.every((row) => {
           const payout = Number(row.grossConditional);
           const baseline = Number(row.grossBaseline);

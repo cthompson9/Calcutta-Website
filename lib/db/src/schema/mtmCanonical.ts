@@ -19,6 +19,12 @@ import { eventsTable } from "./events";
 import { mtmSnapshotTable } from "./mtmPipeline";
 import { sportPeriodsTable } from "./sportPeriods";
 
+export const MTM_CONDITIONAL_PUBLICATION_POLICY = Object.freeze({
+  minimumEffectiveSampleSize: 100,
+  maximumStandardError: 10,
+  maximumAbsoluteReconciliationResidual: 0.01,
+});
+
 export const mtmCalibrationMetricTable = pgTable(
   "mtm_calibration_metric",
   {
