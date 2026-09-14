@@ -1,0 +1,895 @@
+```index.tsx
+import "./index.css";
+import React from "react";
+import ReactDOM from "react-dom/client";
+import { App } from "./App";
+
+const rootEl = document.getElementById("root");
+if (rootEl) {
+  ReactDOM.createRoot(rootEl).render(<App />);
+}
+
+```
+```App.tsx
+import React from 'react'
+import { LotValues } from './pages/LotValues'
+
+interface AppProps {
+  /** Default view: side-by-side comparison chart, or the small-multiples grid of all 32 lots. */
+  view?: 'focus' | 'grid'
+  /** Axis treatment: compress the tails so the pack near break-even stays readable, or use true dollar spacing. */
+  scale?: 'compressed' | 'even'
+}
+
+export function App({ view = 'focus', scale = 'compressed' }: AppProps) {
+  return <LotValues view={view} scale={scale} />
+}
+
+```
+```package.json
+{
+  "name": "magic-patterns-project",
+  "private": true,
+  "dependencies": {
+    "react": "18.3.1",
+    "react-dom": "18.3.1",
+    "react-router-dom": "6.30.2",
+    "lucide-react": "0.577.0",
+    "framer-motion": "11.18.2",
+    "@radix-ui/react-icons": "1.3.2",
+    "date-fns": "4.1.0",
+    "tailwind-merge": "2.6.1"
+  }
+}
+
+```
+```index.css
+/* @import url() FONT IMPORTS MUST ALWAYS BE AT THE VERY TOP OF THIS FILE, ABOVE THE TAILWIND IMPORTS — DO NOT DELETE THIS COMMENT */
+@import url('https://fonts.googleapis.com/css2?family=Instrument+Serif:ital@0;1&family=IBM+Plex+Mono:wght@400;500&family=Inter:wght@400;500;600&display=swap');
+
+/* CRITICAL: THE FOLLOWING TAILWIND IMPORTS MUST NEVER BE DELETED OR REORDERED — DO NOT DELETE THIS COMMENT */
+@import 'tailwindcss/base';
+@import 'tailwindcss/components';
+@import 'tailwindcss/utilities';
+
+/* END TAILWIND IMPORTS — ALL OTHER CSS MUST GO BELOW THIS LINE */
+
+html,
+body,
+#root {
+  height: 100%;
+}
+body {
+  background-color: #f7f4ed;
+  color: #1b1a16;
+  font-family: Inter, system-ui, sans-serif;
+  -webkit-font-smoothing: antialiased;
+}
+.label-mono {
+  font-family: 'IBM Plex Mono', ui-monospace, monospace;
+  font-size: 11px;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+}
+
+```
+```tailwind.config.js
+export default {
+  theme: {
+    extend: {
+      colors: {
+        cream: '#F7F4ED',
+        paper: '#FFFDF8',
+        ink: '#1B1A16',
+        muted: '#6F6A5C',
+        rule: '#E3DDCD',
+        gain: '#2E6B4F',
+        loss: '#B0472C',
+        gold: '#C08A2E',
+      },
+      fontFamily: {
+        display: ['"Instrument Serif"', 'Georgia', 'serif'],
+        mono: ['"IBM Plex Mono"', 'ui-monospace', 'monospace'],
+        sans: ['Inter', 'system-ui', 'sans-serif'],
+      },
+    },
+  },
+}
+
+```
+```types/lot.ts
+export type Conference = 'AFC' | 'NFC'
+
+export interface Lot {
+  id: string
+  abbr: string
+  city: string
+  name: string
+  conf: Conference
+  /** Auction price paid for this lot, in dollars. */
+  price: number
+  /** Net value (expected payout normalized to the pool, minus auction price) per week. */
+  series: number[]
+}
+
+export type ScaleMode = 'even' | 'compressed'
+
+```
+```data/lots.ts
+import type { Lot } from '../types/lot'
+
+export const POOL_SIZE = 96000
+
+export const WEEK_LABELS = [
+  'Auction',
+  'W1',
+  'W2',
+  'W3',
+  'W4',
+  'W5',
+  'W6',
+  'W7',
+  'W8',
+  'W9',
+  'W10',
+  'W11',
+  'W12',
+]
+
+export const lots: Lot[] = [
+  { id: 'kc', abbr: 'KC', city: 'Kansas City', name: 'Chiefs', conf: 'AFC', price: 8200, series: [0, 900, 1400, 900, 2100, 2600, 2200, 3100, 3800, 3400, 4200, 5100, 6400] },
+  { id: 'sf', abbr: 'SF', city: 'San Francisco', name: '49ers', conf: 'NFC', price: 7400, series: [0, -400, -900, -1500, -1100, -1800, -2400, -2100, -2800, -3400, -3900, -4300, -4800] },
+  { id: 'bal', abbr: 'BAL', city: 'Baltimore', name: 'Ravens', conf: 'AFC', price: 6900, series: [0, 600, 300, 900, 1500, 1200, 2000, 2400, 2100, 2900, 3300, 3800, 4500] },
+  { id: 'buf', abbr: 'BUF', city: 'Buffalo', name: 'Bills', conf: 'AFC', price: 6600, series: [0, -200, 400, 800, 300, 900, 1400, 1100, 1700, 2100, 1800, 2400, 2900] },
+  { id: 'phi', abbr: 'PHI', city: 'Philadelphia', name: 'Eagles', conf: 'NFC', price: 6100, series: [0, 300, -200, -700, -400, -1100, -1500, -1200, -1900, -2300, -2000, -2600, -3100] },
+  { id: 'det', abbr: 'DET', city: 'Detroit', name: 'Lions', conf: 'NFC', price: 5600, series: [0, 500, 900, 1300, 900, 1600, 2100, 2600, 2300, 3000, 3600, 4100, 4800] },
+  { id: 'cin', abbr: 'CIN', city: 'Cincinnati', name: 'Bengals', conf: 'AFC', price: 4900, series: [0, -300, -700, -400, -900, -1300, -1000, -1600, -2000, -1700, -2200, -2500, -2900] },
+  { id: 'hou', abbr: 'HOU', city: 'Houston', name: 'Texans', conf: 'AFC', price: 4500, series: [0, 200, 600, 300, 800, 1200, 900, 1400, 1800, 1500, 2000, 2300, 2700] },
+  { id: 'gb', abbr: 'GB', city: 'Green Bay', name: 'Packers', conf: 'NFC', price: 4200, series: [0, -100, 300, 700, 400, 900, 1300, 1000, 1500, 1900, 2200, 1900, 2400] },
+  { id: 'dal', abbr: 'DAL', city: 'Dallas', name: 'Cowboys', conf: 'NFC', price: 3900, series: [0, -500, -1000, -1400, -1100, -1700, -2200, -2600, -2300, -2900, -3300, -3600, -4100] },
+  { id: 'mia', abbr: 'MIA', city: 'Miami', name: 'Dolphins', conf: 'AFC', price: 3400, series: [0, 100, -300, -600, -200, -800, -1200, -900, -1400, -1700, -1500, -1900, -2200] },
+  { id: 'lar', abbr: 'LAR', city: 'Los Angeles', name: 'Rams', conf: 'NFC', price: 3100, series: [0, 200, 500, 200, 700, 1000, 700, 1200, 1500, 1300, 1700, 2000, 2300] },
+  { id: 'nyj', abbr: 'NYJ', city: 'New York', name: 'Jets', conf: 'AFC', price: 2900, series: [0, -200, -500, -800, -600, -1000, -1300, -1100, -1500, -1800, -1600, -2000, -2300] },
+  { id: 'min', abbr: 'MIN', city: 'Minnesota', name: 'Vikings', conf: 'NFC', price: 2700, series: [0, 300, 700, 1000, 800, 1200, 1500, 1300, 1800, 2100, 2400, 2200, 2700] },
+  { id: 'lac', abbr: 'LAC', city: 'Los Angeles', name: 'Chargers', conf: 'AFC', price: 2500, series: [0, -100, 200, 500, 300, 700, 900, 700, 1100, 1300, 1100, 1500, 1800] },
+  { id: 'atl', abbr: 'ATL', city: 'Atlanta', name: 'Falcons', conf: 'NFC', price: 2300, series: [0, 100, -200, -400, -100, -500, -700, -500, -900, -1100, -900, -1300, -1500] },
+  { id: 'tb', abbr: 'TB', city: 'Tampa Bay', name: 'Buccaneers', conf: 'NFC', price: 2100, series: [0, 200, 400, 700, 500, 800, 1000, 1300, 1100, 1400, 1600, 1500, 1900] },
+  { id: 'pit', abbr: 'PIT', city: 'Pittsburgh', name: 'Steelers', conf: 'AFC', price: 2000, series: [0, -100, 100, 300, 100, 400, 600, 400, 700, 900, 700, 1000, 1200] },
+  { id: 'sea', abbr: 'SEA', city: 'Seattle', name: 'Seahawks', conf: 'NFC', price: 1900, series: [0, 100, -100, -300, -100, -400, -600, -400, -700, -900, -800, -1000, -1200] },
+  { id: 'chi', abbr: 'CHI', city: 'Chicago', name: 'Bears', conf: 'NFC', price: 1800, series: [0, 0, 200, 400, 300, 600, 800, 600, 900, 1100, 1300, 1200, 1500] },
+  { id: 'ind', abbr: 'IND', city: 'Indianapolis', name: 'Colts', conf: 'AFC', price: 1700, series: [0, -100, -200, 0, -200, -300, -100, -300, -500, -400, -600, -700, -800] },
+  { id: 'jax', abbr: 'JAX', city: 'Jacksonville', name: 'Jaguars', conf: 'AFC', price: 1600, series: [0, 100, 0, -200, -100, -300, -400, -300, -500, -600, -500, -700, -800] },
+  { id: 'no', abbr: 'NO', city: 'New Orleans', name: 'Saints', conf: 'NFC', price: 1500, series: [0, 0, 100, 300, 200, 400, 500, 400, 600, 700, 600, 800, 900] },
+  { id: 'cle', abbr: 'CLE', city: 'Cleveland', name: 'Browns', conf: 'AFC', price: 1400, series: [0, -100, -300, -500, -400, -600, -800, -700, -900, -1000, -900, -1100, -1200] },
+  { id: 'ari', abbr: 'ARI', city: 'Arizona', name: 'Cardinals', conf: 'NFC', price: 1200, series: [0, 100, 300, 500, 700, 900, 1200, 1500, 1900, 2400, 3000, 3900, 5200] },
+  { id: 'lv', abbr: 'LV', city: 'Las Vegas', name: 'Raiders', conf: 'AFC', price: 1100, series: [0, -50, -100, -200, -150, -300, -400, -350, -500, -600, -550, -700, -800] },
+  { id: 'den', abbr: 'DEN', city: 'Denver', name: 'Broncos', conf: 'AFC', price: 1000, series: [0, 50, 200, 400, 300, 600, 900, 1200, 1600, 2100, 2700, 3400, 4300] },
+  { id: 'was', abbr: 'WAS', city: 'Washington', name: 'Commanders', conf: 'NFC', price: 950, series: [0, 0, -100, -200, -100, -300, -400, -300, -500, -600, -700, -800, -900] },
+  { id: 'ten', abbr: 'TEN', city: 'Tennessee', name: 'Titans', conf: 'AFC', price: 800, series: [0, -50, -100, -150, -200, -250, -300, -350, -400, -450, -500, -550, -600] },
+  { id: 'ne', abbr: 'NE', city: 'New England', name: 'Patriots', conf: 'AFC', price: 700, series: [0, 0, 100, 0, -100, -200, -300, -400, -500, -550, -600, -650, -700] },
+  { id: 'nyg', abbr: 'NYG', city: 'New York', name: 'Giants', conf: 'NFC', price: 600, series: [0, 50, 100, 50, 0, -100, -200, -250, -350, -450, -500, -550, -600] },
+  { id: 'car', abbr: 'CAR', city: 'Carolina', name: 'Panthers', conf: 'NFC', price: 450, series: [0, 0, -50, -100, -150, -200, -250, -300, -350, -400, -420, -440, -450] },
+]
+
+```
+```utils/format.ts
+export function money(value: number): string {
+  const abs = Math.abs(Math.round(value))
+  return `${value < 0 ? '−' : ''}$${abs.toLocaleString('en-US')}`
+}
+
+export function moneySigned(value: number): string {
+  const abs = Math.abs(Math.round(value))
+  const sign = value > 0 ? '+' : value < 0 ? '−' : ''
+  return `${sign}$${abs.toLocaleString('en-US')}`
+}
+
+export function moneyCompact(value: number): string {
+  const abs = Math.abs(value)
+  const sign = value > 0 ? '+' : value < 0 ? '−' : ''
+  if (abs >= 1000) {
+    const k = abs / 1000
+    return `${sign}$${k % 1 === 0 ? k.toFixed(0) : k.toFixed(1)}k`
+  }
+  return abs === 0 ? '0' : `${sign}$${Math.round(abs)}`
+}
+
+export function percentSigned(value: number): string {
+  const sign = value > 0 ? '+' : value < 0 ? '−' : ''
+  return `${sign}${Math.abs(value * 100).toFixed(0)}%`
+}
+
+```
+```utils/scale.ts
+import type { Lot, ScaleMode } from '../types/lot'
+
+const THRESHOLD = 300
+
+/** Symlog-style transform: linear near zero, logarithmic in the tails. */
+export function transform(value: number, mode: ScaleMode): number {
+  if (mode === 'even') return value
+  return Math.sign(value) * Math.log1p(Math.abs(value) / THRESHOLD)
+}
+
+const TICK_CANDIDATES = [
+  0, 250, 500, 1000, 1500, 2000, 3000, 4000, 5000, 6000, 8000, 10000, 15000, 20000,
+]
+
+export interface YScale {
+  min: number
+  max: number
+  toY: (value: number) => number
+  ticks: number[]
+}
+
+export function buildYScale(
+  values: number[],
+  mode: ScaleMode,
+  top: number,
+  bottom: number,
+): YScale {
+  const rawMin = Math.min(0, ...values)
+  const rawMax = Math.max(0, ...values)
+  const span = rawMax - rawMin || 1
+  const min = rawMin - span * 0.06
+  const max = rawMax + span * 0.06
+
+  const tMin = transform(min, mode)
+  const tMax = transform(max, mode)
+  const tSpan = tMax - tMin || 1
+
+  const toY = (value: number) => bottom - ((transform(value, mode) - tMin) / tSpan) * (bottom - top)
+
+  const ticks: number[] = []
+  for (const candidate of TICK_CANDIDATES) {
+    if (candidate === 0) {
+      ticks.push(0)
+      continue
+    }
+    if (candidate <= max) ticks.push(candidate)
+    if (-candidate >= min) ticks.push(-candidate)
+  }
+
+  // Thin out ticks that would collide vertically.
+  const sorted = ticks.sort((a, b) => b - a)
+  const kept: number[] = []
+  for (const tick of sorted) {
+    const y = toY(tick)
+    if (tick !== 0 && kept.some((k) => Math.abs(toY(k) - y) < 26)) continue
+    kept.push(tick)
+  }
+
+  return { min, max, toY, ticks: kept }
+}
+
+export function sliceValues(lots: Lot[], start: number): number[] {
+  const out: number[] = []
+  for (const lot of lots) {
+    for (let i = start; i < lot.series.length; i++) out.push(lot.series[i])
+  }
+  return out
+}
+
+export function currentValue(lot: Lot): number {
+  return lot.series[lot.series.length - 1]
+}
+
+export function weekMove(lot: Lot): number {
+  const n = lot.series.length
+  return n < 2 ? 0 : lot.series[n - 1] - lot.series[n - 2]
+}
+
+export function returnRate(lot: Lot): number {
+  return currentValue(lot) / lot.price
+}
+
+/** Dot radius encoding auction price, kept in a legible range. */
+export function priceRadius(price: number, base = 3): number {
+  return base + Math.sqrt(price) / 22
+}
+
+```
+```hooks/useMeasure.ts
+import { useEffect, useRef, useState } from 'react'
+
+export function useMeasure<T extends HTMLElement>() {
+  const ref = useRef<T | null>(null)
+  const [size, setSize] = useState({ width: 0, height: 0 })
+
+  useEffect(() => {
+    const node = ref.current
+    if (!node) return
+    const observer = new ResizeObserver((entries) => {
+      const rect = entries[0].contentRect
+      setSize({ width: rect.width, height: rect.height })
+    })
+    observer.observe(node)
+    setSize({ width: node.clientWidth, height: node.clientHeight })
+    return () => observer.disconnect()
+  }, [])
+
+  return { ref, ...size }
+}
+
+```
+```components/FocusChart.tsx
+import React, { useMemo, useState } from 'react'
+import type { Lot, ScaleMode } from '../types/lot'
+import { useMeasure } from '../hooks/useMeasure'
+import { buildYScale, priceRadius, sliceValues } from '../utils/scale'
+import { moneyCompact, moneySigned } from '../utils/format'
+
+interface FocusChartProps {
+  lots: Lot[]
+  labels: string[]
+  start: number
+  scaleMode: ScaleMode
+  pinned: string[]
+  hovered: string | null
+  onHover: (id: string | null) => void
+  onTogglePin: (id: string) => void
+}
+
+const MARGIN = { top: 18, right: 64, bottom: 30, left: 62 }
+
+export function FocusChart({
+  lots,
+  labels,
+  start,
+  scaleMode,
+  pinned,
+  hovered,
+  onHover,
+  onTogglePin,
+}: FocusChartProps) {
+  const { ref, width, height } = useMeasure<HTMLDivElement>()
+  const [crosshair, setCrosshair] = useState<number | null>(null)
+
+  const weeks = labels.length - start
+  const innerW = Math.max(width - MARGIN.left - MARGIN.right, 10)
+  const bottom = height - MARGIN.bottom
+
+  const scale = useMemo(
+    () => buildYScale(sliceValues(lots, start), scaleMode, MARGIN.top, Math.max(bottom, 40)),
+    [lots, start, scaleMode, bottom],
+  )
+
+  const x = (index: number) => MARGIN.left + ((index - start) / Math.max(weeks - 1, 1)) * innerW
+
+  const pathFor = (lot: Lot) =>
+    lot.series
+      .slice(start)
+      .map((v, i) => `${i === 0 ? 'M' : 'L'}${x(start + i).toFixed(1)},${scale.toY(v).toFixed(1)}`)
+      .join(' ')
+
+  const pinnedSet = new Set(pinned)
+  const emphasized = lots.filter((l) => pinnedSet.has(l.id) || l.id === hovered)
+  const background = lots.filter((l) => !pinnedSet.has(l.id) && l.id !== hovered)
+
+  const colorFor = (lot: Lot) => {
+    if (lot.id === hovered) return '#1B1A16'
+    return lot.series[lot.series.length - 1] >= 0 ? '#2E6B4F' : '#B0472C'
+  }
+
+  const readout = crosshair === null ? null : crosshair
+
+  const handleMove = (event: React.MouseEvent<SVGSVGElement>) => {
+    const rect = event.currentTarget.getBoundingClientRect()
+    const px = event.clientX - rect.left
+    const ratio = (px - MARGIN.left) / Math.max(innerW, 1)
+    const index = Math.round(ratio * (weeks - 1)) + start
+    setCrosshair(Math.min(labels.length - 1, Math.max(start, index)))
+  }
+
+  return (
+    <div ref={ref} className="relative h-[300px] w-full sm:h-[380px] lg:h-[460px]">
+      {width > 0 && height > 0 && (
+        <svg
+          width={width}
+          height={height}
+          role="img"
+          aria-label="Net lot value by week for all 32 lots"
+          onMouseMove={handleMove}
+          onMouseLeave={() => {
+            setCrosshair(null)
+            onHover(null)
+          }}
+        >
+          {scale.ticks.map((tick) => {
+            const y = scale.toY(tick)
+            const isZero = tick === 0
+            return (
+              <g key={tick}>
+                <line
+                  x1={MARGIN.left}
+                  x2={width - MARGIN.right}
+                  y1={y}
+                  y2={y}
+                  stroke={isZero ? '#1B1A16' : '#E3DDCD'}
+                  strokeWidth={isZero ? 1 : 1}
+                  strokeDasharray={isZero ? '0' : '2 4'}
+                  opacity={isZero ? 0.45 : 1}
+                />
+                <text
+                  x={MARGIN.left - 10}
+                  y={y + 3.5}
+                  textAnchor="end"
+                  className="font-mono"
+                  fontSize={10}
+                  fill={isZero ? '#1B1A16' : '#6F6A5C'}
+                >
+                  {isZero ? 'break even' : moneyCompact(tick)}
+                </text>
+              </g>
+            )
+          })}
+
+          {labels.slice(start).map((label, i) => {
+            const index = start + i
+            const show = weeks <= 14 || i % 2 === 0 || index === labels.length - 1
+            if (!show) return null
+            return (
+              <text
+                key={label}
+                x={x(index)}
+                y={height - 10}
+                textAnchor="middle"
+                className="font-mono"
+                fontSize={10}
+                fill={readout === index ? '#1B1A16' : '#6F6A5C'}
+              >
+                {label}
+              </text>
+            )
+          })}
+
+          {readout !== null && (
+            <line
+              x1={x(readout)}
+              x2={x(readout)}
+              y1={MARGIN.top - 6}
+              y2={bottom}
+              stroke="#1B1A16"
+              strokeWidth={1}
+              opacity={0.2}
+            />
+          )}
+
+          {background.map((lot) => (
+            <path
+              key={lot.id}
+              d={pathFor(lot)}
+              fill="none"
+              stroke="#CFC8B4"
+              strokeWidth={1}
+              strokeLinecap="round"
+            />
+          ))}
+
+          {emphasized.map((lot) => {
+            const color = colorFor(lot)
+            const last = lot.series[lot.series.length - 1]
+            return (
+              <g key={lot.id}>
+                <path
+                  d={pathFor(lot)}
+                  fill="none"
+                  stroke={color}
+                  strokeWidth={2}
+                  strokeLinecap="round"
+                  strokeLinejoin="round"
+                />
+                <circle
+                  cx={x(labels.length - 1)}
+                  cy={scale.toY(last)}
+                  r={priceRadius(lot.price)}
+                  fill={color}
+                  fillOpacity={0.18}
+                  stroke={color}
+                  strokeWidth={1.5}
+                />
+                <text
+                  x={width - MARGIN.right + 10}
+                  y={scale.toY(last) + 3.5}
+                  className="font-mono"
+                  fontSize={10}
+                  fill={color}
+                >
+                  {lot.abbr}
+                </text>
+              </g>
+            )
+          })}
+
+          {lots.map((lot) => (
+            <path
+              key={`hit-${lot.id}`}
+              d={pathFor(lot)}
+              fill="none"
+              stroke="transparent"
+              strokeWidth={12}
+              style={{ cursor: 'pointer' }}
+              onMouseEnter={() => onHover(lot.id)}
+              onClick={() => onTogglePin(lot.id)}
+            />
+          ))}
+        </svg>
+      )}
+
+      {readout !== null && emphasized.length > 0 && (
+        <div
+          className="pointer-events-none absolute top-4 rounded-sm border border-rule bg-paper/95 px-3 py-2 shadow-sm"
+          style={{
+            left: Math.min(Math.max(x(readout) + 12, 8), Math.max(width - 190, 8)),
+          }}
+        >
+          <p className="label-mono text-muted">{labels[readout]}</p>
+          <ul className="mt-1.5 space-y-1">
+            {[...emphasized]
+              .sort((a, b) => b.series[readout] - a.series[readout])
+              .slice(0, 8)
+              .map((lot) => (
+                <li key={lot.id} className="flex items-baseline gap-4 whitespace-nowrap text-xs">
+                  <span className="font-mono w-10 text-ink">{lot.abbr}</span>
+                  <span
+                    className="ml-auto font-mono tabular-nums"
+                    style={{ color: lot.series[readout] >= 0 ? '#2E6B4F' : '#B0472C' }}
+                  >
+                    {moneySigned(lot.series[readout])}
+                  </span>
+                </li>
+              ))}
+          </ul>
+        </div>
+      )}
+    </div>
+  )
+}
+
+```
+```components/LotGrid.tsx
+import React, { useMemo } from 'react'
+import type { Lot, ScaleMode } from '../types/lot'
+import { buildYScale, currentValue, sliceValues } from '../utils/scale'
+import { moneySigned } from '../utils/format'
+
+interface LotGridProps {
+  lots: Lot[]
+  start: number
+  scaleMode: ScaleMode
+  pinned: string[]
+  hovered: string | null
+  onHover: (id: string | null) => void
+  onSelect: (id: string) => void
+}
+
+const W = 132
+const H = 46
+
+export function LotGrid({ lots, start, scaleMode, pinned, hovered, onHover, onSelect }: LotGridProps) {
+  const scale = useMemo(
+    () => buildYScale(sliceValues(lots, start), scaleMode, 4, H - 4),
+    [lots, start, scaleMode],
+  )
+
+  const ordered = useMemo(
+    () => [...lots].sort((a, b) => currentValue(b) - currentValue(a)),
+    [lots],
+  )
+
+  const pinnedSet = new Set(pinned)
+  const weeks = lots[0].series.length - start
+  const x = (i: number) => (i / Math.max(weeks - 1, 1)) * W
+
+  return (
+    <div className="grid grid-cols-2 gap-px bg-rule sm:grid-cols-3 lg:grid-cols-4 xl:grid-cols-6">
+      {ordered.map((lot) => {
+        const value = currentValue(lot)
+        const color = value >= 0 ? '#2E6B4F' : '#B0472C'
+        const points = lot.series.slice(start)
+        const path = points
+          .map((v, i) => `${i === 0 ? 'M' : 'L'}${x(i).toFixed(1)},${scale.toY(v).toFixed(1)}`)
+          .join(' ')
+        const area = `${path} L${x(points.length - 1).toFixed(1)},${scale.toY(0).toFixed(1)} L0,${scale
+          .toY(0)
+          .toFixed(1)} Z`
+        const active = pinnedSet.has(lot.id) || lot.id === hovered
+
+        return (
+          <button
+            key={lot.id}
+            type="button"
+            onMouseEnter={() => onHover(lot.id)}
+            onMouseLeave={() => onHover(null)}
+            onClick={() => onSelect(lot.id)}
+            className={`group flex flex-col gap-1 px-3 py-3 text-left transition-colors duration-150 ease-out ${
+              active ? 'bg-[#F1ECDF]' : 'bg-paper hover:bg-[#F5F1E6]'
+            }`}
+          >
+            <div className="flex items-baseline justify-between gap-2">
+              <span className="font-mono text-[11px] tracking-wider text-ink">{lot.abbr}</span>
+              <span className="font-mono text-[11px] tabular-nums" style={{ color }}>
+                {moneySigned(value)}
+              </span>
+            </div>
+            <svg viewBox={`0 0 ${W} ${H}`} width="100%" height={H} preserveAspectRatio="none" aria-hidden>
+              <line x1={0} x2={W} y1={scale.toY(0)} y2={scale.toY(0)} stroke="#E3DDCD" strokeWidth={1} />
+              <path d={area} fill={color} fillOpacity={0.08} />
+              <path d={path} fill="none" stroke={color} strokeWidth={1.5} strokeLinejoin="round" />
+              <circle cx={x(points.length - 1)} cy={scale.toY(points[points.length - 1])} r={2.5} fill={color} />
+            </svg>
+            <span className="truncate text-[11px] text-muted">
+              {lot.name} · ${lot.price.toLocaleString('en-US')}
+            </span>
+          </button>
+        )
+      })}
+    </div>
+  )
+}
+
+```
+```components/SummaryBar.tsx
+import React from 'react'
+import type { Lot } from '../types/lot'
+import { currentValue } from '../utils/scale'
+import { money, moneySigned } from '../utils/format'
+
+interface SummaryBarProps {
+  lots: Lot[]
+  poolSize: number
+  weekLabel: string
+}
+
+export function SummaryBar({ lots, poolSize, weekLabel }: SummaryBarProps) {
+  const inTheMoney = lots.filter((l) => currentValue(l) > 0).length
+  const sorted = [...lots].sort((a, b) => currentValue(b) - currentValue(a))
+  const best = sorted[0]
+  const worst = sorted[sorted.length - 1]
+
+  return (
+    <dl className="flex flex-wrap items-baseline gap-x-8 gap-y-3 border-y border-rule py-3">
+      <div>
+        <dt className="label-mono text-muted">Through</dt>
+        <dd className="font-mono text-sm text-ink">{weekLabel}</dd>
+      </div>
+      <div>
+        <dt className="label-mono text-muted">Pool</dt>
+        <dd className="font-mono text-sm text-ink">{money(poolSize)}</dd>
+      </div>
+      <div>
+        <dt className="label-mono text-muted">Above water</dt>
+        <dd className="font-mono text-sm text-ink">
+          {inTheMoney}
+          <span className="text-muted"> / {lots.length} lots</span>
+        </dd>
+      </div>
+      <div>
+        <dt className="label-mono text-muted">Best lot</dt>
+        <dd className="font-mono text-sm text-gain">
+          {best.abbr} {moneySigned(currentValue(best))}
+        </dd>
+      </div>
+      <div>
+        <dt className="label-mono text-muted">Worst lot</dt>
+        <dd className="font-mono text-sm text-loss">
+          {worst.abbr} {moneySigned(currentValue(worst))}
+        </dd>
+      </div>
+    </dl>
+  )
+}
+
+```
+```components/Segmented.tsx
+import React from 'react'
+
+interface SegmentedOption<T extends string> {
+  value: T
+  label: string
+}
+
+interface SegmentedProps<T extends string> {
+  label: string
+  value: T
+  options: SegmentedOption<T>[]
+  onChange: (value: T) => void
+}
+
+export function Segmented<T extends string>({ label, value, options, onChange }: SegmentedProps<T>) {
+  return (
+    <div className="flex items-center gap-2">
+      <span className="label-mono text-muted">{label}</span>
+      <div role="group" aria-label={label} className="flex border border-rule bg-paper">
+        {options.map((option) => (
+          <button
+            key={option.value}
+            type="button"
+            onClick={() => onChange(option.value)}
+            aria-pressed={value === option.value}
+            className={`px-2.5 py-1 font-mono text-[10px] uppercase tracking-wider transition-colors duration-150 ease-out ${
+              value === option.value ? 'bg-ink text-cream' : 'text-muted hover:bg-[#F1ECDF] hover:text-ink'
+            }`}
+          >
+            {option.label}
+          </button>
+        ))}
+      </div>
+    </div>
+  )
+}
+
+```
+```pages/LotValues.tsx
+import React, { useEffect, useMemo, useState } from 'react'
+import { XIcon } from 'lucide-react'
+import type { ScaleMode } from '../types/lot'
+import { lots, POOL_SIZE, WEEK_LABELS } from '../data/lots'
+import { currentValue } from '../utils/scale'
+import { FocusChart } from '../components/FocusChart'
+import { LotGrid } from '../components/LotGrid'
+import { SummaryBar } from '../components/SummaryBar'
+import { Segmented } from '../components/Segmented'
+
+export type ViewMode = 'focus' | 'grid'
+export type RangeMode = 'season' | 'recent'
+
+interface LotValuesProps {
+  view: ViewMode
+  scale: ScaleMode
+}
+
+const RECENT_WEEKS = 6
+
+function defaultPinned(): string[] {
+  const ordered = [...lots].sort((a, b) => currentValue(b) - currentValue(a))
+  return [ordered[0].id, ordered[1].id, ordered[ordered.length - 2].id, ordered[ordered.length - 1].id]
+}
+
+export function LotValues({ view, scale }: LotValuesProps) {
+  const [viewMode, setViewMode] = useState<ViewMode>(view)
+  const [scaleMode, setScaleMode] = useState<ScaleMode>(scale)
+  const [range, setRange] = useState<RangeMode>('season')
+  const [pinned, setPinned] = useState<string[]>(defaultPinned)
+  const [hovered, setHovered] = useState<string | null>(null)
+
+  useEffect(() => setViewMode(view), [view])
+  useEffect(() => setScaleMode(scale), [scale])
+
+  const start = range === 'recent' ? Math.max(WEEK_LABELS.length - RECENT_WEEKS - 1, 0) : 0
+  const pinnedLots = useMemo(() => lots.filter((l) => pinned.includes(l.id)), [pinned])
+
+  const togglePin = (id: string) =>
+    setPinned((current) =>
+      current.includes(id) ? current.filter((p) => p !== id) : [...current, id],
+    )
+
+  return (
+    <main className="min-h-full w-full bg-cream">
+      <div className="mx-auto flex max-w-[1440px] flex-col gap-6 px-5 py-10 sm:px-8 lg:py-14">
+        <header className="max-w-3xl">
+          <p className="label-mono text-muted">Calcutta XII · NFL 2026</p>
+          <h1 className="mt-2 font-display text-4xl leading-none text-ink sm:text-5xl lg:text-6xl">
+            Lot values over time
+          </h1>
+          <p className="mt-3 text-sm leading-relaxed text-muted">
+            Each line is one of the 32 lots: expected payout normalized to the {' '}
+            <span className="text-ink">${POOL_SIZE.toLocaleString('en-US')}</span> pool, minus what it
+            sold for at auction. Above the line, the lot is worth more than it cost. Dot size at the
+            end of a highlighted line reflects auction price.
+          </p>
+        </header>
+
+        <SummaryBar lots={lots} poolSize={POOL_SIZE} weekLabel={WEEK_LABELS[WEEK_LABELS.length - 1]} />
+
+        <div className="flex flex-wrap items-center gap-x-6 gap-y-3">
+          <Segmented
+            label="View"
+            value={viewMode}
+            onChange={setViewMode}
+            options={[
+              { value: 'focus', label: 'Compare' },
+              { value: 'grid', label: 'All 32' },
+            ]}
+          />
+          <Segmented
+            label="Axis"
+            value={scaleMode}
+            onChange={setScaleMode}
+            options={[
+              { value: 'compressed', label: 'Compressed' },
+              { value: 'even', label: 'Even' },
+            ]}
+          />
+          <Segmented
+            label="Range"
+            value={range}
+            onChange={setRange}
+            options={[
+              { value: 'season', label: 'Season' },
+              { value: 'recent', label: 'Last 6' },
+            ]}
+          />
+          <p className="text-xs text-muted">
+            {scaleMode === 'compressed'
+              ? 'Tails compressed so the pack near break-even stays readable.'
+              : 'True dollar spacing — outliers dominate the axis.'}
+          </p>
+        </div>
+
+        {viewMode === 'focus' && (
+          <div className="flex flex-wrap items-center gap-2">
+            <span className="label-mono text-muted">Highlighted</span>
+            {pinnedLots.length === 0 && (
+              <span className="text-xs text-muted">
+                Click any line or any row to bring a lot forward.
+              </span>
+            )}
+            {pinnedLots.map((lot) => (
+              <button
+                key={lot.id}
+                type="button"
+                onClick={() => togglePin(lot.id)}
+                className="group flex items-center gap-1.5 border border-rule bg-paper py-1 pl-2 pr-1.5 transition-colors duration-150 ease-out hover:border-ink"
+              >
+                <span
+                  className="h-1.5 w-1.5 rounded-full"
+                  style={{ backgroundColor: currentValue(lot) >= 0 ? '#2E6B4F' : '#B0472C' }}
+                />
+                <span className="font-mono text-[11px] text-ink">{lot.abbr}</span>
+                <XIcon className="h-3 w-3 text-muted transition-colors duration-150 ease-out group-hover:text-ink" />
+              </button>
+            ))}
+            {pinnedLots.length > 0 && (
+              <button
+                type="button"
+                onClick={() => setPinned([])}
+                className="font-mono text-[10px] uppercase tracking-wider text-muted underline-offset-4 hover:text-ink hover:underline"
+              >
+                Clear
+              </button>
+            )}
+          </div>
+        )}
+
+        {viewMode === 'focus' ? (
+          <div className="border border-rule bg-paper p-3 sm:p-5">
+            <FocusChart
+              lots={lots}
+              labels={WEEK_LABELS}
+              start={start}
+              scaleMode={scaleMode}
+              pinned={pinned}
+              hovered={hovered}
+              onHover={setHovered}
+              onTogglePin={togglePin}
+            />
+          </div>
+        ) : (
+          <div className="border border-rule bg-rule">
+            <LotGrid
+              lots={lots}
+              start={start}
+              scaleMode={scaleMode}
+              pinned={pinned}
+              hovered={hovered}
+              onHover={setHovered}
+              onSelect={(id) => {
+                setPinned([id])
+                setViewMode('focus')
+              }}
+            />
+          </div>
+        )}
+
+        <p className="text-xs text-muted">
+          {viewMode === 'focus'
+            ? 'Hover a line for its weekly value; click to keep it highlighted. Everything else stays as light context.'
+            : 'Every lot on a shared axis, ranked by current net value. Click one to open it in the comparison view.'}
+        </p>
+      </div>
+    </main>
+  )
+}
+
+```

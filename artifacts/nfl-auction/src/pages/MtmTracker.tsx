@@ -21,6 +21,7 @@ import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { formatCurrency } from "@/lib/utils";
 import { cn } from "@/lib/utils";
 import { useSeason } from "@/hooks/useSeason";
+import { useMeasure } from "@/hooks/useMeasure";
 import { trackEvent } from "@/lib/analytics";
 import { TrendingUp, TrendingDown, Lock, Unlock, Plus, X, ChevronDown, ChevronUp, Activity, AlertTriangle, ShieldCheck, Zap, Info, ServerOff, RefreshCw, Search, ListFilter, Trash2 } from "lucide-react";
 import { toast } from "sonner";
@@ -108,6 +109,41 @@ const NFL_PRIMARY_COLOR_BY_TEAM: Record<string, string> = {
   "Tampa Bay Buccaneers": "#D50A0A",
   "Tennessee Titans": "#0C2340",
   "Washington Commanders": "#5A1414",
+};
+
+const NFL_ABBREVIATION_BY_TEAM: Record<string, string> = {
+  "Arizona Cardinals": "ARI",
+  "Atlanta Falcons": "ATL",
+  "Baltimore Ravens": "BAL",
+  "Buffalo Bills": "BUF",
+  "Carolina Panthers": "CAR",
+  "Chicago Bears": "CHI",
+  "Cincinnati Bengals": "CIN",
+  "Cleveland Browns": "CLE",
+  "Dallas Cowboys": "DAL",
+  "Denver Broncos": "DEN",
+  "Detroit Lions": "DET",
+  "Green Bay Packers": "GB",
+  "Houston Texans": "HOU",
+  "Indianapolis Colts": "IND",
+  "Jacksonville Jaguars": "JAX",
+  "Kansas City Chiefs": "KC",
+  "Las Vegas Raiders": "LV",
+  "Los Angeles Chargers": "LAC",
+  "Los Angeles Rams": "LAR",
+  "Miami Dolphins": "MIA",
+  "Minnesota Vikings": "MIN",
+  "New England Patriots": "NE",
+  "New Orleans Saints": "NO",
+  "New York Giants": "NYG",
+  "New York Jets": "NYJ",
+  "Philadelphia Eagles": "PHI",
+  "Pittsburgh Steelers": "PIT",
+  "San Francisco 49ers": "SF",
+  "Seattle Seahawks": "SEA",
+  "Tampa Bay Buccaneers": "TB",
+  "Tennessee Titans": "TEN",
+  "Washington Commanders": "WAS",
 };
 
 type PipelineValuation = {
@@ -1255,192 +1291,474 @@ export function UpcomingEvSwings({
   );
 }
 
+export function moneyCompact(value: number): string {
+  const abs = Math.abs(value);
+  const sign = value > 0 ? "+" : value < 0 ? "−" : "";
+  if (abs >= 1000) {
+    const k = abs / 1000;
+    return `${sign}$${k % 1 === 0 ? k.toFixed(0) : k.toFixed(1)}k`;
+  }
+  return abs === 0 ? "0" : `${sign}$${Math.round(abs)}`;
+}
+
+export function moneySigned(value: number): string {
+  const abs = Math.abs(Math.round(value));
+  const sign = value > 0 ? "+" : value < 0 ? "−" : "";
+  return `${sign}$${abs.toLocaleString("en-US")}`;
+}
+
+type ScaleMode = "even" | "compressed";
+type RangeMode = "season" | "last3weeks";
+
+function Segmented<T extends string>({ label, value, options, onChange }: { label: string, value: T, options: { value: T, label: string }[], onChange: (value: T) => void }) {
+  return (
+    <div className="flex items-center gap-2">
+      {label && <span className="font-mono text-[10px] uppercase tracking-wider text-muted-foreground">{label}</span>}
+      <div role="group" aria-label={label} className="flex border border-border bg-card">
+        {options.map((option) => (
+          <button
+            key={option.value}
+            type="button"
+            onClick={() => onChange(option.value)}
+            aria-pressed={value === option.value}
+            className={cn(
+              "px-2.5 py-1 font-mono text-[10px] uppercase tracking-wider transition-colors duration-150 ease-out",
+              value === option.value ? "bg-foreground text-background" : "text-muted-foreground hover:bg-muted hover:text-foreground"
+            )}
+          >
+            {option.label}
+          </button>
+        ))}
+      </div>
+    </div>
+  )
+}
+
 export function NetPayoutHistoryChart({
   valuations,
 }: {
   valuations: PipelineValuation[];
 }) {
-  const W = 820;
-  const H = 390;
-  const PAD = { top: 24, right: 28, bottom: 44, left: 74 };
-  const chartW = W - PAD.left - PAD.right;
-  const chartH = H - PAD.top - PAD.bottom;
+  const { ref, width, height } = useMeasure<HTMLDivElement>();
+  const [scaleMode, setScaleMode] = useState<ScaleMode>("even");
+  const [range, setRange] = useState<RangeMode>("season");
+  
+  const [pinned, setPinned] = useState<number[]>(() => {
+    const ordered = [...valuations].sort((a, b) => {
+      const aNet = a.history[a.history.length - 1]?.netPayout ?? 0;
+      const bNet = b.history[b.history.length - 1]?.netPayout ?? 0;
+      return bNet - aNet;
+    });
+    if (ordered.length <= 4) return ordered.map((v) => v.entryId);
+    return [ordered[0].entryId, ordered[1].entryId, ordered[ordered.length - 2].entryId, ordered[ordered.length - 1].entryId];
+  });
+  const [hovered, setHovered] = useState<number | null>(null);
+  const [crosshair, setCrosshair] = useState<number | null>(null);
+
   const points = valuations.flatMap((valuation) =>
     (valuation.history ?? [])
       .filter((point) => point.netPayout != null)
-      .map((point) => ({ ...point, valuation })),
+      .map((point) => ({ ...point, valuation, timestamp: Date.parse(point.asOf) }))
+      .filter((point) => Number.isFinite(point.timestamp))
   );
-  const datedPoints = points
-    .map((point) => ({ ...point, timestamp: Date.parse(point.asOf) }))
-    .filter((point) => Number.isFinite(point.timestamp));
-  const timestamps = datedPoints.map((point) => point.timestamp);
-  const minTimestamp = timestamps.length ? Math.min(...timestamps) : 0;
-  const maxTimestamp = timestamps.length ? Math.max(...timestamps) : minTimestamp;
+
+  const allTimestamps = Array.from(new Set(points.map((p) => p.timestamp))).sort((a, b) => a - b);
+  const maxOverallTimestamp = allTimestamps.length > 0 ? allTimestamps[allTimestamps.length - 1] : 0;
+  
+  const minTimestampBound = range === "last3weeks" ? maxOverallTimestamp - 21 * 24 * 60 * 60 * 1000 : 0;
+  const filteredTimestamps = allTimestamps.filter((t) => t >= minTimestampBound);
+  const minTimestamp = filteredTimestamps.length > 0 ? filteredTimestamps[0] : 0;
+  const maxTimestamp = filteredTimestamps.length > 0 ? filteredTimestamps[filteredTimestamps.length - 1] : 0;
   const timestampRange = Math.max(1, maxTimestamp - minTimestamp);
-  const tickByLabel = new Map<string, number>();
-  for (const point of [...datedPoints].sort((a, b) => a.timestamp - b.timestamp)) {
-    if (!tickByLabel.has(point.label)) tickByLabel.set(point.label, point.timestamp);
-  }
-  const ticks = [...tickByLabel.entries()];
-  const values = points.map((point) => point.netPayout as number);
-  const rawMin = Math.min(0, ...values);
-  const rawMax = Math.max(0, ...values);
-  const rawRange = Math.max(1, rawMax - rawMin);
-  const padding = rawRange * 0.1;
-  const minValue = rawMin - padding;
-  const maxValue = rawMax + padding;
-  const valueRange = maxValue - minValue;
+
+  const filteredPoints = points.filter((p) => p.timestamp >= minTimestampBound);
+
   const prices = valuations
-    .map((valuation) => valuation.auctionPrice == null ? null : Number(valuation.auctionPrice))
+    .map((v) => v.auctionPrice == null ? null : Number(v.auctionPrice))
     .filter((price): price is number => price != null);
   const minPrice = Math.min(...prices, 0);
   const maxPrice = Math.max(...prices, 1);
   const priceRange = Math.max(1, maxPrice - minPrice);
 
-  function xPos(timestamp: number) {
-    if (maxTimestamp === minTimestamp) return PAD.left + chartW / 2;
-    return PAD.left + ((timestamp - minTimestamp) / timestampRange) * chartW;
-  }
-
-  function yPos(value: number) {
-    return PAD.top + chartH - ((value - minValue) / valueRange) * chartH;
-  }
-
-  function radius(price: number | null) {
+  function radius(price: string | number | null) {
     if (price == null) return 3.5;
-    const normalized = Math.max(0, Math.min(1, (price - minPrice) / priceRange));
+    const numPrice = Number(price);
+    const normalized = Math.max(0, Math.min(1, (numPrice - minPrice) / priceRange));
     return 3.5 + Math.sqrt(normalized) * 7.5;
   }
 
-  function color(valuation: PipelineValuation, index: number) {
-    return NFL_PRIMARY_COLOR_BY_TEAM[valuation.teamName]
-      ?? `hsl(${(index * 47 + 208) % 360} 72% 46%)`;
+  function transform(value: number, mode: ScaleMode): number {
+    if (mode === "even") return value;
+    return Math.sign(value) * Math.log1p(Math.abs(value) / 300);
   }
 
+  const values = filteredPoints.map((point) => point.netPayout as number);
+  const rawMin = values.length ? Math.min(0, ...values) : 0;
+  const rawMax = values.length ? Math.max(0, ...values) : 0;
+  const rawSpan = rawMax - rawMin || 1;
+  
+  const minVal = rawMin - rawSpan * 0.06;
+  const maxVal = rawMax + rawSpan * 0.06;
+
+  const tMin = transform(minVal, scaleMode);
+  const tMax = transform(maxVal, scaleMode);
+  const tSpan = tMax - tMin || 1;
+
+  const PAD = { top: 24, right: 64, bottom: 44, left: 62 };
+  const innerW = Math.max(width - PAD.left - PAD.right, 10);
+  const bottomY = Math.max(height - PAD.bottom, 40);
+
+  function xPos(timestamp: number) {
+    if (maxTimestamp === minTimestamp) return PAD.left + innerW / 2;
+    return PAD.left + ((timestamp - minTimestamp) / timestampRange) * innerW;
+  }
+
+  function yPos(value: number) {
+    const tVal = transform(value, scaleMode);
+    return bottomY - ((tVal - tMin) / tSpan) * (bottomY - PAD.top);
+  }
+
+  const TICK_CANDIDATES = [0, 250, 500, 1000, 1500, 2000, 3000, 4000, 5000, 6000, 8000, 10000, 15000, 20000];
+  const ticks: number[] = [];
+  for (const candidate of TICK_CANDIDATES) {
+    if (candidate === 0) {
+      ticks.push(0);
+      continue;
+    }
+    if (candidate <= maxVal) ticks.push(candidate);
+    if (-candidate >= minVal) ticks.push(-candidate);
+  }
+
+  const sortedTicks = ticks.sort((a, b) => b - a);
+  const keptTicks: number[] = [];
+  for (const tick of sortedTicks) {
+    const y = yPos(tick);
+    if (tick !== 0 && keptTicks.some((k) => Math.abs(yPos(k) - y) < 26)) continue;
+    keptTicks.push(tick);
+  }
+
+  const tickByLabel = new Map<string, number>();
+  for (const point of [...filteredPoints].sort((a, b) => a.timestamp - b.timestamp)) {
+    if (!tickByLabel.has(point.label)) tickByLabel.set(point.label, point.timestamp);
+  }
+  const timeTicks = [...tickByLabel.entries()];
+
+  const pinnedSet = new Set(pinned);
+  const isAnyPinnedOrHovered = pinnedSet.size > 0 || hovered !== null;
+  const emphasized = isAnyPinnedOrHovered
+    ? valuations.filter((v) => pinnedSet.has(v.entryId) || v.entryId === hovered)
+    : valuations;
+  const background = isAnyPinnedOrHovered
+    ? valuations.filter((v) => !pinnedSet.has(v.entryId) && v.entryId !== hovered)
+    : [];
+
+  function colorFor(valuation: PipelineValuation) {
+    return NFL_PRIMARY_COLOR_BY_TEAM[valuation.teamName] ?? "hsl(var(--primary))";
+  }
+
+  const handleMove = (event: React.MouseEvent<SVGSVGElement>) => {
+    if (filteredTimestamps.length === 0) return;
+    const rect = event.currentTarget.getBoundingClientRect();
+    const px = event.clientX - rect.left;
+    const ratio = (px - PAD.left) / Math.max(innerW, 1);
+    const targetTimestamp = minTimestamp + ratio * timestampRange;
+    
+    let closest = filteredTimestamps[0];
+    let minDist = Math.abs(targetTimestamp - closest);
+    for (const ts of filteredTimestamps) {
+      const dist = Math.abs(targetTimestamp - ts);
+      if (dist < minDist) {
+        minDist = dist;
+        closest = ts;
+      }
+    }
+    setCrosshair(closest);
+  };
+
+  const togglePin = (id: number) => {
+    setPinned((current) => current.includes(id) ? current.filter((p) => p !== id) : [...current, id]);
+  };
+
+  const pathFor = (valuation: PipelineValuation) => {
+    const history = (valuation.history ?? [])
+      .filter((point) => point.netPayout != null && Number.isFinite(Date.parse(point.asOf)))
+      .map((point) => ({ ...point, timestamp: Date.parse(point.asOf) }))
+      .filter((point) => point.timestamp >= minTimestampBound)
+      .sort((a, b) => a.timestamp - b.timestamp);
+    
+    if (history.length === 0) return "";
+    
+    return history
+      .map((point, i) => `${i === 0 ? "M" : "L"}${xPos(point.timestamp).toFixed(1)},${yPos(point.netPayout as number).toFixed(1)}`)
+      .join(" ");
+  };
+
   return (
-    <div className="mt-4">
-      <div className="overflow-x-auto border border-border bg-background/40 p-2">
-        <svg
-          width="100%"
-          viewBox={`0 0 ${W} ${H}`}
-          preserveAspectRatio="xMinYMin meet"
-          className="min-w-[700px] font-mono"
-          role="img"
-          aria-label="Team net payout history over time"
-        >
-          <line
-            x1={PAD.left}
-            y1={yPos(0)}
-            x2={W - PAD.right}
-            y2={yPos(0)}
-            stroke="currentColor"
-            strokeOpacity={0.45}
-            strokeWidth={1.5}
-            strokeDasharray="5,5"
-          />
+    <div className="mt-4 space-y-4">
+      <div className="flex flex-wrap items-center justify-between gap-4 border-b border-border pb-4">
+        <Segmented
+          label="Time Range"
+          value={range}
+          options={[
+            { value: "season", label: "Season" },
+            { value: "last3weeks", label: "Last 3 Weeks" }
+          ]}
+          onChange={(value) => setRange(value as RangeMode)}
+        />
+        <Segmented
+          label="Axis Scale"
+          value={scaleMode}
+          options={[
+            { value: "even", label: "Even" },
+            { value: "compressed", label: "Compressed" }
+          ]}
+          onChange={(value) => setScaleMode(value as ScaleMode)}
+        />
+      </div>
 
-          {[0, 0.25, 0.5, 0.75, 1].map((fraction) => {
-            const value = minValue + valueRange * fraction;
-            const y = yPos(value);
-            return (
-              <g key={fraction}>
-                <line
-                  x1={PAD.left}
-                  y1={y}
-                  x2={W - PAD.right}
-                  y2={y}
-                  stroke="currentColor"
-                  strokeOpacity={0.08}
-                />
-                <text
-                  x={PAD.left - 10}
-                  y={y + 4}
-                  textAnchor="end"
-                  fontSize={10}
-                  fill="currentColor"
-                  fillOpacity={0.62}
-                >
-                  {formatCurrency(value)}
-                </text>
-              </g>
-            );
-          })}
-
-          {ticks.map(([label, timestamp]) => (
-            <g key={`${label}-${timestamp}`}>
-              <line
-                x1={xPos(timestamp)}
-                y1={PAD.top}
-                x2={xPos(timestamp)}
-                y2={H - PAD.bottom}
-                stroke="currentColor"
-                strokeOpacity={0.07}
+      <div className="flex flex-wrap items-center gap-2" aria-label="Highlighted teams">
+        <span className="font-mono text-[10px] uppercase tracking-wider text-muted-foreground">
+          Highlighted
+        </span>
+        {valuations.map((valuation) => {
+          const selected = pinnedSet.has(valuation.entryId);
+          const teamColor = colorFor(valuation);
+          return (
+            <button
+              key={valuation.entryId}
+              type="button"
+              aria-pressed={selected}
+              onClick={() => togglePin(valuation.entryId)}
+              className={cn(
+                "inline-flex items-center gap-1.5 border px-2 py-1 font-mono text-[10px] transition-colors",
+                selected
+                  ? "border-foreground/30 bg-muted text-foreground"
+                  : "border-border text-muted-foreground hover:border-foreground/30 hover:text-foreground",
+              )}
+            >
+              <span
+                aria-hidden="true"
+                className="h-1.5 w-1.5 rounded-full"
+                style={{ backgroundColor: teamColor }}
               />
-              <text
-                x={xPos(timestamp)}
-                y={H - 14}
-                textAnchor="middle"
-                fontSize={10}
-                fontWeight={700}
-                fill="currentColor"
-                fillOpacity={0.68}
-              >
-                {label}
-              </text>
-            </g>
-          ))}
+              {valuation.teamName}
+            </button>
+          );
+        })}
+        {pinned.length > 0 && (
+          <button
+            type="button"
+            onClick={() => setPinned([])}
+            className="font-mono text-[10px] uppercase tracking-wider text-muted-foreground underline-offset-4 hover:text-foreground hover:underline"
+          >
+            Clear
+          </button>
+        )}
+      </div>
 
-          {valuations.map((valuation, valuationIndex) => {
-            const history = (valuation.history ?? []).filter(
-              (point): point is typeof point & { netPayout: number } =>
-                point.netPayout != null && Number.isFinite(Date.parse(point.asOf)),
-            ).sort((a, b) => Date.parse(a.asOf) - Date.parse(b.asOf));
-            const lineColor = color(valuation, valuationIndex);
-            const path = history
-              .map((point, pointIndex) => {
-                return `${pointIndex === 0 ? "M" : "L"}${xPos(Date.parse(point.asOf))},${yPos(point.netPayout)}`;
-              })
-              .join(" ");
-            return (
-              <g key={valuation.entryId}>
-                {history.length > 1 && (
+      <div ref={ref} className="relative h-[300px] w-full sm:h-[380px] lg:h-[460px] border border-border bg-background/40">
+        {width > 0 && height > 0 && (
+          <svg
+            width={width}
+            height={height}
+            role="img"
+            aria-label="Net payout history by team over time"
+            onMouseMove={handleMove}
+            onMouseLeave={() => {
+              setCrosshair(null);
+              setHovered(null);
+            }}
+          >
+            {keptTicks.map((tick) => {
+              const y = yPos(tick);
+              const isZero = tick === 0;
+              return (
+                <g key={tick}>
+                  <line
+                    x1={PAD.left}
+                    x2={width - PAD.right}
+                    y1={y}
+                    y2={y}
+                    stroke={isZero ? "currentColor" : "hsl(var(--border))"}
+                    strokeWidth={isZero ? 1.5 : 1}
+                    strokeDasharray={isZero ? "0" : "2 4"}
+                    opacity={isZero ? 0.45 : 1}
+                  />
+                  <text
+                    x={PAD.left - 10}
+                    y={y + 3.5}
+                    textAnchor="end"
+                    className="font-mono"
+                    fontSize={10}
+                    fill={isZero ? "currentColor" : "hsl(var(--muted-foreground))"}
+                  >
+                    {isZero ? "break even" : moneyCompact(tick)}
+                  </text>
+                </g>
+              );
+            })}
+
+            {timeTicks.map(([label, timestamp], i) => {
+              const showText = timeTicks.length <= 14 || i % Math.ceil(timeTicks.length / 10) === 0 || i === timeTicks.length - 1;
+              return (
+                <g key={`${label}-${timestamp}`}>
+                  <line
+                    x1={xPos(timestamp)}
+                    y1={PAD.top}
+                    x2={xPos(timestamp)}
+                    y2={height - PAD.bottom}
+                    stroke="currentColor"
+                    strokeOpacity={0.07}
+                  />
+                  {showText && (
+                    <text
+                      x={xPos(timestamp)}
+                      y={height - 14}
+                      textAnchor="middle"
+                      fontSize={10}
+                      fontWeight={crosshair === timestamp ? 700 : 400}
+                      fill="currentColor"
+                      fillOpacity={crosshair === timestamp ? 1 : 0.68}
+                      className="font-mono"
+                    >
+                      {label}
+                    </text>
+                  )}
+                </g>
+              );
+            })}
+
+            {crosshair !== null && (
+              <line
+                x1={xPos(crosshair)}
+                x2={xPos(crosshair)}
+                y1={PAD.top - 6}
+                y2={bottomY}
+                stroke="currentColor"
+                strokeWidth={1}
+                opacity={0.2}
+              />
+            )}
+
+            {background.map((v) => {
+              const path = pathFor(v);
+              if (!path) return null;
+              return (
+                <path
+                  key={v.entryId}
+                  d={path}
+                  fill="none"
+                  stroke="hsl(var(--muted-foreground))"
+                  strokeWidth={1}
+                  strokeLinecap="round"
+                  opacity={0.3}
+                />
+              );
+            })}
+
+            {emphasized.map((v) => {
+              const path = pathFor(v);
+              if (!path) return null;
+              const color = colorFor(v);
+              const history = (v.history ?? [])
+                .filter((p) => p.netPayout != null && Date.parse(p.asOf) >= minTimestampBound)
+                .sort((a, b) => Date.parse(a.asOf) - Date.parse(b.asOf));
+              if (history.length === 0) return null;
+              const lastPoint = history[history.length - 1];
+
+              return (
+                <g key={v.entryId}>
                   <path
-                    data-testid={`net-payout-path-${valuation.entryId}`}
+                    data-testid={`net-payout-path-${v.entryId}`}
                     d={path}
                     fill="none"
-                    stroke={lineColor}
-                    strokeWidth={1.75}
-                    strokeOpacity={0.72}
+                    stroke={color}
+                    strokeWidth={2}
+                    strokeLinecap="round"
                     strokeLinejoin="round"
                   />
-                )}
-                {history.map((point) => {
-                  const pointRadius = radius(point.auctionPrice);
-                  return (
-                    <circle
-                      key={point.snapshotId}
-                      cx={xPos(Date.parse(point.asOf))}
-                      cy={yPos(point.netPayout)}
-                      r={pointRadius}
-                      fill={lineColor}
-                      fillOpacity={0.82}
-                      stroke="white"
-                      strokeWidth={1.5}
+                  <circle
+                    cx={xPos(Date.parse(lastPoint.asOf))}
+                    cy={yPos(lastPoint.netPayout as number)}
+                    r={radius(lastPoint.auctionPrice)}
+                    fill={color}
+                    fillOpacity={0.18}
+                    stroke={color}
+                    strokeWidth={1.5}
+                  />
+                  <text
+                    x={width - PAD.right + 10}
+                    y={yPos(lastPoint.netPayout as number) + 3.5}
+                    className="font-mono"
+                    fontSize={10}
+                    fill={color}
+                  >
+                    {NFL_ABBREVIATION_BY_TEAM[v.teamName] ?? v.teamName}
+                  </text>
+                </g>
+              );
+            })}
+
+            {valuations.map((v) => {
+              const path = pathFor(v);
+              if (!path) return null;
+              return (
+                <path
+                  key={`hit-${v.entryId}`}
+                  d={path}
+                  fill="none"
+                  stroke="transparent"
+                  strokeWidth={16}
+                  style={{ cursor: "pointer" }}
+                  onMouseEnter={() => setHovered(v.entryId)}
+                  onClick={() => togglePin(v.entryId)}
+                />
+              );
+            })}
+          </svg>
+        )}
+
+        {crosshair !== null && emphasized.length > 0 && (
+          <div
+            className="pointer-events-none absolute top-4 rounded-sm border border-border bg-card/95 px-3 py-2 shadow-sm"
+            style={{
+              left: Math.min(Math.max(xPos(crosshair) + 12, 8), Math.max(width - 240, 8)),
+              zIndex: 10,
+            }}
+          >
+            <p className="font-mono text-[11px] uppercase tracking-wider text-muted-foreground">
+              {new Date(crosshair).toLocaleString("en-US", { month: "short", day: "numeric", hour: "numeric", minute: "2-digit" })}
+            </p>
+            <ul className="mt-1.5 space-y-1">
+              {[...emphasized]
+                .map((v) => {
+                  const point = (v.history ?? [])
+                    .filter((p) => p.netPayout != null && Date.parse(p.asOf) <= crosshair + 60000)
+                    .sort((a, b) => Date.parse(b.asOf) - Date.parse(a.asOf))[0];
+                  return { v, point };
+                })
+                .filter((item) => item.point != null)
+                .sort((a, b) => (b.point.netPayout as number) - (a.point.netPayout as number))
+                .slice(0, 8)
+                .map(({ v, point }) => (
+                  <li key={v.entryId} className="flex items-baseline gap-4 whitespace-nowrap text-xs">
+                    <span className="font-mono w-24 truncate text-foreground font-bold">{v.teamName}</span>
+                    <span
+                      className={cn("ml-auto font-mono tabular-nums font-bold", point.netPayout! >= 0 ? "text-emerald-600 dark:text-emerald-500" : "text-destructive")}
+                      
                     >
-                      <title>
-                        {valuation.teamName} · {point.label}: {formatCurrency(point.netPayout)} net · {point.auctionPrice == null ? "No auction price" : `${formatCurrency(point.auctionPrice)} auction price`}
-                      </title>
-                    </circle>
-                  );
-                })}
-              </g>
-            );
-          })}
-        </svg>
+                      {moneySigned(point.netPayout as number)}
+                    </span>
+                  </li>
+                ))}
+            </ul>
+          </div>
+        )}
       </div>
     </div>
   );
 }
+
 
 // ── Admin auth panel ──────────────────────────────────────────────────────────
 

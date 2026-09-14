@@ -20,6 +20,11 @@ vi.mock("sonner", () => ({
   },
 }));
 
+
+vi.mock("@/hooks/useMeasure", () => ({
+  useMeasure: () => ({ ref: { current: null }, width: 820, height: 390 }),
+}));
+
 vi.mock("@/lib/analytics", () => ({
   trackEvent: vi.fn(),
 }));
@@ -279,7 +284,7 @@ function game(eventId: number, week: number, awayName: string, homeName: string,
 }
 
 describe("NetPayoutHistoryChart", () => {
-  it("renders refreshes within the same week at distinct timestamp positions", () => {
+  it("renders refreshes with correct paths and endpoint bubbles, and exposes scale/range controls", () => {
     const { container } = render(
       <NetPayoutHistoryChart
         valuations={[
@@ -324,14 +329,74 @@ describe("NetPayoutHistoryChart", () => {
       />,
     );
 
+    expect(screen.getByRole("button", { name: "Even" })).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: "Compressed" })).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: "Season" })).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: "Last 3 Weeks" })).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: "Even" })).toHaveAttribute("aria-pressed", "true");
+    expect(screen.getByRole("button", { name: "Compressed" })).toHaveAttribute("aria-pressed", "false");
+    expect(screen.getByRole("button", { name: "Buffalo Bills" })).toBeInTheDocument();
+    expect(screen.getByText("BUF")).toBeInTheDocument();
+
     const path = screen.getByTestId("net-payout-path-7");
     expect(path.getAttribute("d")).toMatch(/^M[^L]+L/);
     expect(path).toHaveAttribute("stroke", "#00338D");
-    expect(screen.queryByText("3 refresh points")).not.toBeInTheDocument();
-    expect(screen.queryByText(/Current net total/i)).not.toBeInTheDocument();
+
     const circles = [...container.querySelectorAll("circle")];
-    expect(circles).toHaveLength(3);
-    expect(circles[1]?.getAttribute("cx")).not.toBe(circles[2]?.getAttribute("cx"));
+    expect(circles).toHaveLength(1);
+  });
+
+  it("limits Last 3 Weeks to the 21 days ending at the latest chart timestamp", async () => {
+    const user = userEvent.setup();
+    render(
+      <NetPayoutHistoryChart
+        valuations={[
+          {
+            entryId: 7,
+            teamId: 12,
+            teamName: "Buffalo Bills",
+            expectedPoints: "20",
+            expectedPayout: "1600",
+            previousExpectedPayout: "1400",
+            auctionPrice: "1500",
+            mtmMultiple: "1.07",
+            owners: [],
+            history: [
+              {
+                snapshotId: 101,
+                label: "Auction",
+                asOf: "2026-08-01T12:00:00.000Z",
+                expectedPayout: 1400,
+                auctionPrice: 1500,
+                netPayout: -100,
+              },
+              {
+                snapshotId: 102,
+                label: "Week 1",
+                asOf: "2026-09-01T12:00:00.000Z",
+                expectedPayout: 1600,
+                auctionPrice: 1500,
+                netPayout: 100,
+              },
+              {
+                snapshotId: 103,
+                label: "Week 3",
+                asOf: "2026-09-22T12:00:00.000Z",
+                expectedPayout: 1650,
+                auctionPrice: 1500,
+                netPayout: 150,
+              },
+            ],
+          },
+        ]}
+      />,
+    );
+
+    await user.click(screen.getByRole("button", { name: "Last 3 Weeks" }));
+
+    const path = screen.getByTestId("net-payout-path-7");
+    expect(path.getAttribute("d")?.match(/[ML]/g)).toHaveLength(2);
+    expect(screen.queryByText("Auction")).not.toBeInTheDocument();
   });
 });
 
