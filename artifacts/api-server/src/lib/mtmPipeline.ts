@@ -44,6 +44,7 @@ import {
   estimateMtmTrades,
   type MtmEvidenceInput,
 } from "./mtmEvidence";
+import { validateMtmCanonicalDataFreshness } from "./currentMtm";
 
 const execFileAsync = promisify(execFile);
 const WORKSPACE_ROOT = existsSync(resolve(process.cwd(), "mtm"))
@@ -958,7 +959,7 @@ async function exportState(seasonYear: number, calcuttaId?: number): Promise<{
     actualKickoffAt: game.kickoff,
     status: game.status,
   })));
-  const eventRows = await db.select({
+  const allEventRows = await db.select({
     id: eventsTable.id,
     source: eventsTable.source,
     sourceEventId: eventsTable.sourceEventId,
@@ -966,14 +967,17 @@ async function exportState(seasonYear: number, calcuttaId?: number): Promise<{
     kickoffAt: eventsTable.kickoffAt,
     sourceData: eventsTable.sourceData,
     updatedAt: eventsTable.updatedAt,
+    status: eventsTable.status,
+    homeScore: eventsTable.homeScore,
+    awayScore: eventsTable.awayScore,
     homeTeamId: eventsTable.homeTeamId,
     awayTeamId: eventsTable.awayTeamId,
   }).from(eventsTable).where(and(
     eq(eventsTable.seasonId, poolRow.seasonId),
     eq(eventsTable.sport, "NFL"),
     eq(eventsTable.competition, "NFL_REGULAR_SEASON"),
-    ne(eventsTable.status, "final"),
   ));
+  const eventRows = allEventRows.filter((event) => event.status !== "final");
   const teamCodeById = new Map(entries.map((entry) =>
     [entry.teamId, TEAM_CODE_BY_NAME[entry.name]] as const));
   const scheduleCapture = buildCanonicalRemainingSchedule(eventRows, teamCodeById);
@@ -1082,6 +1086,14 @@ async function exportState(seasonYear: number, calcuttaId?: number): Promise<{
       };
     }),
   };
+  const freshnessErrors = validateMtmCanonicalDataFreshness({
+    now: new Date(),
+    events: allEventRows,
+    inputProvenance,
+  });
+  if (freshnessErrors.length > 0) {
+    throw new Error(`MTM canonical data freshness check failed: ${freshnessErrors.join("; ")}`);
+  }
   return {
     poolId: poolRow.poolId,
     state,

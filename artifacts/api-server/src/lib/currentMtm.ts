@@ -40,6 +40,7 @@ type LinkageGame = FinalizedActual & {
 };
 const CURRENT_MTM_LOCK_NAMESPACE = 9_881;
 
+export const MTM_CANONICAL_DATA_MAX_AGE_MS = 6 * 60 * 60 * 1_000;
 export type CurrentMtmValidationArgs = {
   version: {
     poolId: number;
@@ -599,6 +600,29 @@ async function promoteCurrentMtmInTransaction(
       tx.select({ seasonId: calcuttasTable.seasonId }).from(calcuttasTable)
         .where(eq(calcuttasTable.id, args.poolId)).limit(1),
     ]);
+    const canonicalEvents = await tx.select({
+      id: eventsTable.id,
+      source: eventsTable.source,
+      sourceEventId: eventsTable.sourceEventId,
+      status: eventsTable.status,
+      kickoffAt: eventsTable.kickoffAt,
+      updatedAt: eventsTable.updatedAt,
+      sourceData: eventsTable.sourceData,
+      homeScore: eventsTable.homeScore,
+      awayScore: eventsTable.awayScore,
+    }).from(eventsTable).where(and(
+      eq(eventsTable.seasonId, poolRows[0]!.seasonId),
+      eq(eventsTable.sport, "NFL"),
+      eq(eventsTable.competition, "NFL_REGULAR_SEASON"),
+    ));
+    const freshnessErrors = validateMtmCanonicalDataFreshness({
+      now: new Date(),
+      events: canonicalEvents,
+      inputProvenance: sourceSnapshot.inputProvenance as Record<string, any> | null,
+    });
+    if (freshnessErrors.length > 0) {
+      throw new Error(`Current MTM canonical data freshness check failed: ${freshnessErrors.join("; ")}`);
+    }
     const poolValue = Number((sourceSnapshot.stateJson as Record<string, any> | null)?.pot);
     const expectedEntryIds = entries.map((entry) => entry.entryId);
     if (expectedEntryIds.length !== 32) throw new Error("Current MTM requires exactly 32 pool entries.");
@@ -1347,4 +1371,110 @@ export async function resolveCurrentMtm(poolId: number): Promise<CurrentMtmResol
       error instanceof Error ? error.message : "Published MTM values could not be reconciled to the auction pool.",
     );
   }
+}
+
+function eventIdentity(event: PublicationEvent): string {
+  const providerIdentity = event.source && event.sourceEventId
+    ? ` (${event.source}:${event.sourceEventId})`
+    : "";
+  return `event ${event.id}${providerIdentity}`;
+}
+
+type PublicationEvent = {
+  id: number;
+  source?: string | null;
+  sourceEventId?: string | null;
+  status: string;
+  kickoffAt?: Date | string | null;
+  updatedAt?: Date | string | null;
+  sourceData?: Record<string, unknown> | null;
+  homeScore?: number | null;
+  awayScore?: number | null;
+};
+
+export const MTM_NON_FINAL_KICKOFF_GRACE_MS = 6 * 60 * 60 * 1_000;
+
+export function validateMtmCanonicalDataFreshness(args: {
+  now: Date;
+  events: PublicationEvent[];
+  inputProvenance?: Record<string, any> | null;
+}): string[] {
+  const errors: string[] = [];
+  const nowMs = args.now.getTime();
+  const scheduleRows = args.inputProvenance?.schedule ?? [];
+  const scheduleFetchedTimes = scheduleRows
+    .map((row: Record<string, unknown>) => parsedTimestamp(row.fetched_at ?? row.fetchedAt))
+    .filter((value: number | null): value is number => value != null);
+  if (scheduleRows.length === 0) {
+    scheduleFetchedTimes.push(...args.events
+      .map((event) =>
+        parsedTimestamp(event.sourceData?.sourceFetchedAt) ?? parsedTimestamp(event.updatedAt))
+      .filter((value): value is number => value != null));
+  }
+  const realizedResultRows = args.inputProvenance?.realized_results ?? [];
+  const resultLedgerRows = realizedResultRows.length > 0
+    ? realizedResultRows
+    : (args.inputProvenance?.standings ?? []);
+  const resultLedgerFetchedTimes = resultLedgerRows
+    .map((row: Record<string, unknown>) => parsedTimestamp(row.fetched_at ?? row.fetchedAt))
+    .filter((value: number | null): value is number => value != null);
+
+  const checkLedger = (label: string, timestamps: number[]) => {
+    if (timestamps.length === 0) {
+      errors.push(`${label} has no valid fetched timestamp.`);
+      return;
+    }
+    const oldest = Math.min(...timestamps);
+    if (oldest > nowMs + 5 * 60 * 1_000) {
+      errors.push(`${label} fetched timestamp is in the future.`);
+    } else if (nowMs - oldest > MTM_CANONICAL_DATA_MAX_AGE_MS) {
+      errors.push(
+        `${label} is stale; oldest fetched timestamp is ${new Date(oldest).toISOString()} ` +
+        `(maximum age ${MTM_CANONICAL_DATA_MAX_AGE_MS / 3_600_000} hours).`,
+      );
+    }
+  };
+  checkLedger("Canonical event ledger", scheduleFetchedTimes);
+  checkLedger("Actual-results ledger", resultLedgerFetchedTimes);
+
+  for (const event of args.events) {
+    const identity = eventIdentity(event);
+    const kickoffMs = parsedTimestamp(event.kickoffAt);
+    const status = String(event.status).toLowerCase();
+    const sourceFetchedAt = parsedTimestamp(event.sourceData?.sourceFetchedAt);
+    const updatedAt = parsedTimestamp(event.updatedAt);
+    const fetchedAt = sourceFetchedAt ?? updatedAt;
+    if (fetchedAt == null) {
+      errors.push(`Canonical ${identity} has no valid fetched timestamp.`);
+    } else if (fetchedAt > nowMs + 5 * 60 * 1_000) {
+      errors.push(`Canonical ${identity} fetched timestamp is in the future.`);
+    } else if (nowMs - fetchedAt > MTM_CANONICAL_DATA_MAX_AGE_MS) {
+      errors.push(
+        `Canonical ${identity} is stale; fetched at ${new Date(fetchedAt).toISOString()} ` +
+        `(maximum age ${MTM_CANONICAL_DATA_MAX_AGE_MS / 3_600_000} hours).`,
+      );
+    }
+    if (status === "final" && (event.homeScore == null || event.awayScore == null)) {
+      errors.push(`Canonical ${identity} is final but does not have both scores.`);
+    }
+    if (
+      status !== "final" &&
+      kickoffMs != null &&
+      nowMs - kickoffMs > MTM_NON_FINAL_KICKOFF_GRACE_MS
+    ) {
+      errors.push(
+        `Canonical ${identity} remains ${status || "non-final"} more than ` +
+        `${MTM_NON_FINAL_KICKOFF_GRACE_MS / 3_600_000} hours after kickoff ` +
+        `(${new Date(kickoffMs).toISOString()}).`,
+      );
+    }
+  }
+  return [...new Set(errors)];
+}
+
+function parsedTimestamp(value: unknown): number | null {
+  if (value instanceof Date) return Number.isFinite(value.getTime()) ? value.getTime() : null;
+  if (typeof value !== "string") return null;
+  const timestamp = Date.parse(value);
+  return Number.isFinite(timestamp) ? timestamp : null;
 }

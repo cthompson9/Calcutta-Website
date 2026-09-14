@@ -27,7 +27,7 @@ const ADMIN_KEY = process.env.ADMIN_API_KEY;
 const canRun = Boolean(DATABASE_URL && ADMIN_KEY);
 
 // Deferred imports — must not execute when DATABASE_URL is absent (lib/db throws)
-let db, mtmSnapshotsTable, mtmSnapshotTable, mtmEntryValuationTable, mtmValuationVersionTable, snapshotMetricsTable, sportPeriodsTable, seasonsTable, teamsTable, teamSeasonAuctionsTable, calcuttasTable, calcuttaEntriesTable, positionsTable, biddersTable;
+let db, eventsTable, mtmSnapshotsTable, mtmSnapshotTable, mtmEntryValuationTable, mtmValuationVersionTable, snapshotMetricsTable, sportPeriodsTable, seasonsTable, teamsTable, teamSeasonAuctionsTable, calcuttasTable, calcuttaEntriesTable, positionsTable, biddersTable;
 let app;
 let WEEK_ZERO_SNAPSHOT_KEY;
 let runCanonicalMtmRefresh;
@@ -35,7 +35,7 @@ let getMtmPipelineStatus;
 let validateAndPromoteCurrentMtm;
 
 if (canRun) {
-  ({ db, mtmSnapshotsTable, mtmSnapshotTable, mtmEntryValuationTable, mtmValuationVersionTable, snapshotMetricsTable, sportPeriodsTable, seasonsTable, teamsTable, teamSeasonAuctionsTable, calcuttasTable, calcuttaEntriesTable, positionsTable, biddersTable } =
+  ({ db, eventsTable, mtmSnapshotsTable, mtmSnapshotTable, mtmEntryValuationTable, mtmValuationVersionTable, snapshotMetricsTable, sportPeriodsTable, seasonsTable, teamsTable, teamSeasonAuctionsTable, calcuttasTable, calcuttaEntriesTable, positionsTable, biddersTable } =
     await import("@workspace/db"));
   ({ default: app } = await import("../app.ts"));
   ({ WEEK_ZERO_SNAPSHOT_KEY } = await import("../lib/weekZeroValuation.ts"));
@@ -461,9 +461,39 @@ describe(
         ));
     }
 
-    async function seedCoherentOfficialVersion(value, asOf = new Date("2026-01-01T00:00:00.000Z")) {
+    async function seedCoherentOfficialVersion(value, {
+      asOf = new Date(),
+      fetchedAt = new Date(),
+    } = {}) {
       const entries = [...entryIdByTeam.entries()];
       const pot = value * entries.length;
+      const fetchedAtIso = fetchedAt.toISOString();
+      await db.insert(eventsTable).values({
+        seasonId: testSeasonId,
+        sport: "NFL",
+        competition: "NFL_REGULAR_SEASON",
+        source: "espn",
+        sourceEventId: "coherent-test-event",
+        week: 2,
+        eventDate: "9999-09-12",
+        kickoffAt: new Date("9999-09-12T17:00:00.000Z"),
+        awayTeamId: entries[0][0],
+        homeTeamId: entries[1][0],
+        status: "scheduled",
+        sourceData: { sourceFetchedAt: fetchedAtIso },
+      }).onConflictDoUpdate({
+        target: [
+          eventsTable.seasonId,
+          eventsTable.sport,
+          eventsTable.competition,
+          eventsTable.source,
+          eventsTable.sourceEventId,
+        ],
+        set: {
+          status: "scheduled",
+          sourceData: { sourceFetchedAt: fetchedAtIso },
+        },
+      });
       const [snapshot] = await db.insert(mtmSnapshotTable).values({
         poolId: testCalcuttaId,
         asOf,
@@ -499,9 +529,17 @@ describe(
         },
         inputProvenance: {
           schema_version: "1.0",
-          schedule: [],
+          schedule: [{
+            provider: "espn",
+            source_id: "coherent-test-event",
+            fetched_at: fetchedAtIso,
+          }],
           realized_results: [],
-          standings: [],
+          standings: entries.map(([teamId]) => ({
+            provider: "derived_nfl_game_ledger",
+            source_id: `coherent-test-${teamId}`,
+            fetched_at: fetchedAtIso,
+          })),
         },
       }).returning({ id: mtmSnapshotTable.id });
       await db.insert(mtmEntryValuationTable).values(entries.map(([, entryId]) => ({
@@ -517,6 +555,20 @@ describe(
       });
       return { snapshotId: snapshot.id, versionId: promotion.versionId };
     }
+
+    test(
+      "official promotion rejects stale canonical event and result provenance",
+      async () => {
+        await resetCurrentVersionLedger();
+        await resetPipelineLedger();
+        const staleAt = new Date(Date.now() - 7 * 60 * 60 * 1_000);
+        await assert.rejects(
+          seedCoherentOfficialVersion(777, { asOf: staleAt, fetchedAt: staleAt }),
+          /Canonical event ledger is stale.*Actual-results ledger is stale.*coherent-test-event.*is stale/,
+        );
+        await resetPipelineLedger();
+      },
+    );
 
     async function mtmMetricRowsForEntries(entryIds) {
       return db

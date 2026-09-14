@@ -7,6 +7,7 @@ import {
   normalizeSourceActuals,
   planNflMtmReconciliation,
   sourceSnapshotHasCompletePublicationAudit,
+  validateMtmCanonicalDataFreshness,
   validateCurrentMtmVersion,
 } from "./currentMtm.ts";
 import {
@@ -167,6 +168,83 @@ test("missing canonical source final is explicit incomplete evidence", () => {
     canonicalFinals: [],
   });
   assert.deepEqual(classified.incompleteSourceEventIds, ["77"]);
+});
+
+test("canonical freshness rejects stale event and actual-results fetch timestamps", () => {
+  const errors = validateMtmCanonicalDataFreshness({
+    now: new Date("2026-09-14T18:00:00.000Z"),
+    events: [{
+      id: 77,
+      source: "espn",
+      sourceEventId: "401",
+      status: "scheduled",
+      kickoffAt: new Date("2026-09-15T00:00:00.000Z"),
+      updatedAt: new Date("2026-09-14T10:00:00.000Z"),
+      sourceData: { sourceFetchedAt: "2026-09-14T10:00:00.000Z" },
+    }],
+    inputProvenance: {
+      schedule: [{ fetched_at: "2026-09-14T10:00:00.000Z" }],
+      realized_results: [{
+        provider: "espn",
+        source_id: "399",
+        fetched_at: "2026-09-14T09:00:00.000Z",
+      }],
+    },
+  });
+  assert.match(errors.join("; "), /Canonical event ledger is stale/);
+  assert.match(errors.join("; "), /Actual-results ledger is stale/);
+  assert.match(errors.join("; "), /event 77 \(espn:401\) is stale/);
+});
+
+test("canonical freshness rejects games still non-final after the kickoff grace period", () => {
+  const errors = validateMtmCanonicalDataFreshness({
+    now: new Date("2026-09-14T18:00:00.000Z"),
+    events: [{
+      id: 88,
+      source: "espn",
+      sourceEventId: "402",
+      status: "in_progress",
+      kickoffAt: new Date("2026-09-14T10:00:00.000Z"),
+      updatedAt: new Date("2026-09-14T17:55:00.000Z"),
+      sourceData: { sourceFetchedAt: "2026-09-14T17:55:00.000Z" },
+    }],
+    inputProvenance: {
+      schedule: [{ fetched_at: "2026-09-14T17:55:00.000Z" }],
+      standings: [{ fetched_at: "2026-09-14T17:55:00.000Z" }],
+    },
+  });
+  assert.deepEqual(errors, [
+    "Canonical event 88 (espn:402) remains in_progress more than 6 hours after kickoff (2026-09-14T10:00:00.000Z).",
+  ]);
+});
+
+test("canonical freshness accepts current ledgers and rejects inconsistent final events", () => {
+  const base = {
+    now: new Date("2026-09-14T18:00:00.000Z"),
+    inputProvenance: {
+      schedule: [{ fetched_at: "2026-09-14T17:55:00.000Z" }],
+      realized_results: [{ fetched_at: "2026-09-14T17:55:00.000Z" }],
+    },
+  };
+  const currentFinal = {
+    id: 99,
+    source: "espn",
+    sourceEventId: "403",
+    status: "final",
+    kickoffAt: new Date("2026-09-14T10:00:00.000Z"),
+    updatedAt: new Date("2026-09-14T17:55:00.000Z"),
+    sourceData: { sourceFetchedAt: "2026-09-14T17:55:00.000Z" },
+    homeScore: 24,
+    awayScore: 17,
+  };
+  assert.deepEqual(validateMtmCanonicalDataFreshness({
+    ...base,
+    events: [currentFinal],
+  }), []);
+  assert.match(validateMtmCanonicalDataFreshness({
+    ...base,
+    events: [{ ...currentFinal, awayScore: null }],
+  }).join("; "), /event 99 \(espn:403\) is final but does not have both scores/);
 });
 
 test("official version validates against its immutable source and exact game set", () => {
