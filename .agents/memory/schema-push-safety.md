@@ -20,3 +20,9 @@ PostgreSQL truncates identifiers at 63 bytes, while Drizzle can continue compari
 **Why:** A clean schema dump still produced repeated FK drop/add statements solely because PostgreSQL had truncated six generated names.
 
 **How to apply:** Treat any generated constraint name near the PostgreSQL identifier limit as unstable. Use explicit names in the schema, preserve the constraint structurally during migration, and require the isolated baseline push check to report no DDL.
+
+A recorded migration version does not prove that its constraints still match the intended schema; later schema synchronization can silently restore an older constraint definition.
+
+**Why:** The competition-scoring migration was recorded as applied while the development database again held the earlier NFL-only metric constraint, breaking valid CFB rubric writes.
+
+**How to apply:** When runtime behavior contradicts an applied migration, inspect the live `pg_constraint` definition. Repair confirmed drift with a new idempotent convergence migration so every environment receives the correction.

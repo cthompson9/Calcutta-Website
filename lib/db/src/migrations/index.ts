@@ -47,3 +47,4 @@ export { mtmAttemptDeletionMigration } from "./0051MtmAttemptDeletion";
 export { mtmAttemptDeletionGuardReconciliationMigration } from "./0052MtmAttemptDeletionGuardReconciliation";
 export { mtmPeriodSelectionAttemptDeletionMigration } from "./0053MtmPeriodSelectionAttemptDeletion";
 export { mtmPendingTriggerReconciliationMigration } from "./0054MtmPendingTriggerReconciliation";
+export { competitionScoringConstraintConvergenceMigration } from "./0055CompetitionScoringConstraintConvergence";

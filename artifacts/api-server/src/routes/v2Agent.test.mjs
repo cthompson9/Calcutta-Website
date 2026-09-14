@@ -396,7 +396,7 @@ describe("V2.1 agent read API", { skip: !DATABASE_URL }, () => {
       realizedMultiple: values.realized.grossReturn / 100,
       netReturn: values.realized.grossReturn - 100,
       netPctReturn: (values.realized.grossReturn - 100) / 100,
-      markToMarket: values.mtm.grossReturn,
+      markToMarket: 0,
     };
     assert.equal(JSON.stringify(projection), JSON.stringify(expected));
     assert.doesNotMatch(JSON.stringify(projection), /987654|654321/);

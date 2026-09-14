@@ -148,7 +148,7 @@ describe("Calcutta calendar REST/MCP integration", { skip: !canRun }, () => {
     }
   });
 
-  test("parses both public calendar routes through generated schemas and preserves bracket details", async () => {
+  test("parses both public calendar routes and suppresses unpromoted projection details", async () => {
     const response = await fetch(`${baseUrl}/api/calendars?calcuttaId=${calcutta.id}`);
     assert.equal(response.status, 200);
     const payload = GetCalendarsResponse.parse(await response.json());
@@ -159,9 +159,8 @@ describe("Calcutta calendar REST/MCP integration", { skip: !canRun }, () => {
     assert.equal(slot.games.length, 2);
     assert.deepEqual(slot.games.map((game) => game.gameNumber), [1, 2]);
     assert.equal(slot.games[0].neutralSite, true);
-    assert.deepEqual(slot.projection.candidates.map((candidate) => candidate.probability), [1, 0]);
-    assert.equal(slot.projection.candidates[0].exactSlotClinched, true);
-    assert.equal(slot.projection.candidates[1].exactSlotClinched, false);
+    assert.equal(slot.projection, null);
+    assert.equal(payload[0].currentProjection.status, "unavailable");
     const direct = GetCalendarsResponse.element.parse(await (await fetch(`${baseUrl}/api/calendars/${calendar.id}`)).json());
     assert.equal(direct.id, calendar.id);
     assert.equal(direct.rounds[1].slots[0].games[0].contingent[0].outcome, "winner");
@@ -297,7 +296,7 @@ describe("Calcutta calendar REST/MCP integration", { skip: !canRun }, () => {
       );
       assert.equal(payload.currentProjection.mtmSnapshotId, newer.id);
       assert.equal(payload.currentProjection.status, "unavailable");
-      assert.match(payload.currentProjection.reason, /current successful MTM snapshot/i);
+      assert.match(payload.currentProjection.reason, /no successful MTM snapshot/i);
       assert.ok(payload.rounds.every((round) =>
         round.slots.every((slot) => slot.projection === null),
       ));
