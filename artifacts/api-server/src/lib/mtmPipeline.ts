@@ -2648,19 +2648,30 @@ export async function getMtmPipelineStatus(seasonYear: number, calcuttaId?: numb
   const promotedSnapshotIds = [...new Set(
     promotedVersions.map((version) => version.sourceSnapshotId),
   )];
-  const successfulRows = promotedSnapshotIds.length
+  const successfulCandidates = promotedSnapshotIds.length
     ? await db.select().from(mtmSnapshotTable)
         .where(and(
           eq(mtmSnapshotTable.poolId, selected[0].poolId),
           eq(mtmSnapshotTable.status, "ok"),
           ne(mtmSnapshotTable.methodVersion, "mtm-v3-review"),
-          inArray(mtmSnapshotTable.id, promotedSnapshotIds),
         ))
         .orderBy(
           sql`${mtmSnapshotTable.asOf} desc`,
           sql`${mtmSnapshotTable.id} desc`,
         )
     : [];
+  const promotedSnapshotIdSet = new Set(promotedSnapshotIds);
+  const firstPromotionAt = promotedVersions.reduce<number | null>(
+    (earliest, version) => {
+      const timestamp = version.mtmAsOf.getTime();
+      return earliest == null || timestamp < earliest ? timestamp : earliest;
+    },
+    null,
+  );
+  const successfulRows = successfulCandidates.filter((snapshot) =>
+    promotedSnapshotIdSet.has(snapshot.id) ||
+    (firstPromotionAt != null && snapshot.asOf.getTime() < firstPromotionAt),
+  );
   const currentVersion = promotedVersions.find((version) => version.status === "current");
   const current = currentVersion
     ? successfulRows.find((snapshot) => snapshot.id === currentVersion.sourceSnapshotId)
@@ -2777,24 +2788,6 @@ export async function getMtmPipelineStatus(seasonYear: number, calcuttaId?: numb
       teamName: entry?.teamName ?? `Entry ${valuation.entryId}`,
       previousExpectedPayout: previousPayoutByEntry.get(valuation.entryId) ?? null,
       history: [
-        ...(hasAuthoritativeWeekZero
-          ? (() => {
-              const baseline = weekZeroByEntry.get(valuation.entryId);
-              const auctionPrice = primaryCostByEntry.get(valuation.entryId);
-              if (!baseline || auctionPrice == null) return [];
-              const expectedPayout = asNumber(baseline.mtmValue);
-              const asOf = baseline.capturedAt
-                ?? new Date(`${baseline.snapshotDate}T12:00:00-04:00`);
-              return [{
-                snapshotId: baseline.id,
-                label: "Week 0",
-                asOf: asOf.toISOString(),
-                expectedPayout,
-                auctionPrice,
-                netPayout: expectedPayout - auctionPrice,
-              }];
-            })()
-          : []),
         ...chronologicalSnapshots.flatMap((snapshot) => {
         const historical = historicalValuationBySnapshotAndEntry.get(
           `${snapshot.id}:${valuation.entryId}`,
