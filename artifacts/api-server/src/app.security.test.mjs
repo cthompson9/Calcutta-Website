@@ -45,6 +45,7 @@ test("API applies CORS, security headers, strict limits, and commissioner write 
     assert.equal(health.headers.get("access-control-allow-credentials"), "true");
     assert.equal(health.headers.get("x-powered-by"), null);
     assert.equal(health.headers.get("x-content-type-options"), "nosniff");
+    assert.match(health.headers.get("ratelimit-policy") ?? "", /3000-in-15min/);
     assert.match(
       health.headers.get("content-security-policy") ?? "",
       /form-action 'self'/,

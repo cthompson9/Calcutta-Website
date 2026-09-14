@@ -25,7 +25,10 @@ const configuredOrigins = [
 const allowedOrigins = new Set([...localDevelopmentOrigins, ...configuredOrigins]);
 const globalLimiter = rateLimit({
   windowMs: 15 * 60 * 1_000,
-  limit: 300,
+  // A single rendered page fans out across several read endpoints, and long
+  // commissioner jobs add status polling. Keep broad abuse protection without
+  // allowing one normal browser session to lock every API-backed page.
+  limit: 3_000,
   standardHeaders: "draft-8",
   legacyHeaders: false,
 });
