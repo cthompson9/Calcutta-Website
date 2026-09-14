@@ -62,3 +62,131 @@ This command is intentionally scoped to the fixture/unit contract; it does not
 start the API, access a database, fetch provider data, run a shadow/backtest,
 or authorize production activation. Integration and shadow/backtest evidence
 remain pending.
+
+## Controlled activation package
+
+Package policy version: `mtm-v3-controlled-activation-v1`
+
+Package status as of 2026-09-14: **HOLD — do not enable the review model.**
+
+This is a separate activation decision, not an inference from a successful
+review run. The configured `review_activation.enabled` value remains `false`.
+No canonical selection, production pointer, method-version exclusion, or
+publication transaction is changed by this package.
+
+
+### Before/after payout bridge
+
+The bridge must compare the last official model and reviewed model from the
+**same immutable input state**, pool, completed-game set, market capture, seed
+policy, and payout denominator. Private input state must not be committed.
+
+| Measure | Required output |
+| --- | --- |
+| Pool conservation | Legacy total, review total, configured pool, and each absolute error |
+| Team payouts | Team, legacy gross payout, review gross payout, dollar delta, and percentage delta |
+| Owner payouts | Owner/consortium aggregate under both models and dollar delta |
+| Ranking movement | Legacy rank, review rank, and rank delta for every team |
+| Tail changes | Largest positive and negative team and owner deltas |
+| Conditionals | Comparable good-quality cells, absolute deltas, mean delta, and p95 delta |
+| Reconciliation | Every team/entry appears exactly once and totals bridge back to the pool |
+
+No before/after numbers are asserted here because a same-state legacy/review
+artifact is unavailable. Existing benchmarks compare canonical path counts
+and a canonical NumPy optimization; they are not a v3 payout bridge.
+
+
+### Migration and backward compatibility
+
+- Review snapshots retain method version `mtm-v3-review`, remain
+  noncanonical, and are excluded from canonical-period and latest-official
+  selectors.
+- Existing official snapshots, valuations, conditionals, and current
+  production pointers remain authoritative and require no data rewrite.
+- The activation policy is additive configuration. Older snapshots do not
+  need the policy field; new review attempts copy its version, decision, and
+  enabled state into diagnostics.
+- Consumers may continue to read the existing valuation contract. Activation
+  must not change response fields or reinterpret historical marks.
+- A later activation must publish a newly validated official snapshot rather
+  than relabel a stored review attempt.
+
+
+### Configured policy
+
+`mtm/season-config-2026.json` is the source of activation state:
+
+```json
+{
+  "policy_version": "mtm-v3-controlled-activation-v1",
+  "enabled": false,
+  "decision": "hold",
+  "requires_explicit_approval": true,
+  "approved_replay_evidence": null,
+  "approved_shadow_evidence": null,
+  "approved_payout_bridge": null
+}
+```
+
+Null evidence references are intentional blockers. Review diagnostics expose
+this policy, but production selectors continue to exclude `mtm-v3-review`
+independently of the flag. The flag is not wired as an automatic publication
+switch.
+
+
+### Decision record
+
+| Required approval | Evidence available | Decision |
+| --- | --- | --- |
+| Historical replay thresholds approved | No approved replay artifact is referenced by the configured policy. | Blocking |
+| Side-by-side shadow thresholds approved | No approved shadow artifact is referenced by the configured policy. | Blocking |
+| Before/after payout bridge approved | No same-state legacy/review payout bridge is available for review. | Blocking |
+| Runtime fits the production service class | Partial. Existing measurements benchmark the canonical engine, not the v3 review path on the production service class. | Blocking |
+| Explicit enable decision | **HOLD** | Review model remains disabled |
+
+The decision may change to **ENABLE** only in a separate, approved change that
+names the immutable replay, shadow, payout-bridge, and production-runtime
+artifacts; changes `review_activation.decision`; and changes
+`review_activation.enabled`. A passing engine gate alone is insufficient.
+
+
+### Rollback instructions
+
+If a separately approved activation later causes unacceptable behavior:
+
+1. Stop new commissioner recalculations; do not delete snapshots or evidence.
+2. Restore `review_activation.enabled` to `false` and its decision to `hold`.
+3. Restore the prior publication code/pointer selection in a reviewed change;
+   do not mutate or relabel the v3 snapshot as legacy.
+4. Select the last validated pre-activation official version for each affected
+   pool/period using the normal canonical selection transaction.
+5. Verify team and owner totals reconcile exactly to the auction pool and the
+   displayed version identity is the restored official version.
+6. Preserve failed and superseded attempts for audit, record the reason and
+   affected periods, and run a fresh shadow comparison before reconsidering
+   activation.
+
+For the current package, rollback is unnecessary because no production
+pointer or publication path has moved.
+
+### Resource measurements
+
+Committed benchmark evidence currently establishes:
+
+- Canonical 40,000-path benchmark: 55.525 CPU seconds and 135.6 MiB peak RSS;
+  it was the smallest tested count meeting declared stability thresholds
+  against 100,000 paths.
+- Same-state optimized canonical NumPy run: 23.123 wall seconds, 22.828 CPU
+  seconds, and 130.277 MiB peak RSS, compared with 68.843 wall seconds,
+  68.715 CPU seconds, and 114.898 MiB peak RSS before optimization.
+- Numerical equivalence was within `3.01e-12` for conditional output and
+  exactly zero for valuations.
+
+Sources: `mtm/engine/benchmark-2026-09-13.json` and
+`mtm/engine/benchmark-numpy-2026-09-13.json`.
+
+These figures do **not** approve v3 activation. Before enablement, record one
+complete v3 run on the intended production service class, including wall time,
+CPU time, peak RSS, cgroup CPU/memory limits, path count, effective sample
+size, termination status, and stage timings. Confirm it completes inside the
+API worker timeout with operational headroom.

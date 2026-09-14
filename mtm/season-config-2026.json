@@ -81,5 +81,15 @@
     "min_conditional_share": 0.01,
     "max_generated_win_residual": 0.25,
     "max_playoff_residual": 0.05
+  },
+  "review_activation": {
+    "policy_version": "mtm-v3-controlled-activation-v1",
+    "enabled": false,
+    "decision": "hold",
+    "requires_explicit_approval": true,
+    "approved_replay_evidence": null,
+    "approved_shadow_evidence": null,
+    "approved_payout_bridge": null,
+    "note": "Review runs remain noncanonical. Set enabled only in a separately approved production-pointer change after all evidence references and the activation decision are recorded."
   }
 }

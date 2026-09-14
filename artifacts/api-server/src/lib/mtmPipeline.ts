@@ -1185,6 +1185,13 @@ export async function runMtmV3Review(input: {
   const now = input.now ?? new Date();
   const asOfHour = hourStart(now);
   const config = await loadConfig();
+  const activationPolicy = config.review_activation &&
+    typeof config.review_activation === "object"
+    ? config.review_activation as Record<string, unknown>
+    : {};
+  const activationPolicyVersion = String(
+    activationPolicy.policy_version ?? "unconfigured",
+  );
   const selected = await db.select({ poolId: calcuttasTable.id }).from(calcuttasTable)
     .innerJoin(seasonsTable, eq(seasonsTable.id, calcuttasTable.seasonId))
     .where(and(
@@ -1199,6 +1206,12 @@ export async function runMtmV3Review(input: {
     review: true,
     publication: "noncanonical",
     engine: "v3",
+    activationPolicy: {
+      policyVersion: activationPolicyVersion,
+      enabled: activationPolicy.enabled === true,
+      decision: activationPolicy.decision ?? "unconfigured",
+      requiresExplicitApproval: activationPolicy.requires_explicit_approval !== false,
+    },
     effectiveConfig: config,
     requestedAt: now.toISOString(),
   };
