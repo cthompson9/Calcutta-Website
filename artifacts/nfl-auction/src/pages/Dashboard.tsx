@@ -62,15 +62,24 @@ function AdminPanel({
   onClearKey,
 }: {
   adminKey: string | null;
-  onSetKey: (k: string) => void;
+  onSetKey: (k: string) => Promise<{ ok: boolean; error?: string }>;
   onClearKey: () => void;
 }) {
   const [expanded, setExpanded] = useState(false);
   const [input, setInput] = useState("");
+  const [error, setError] = useState("");
+  const [validating, setValidating] = useState(false);
 
-  function handleUnlock() {
+  async function handleUnlock() {
     if (!input.trim()) return;
-    onSetKey(input.trim());
+    setError("");
+    setValidating(true);
+    const result = await onSetKey(input.trim());
+    setValidating(false);
+    if (!result.ok) {
+      setError(result.error ?? "Invalid admin key");
+      return;
+    }
     setInput("");
     setExpanded(false);
   }
@@ -104,18 +113,22 @@ function AdminPanel({
           <input
             type="password"
             value={input}
-            onChange={(e) => setInput(e.target.value)}
-            onKeyDown={(e) => { if (e.key === "Enter") handleUnlock(); }}
+            onChange={(e) => {
+              setInput(e.target.value);
+              setError("");
+            }}
+            onKeyDown={(e) => { if (e.key === "Enter") void handleUnlock(); }}
             placeholder="Admin key…"
             className="w-full border border-border bg-background px-2 py-1.5 text-sm font-mono"
             autoFocus
           />
+          {error && <p role="alert" className="text-xs text-destructive font-mono">{error}</p>}
           <button
-            onClick={handleUnlock}
-            disabled={!input.trim()}
+            onClick={() => void handleUnlock()}
+            disabled={!input.trim() || validating}
             className="w-full bg-primary text-primary-foreground text-xs font-mono font-bold uppercase tracking-widest py-1.5 hover:bg-primary/90 disabled:opacity-50 transition-colors"
           >
-            Unlock
+            {validating ? "Validating…" : "Unlock"}
           </button>
         </div>
       )}
@@ -189,8 +202,18 @@ export default function Dashboard() {
     year,
   ]);
 
-  function saveAdminKey(key: string) {
-    setAdminKey(key);
+  async function saveAdminKey(key: string): Promise<{ ok: boolean; error?: string }> {
+    try {
+      const response = await fetch("/api/admin/validate", {
+        headers: { Authorization: `Bearer ${key}` },
+      });
+      if (response.status === 401) return { ok: false, error: "Invalid admin key" };
+      if (!response.ok) return { ok: false, error: "Could not validate admin key" };
+      setAdminKey(key);
+      return { ok: true };
+    } catch {
+      return { ok: false, error: "Network error while validating admin key" };
+    }
   }
   function clearAdminKey() {
     setAdminKey(null);

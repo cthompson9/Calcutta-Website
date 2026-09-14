@@ -447,8 +447,18 @@ export default function MtmTracker() {
     }
   }
 
-  function saveAdminKey(key: string) {
-    setAdminKey(key);
+  async function saveAdminKey(key: string): Promise<{ ok: boolean; error?: string }> {
+    try {
+      const response = await fetch("/api/admin/validate", {
+        headers: { Authorization: `Bearer ${key}` },
+      });
+      if (response.status === 401) return { ok: false, error: "Invalid admin key" };
+      if (!response.ok) return { ok: false, error: "Could not validate admin key" };
+      setAdminKey(key);
+      return { ok: true };
+    } catch {
+      return { ok: false, error: "Network error while validating admin key" };
+    }
   }
 
   function clearAdminKey() {
@@ -721,10 +731,8 @@ function PipelineMarkPanel({
         </div>
       )}
 
-      {displayTeams.length > 0 && (
-        <>
-          <div className="border-b border-border p-4">
-            <div className="mb-3 flex flex-col gap-3 sm:flex-row sm:items-end sm:justify-between">
+      <div className="border-b border-border p-4">
+        <div className="mb-3 flex flex-col gap-3 sm:flex-row sm:items-end sm:justify-between">
               <div>
                 <h3 className="font-mono text-xs font-bold uppercase tracking-widest">By team standings</h3>
                 <p className="mt-1 text-xs text-muted-foreground">
@@ -745,9 +753,11 @@ function PipelineMarkPanel({
                   className="w-full border border-border bg-background py-2 pl-8 pr-3 font-mono text-xs outline-none focus:border-primary focus:ring-1 focus:ring-primary"
                 />
               </label>
-            </div>
-          </div>
+        </div>
+      </div>
 
+      {displayTeams.length > 0 ? (
+        <>
           <div className="table-scroll">
           <table className="w-full min-w-[940px] text-sm">
             <caption className="sr-only">Sortable latest MTM values by team</caption>
@@ -854,6 +864,10 @@ function PipelineMarkPanel({
             <NetPayoutHistoryChart valuations={displayTeams.map(t => status?.valuations.find(v => v.teamId === t.teamId || v.entryId === t.entryId)).filter((v): v is PipelineValuation => v != null)} />
           </div>
         </>
+      ) : (
+        <div className="border-b border-border px-4 py-8 text-center font-mono text-xs text-muted-foreground">
+          {query ? `No teams match “${search.trim()}”.` : "No team values are available for this mark."}
+        </div>
       )}
 
       <UpcomingEvSwings
@@ -1758,15 +1772,24 @@ function AdminPanel({
   onClearKey,
 }: {
   adminKey: string | null;
-  onSetKey: (k: string) => void;
+  onSetKey: (k: string) => Promise<{ ok: boolean; error?: string }>;
   onClearKey: () => void;
 }) {
   const [expanded, setExpanded] = useState(false);
   const [input, setInput] = useState("");
+  const [error, setError] = useState("");
+  const [validating, setValidating] = useState(false);
 
-  function handleUnlock() {
+  async function handleUnlock() {
     if (!input.trim()) return;
-    onSetKey(input.trim());
+    setError("");
+    setValidating(true);
+    const result = await onSetKey(input.trim());
+    setValidating(false);
+    if (!result.ok) {
+      setError(result.error ?? "Invalid admin key");
+      return;
+    }
     setInput("");
     setExpanded(false);
   }
@@ -1800,7 +1823,10 @@ function AdminPanel({
           <input
             type="password"
             value={input}
-            onChange={(e) => setInput(e.target.value)}
+            onChange={(e) => {
+              setInput(e.target.value);
+              setError("");
+            }}
             onKeyDown={(e) => {
               if (e.key === "Enter") handleUnlock();
             }}
@@ -1808,12 +1834,13 @@ function AdminPanel({
             className="w-full border border-border bg-background px-2 py-1.5 text-sm font-mono"
             autoFocus
           />
+          {error && <p role="alert" className="text-xs text-destructive font-mono">{error}</p>}
           <button
-            onClick={handleUnlock}
-            disabled={!input.trim()}
+            onClick={() => void handleUnlock()}
+            disabled={!input.trim() || validating}
             className="w-full bg-primary text-primary-foreground text-xs font-mono font-bold uppercase tracking-widest py-1.5 hover:bg-primary/90 disabled:opacity-50 transition-colors"
           >
-            Unlock
+            {validating ? "Validating…" : "Unlock"}
           </button>
         </div>
       )}
