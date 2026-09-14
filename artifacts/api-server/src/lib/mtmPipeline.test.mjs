@@ -397,6 +397,62 @@ test("checks final weighted win quality and reports the final ESS", () => {
   assert.match(rejected.error, /weighted win-market residual/);
 });
 
+test("blocks a win-calibrated run when any playoff family misses market expectations", () => {
+  const { state, engine } = completeEngineFixture();
+  const teams = Object.keys(state.realized);
+  engine.calibration = [
+    ...teams.map((team) => ({
+      metric: "remaining_win_probability", team,
+      target_probability: 0.5, sample_metadata: { posterior_probability: 0.5 },
+    })),
+    ...teams.flatMap((team) => [
+      ["berth", 0.5],
+      ["divisional", 0.25],
+      ["conference", 0.125],
+      ["sb_berth", 0.0625],
+      ["sb_win", 0.03125],
+    ].map(([metric, target_probability]) => ({
+      metric, team, target_probability, tolerance: 0.03,
+    }))),
+  ];
+  const accepted = mtmPipelineTestUtils.validateFinalPlayoffMarketQuality(
+    engine, state, { sim: { calibration_tolerance: 0.03 } },
+  );
+  assert.equal(accepted.error, null);
+  assert.equal(accepted.diagnostics.gate_result, "passed");
+  assert.equal(accepted.diagnostics.families.sb_win.gate_result, "passed");
+
+  engine.projections.T0.p_stage.sb_win = 0.2;
+  const rejected = mtmPipelineTestUtils.validateFinalPlayoffMarketQuality(
+    engine, state, { sim: { calibration_tolerance: 0.03 } },
+  );
+  assert.match(rejected.error, /exceeds tolerance for sb_win/);
+  assert.equal(rejected.diagnostics.gate_result, "failed");
+  assert.equal(rejected.diagnostics.families.sb_win.gate_result, "failed");
+  assert.equal(rejected.diagnostics.families.sb_win.rows[0].gate_result, "failed");
+  assert.equal(rejected.diagnostics.families.sb_win.rows[0].tolerance, 0.03);
+  assert.ok(rejected.diagnostics.families.sb_win.rows[0].residual > 0.16);
+});
+
+test("fails closed when a payout-driving playoff calibration family is missing", () => {
+  const { state, engine } = completeEngineFixture();
+  const teams = Object.keys(state.realized);
+  engine.calibration = teams.flatMap((team) => [
+    ["berth", 0.5],
+    ["divisional", 0.25],
+    ["conference", 0.125],
+    ["sb_berth", 0.0625],
+  ].map(([metric, target_probability]) => ({
+    metric, team, target_probability, tolerance: 0.03,
+  })));
+  const rejected = mtmPipelineTestUtils.validateFinalPlayoffMarketQuality(
+    engine, state, { sim: { calibration_tolerance: 0.03 } },
+  );
+  assert.match(rejected.error, /missing targets for sb_win/);
+  assert.equal(rejected.diagnostics.families.sb_win.gate_result, "failed");
+  assert.deepEqual(rejected.diagnostics.families.sb_win.missing_teams, teams);
+});
+
 test("persists additive evidence metadata without collapsing one-sided books", () => {
   const fetchedAt = new Date("2026-09-20T14:04:00.000Z");
   const [row] = mtmPipelineTestUtils.buildMarketQuoteRows(22, [{

@@ -1542,6 +1542,91 @@ function validateFinalWinMarketQuality(
   return { error, diagnostics, effectiveSampleSize: finalEss };
 }
 
+const PAYOUT_DRIVING_PLAYOFF_FAMILIES = [
+  "berth",
+  "divisional",
+  "conference",
+  "sb_berth",
+  "sb_win",
+] as const;
+
+function validateFinalPlayoffMarketQuality(
+  engine: EngineSnapshot,
+  state: MtmState,
+  config: Record<string, any>,
+): {
+  error: string | null;
+  diagnostics: Record<string, unknown>;
+} {
+  const defaultTolerance = asNumber(config.sim?.calibration_tolerance, 0.03);
+  const calibration = engine.calibration
+    ?? engine.calibration_metrics
+    ?? ((engine.diagnostics?.market_calibration as Record<string, unknown> | undefined)
+      ?.metrics as Array<Record<string, unknown>> | undefined)
+    ?? [];
+  const projectionTeams = Object.keys(state.realized);
+  const families = Object.fromEntries(PAYOUT_DRIVING_PLAYOFF_FAMILIES.map((family) => {
+    const rows = projectionTeams.map((team) => {
+      const metric = calibration.find((candidate) =>
+        String(candidate.metric ?? candidate.metric_key ?? candidate.metricKey) === family &&
+        String(candidate.team ?? "") === team);
+      const targetProbability = Number(metric?.target_probability);
+      const finalProbability = Number(
+        (engine.projections?.[team] as Record<string, any> | undefined)?.p_stage?.[family],
+      );
+      const configuredTolerance = Number(metric?.tolerance);
+      const tolerance = Number.isFinite(configuredTolerance) && configuredTolerance >= 0
+        ? configuredTolerance
+        : defaultTolerance;
+      const residual = finalProbability - targetProbability;
+      const present = metric != null &&
+        Number.isFinite(targetProbability) &&
+        Number.isFinite(finalProbability) &&
+        Number.isFinite(tolerance);
+      return {
+        team,
+        target_probability: Number.isFinite(targetProbability) ? targetProbability : null,
+        final_probability: Number.isFinite(finalProbability) ? finalProbability : null,
+        residual: present ? residual : null,
+        tolerance,
+        gate_result: present && Math.abs(residual) <= tolerance ? "passed" : "failed",
+      };
+    });
+    const missingTeams = rows.filter((row) => row.residual == null).map((row) => row.team);
+    const failedTeams = rows.filter((row) =>
+      row.residual != null && Math.abs(row.residual) > row.tolerance).map((row) => row.team);
+    const maxAbsoluteResidual = rows.reduce((maximum, row) =>
+      row.residual == null ? maximum : Math.max(maximum, Math.abs(row.residual)), 0);
+    return [family, {
+      gate_result: missingTeams.length || failedTeams.length ? "failed" : "passed",
+      tolerance: defaultTolerance,
+      max_absolute_residual: maxAbsoluteResidual,
+      missing_teams: missingTeams,
+      failed_teams: failedTeams,
+      rows,
+    }];
+  }));
+  const missingFamilies = PAYOUT_DRIVING_PLAYOFF_FAMILIES.filter((family) =>
+    (families[family] as Record<string, unknown>).gate_result === "failed" &&
+    ((families[family] as Record<string, unknown>).missing_teams as string[]).length > 0);
+  const failedFamilies = PAYOUT_DRIVING_PLAYOFF_FAMILIES.filter((family) =>
+    (families[family] as Record<string, unknown>).gate_result === "failed" &&
+    ((families[family] as Record<string, unknown>).failed_teams as string[]).length > 0);
+  const diagnostics = {
+    status: missingFamilies.length || failedFamilies.length ? "failed" : "good",
+    gate_result: missingFamilies.length || failedFamilies.length ? "failed" : "passed",
+    required_families: PAYOUT_DRIVING_PLAYOFF_FAMILIES,
+    families,
+  };
+  let error: string | null = null;
+  if (missingFamilies.length) {
+    error = `Final playoff-market calibration is missing targets for ${missingFamilies.join(", ")}.`;
+  } else if (failedFamilies.length) {
+    error = `Final playoff-market calibration exceeds tolerance for ${failedFamilies.join(", ")}.`;
+  }
+  return { error, diagnostics };
+}
+
 function validateFinalPublicationQuality(
   engine: EngineSnapshot,
   config: Record<string, any>,
@@ -2285,6 +2370,7 @@ export async function runMtmPipeline(input: { seasonYear: number; calcuttaId?: n
     config,
     assessWinMarketQuality(config, quoteTeams, state.win_ladders),
   );
+  const playoffMarketCheck = validateFinalPlayoffMarketQuality(engine, state, config);
   const finalDiagnostics: Record<string, unknown> = {
     ...(engine.diagnostics ?? {}),
     market_quality: winMarketCheck.diagnostics,
@@ -2295,16 +2381,22 @@ export async function runMtmPipeline(input: { seasonYear: number; calcuttaId?: n
   const gateResults = publicationAudit.gate_results as Record<string, unknown>;
   const gateReasons = publicationAudit.gate_reasons as string[];
   gateResults.win_market_quality = winMarketCheck.error ? "failed" : "passed";
-  publicationAudit.calibration = { status: winMarketCheck.error ? "failed" : "good" };
-  if (winMarketCheck.error) {
-    gateReasons.push(winMarketCheck.error);
+  gateResults.playoff_market_calibration = playoffMarketCheck.error ? "failed" : "passed";
+  publicationAudit.calibration = {
+    status: winMarketCheck.error || playoffMarketCheck.error ? "failed" : "good",
+    win_market: winMarketCheck.diagnostics,
+    playoff_market: playoffMarketCheck.diagnostics,
+  };
+  if (winMarketCheck.error || playoffMarketCheck.error) {
+    if (winMarketCheck.error) gateReasons.push(winMarketCheck.error);
+    if (playoffMarketCheck.error) gateReasons.push(playoffMarketCheck.error);
     publicationAudit.publication_decision = "blocked";
     publicationAudit.status = "failed";
   } else if (!publicationCheck.error) {
     publicationAudit.status = "good";
   }
-  if (winMarketCheck.error || publicationCheck.error) {
-    const publicationError = publicationCheck.error ?? winMarketCheck.error!;
+  if (winMarketCheck.error || playoffMarketCheck.error || publicationCheck.error) {
+    const publicationError = publicationCheck.error ?? winMarketCheck.error ?? playoffMarketCheck.error!;
     const diagnostics = {
       ...finalDiagnostics,
       engineError: publicationError,
@@ -2752,6 +2844,7 @@ export const mtmPipelineTestUtils = {
   buildJointFitConstraints,
   finalEffectiveSampleSize,
   validateFinalWinMarketQuality,
+  validateFinalPlayoffMarketQuality,
   validateFinalPublicationQuality,
   buildInternalCaptureManifest,
   normalizeEngineValuationPayouts,
