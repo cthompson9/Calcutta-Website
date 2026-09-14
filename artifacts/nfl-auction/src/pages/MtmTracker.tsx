@@ -1472,7 +1472,7 @@ export function NetPayoutHistoryChart({
   const tMax = transform(maxVal, scaleMode);
   const tSpan = tMax - tMin || 1;
 
-  const PAD = { top: 24, right: 64, bottom: 44, left: 62 };
+  const PAD = { top: 24, right: 64, bottom: 44, left: 82 };
   const innerW = Math.max(width - PAD.left - PAD.right, 10);
   const bottomY = Math.max(height - PAD.bottom, 40);
 
@@ -1654,7 +1654,7 @@ export function NetPayoutHistoryChart({
                     fontSize={10}
                     fill={isZero ? "currentColor" : "hsl(var(--muted-foreground))"}
                   >
-                    {isZero ? "break even" : moneyCompact(tick)}
+                    {isZero ? "Breakeven" : moneyCompact(tick)}
                   </text>
                 </g>
               );
