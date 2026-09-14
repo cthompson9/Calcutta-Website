@@ -4,6 +4,7 @@ import userEvent from "@testing-library/user-event";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import type { MtmGameEvSwing, MtmQualityExposure, MtmTeamEvSwing } from "@workspace/api-client-react";
 import {
+  AdminMtmDiagnostics,
   MtmEvidenceInspector,
   NetPayoutHistoryChart,
   PipelineFailureNotice,
@@ -660,5 +661,43 @@ describe("MtmQualitySummary", () => {
     expect(screen.getByTestId("mtm-quality-summary")).toHaveTextContent("Final ESS: 1200.0");
     expect(screen.getByTestId("mtm-quality-summary")).toHaveTextContent("Prefit diagnostics");
     expect(screen.getByTestId("mtm-quality-summary")).toHaveTextContent("Unincorporated finalized games");
+  });
+});
+
+describe("AdminMtmDiagnostics", () => {
+  const mark = {
+    stale: true,
+    selectionReason: "Internal selection detail",
+    provisionalSuppressionReason: "Internal suppression detail",
+  } as Parameters<typeof AdminMtmDiagnostics>[0]["mark"];
+
+  it("hides mark quality and staleness details from standard users", () => {
+    render(
+      <AdminMtmDiagnostics
+        isAdmin={false}
+        quality={{ status: "unavailable", reasons: ["Internal audit detail"] } as MtmQualityExposure}
+        status={null}
+        mark={mark}
+      />,
+    );
+
+    expect(screen.queryByText("Mark quality")).not.toBeInTheDocument();
+    expect(screen.queryByText("The current mark is stale.")).not.toBeInTheDocument();
+    expect(screen.queryByText("Internal selection detail")).not.toBeInTheDocument();
+  });
+
+  it("shows mark quality and staleness details to validated admins", () => {
+    render(
+      <AdminMtmDiagnostics
+        isAdmin
+        quality={null}
+        status={null}
+        mark={mark}
+      />,
+    );
+
+    expect(screen.getByText("The current mark is stale.")).toBeInTheDocument();
+    expect(screen.getByText("Internal selection detail")).toBeInTheDocument();
+    expect(screen.getByText("Internal suppression detail")).toBeInTheDocument();
   });
 });

@@ -338,6 +338,39 @@ export function MtmQualitySummary({
   );
 }
 
+export function AdminMtmDiagnostics({
+  isAdmin,
+  quality,
+  status,
+  mark,
+}: {
+  isAdmin: boolean;
+  quality?: MtmQualityExposure | null;
+  status: PipelineStatus | null;
+  mark: MtmValuation["mark"];
+}) {
+  if (!isAdmin) return null;
+
+  return (
+    <>
+      <MtmQualitySummary quality={quality} />
+      <PipelineFailureNotice status={status} />
+      {(mark.stale || mark.selectionReason || mark.provisionalSuppressionReason) && (
+        <div className="border-b border-amber-500/30 bg-amber-500/10 px-4 py-3 text-sm text-amber-800">
+          <p className="flex items-center gap-2 font-semibold">
+            <AlertTriangle className="h-4 w-4 shrink-0" />
+            {mark.stale ? "The current mark is stale." : "Mark selection notice"}
+          </p>
+          <ul className="mt-1 list-disc pl-6 text-xs">
+            {mark.selectionReason && <li>{mark.selectionReason}</li>}
+            {mark.provisionalSuppressionReason && <li>{mark.provisionalSuppressionReason}</li>}
+          </ul>
+        </div>
+      )}
+    </>
+  );
+}
+
 // ── Page ──────────────────────────────────────────────────────────────────────
 
 export default function MtmTracker() {
@@ -701,22 +734,12 @@ function PipelineMarkPanel({
         </button>
       </div>
 
-      <MtmQualitySummary quality={valuation.quality} />
-
-      <PipelineFailureNotice status={status} />
-
-      {(valuation.mark.stale || valuation.mark.selectionReason || valuation.mark.provisionalSuppressionReason) && (
-        <div className="border-b border-amber-500/30 bg-amber-500/10 px-4 py-3 text-sm text-amber-800">
-          <p className="flex items-center gap-2 font-semibold">
-            <AlertTriangle className="h-4 w-4 shrink-0" />
-            {valuation.mark.stale ? "The current mark is stale." : "Mark selection notice"}
-          </p>
-          <ul className="mt-1 list-disc pl-6 text-xs">
-            {valuation.mark.selectionReason && <li>{valuation.mark.selectionReason}</li>}
-            {valuation.mark.provisionalSuppressionReason && <li>{valuation.mark.provisionalSuppressionReason}</li>}
-          </ul>
-        </div>
-      )}
+      <AdminMtmDiagnostics
+        isAdmin={canRecalculate}
+        quality={valuation.quality}
+        status={status}
+        mark={valuation.mark}
+      />
 
       {valuation.diagnostics?.market_drift?.recommendsRerun && canRecalculate && (
         <div className="border-b border-primary/30 bg-primary/10 px-4 py-3 text-sm text-primary">
