@@ -210,6 +210,14 @@ type MtmPipelineAttempt = {
   deleteBlockedReason: string | null;
 };
 
+type ManualRecalculationStatus = {
+  running: boolean;
+  startedAt: string | null;
+  completedAt: string | null;
+  error: string | null;
+  currentSnapshotId: number | null;
+};
+
 type MtmPipelineReceivedMarket = {
   series: string;
   quoteCount: number;
@@ -401,6 +409,7 @@ export default function MtmTracker() {
   const [pipelineStatus, setPipelineStatus] = useState<PipelineStatus | null>(null);
   const [pipelineLoading, setPipelineLoading] = useState(false);
   const [pipelineRunning, setPipelineRunning] = useState(false);
+  const [manualRun, setManualRun] = useState<ManualRecalculationStatus | null>(null);
 
   const { data: valuation, isLoading: valuationLoading, refetch: refetchValuation } = useGetMtmValuation(
     { season: year, calcuttaId, markType: "provisional" },
@@ -448,12 +457,13 @@ export default function MtmTracker() {
         },
         body: JSON.stringify({ season: year, calcuttaId }),
       });
-      const payload = await response.json().catch(() => null) as { error?: string } | null;
+      const payload = await response.json().catch(() => null) as ManualRecalculationStatus | null;
       if (response.status === 401) {
         clearAdminKey();
         throw new Error("Admin key rejected. Unlock commissioner controls again.");
       }
       if (!response.ok) throw new Error(payload?.error ?? "MTM recalculation failed.");
+      setManualRun(payload);
       toast.info("Recalculation started. This page will update when it finishes.");
       const params = new URLSearchParams({ season: String(year) });
       if (calcuttaId) params.set("calcuttaId", String(calcuttaId));
@@ -463,10 +473,7 @@ export default function MtmTracker() {
         const statusResponse = await fetch(`/api/mtm/pipeline/recalc/status?${params}`, {
           headers: { Authorization: `Bearer ${adminKey}` },
         });
-        const run = await statusResponse.json().catch(() => null) as {
-          running?: boolean;
-          error?: string | null;
-        } | null;
+        const run = await statusResponse.json().catch(() => null) as ManualRecalculationStatus | null;
         if (statusResponse.status === 401) {
           clearAdminKey();
           throw new Error("Admin key rejected. Unlock commissioner controls again.");
@@ -474,6 +481,7 @@ export default function MtmTracker() {
         if (!statusResponse.ok) {
           throw new Error(run?.error ?? "Unable to check recalculation status.");
         }
+        setManualRun(run);
         if (run?.running) continue;
         if (run?.error) throw new Error(run.error);
         trackEvent("live_tracker_recalculated", {
@@ -557,6 +565,7 @@ export default function MtmTracker() {
             year={year}
             calcuttaId={calcuttaId}
             adminKey={adminKey}
+            manualRun={manualRun}
             onDeleted={async () => {
               await loadPipelineStatus();
               await refetchValuation();
@@ -2886,11 +2895,13 @@ export function MtmEvidenceInspector({
   year,
   calcuttaId,
   adminKey,
+  manualRun,
   onDeleted,
 }: {
   year: number;
   calcuttaId?: number;
   adminKey: string;
+  manualRun?: ManualRecalculationStatus | null;
   onDeleted: () => Promise<void>;
 }) {
   const queryClient = useQueryClient();
@@ -2903,7 +2914,7 @@ export function MtmEvidenceInspector({
     setAttemptId(undefined);
   }, [year, calcuttaId]);
 
-  const { data, isLoading, error, isRefetching } = useGetMtmPipelineEvidence(
+  const { data, isLoading, error, isRefetching, refetch } = useGetMtmPipelineEvidence(
     { season: year, calcuttaId, attemptId },
     {
       query: {
@@ -2915,6 +2926,10 @@ export function MtmEvidenceInspector({
       },
     }
   );
+
+  useEffect(() => {
+    if (manualRun?.completedAt) void refetch();
+  }, [manualRun?.completedAt, refetch]);
 
   if (isLoading && !data) {
     return (
@@ -2936,6 +2951,12 @@ export function MtmEvidenceInspector({
 
   const attempts = data.attempts || [];
   const attempt = data.selectedAttempt;
+  const runHasAttempt = manualRun?.startedAt
+    ? attempts.some((item) => Date.parse(item.createdAt) >= Date.parse(manualRun.startedAt!))
+    : false;
+  const showManualRun = Boolean(
+    manualRun?.startedAt && (manualRun.running || !runHasAttempt),
+  );
 
   async function deleteAttempt() {
     if (!attempt || !calcuttaId || deleteConfirmation !== `DELETE ${attempt.id}`) return;
@@ -2999,6 +3020,32 @@ export function MtmEvidenceInspector({
             {isRefetching && <RefreshCw className="w-3 h-3 animate-spin text-muted-foreground" />}
          </div>
          <div className="overflow-y-auto flex-1 p-2 space-y-1">
+            {showManualRun && manualRun?.startedAt && (
+              <div className="w-full p-3 border border-amber-500/40 bg-amber-500/10 text-sm rounded-sm">
+                <div className="flex items-center justify-between mb-1.5">
+                  <span className="font-mono font-semibold text-xs tracking-tight">
+                    {new Date(manualRun.startedAt).toLocaleString("en-US", { month: "short", day: "numeric", hour: "numeric", minute: "2-digit" })}
+                  </span>
+                  <span className={cn(
+                    "px-1.5 py-0.5 text-[9px] font-mono font-bold uppercase tracking-wider rounded-sm",
+                    manualRun.running
+                      ? "bg-amber-500/20 text-amber-800 dark:text-amber-300"
+                      : "bg-red-500/15 text-red-700 dark:text-red-400",
+                  )}>
+                    {manualRun.running ? "Pending" : "Failed"}
+                  </span>
+                </div>
+                <div className="text-[10px] font-mono text-muted-foreground flex justify-between items-center">
+                  <span className="uppercase">Manual</span>
+                  <span>{manualRun.running ? "In progress" : "No update recorded"}</span>
+                </div>
+                {!manualRun.running && manualRun.error && (
+                  <p className="mt-2 text-[10px] text-red-700 dark:text-red-300">
+                    {manualRun.error}
+                  </p>
+                )}
+              </div>
+            )}
            {attempts.length === 0 ? (
              <div className="p-4 text-center text-xs font-mono text-muted-foreground">No attempts found</div>
             ) : (

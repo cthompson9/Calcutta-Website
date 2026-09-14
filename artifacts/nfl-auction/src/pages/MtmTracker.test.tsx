@@ -80,7 +80,10 @@ function evidenceResponse(attempts: EvidenceAttempt[], selectedId: number) {
   };
 }
 
-function renderEvidenceInspector(onDeleted = vi.fn(async () => undefined)) {
+function renderEvidenceInspector(
+  onDeleted = vi.fn(async () => undefined),
+  manualRun: React.ComponentProps<typeof MtmEvidenceInspector>["manualRun"] = null,
+) {
   const queryClient = new QueryClient({
     defaultOptions: {
       queries: { retry: false },
@@ -92,6 +95,7 @@ function renderEvidenceInspector(onDeleted = vi.fn(async () => undefined)) {
         year={2026}
         calcuttaId={7}
         adminKey="test-admin-key"
+        manualRun={manualRun}
         onDeleted={onDeleted}
       />
     </QueryClientProvider>,
@@ -106,6 +110,28 @@ async function selectPriorAttempt(user: ReturnType<typeof userEvent.setup>) {
 }
 
 describe("MtmEvidenceInspector deletion", () => {
+  it("shows a timestamped pending audit entry while recalculation is running", async () => {
+    const existing = evidenceAttempt(12);
+    vi.spyOn(globalThis, "fetch").mockResolvedValue(
+      new Response(JSON.stringify(evidenceResponse([existing], existing.id)), { status: 200 }),
+    );
+
+    renderEvidenceInspector(
+      undefined,
+      {
+        running: true,
+        startedAt: "2026-09-14T18:30:00.000Z",
+        completedAt: null,
+        error: null,
+        currentSnapshotId: null,
+      },
+    );
+
+    expect(await screen.findByText("Pending")).toBeInTheDocument();
+    expect(screen.getByText("In progress")).toBeInTheDocument();
+    expect(screen.getByText(/Sep 14/i)).toBeInTheDocument();
+  });
+
   it("shows the current published update as disabled with its explanation", async () => {
     const current = evidenceAttempt(12, {
       deletable: false,
