@@ -179,6 +179,24 @@ type PipelineStatus = {
   valuations: PipelineValuation[];
 };
 
+export function visiblePipelineHistory(
+  status: PipelineStatus | null,
+  valuation: Pick<MtmValuation, "available" | "mark">,
+): PipelineValuation[] {
+  const suppressedCurrentSnapshotId = valuation.available
+    ? null
+    : valuation.mark.sourceSnapshotId;
+
+  return (status?.valuations ?? [])
+    .map((item) => ({
+      ...item,
+      history: item.history.filter(
+        (point) => point.snapshotId !== suppressedCurrentSnapshotId,
+      ),
+    }))
+    .filter((item) => item.history.length > 0);
+}
+
 type MtmPipelineAttempt = {
   id: number;
   status: "ok" | "failed";
@@ -625,6 +643,13 @@ function PipelineMarkPanel({
     (team.teamName || "").toLowerCase().includes(query) ||
     ownerText(team.teamId).toLowerCase().includes(query)
   );
+  const chartValuations = visiblePipelineHistory(status, valuation).filter((item) =>
+    !query ||
+    item.teamName.toLowerCase().includes(query) ||
+    item.owners.some((owner) =>
+      combinedOwnerLabel(owner.name, consortiumByName).toLowerCase().includes(query),
+    ),
+  );
 
   const displayTeams = [...filtered].sort((a, b) => {
     const netA = a.net ?? null;
@@ -880,16 +905,19 @@ function PipelineMarkPanel({
           <div className="border-t border-border px-4 py-3 font-mono text-[10px] uppercase tracking-widest text-muted-foreground">
             {displayTeams.length} of {baseItems.length} teams
           </div>
-          <div className="border-t border-border p-4">
-            <div className="mb-3">
-              <h3 className="font-mono text-xs font-bold uppercase tracking-widest">Lot values over time</h3>
-            </div>
-            <NetPayoutHistoryChart valuations={displayTeams.map(t => status?.valuations.find(v => v.teamId === t.teamId || v.entryId === t.entryId)).filter((v): v is PipelineValuation => v != null)} />
-          </div>
         </>
       ) : (
         <div className="border-b border-border px-4 py-8 text-center font-mono text-xs text-muted-foreground">
           {query ? `No teams match “${search.trim()}”.` : "No team values are available for this mark."}
+        </div>
+      )}
+
+      {chartValuations.length > 0 && (
+        <div className="border-b border-border p-4">
+          <div className="mb-3">
+            <h3 className="font-mono text-xs font-bold uppercase tracking-widest">Lot values over time</h3>
+          </div>
+          <NetPayoutHistoryChart valuations={chartValuations} />
         </div>
       )}
 

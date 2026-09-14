@@ -51,3 +51,4 @@
 - [MTM production runtime](mtm-production-cpu-budget.md) — official recalculations need a Reserved VM; local benchmarks do not predict throttled Autoscale runtime.
 - [Liquidity-aware MTM evidence](liquidity-aware-mtm-evidence.md) — wide or incomplete books are bounded weak evidence; publication requires an authoritative final-distribution audit.
 - [API page-fanout rate limits](api-page-fanout-rate-limits.md) — broad proxy limits must leave room for page fan-out, retries, and commissioner-job polling.
+- [Archived MTM visibility](archived-mtm-visibility.md) — retained published history may remain visible when the current mark is unavailable, but never expose the suppressed current snapshot.
