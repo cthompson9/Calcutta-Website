@@ -434,7 +434,7 @@ export default function MtmTracker() {
         void refetchValuation();
         return;
       }
-      throw new Error("Recalculation is still running. Refresh Live Tracker in a few minutes.");
+      throw new Error("Recalculation is still running. Refresh Analysis in a few minutes.");
     } catch (error) {
       trackEvent("live_tracker_recalculated", {
         outcome: "failed",
@@ -469,7 +469,7 @@ export default function MtmTracker() {
     <div className="space-y-5 px-4 pb-6 pt-4 md:space-y-6 md:p-8 max-w-5xl mx-auto">
       <header className="flex flex-col md:flex-row md:items-end justify-between gap-4">
         <div>
-          <h1 className="text-3xl md:text-5xl font-extrabold uppercase tracking-tighter mb-1" data-testid="text-mtm-title">Live Tracker</h1>
+          <h1 className="text-3xl md:text-5xl font-extrabold uppercase tracking-tighter mb-1" data-testid="text-mtm-title">Analysis</h1>
           <p className="text-muted-foreground font-mono text-xs md:text-sm uppercase tracking-widest">
             Current team and consortium values · {year}
           </p>
@@ -893,7 +893,7 @@ export function PipelineFailureNotice({ status }: { status: PipelineStatus | nul
       <p className="mt-1 break-words text-xs">{status.error}</p>
       {status.currentAsOf && (
         <p className="mt-1 text-xs opacity-80">
-          Live Tracker is still showing the last successful mark.
+          Analysis is still showing the last successful mark.
         </p>
       )}
     </div>

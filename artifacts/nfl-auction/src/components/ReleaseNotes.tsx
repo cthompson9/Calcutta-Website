@@ -13,12 +13,22 @@ export type ReleaseNote = {
 
 export const releaseNotes: ReleaseNote[] = [
   {
+    date: "September 14, 2026",
+    updates: [
+      {
+        title: "Track lot values over time",
+        description:
+          "Analysis now includes an interactive line chart with actual refresh timing, Season and Last 3 Weeks ranges, an even-value baseline, team-color selections, and auction-price endpoint bubbles.",
+      },
+    ],
+  },
+  {
     date: "September 13, 2026",
     updates: [
       {
         title: "New MTM engine",
         description:
-          "Live Tracker values now come from a schedule-aware simulation that combines completed results, the remaining NFL schedule, and current win and playoff markets. Team and consortium values advance together only after a complete, validated recalculation.",
+          "Analysis values now come from a schedule-aware simulation that combines completed results, the remaining NFL schedule, and current win and playoff markets. Team and consortium values advance together only after a complete, validated recalculation.",
       },
       {
         title: "EV Swing what-if analysis",
@@ -33,7 +43,7 @@ export const releaseNotes: ReleaseNote[] = [
       {
         title: "The Calcutta has a new look",
         description:
-          "The redesigned experience is now live across Results, Live Tracker, Trades, and Auction Results, with the Calcutta crest, centered page headers, clearer typography, a simplified auction ledger, and consistent desktop and mobile navigation.",
+          "The redesigned experience is now live across Results, Analysis, Trades, and Auction Results, with the Calcutta crest, centered page headers, clearer typography, a simplified auction ledger, and consistent desktop and mobile navigation.",
       },
     ],
   },
@@ -58,7 +68,7 @@ export const releaseNotes: ReleaseNote[] = [
       {
         title: "MTM answers now mean what you expect",
         description:
-          "Connected assistants now treat an unspecified “MTM” request as net MTM, clearly separate gross MTM, cost basis, net MTM, and realized payout, and use the same current pipeline mark as the Live Tracker.",
+          "Connected assistants now treat an unspecified “MTM” request as net MTM, clearly separate gross MTM, cost basis, net MTM, and realized payout, and use the same current pipeline mark as Analysis.",
       },
       {
         title: "Market values are easier to audit",
@@ -71,7 +81,7 @@ export const releaseNotes: ReleaseNote[] = [
           "Existing ChatGPT and Claude MCP connections remain authorized because the endpoint and OAuth setup did not change. If new tools do not appear immediately, start a new chat or refresh or temporarily disable and re-enable the connector; deleting and re-authorizing it should not be necessary.",
       },
       {
-        title: "The Live Tracker is clearer and zero-sum",
+        title: "Analysis is clearer and zero-sum",
         description:
           "The former MTM Tracker now shows net team values that balance to zero, with weekly history, auction-price-sized dots, team primary colors, and one Week 0 point until the first completed weekly mark.",
       },
