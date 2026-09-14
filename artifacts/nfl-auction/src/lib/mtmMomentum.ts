@@ -13,6 +13,10 @@ export function momentumBaselineNetPayout(
   if (points.length === 0) return null;
 
   const target = points[points.length - 1].timestamp - MOMENTUM_WINDOW_MS;
-  const sevenDayBaseline = points.findLast((point) => point.timestamp <= target);
-  return (sevenDayBaseline ?? points[0]).netPayout;
+  const sevenDayBaseline = points.reduce((closest, point) => {
+    const closestDistance = Math.abs(closest.timestamp - target);
+    const pointDistance = Math.abs(point.timestamp - target);
+    return pointDistance < closestDistance ? point : closest;
+  });
+  return sevenDayBaseline.netPayout;
 }

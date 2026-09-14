@@ -844,10 +844,7 @@ function PipelineMarkPanel({
           </div>
           <div className="border-t border-border p-4">
             <div className="mb-3">
-              <h3 className="font-mono text-xs font-bold uppercase tracking-widest">Net payout history by team</h3>
-              <p className="mt-1 text-xs text-muted-foreground">
-                Expected payout normalized to the auction pool, minus auction price. Dot size reflects auction price.
-              </p>
+              <h3 className="font-mono text-xs font-bold uppercase tracking-widest">Lot values over time</h3>
             </div>
             <NetPayoutHistoryChart valuations={displayTeams.map(t => status?.valuations.find(v => v.teamId === t.teamId || v.entryId === t.entryId)).filter((v): v is PipelineValuation => v != null)} />
           </div>
@@ -1343,15 +1340,7 @@ export function NetPayoutHistoryChart({
   const [scaleMode, setScaleMode] = useState<ScaleMode>("even");
   const [range, setRange] = useState<RangeMode>("season");
   
-  const [pinned, setPinned] = useState<number[]>(() => {
-    const ordered = [...valuations].sort((a, b) => {
-      const aNet = a.history[a.history.length - 1]?.netPayout ?? 0;
-      const bNet = b.history[b.history.length - 1]?.netPayout ?? 0;
-      return bNet - aNet;
-    });
-    if (ordered.length <= 4) return ordered.map((v) => v.entryId);
-    return [ordered[0].entryId, ordered[1].entryId, ordered[ordered.length - 2].entryId, ordered[ordered.length - 1].entryId];
-  });
+  const [pinned, setPinned] = useState<number[]>([]);
   const [hovered, setHovered] = useState<number | null>(null);
   const [crosshair, setCrosshair] = useState<number | null>(null);
 
@@ -1444,13 +1433,8 @@ export function NetPayoutHistoryChart({
   const timeTicks = [...tickByLabel.entries()];
 
   const pinnedSet = new Set(pinned);
-  const isAnyPinnedOrHovered = pinnedSet.size > 0 || hovered !== null;
-  const emphasized = isAnyPinnedOrHovered
-    ? valuations.filter((v) => pinnedSet.has(v.entryId) || v.entryId === hovered)
-    : valuations;
-  const background = isAnyPinnedOrHovered
-    ? valuations.filter((v) => !pinnedSet.has(v.entryId) && v.entryId !== hovered)
-    : [];
+  const emphasized = valuations.filter((v) => pinnedSet.has(v.entryId) || v.entryId === hovered);
+  const background = valuations.filter((v) => !pinnedSet.has(v.entryId) && v.entryId !== hovered);
 
   function colorFor(valuation: PipelineValuation) {
     return NFL_PRIMARY_COLOR_BY_TEAM[valuation.teamName] ?? "hsl(var(--primary))";
@@ -1477,6 +1461,10 @@ export function NetPayoutHistoryChart({
 
   const togglePin = (id: number) => {
     setPinned((current) => current.includes(id) ? current.filter((p) => p !== id) : [...current, id]);
+  };
+
+  const removePin = (id: number) => {
+    setPinned((current) => current.filter((p) => p !== id));
   };
 
   const pathFor = (valuation: PipelineValuation) => {
@@ -1516,25 +1504,20 @@ export function NetPayoutHistoryChart({
         />
       </div>
 
-      <div className="flex flex-wrap items-center gap-2" aria-label="Highlighted teams">
-        <span className="font-mono text-[10px] uppercase tracking-wider text-muted-foreground">
-          Highlighted
-        </span>
-        {valuations.map((valuation) => {
-          const selected = pinnedSet.has(valuation.entryId);
+      {pinned.length > 0 && (
+        <div className="flex flex-wrap items-center gap-2" aria-label="Selected teams">
+          <span className="font-mono text-[10px] uppercase tracking-wider text-muted-foreground">
+            Selected
+          </span>
+          {valuations.filter((valuation) => pinnedSet.has(valuation.entryId)).map((valuation) => {
           const teamColor = colorFor(valuation);
           return (
             <button
               key={valuation.entryId}
               type="button"
-              aria-pressed={selected}
-              onClick={() => togglePin(valuation.entryId)}
-              className={cn(
-                "inline-flex items-center gap-1.5 border px-2 py-1 font-mono text-[10px] transition-colors",
-                selected
-                  ? "border-foreground/30 bg-muted text-foreground"
-                  : "border-border text-muted-foreground hover:border-foreground/30 hover:text-foreground",
-              )}
+              aria-label={`Remove ${valuation.teamName}`}
+              onClick={() => removePin(valuation.entryId)}
+              className="inline-flex items-center gap-1.5 border border-foreground/30 bg-muted px-2 py-1 font-mono text-[10px] text-foreground transition-colors hover:border-foreground/50"
             >
               <span
                 aria-hidden="true"
@@ -1542,10 +1525,10 @@ export function NetPayoutHistoryChart({
                 style={{ backgroundColor: teamColor }}
               />
               {valuation.teamName}
+              <span aria-hidden="true" className="ml-0.5 text-muted-foreground">×</span>
             </button>
           );
-        })}
-        {pinned.length > 0 && (
+          })}
           <button
             type="button"
             onClick={() => setPinned([])}
@@ -1553,8 +1536,8 @@ export function NetPayoutHistoryChart({
           >
             Clear
           </button>
-        )}
-      </div>
+        </div>
+      )}
 
       <div ref={ref} className="relative h-[300px] w-full sm:h-[380px] lg:h-[460px] border border-border bg-background/40">
         {width > 0 && height > 0 && (
@@ -1705,6 +1688,8 @@ export function NetPayoutHistoryChart({
               return (
                 <path
                   key={`hit-${v.entryId}`}
+                  data-testid={`net-payout-hit-${v.entryId}`}
+                  aria-label={`Select ${v.teamName}`}
                   d={path}
                   fill="none"
                   stroke="transparent"

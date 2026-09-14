@@ -208,13 +208,21 @@ describe("MtmEvidenceInspector deletion", () => {
 });
 
 describe("momentumBaselineNetPayout", () => {
-  it("uses the closest mark at or before seven days before the latest refresh", () => {
+  it("uses the refresh closest to seven days before the latest refresh", () => {
     expect(momentumBaselineNetPayout([
       { asOf: "2026-09-01T12:00:00.000Z", netPayout: 10 },
-      { asOf: "2026-09-03T12:00:00.000Z", netPayout: 20 },
+      { asOf: "2026-09-04T12:00:00.000Z", netPayout: 20 },
       { asOf: "2026-09-08T11:00:00.000Z", netPayout: 30 },
       { asOf: "2026-09-10T12:00:00.000Z", netPayout: 40 },
     ])).toBe(20);
+  });
+
+  it("prefers the earlier refresh when two refreshes are equally close", () => {
+    expect(momentumBaselineNetPayout([
+      { asOf: "2026-09-02T12:00:00.000Z", netPayout: 10 },
+      { asOf: "2026-09-04T12:00:00.000Z", netPayout: 20 },
+      { asOf: "2026-09-10T12:00:00.000Z", netPayout: 40 },
+    ])).toBe(10);
   });
 
   it("falls back to the first mark when less than seven days of history exists", () => {
@@ -284,7 +292,8 @@ function game(eventId: number, week: number, awayName: string, homeName: string,
 }
 
 describe("NetPayoutHistoryChart", () => {
-  it("renders refreshes with correct paths and endpoint bubbles, and exposes scale/range controls", () => {
+  it("starts with all teams unselected and selects teams only from the chart", async () => {
+    const user = userEvent.setup();
     const { container } = render(
       <NetPayoutHistoryChart
         valuations={[
@@ -335,15 +344,24 @@ describe("NetPayoutHistoryChart", () => {
     expect(screen.getByRole("button", { name: "Last 3 Weeks" })).toBeInTheDocument();
     expect(screen.getByRole("button", { name: "Even" })).toHaveAttribute("aria-pressed", "true");
     expect(screen.getByRole("button", { name: "Compressed" })).toHaveAttribute("aria-pressed", "false");
-    expect(screen.getByRole("button", { name: "Buffalo Bills" })).toBeInTheDocument();
-    expect(screen.getByText("BUF")).toBeInTheDocument();
+    expect(screen.queryByLabelText("Selected teams")).not.toBeInTheDocument();
+    expect(screen.queryByRole("button", { name: "Remove Buffalo Bills" })).not.toBeInTheDocument();
+    expect(screen.queryByText("BUF")).not.toBeInTheDocument();
+    expect(container.querySelectorAll("circle")).toHaveLength(0);
 
+    await user.click(screen.getByTestId("net-payout-hit-7"));
+
+    expect(screen.getByLabelText("Selected teams")).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: "Remove Buffalo Bills" })).toBeInTheDocument();
+    expect(screen.getByText("BUF")).toBeInTheDocument();
     const path = screen.getByTestId("net-payout-path-7");
     expect(path.getAttribute("d")).toMatch(/^M[^L]+L/);
     expect(path).toHaveAttribute("stroke", "#00338D");
+    expect(container.querySelectorAll("circle")).toHaveLength(1);
 
-    const circles = [...container.querySelectorAll("circle")];
-    expect(circles).toHaveLength(1);
+    await user.click(screen.getByRole("button", { name: "Remove Buffalo Bills" }));
+    expect(screen.queryByLabelText("Selected teams")).not.toBeInTheDocument();
+    expect(container.querySelectorAll("circle")).toHaveLength(0);
   });
 
   it("limits Last 3 Weeks to the 21 days ending at the latest chart timestamp", async () => {
@@ -394,7 +412,7 @@ describe("NetPayoutHistoryChart", () => {
 
     await user.click(screen.getByRole("button", { name: "Last 3 Weeks" }));
 
-    const path = screen.getByTestId("net-payout-path-7");
+    const path = screen.getByTestId("net-payout-hit-7");
     expect(path.getAttribute("d")?.match(/[ML]/g)).toHaveLength(2);
     expect(screen.queryByText("Auction")).not.toBeInTheDocument();
   });
