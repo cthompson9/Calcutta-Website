@@ -155,6 +155,8 @@ export * from './mtmOwnerTeamEvSwing';
 export * from './mtmOwnerTeamEvSwingQualityStatus';
 export * from './mtmOwnerWeek';
 export * from './mtmPipelineAttempt';
+export * from './mtmPipelineAttemptDeletion';
+export * from './mtmPipelineAttemptDeletionResult';
 export * from './mtmPipelineAttemptStatus';
 export * from './mtmPipelineAttemptTrigger';
 export * from './mtmPipelineEvidenceDetail';

@@ -7,6 +7,8 @@ import {
   mtmSnapshotsTable,
   mtmSnapshotTable,
   mtmMarketQuoteTable,
+  mtmValuationVersionTable,
+  mtmCanonicalPeriodSelectionTable,
   seasonsTable,
   calcuttaEntriesTable,
   positionsTable,
@@ -22,6 +24,9 @@ import {
   UpsertMtmSnapshotResponse,
   GetMtmPipelineEvidenceQueryParams,
   GetMtmPipelineEvidenceResponse,
+  DeleteMtmPipelineAttemptBody,
+  DeleteMtmPipelineAttemptParams,
+  DeleteMtmPipelineAttemptResponse,
   GetMtmValuationQueryParams,
   GetMtmValuationResponse,
 } from "@workspace/api-zod";
@@ -204,6 +209,14 @@ router.get("/mtm/pipeline/evidence", requireAdmin, async (req, res): Promise<voi
   const quoteCountByAttempt = new Map(
     quoteCountRows.map((row) => [row.snapshotId, Number(row.quoteCount)]),
   );
+  const currentVersionRows = await db
+    .select({ sourceSnapshotId: mtmValuationVersionTable.sourceSnapshotId })
+    .from(mtmValuationVersionTable)
+    .where(and(
+      eq(mtmValuationVersionTable.poolId, calcuttaId),
+      eq(mtmValuationVersionTable.status, "current"),
+    ));
+  const currentSourceIds = new Set(currentVersionRows.map((row) => row.sourceSnapshotId));
   const attempts = attemptRows.map((attempt) => ({
     id: attempt.id,
     status: attempt.status as "ok" | "failed",
@@ -213,6 +226,10 @@ router.get("/mtm/pipeline/evidence", requireAdmin, async (req, res): Promise<voi
     methodVersion: attempt.methodVersion,
     error: attempt.error,
     quoteCount: quoteCountByAttempt.get(attempt.id) ?? 0,
+    deletable: !currentSourceIds.has(attempt.id),
+    deleteBlockedReason: currentSourceIds.has(attempt.id)
+      ? "This update is the current published MTM mark. Recalculate and promote a replacement before deleting it."
+      : null,
   }));
 
   if (attempts.length === 0) {
@@ -278,6 +295,114 @@ router.get("/mtm/pipeline/evidence", requireAdmin, async (req, res): Promise<voi
     attempts,
     selectedAttempt,
   });
+});
+
+router.delete("/mtm/pipeline/attempts/:attemptId", requireAdmin, async (req, res): Promise<void> => {
+  const parsedParams = DeleteMtmPipelineAttemptParams.safeParse(req.params);
+  const parsedBody = DeleteMtmPipelineAttemptBody.safeParse(req.body);
+  if (!parsedParams.success || !parsedBody.success) {
+    sendParsedJson(res, ErrorResponse, {
+      error: !parsedParams.success
+        ? parsedParams.error.message
+        : !parsedBody.success
+          ? parsedBody.error.message
+          : "Invalid MTM update deletion request.",
+    }, 400);
+    return;
+  }
+
+  const seasonId = await resolveSeasonId(parsedBody.data.season);
+  if (!seasonId) {
+    sendParsedJson(res, ErrorResponse, {
+      error: `Season ${parsedBody.data.season} not found`,
+    }, 404);
+    return;
+  }
+  const calcuttaId = await resolveCalcuttaId(db, {
+    seasonId,
+    calcuttaId: parsedBody.data.calcuttaId,
+  });
+  if (!calcuttaId || calcuttaId !== parsedBody.data.calcuttaId) {
+    sendParsedJson(res, ErrorResponse, {
+      error: "Calcutta must be an NFL pool in the requested season.",
+    }, 404);
+    return;
+  }
+
+  const result = await db.transaction(async (tx) => {
+    await tx.execute(sql`select set_config('app.mtm_attempt_delete', 'on', true)`);
+    const [attempt] = await tx
+      .select({ id: mtmSnapshotTable.id })
+      .from(mtmSnapshotTable)
+      .where(and(
+        eq(mtmSnapshotTable.id, parsedParams.data.attemptId),
+        eq(mtmSnapshotTable.poolId, calcuttaId),
+      ))
+      .for("update");
+    if (!attempt) return { kind: "not_found" as const };
+
+    const currentVersions = await tx
+      .select({ id: mtmValuationVersionTable.id })
+      .from(mtmValuationVersionTable)
+      .where(and(
+        eq(mtmValuationVersionTable.sourceSnapshotId, attempt.id),
+        eq(mtmValuationVersionTable.status, "current"),
+      ))
+      .for("update");
+    if (currentVersions.length > 0) return { kind: "current" as const };
+
+    const deletedSelections = await tx
+      .delete(mtmCanonicalPeriodSelectionTable)
+      .where(and(
+        eq(mtmCanonicalPeriodSelectionTable.poolId, calcuttaId),
+        eq(mtmCanonicalPeriodSelectionTable.snapshotId, attempt.id),
+      ))
+      .returning({ id: mtmCanonicalPeriodSelectionTable.id });
+    const deletedVersions = await tx
+      .delete(mtmValuationVersionTable)
+      .where(and(
+        eq(mtmValuationVersionTable.poolId, calcuttaId),
+        eq(mtmValuationVersionTable.sourceSnapshotId, attempt.id),
+        ne(mtmValuationVersionTable.status, "current"),
+      ))
+      .returning({ id: mtmValuationVersionTable.id });
+    const deletedAttempts = await tx
+      .delete(mtmSnapshotTable)
+      .where(and(
+        eq(mtmSnapshotTable.id, attempt.id),
+        eq(mtmSnapshotTable.poolId, calcuttaId),
+      ))
+      .returning({ id: mtmSnapshotTable.id });
+    if (deletedAttempts.length !== 1) {
+      throw new Error("MTM update deletion did not remove exactly one update.");
+    }
+    return {
+      kind: "deleted" as const,
+      deletedAttemptId: attempt.id,
+      deletedVersionCount: deletedVersions.length,
+      deletedPeriodSelectionCount: deletedSelections.length,
+    };
+  });
+
+  if (result.kind === "not_found") {
+    sendParsedJson(res, ErrorResponse, {
+      error: "MTM update was not found in the selected Calcutta.",
+    }, 404);
+    return;
+  }
+  if (result.kind === "current") {
+    sendParsedJson(res, ErrorResponse, {
+      error: "The current published MTM mark cannot be deleted. Recalculate and promote a replacement first.",
+    }, 409);
+    return;
+  }
+  req.log.info({
+    calcuttaId,
+    attemptId: result.deletedAttemptId,
+    deletedVersionCount: result.deletedVersionCount,
+    deletedPeriodSelectionCount: result.deletedPeriodSelectionCount,
+  }, "Deleted non-current MTM update");
+  sendParsedJson(res, DeleteMtmPipelineAttemptResponse, result);
 });
 
 router.get("/mtm/pipeline/recalc/status", requireAdmin, (req, res): void => {

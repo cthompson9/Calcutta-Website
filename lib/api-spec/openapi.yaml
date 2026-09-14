@@ -1278,6 +1278,57 @@ paths:
               schema:
                 $ref: "#/components/schemas/ErrorResponse"
 
+  /mtm/pipeline/attempts/{attemptId}:
+    delete:
+      operationId: deleteMtmPipelineAttempt
+      tags: [mtm]
+      summary: Delete one non-current MTM update from a selected Calcutta
+      security:
+        - AdminBearerAuth: []
+      parameters:
+        - name: attemptId
+          in: path
+          required: true
+          schema:
+            type: number
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/MtmPipelineAttemptDeletion"
+      responses:
+        "200":
+          description: MTM update and its non-current derived records were deleted
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/MtmPipelineAttemptDeletionResult"
+        "400":
+          description: Invalid request
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+        "401":
+          description: Unauthorized — ADMIN_API_KEY required
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+        "404":
+          description: Selected NFL Calcutta or attempt not found
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+        "409":
+          description: The update is the current published MTM mark and cannot be deleted
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+
   /mtm/week-zero/capture:
     post:
       operationId: captureWeekZeroMtm
@@ -3540,7 +3591,37 @@ components:
           type: ["string", "null"]
         quoteCount:
           type: number
-      required: [id, status, trigger, asOf, createdAt, methodVersion, error, quoteCount]
+        deletable:
+          type: boolean
+        deleteBlockedReason:
+          type: ["string", "null"]
+      required: [id, status, trigger, asOf, createdAt, methodVersion, error, quoteCount, deletable, deleteBlockedReason]
+
+    MtmPipelineAttemptDeletion:
+      type: object
+      additionalProperties: false
+      properties:
+        season:
+          type: number
+        calcuttaId:
+          type: number
+        confirmed:
+          type: boolean
+          enum: [true]
+          description: Must be true to confirm permanent deletion of this MTM update.
+      required: [season, calcuttaId, confirmed]
+
+    MtmPipelineAttemptDeletionResult:
+      type: object
+      additionalProperties: false
+      properties:
+        deletedAttemptId:
+          type: number
+        deletedVersionCount:
+          type: number
+        deletedPeriodSelectionCount:
+          type: number
+      required: [deletedAttemptId, deletedVersionCount, deletedPeriodSelectionCount]
 
     MtmPipelineReceivedMarket:
       type: object

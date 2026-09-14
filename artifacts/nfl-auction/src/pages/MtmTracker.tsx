@@ -22,7 +22,7 @@ import { formatCurrency } from "@/lib/utils";
 import { cn } from "@/lib/utils";
 import { useSeason } from "@/hooks/useSeason";
 import { trackEvent } from "@/lib/analytics";
-import { TrendingUp, TrendingDown, Lock, Unlock, Plus, X, ChevronDown, ChevronUp, Activity, AlertTriangle, ShieldCheck, Zap, Info, ServerOff, RefreshCw, Search, ListFilter } from "lucide-react";
+import { TrendingUp, TrendingDown, Lock, Unlock, Plus, X, ChevronDown, ChevronUp, Activity, AlertTriangle, ShieldCheck, Zap, Info, ServerOff, RefreshCw, Search, ListFilter, Trash2 } from "lucide-react";
 import { toast } from "sonner";
 import {
   bidderConsortiumsByName,
@@ -152,6 +152,8 @@ type MtmPipelineAttempt = {
   methodVersion: string | null;
   error: string | null;
   quoteCount: number;
+  deletable: boolean;
+  deleteBlockedReason: string | null;
 };
 
 type MtmPipelineReceivedMarket = {
@@ -439,6 +441,28 @@ export default function MtmTracker() {
           onRecalculate={() => void recalculatePipeline()}
           consortiumByName={consortiumByName}
         />
+      )}
+
+      {isNflCalcutta && adminKey && (
+        <section className="overflow-hidden border border-border bg-card">
+          <div className="border-b border-border p-4">
+            <h2 className="font-mono text-sm font-bold uppercase tracking-widest">
+              MTM update history
+            </h2>
+            <p className="mt-1 text-xs text-muted-foreground">
+              Review prior updates and permanently remove a bad non-current update from Momentum history.
+            </p>
+          </div>
+          <MtmEvidenceInspector
+            year={year}
+            calcuttaId={calcuttaId}
+            adminKey={adminKey}
+            onDeleted={async () => {
+              await loadPipelineStatus();
+              await refetchValuation();
+            }}
+          />
+        </section>
       )}
 
     </div>
@@ -2473,18 +2497,23 @@ function MtmEvidenceInspector({
   year,
   calcuttaId,
   adminKey,
+  onDeleted,
 }: {
   year: number;
   calcuttaId?: number;
   adminKey: string;
+  onDeleted: () => Promise<void>;
 }) {
   const [attemptId, setAttemptId] = useState<number | undefined>(undefined);
+  const [deleteConfirmOpen, setDeleteConfirmOpen] = useState(false);
+  const [deleteConfirmation, setDeleteConfirmation] = useState("");
+  const [deleting, setDeleting] = useState(false);
 
   useEffect(() => {
     setAttemptId(undefined);
   }, [year, calcuttaId]);
 
-  const { data, isLoading, error, isRefetching } = useGetMtmPipelineEvidence(
+  const { data, isLoading, error, isRefetching, refetch } = useGetMtmPipelineEvidence(
     { season: year, calcuttaId, attemptId },
     {
       query: {
@@ -2517,6 +2546,43 @@ function MtmEvidenceInspector({
 
   const attempts = data.attempts || [];
   const attempt = data.selectedAttempt;
+
+  async function deleteAttempt() {
+    if (!attempt || !calcuttaId || deleteConfirmation !== `DELETE ${attempt.id}`) return;
+    setDeleting(true);
+    try {
+      const response = await fetch(`/api/mtm/pipeline/attempts/${attempt.id}`, {
+        method: "DELETE",
+        headers: {
+          "Content-Type": "application/json",
+          Authorization: `Bearer ${adminKey}`,
+        },
+        body: JSON.stringify({
+          season: year,
+          calcuttaId,
+          confirmed: true,
+        }),
+      });
+      const payload = await response.json().catch(() => null) as { error?: string } | null;
+      if (!response.ok) {
+        throw new Error(payload?.error ?? "Unable to delete the MTM update.");
+      }
+      trackEvent("mtm_update_deleted", {
+        attemptId: attempt.id,
+        status: attempt.status,
+        year,
+      });
+      toast.success(`MTM update #${attempt.id} was deleted.`);
+      setAttemptId(undefined);
+      setDeleteConfirmOpen(false);
+      setDeleteConfirmation("");
+      await Promise.all([refetch(), onDeleted()]);
+    } catch (deleteError) {
+      toast.error(deleteError instanceof Error ? deleteError.message : "Unable to delete the MTM update.");
+    } finally {
+      setDeleting(false);
+    }
+  }
 
   return (
     <div className="flex flex-col md:flex-row h-[600px] bg-card text-card-foreground">
@@ -2578,7 +2644,7 @@ function MtmEvidenceInspector({
            </div>
         ) : (
            <div className="flex-1 overflow-y-auto">
-              <div className="p-5 border-b border-border bg-muted/5">
+                  <div className="p-5 border-b border-border bg-muted/5">
                  <div className="flex items-start justify-between">
                    <div>
                      <h3 className="font-mono text-lg font-bold tracking-tight text-foreground flex items-center gap-2">
@@ -2594,11 +2660,76 @@ function MtmEvidenceInspector({
                        Target As-Of <span className="text-foreground">{attempt.asOf ? new Date(attempt.asOf).toLocaleString() : "Latest"}</span>
                      </p>
                    </div>
-                   <div className={cn("px-3 py-1 font-mono text-xs font-bold uppercase tracking-widest border rounded-sm", attempt.status === "ok" ? "border-emerald-500/30 bg-emerald-500/10 text-emerald-700 dark:text-emerald-400" : "border-red-500/30 bg-red-500/10 text-red-700 dark:text-red-400")}>
-                     {attempt.status === "ok" ? "Success" : "Failed"}
+                    <div className="flex flex-col items-end gap-2">
+                      <div className={cn("px-3 py-1 font-mono text-xs font-bold uppercase tracking-widest border rounded-sm", attempt.status === "ok" ? "border-emerald-500/30 bg-emerald-500/10 text-emerald-700 dark:text-emerald-400" : "border-red-500/30 bg-red-500/10 text-red-700 dark:text-red-400")}>
+                        {attempt.status === "ok" ? "Success" : "Failed"}
+                      </div>
+                      <button
+                        type="button"
+                        disabled={!attempt.deletable}
+                        title={attempt.deleteBlockedReason ?? "Delete this non-current MTM update"}
+                        onClick={() => {
+                          setDeleteConfirmation("");
+                          setDeleteConfirmOpen(true);
+                        }}
+                        className="inline-flex items-center gap-1.5 border border-red-500/40 px-2.5 py-1.5 font-mono text-[10px] font-bold uppercase tracking-wider text-red-700 hover:bg-red-500/10 disabled:cursor-not-allowed disabled:opacity-40 dark:text-red-400"
+                      >
+                        <Trash2 className="h-3.5 w-3.5" />
+                        Delete update
+                      </button>
                    </div>
                  </div>
+                  {attempt.deleteBlockedReason && (
+                    <p className="mt-3 text-xs text-muted-foreground">
+                      {attempt.deleteBlockedReason}
+                    </p>
+                  )}
                </div>
+
+                {deleteConfirmOpen && (
+                  <div className="border-b border-red-500/30 bg-red-500/5 p-5">
+                    <h4 className="flex items-center gap-2 font-mono text-xs font-bold uppercase tracking-widest text-red-800 dark:text-red-300">
+                      <AlertTriangle className="h-4 w-4" />
+                      Permanently delete update #{attempt.id}?
+                    </h4>
+                    <p className="mt-2 text-xs text-muted-foreground">
+                      This removes the update and its derived history points for this Calcutta. Momentum and the over-time graph will be recalculated from the remaining updates. This cannot be undone.
+                    </p>
+                    <label className="mt-4 block">
+                      <span className="font-mono text-[10px] font-bold uppercase tracking-wider text-muted-foreground">
+                        Type DELETE {attempt.id} to confirm
+                      </span>
+                      <input
+                        value={deleteConfirmation}
+                        onChange={(event) => setDeleteConfirmation(event.target.value)}
+                        className="mt-1.5 w-full border border-red-500/40 bg-background px-3 py-2 font-mono text-sm outline-none focus:ring-1 focus:ring-red-500"
+                        autoComplete="off"
+                      />
+                    </label>
+                    <div className="mt-4 flex flex-wrap gap-2">
+                      <button
+                        type="button"
+                        disabled={deleting || deleteConfirmation !== `DELETE ${attempt.id}`}
+                        onClick={() => void deleteAttempt()}
+                        className="inline-flex items-center gap-2 bg-red-700 px-3 py-2 font-mono text-xs font-bold uppercase tracking-wider text-white hover:bg-red-800 disabled:cursor-not-allowed disabled:opacity-40"
+                      >
+                        <Trash2 className="h-4 w-4" />
+                        {deleting ? "Deleting…" : "Delete permanently"}
+                      </button>
+                      <button
+                        type="button"
+                        disabled={deleting}
+                        onClick={() => {
+                          setDeleteConfirmOpen(false);
+                          setDeleteConfirmation("");
+                        }}
+                        className="border border-border px-3 py-2 font-mono text-xs font-bold uppercase tracking-wider hover:bg-muted"
+                      >
+                        Cancel
+                      </button>
+                    </div>
+                  </div>
+                )}
 
               <div className="p-5 space-y-8">
                 {attempt.error && (

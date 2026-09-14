@@ -12,6 +12,7 @@ let seasonsTable;
 let calcuttasTable;
 let mtmSnapshotTable;
 let mtmMarketQuoteTable;
+let mtmValuationVersionTable;
 let runDatabaseMigrations;
 
 if (canRun) {
@@ -21,6 +22,7 @@ if (canRun) {
     calcuttasTable,
     mtmSnapshotTable,
     mtmMarketQuoteTable,
+    mtmValuationVersionTable,
     runDatabaseMigrations,
   } = await import("@workspace/db"));
   ({ default: app } = await import("../app.ts"));
@@ -54,11 +56,11 @@ describe("MTM pipeline evidence", { skip: !canRun }, () => {
 
   before(async () => {
     await runDatabaseMigrations();
-    await db.delete(seasonsTable).where(eq(seasonsTable.year, 9876));
+    await db.delete(seasonsTable).where(eq(seasonsTable.year, 9877));
     const [season] = await db
       .insert(seasonsTable)
       .values({
-        year: 9876,
+        year: 9877,
         label: "MTM evidence route test",
         isActive: false,
         isComplete: false,
@@ -75,23 +77,23 @@ describe("MTM pipeline evidence", { skip: !canRun }, () => {
       .values([
         {
           seasonId,
-          year: 9876,
-          name: "MTM evidence route test pool",
+          year: 9877,
+          name: "MTM evidence route test pool 9877",
           sport: "NFL",
           isCanonical: true,
         },
         {
           seasonId,
-          year: 9876,
-          name: "MTM evidence route other pool",
+          year: 9877,
+          name: "MTM evidence route other pool 9877",
           sport: "NFL",
           isCanonical: false,
         },
       ])
       .onConflictDoNothing()
       .returning();
-    poolId = pools.find((pool) => pool.name === "MTM evidence route test pool")?.id;
-    otherPoolId = pools.find((pool) => pool.name === "MTM evidence route other pool")?.id;
+    poolId = pools.find((pool) => pool.name === "MTM evidence route test pool 9877")?.id;
+    otherPoolId = pools.find((pool) => pool.name === "MTM evidence route other pool 9877")?.id;
     assert.ok(poolId);
     assert.ok(otherPoolId);
 
@@ -157,7 +159,15 @@ describe("MTM pipeline evidence", { skip: !canRun }, () => {
         fetchedAt: new Date("2026-09-20T14:09:00.000Z"),
       },
     ]);
-
+    await db.insert(mtmValuationVersionTable).values({
+      poolId,
+      sourceSnapshotId: failedAttemptId,
+      actualsStateHash: "mtm-evidence-delete-test",
+      actualsAsOf: new Date("2026-09-20T14:05:00.000Z"),
+      mtmAsOf: new Date("2026-09-20T14:05:00.000Z"),
+      markType: "official",
+      status: "candidate",
+    });
     ({ server, baseUrl } = await startServer(app));
   });
 
@@ -169,13 +179,13 @@ describe("MTM pipeline evidence", { skip: !canRun }, () => {
   });
 
   test("requires admin authorization", async () => {
-    const response = await fetch(`${baseUrl}/api/mtm/pipeline/evidence?season=9876`);
+    const response = await fetch(`${baseUrl}/api/mtm/pipeline/evidence?season=9877`);
     assert.equal(response.status, 401);
   });
 
   test("selects immutable same-hour failed and successful attempts", async () => {
     const response = await fetch(
-      `${baseUrl}/api/mtm/pipeline/evidence?season=9876&attemptId=${failedAttemptId}`,
+      `${baseUrl}/api/mtm/pipeline/evidence?season=9877&attemptId=${failedAttemptId}`,
       { headers: { Authorization: `Bearer ${ADMIN_KEY}` } },
     );
     assert.equal(response.status, 200);
@@ -186,6 +196,9 @@ describe("MTM pipeline evidence", { skip: !canRun }, () => {
     ]);
     assert.equal(payload.selectedAttempt.id, failedAttemptId);
     assert.equal(payload.selectedAttempt.status, "failed");
+    assert.equal(payload.selectedAttempt.deletable, true);
+    assert.equal(payload.selectedAttempt.deleteBlockedReason, null);
+    assert.equal(payload.attempts.find((attempt) => attempt.id === successfulAttemptId).deletable, true);
     assert.deepEqual(payload.selectedAttempt.failedSources, [
       "BUF stage of elimination: timeout",
     ]);
@@ -209,9 +222,68 @@ describe("MTM pipeline evidence", { skip: !canRun }, () => {
 
   test("rejects an attempt that belongs to another pool", async () => {
     const response = await fetch(
-      `${baseUrl}/api/mtm/pipeline/evidence?season=9876&calcuttaId=${poolId}&attemptId=${otherPoolAttemptId}`,
+      `${baseUrl}/api/mtm/pipeline/evidence?season=9877&calcuttaId=${poolId}&attemptId=${otherPoolAttemptId}`,
       { headers: { Authorization: `Bearer ${ADMIN_KEY}` } },
     );
     assert.equal(response.status, 404);
+  });
+
+  test("requires admin authorization to delete an attempt", async () => {
+    const response = await fetch(
+      `${baseUrl}/api/mtm/pipeline/attempts/${failedAttemptId}`,
+      {
+        method: "DELETE",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ season: 9877, calcuttaId: poolId, confirmed: true }),
+      },
+    );
+    assert.equal(response.status, 401);
+  });
+
+  test("rejects deletion through the wrong Calcutta", async () => {
+    const response = await fetch(
+      `${baseUrl}/api/mtm/pipeline/attempts/${failedAttemptId}`,
+      {
+        method: "DELETE",
+        headers: {
+          Authorization: `Bearer ${ADMIN_KEY}`,
+          "Content-Type": "application/json",
+        },
+        body: JSON.stringify({ season: 9877, calcuttaId: otherPoolId, confirmed: true }),
+      },
+    );
+    assert.equal(response.status, 404);
+    assert.equal(
+      (await db.select().from(mtmSnapshotTable).where(eq(mtmSnapshotTable.id, failedAttemptId))).length,
+      1,
+    );
+  });
+
+  test("deletes one scoped non-current attempt and its evidence", async () => {
+    const response = await fetch(
+      `${baseUrl}/api/mtm/pipeline/attempts/${failedAttemptId}`,
+      {
+        method: "DELETE",
+        headers: {
+          Authorization: `Bearer ${ADMIN_KEY}`,
+          "Content-Type": "application/json",
+        },
+        body: JSON.stringify({ season: 9877, calcuttaId: poolId, confirmed: true }),
+      },
+    );
+    assert.equal(response.status, 200);
+    assert.deepEqual(await response.json(), {
+      deletedAttemptId: failedAttemptId,
+      deletedVersionCount: 1,
+      deletedPeriodSelectionCount: 0,
+    });
+    assert.equal(
+      (await db.select().from(mtmSnapshotTable).where(eq(mtmSnapshotTable.id, failedAttemptId))).length,
+      0,
+    );
+    assert.equal(
+      (await db.select().from(mtmMarketQuoteTable).where(eq(mtmMarketQuoteTable.snapshotId, failedAttemptId))).length,
+      0,
+    );
   });
 });

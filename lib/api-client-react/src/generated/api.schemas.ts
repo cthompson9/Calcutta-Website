@@ -1623,6 +1623,22 @@ export interface MtmPipelineAttempt {
   /** @nullable */
   error: string | null;
   quoteCount: number;
+  deletable: boolean;
+  /** @nullable */
+  deleteBlockedReason: string | null;
+}
+
+export interface MtmPipelineAttemptDeletion {
+  season: number;
+  calcuttaId: number;
+  /** Must be true to confirm permanent deletion of this MTM update. */
+  confirmed: true;
+}
+
+export interface MtmPipelineAttemptDeletionResult {
+  deletedAttemptId: number;
+  deletedVersionCount: number;
+  deletedPeriodSelectionCount: number;
 }
 
 export interface MtmPipelineReceivedMarket {

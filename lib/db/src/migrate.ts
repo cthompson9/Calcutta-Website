@@ -46,6 +46,8 @@ import {
   mtmRetainedEvidenceIdentityMigration,
   mtmDurableJobLeaseMigration,
   mtmEvidenceStorageMigration,
+  mtmAttemptDeletionMigration,
+  mtmAttemptDeletionGuardReconciliationMigration,
 } from "./migrations";
 
 const migrations = [
@@ -94,6 +96,8 @@ const migrations = [
   mtmRetainedEvidenceIdentityMigration,
   mtmDurableJobLeaseMigration,
   mtmEvidenceStorageMigration,
+  mtmAttemptDeletionMigration,
+  mtmAttemptDeletionGuardReconciliationMigration,
 ] as const;
 
 /**

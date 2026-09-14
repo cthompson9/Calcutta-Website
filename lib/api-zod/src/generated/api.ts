@@ -1784,7 +1784,9 @@ export const GetMtmPipelineEvidenceResponse = zod.object({
   "createdAt": zod.coerce.date(),
   "methodVersion": zod.string(),
   "error": zod.string().nullable(),
-  "quoteCount": zod.number()
+  "quoteCount": zod.number(),
+  "deletable": zod.boolean(),
+  "deleteBlockedReason": zod.string().nullable()
 })),
   "selectedAttempt": zod.union([zod.object({
   "id": zod.number(),
@@ -1794,7 +1796,9 @@ export const GetMtmPipelineEvidenceResponse = zod.object({
   "createdAt": zod.coerce.date(),
   "methodVersion": zod.string(),
   "error": zod.string().nullable(),
-  "quoteCount": zod.number()
+  "quoteCount": zod.number(),
+  "deletable": zod.boolean(),
+  "deleteBlockedReason": zod.string().nullable()
 }).and(zod.object({
   "diagnostics": zod.record(zod.string(), zod.unknown()).nullable(),
   "receivedMarkets": zod.array(zod.object({
@@ -1815,6 +1819,26 @@ export const GetMtmPipelineEvidenceResponse = zod.object({
   "fetchedAt": zod.coerce.date()
 }))
 })),zod.null()])
+})
+
+
+/**
+ * @summary Delete one non-current MTM update from a selected Calcutta
+ */
+export const DeleteMtmPipelineAttemptParams = zod.object({
+  "attemptId": zod.coerce.number()
+})
+
+export const DeleteMtmPipelineAttemptBody = zod.object({
+  "season": zod.number(),
+  "calcuttaId": zod.number(),
+  "confirmed": zod.literal(true).describe('Must be true to confirm permanent deletion of this MTM update.')
+})
+
+export const DeleteMtmPipelineAttemptResponse = zod.object({
+  "deletedAttemptId": zod.number(),
+  "deletedVersionCount": zod.number(),
+  "deletedPeriodSelectionCount": zod.number()
 })
 
 

@@ -18,4 +18,7 @@ export interface MtmPipelineAttempt {
   /** @nullable */
   error: string | null;
   quoteCount: number;
+  deletable: boolean;
+  /** @nullable */
+  deleteBlockedReason: string | null;
 }

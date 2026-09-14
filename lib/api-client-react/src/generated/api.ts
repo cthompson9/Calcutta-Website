@@ -70,6 +70,8 @@ import type {
   HistoricalPoolTrade,
   InitializeWeekZeroPointsInput,
   MtmData,
+  MtmPipelineAttemptDeletion,
+  MtmPipelineAttemptDeletionResult,
   MtmPipelineEvidenceResponse,
   MtmSnapshot,
   MtmSnapshotInput,
@@ -3425,6 +3427,78 @@ export function useGetMtmPipelineEvidence<TData = Awaited<ReturnType<typeof getM
 
 
 
+
+export const getDeleteMtmPipelineAttemptUrl = (attemptId: number,) => {
+
+
+
+
+  return `/api/mtm/pipeline/attempts/${attemptId}`
+}
+
+/**
+ * @summary Delete one non-current MTM update from a selected Calcutta
+ */
+export const deleteMtmPipelineAttempt = async (attemptId: number,
+    mtmPipelineAttemptDeletion: MtmPipelineAttemptDeletion, options?: Parameters<typeof customFetch>[1]): Promise<MtmPipelineAttemptDeletionResult> => {
+
+  return customFetch<MtmPipelineAttemptDeletionResult>(getDeleteMtmPipelineAttemptUrl(attemptId),
+  {
+    ...options,
+    method: 'DELETE',
+    headers: { 'Content-Type': 'application/json', ...options?.headers },
+    body: JSON.stringify(mtmPipelineAttemptDeletion)
+  }
+);}
+
+
+
+
+
+export const getDeleteMtmPipelineAttemptMutationOptions = <TError = ErrorType<ErrorResponse>,
+    TContext = unknown>(options?: { mutation?:UseMutationOptions<Awaited<ReturnType<typeof deleteMtmPipelineAttempt>>, TError,{attemptId: number;data: BodyType<MtmPipelineAttemptDeletion>}, TContext>, request?: SecondParameter<typeof customFetch>}
+): UseMutationOptions<Awaited<ReturnType<typeof deleteMtmPipelineAttempt>>, TError,{attemptId: number;data: BodyType<MtmPipelineAttemptDeletion>}, TContext> => {
+
+const mutationKey = ['deleteMtmPipelineAttempt'];
+const {mutation: mutationOptions, request: requestOptions} = options ?
+      options.mutation && 'mutationKey' in options.mutation && options.mutation.mutationKey ?
+      options
+      : {...options, mutation: {...options.mutation, mutationKey}}
+      : {mutation: { mutationKey, }, request: undefined};
+
+
+
+
+      const mutationFn: MutationFunction<Awaited<ReturnType<typeof deleteMtmPipelineAttempt>>, {attemptId: number;data: BodyType<MtmPipelineAttemptDeletion>}> = (props) => {
+          const {attemptId,data} = props ?? {};
+
+          return  deleteMtmPipelineAttempt(attemptId,data,requestOptions)
+        }
+
+
+
+
+
+
+  return  { mutationFn, ...mutationOptions }}
+
+    export type DeleteMtmPipelineAttemptMutationResult = NonNullable<Awaited<ReturnType<typeof deleteMtmPipelineAttempt>>>
+    export type DeleteMtmPipelineAttemptMutationBody = BodyType<MtmPipelineAttemptDeletion>
+    export type DeleteMtmPipelineAttemptMutationError = ErrorType<ErrorResponse>
+
+    /**
+ * @summary Delete one non-current MTM update from a selected Calcutta
+ */
+export const useDeleteMtmPipelineAttempt = <TError = ErrorType<ErrorResponse>,
+    TContext = unknown>(options?: { mutation?:UseMutationOptions<Awaited<ReturnType<typeof deleteMtmPipelineAttempt>>, TError,{attemptId: number;data: BodyType<MtmPipelineAttemptDeletion>}, TContext>, request?: SecondParameter<typeof customFetch>}
+ ): UseMutationResult<
+        Awaited<ReturnType<typeof deleteMtmPipelineAttempt>>,
+        TError,
+        {attemptId: number;data: BodyType<MtmPipelineAttemptDeletion>},
+        TContext
+      > => {
+      return useMutation(getDeleteMtmPipelineAttemptMutationOptions(options));
+    }
 
 export const getCaptureWeekZeroMtmUrl = () => {
 
