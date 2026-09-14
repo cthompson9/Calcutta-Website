@@ -44,7 +44,6 @@ import { useSeason } from "@/hooks/useSeason";
 import {
   ArrowDownRight,
   ArrowUpRight,
-  AlertTriangle,
   ChevronDown,
   ExternalLink,
   History,
@@ -279,12 +278,6 @@ export default function Results() {
     : tab === "byTeam"
       ? loadingTeams
        : loadingOwners;
-  const isStale = currentValuation?.mark?.stale ?? false;
-  const staleMtmReasons = [
-    ...(currentValuation?.mark?.staleReasons ?? []),
-    currentValuation?.mark?.provisionalSuppressionReason
-  ].filter(Boolean) as string[];
-
   return (
     <div className="md:p-8 space-y-4 md:space-y-6 max-w-[1400px] mx-auto pb-6">
       {/* Header */}
@@ -391,24 +384,6 @@ export default function Results() {
           </button>
         ))}
       </div>
-
-      {!prefersHistoricalResults && (isStale || staleMtmReasons.length > 0) && (
-        <div
-          className="mx-4 flex items-start gap-3 border border-amber-300 bg-amber-50 px-4 py-3 text-amber-950 dark:border-amber-800 dark:bg-amber-950/40 dark:text-amber-100 md:mx-0"
-          role="status"
-          data-testid="stale-mtm-warning"
-        >
-          <AlertTriangle className="mt-0.5 h-4 w-4 shrink-0" />
-          <div>
-            <p className="font-mono text-xs font-bold uppercase tracking-wider">
-              {isStale ? "Stale market inputs — MTM is untrustworthy" : "Market data notice"}
-            </p>
-            <p className="mt-1 text-xs">
-              {staleMtmReasons.join(" ") || "The provisional mark is currently stale."}
-            </p>
-          </div>
-        </div>
-      )}
 
       <div className="px-0 md:px-0">
         {isLoading ? (

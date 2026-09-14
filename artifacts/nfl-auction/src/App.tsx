@@ -5,6 +5,7 @@ import { Toaster } from '@/components/ui/toaster';
 import { TooltipProvider } from '@/components/ui/tooltip';
 import NotFound from '@/pages/not-found';
 import {
+  Redirect,
   Route,
   Switch,
   useLocation,
@@ -29,8 +30,14 @@ const queryClient = new QueryClient();
 function MainRoutes() {
   return (
     <Switch>
-      <Route path="/" component={Results} />
-      <Route path="/mtm" component={MtmTracker} />
+      <Route path="/">
+        <Redirect to="/results" />
+      </Route>
+      <Route path="/results" component={Results} />
+      <Route path="/mtm">
+        <Redirect to={`/analysis${window.location.search}`} />
+      </Route>
+      <Route path="/analysis" component={MtmTracker} />
       <Route path="/trades" component={Trades} />
       <Route path="/teams" component={Teams} />
       <Route path="/bidders" component={Bidders} />

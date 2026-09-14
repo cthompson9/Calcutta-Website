@@ -41,7 +41,7 @@ export function Shell({ children, isPreview }: ShellProps) {
   }, [sidebarCollapsed]);
 
   const isNflOnlyRoute =
-    ["/mtm", "/teams", "/bidders", "/dashboard"].some((route) =>
+    ["/analysis", "/teams", "/bidders", "/dashboard"].some((route) =>
       location.startsWith(route),
     );
   const unsupportedSport =
@@ -63,8 +63,8 @@ export function Shell({ children, isPreview }: ShellProps) {
   );
 
   const navItems = [
-    { href: "/", label: "Results", mobileLabel: "Results", icon: Trophy },
-    { href: "/mtm", label: "Analysis", mobileLabel: "Analysis", icon: TrendingUp },
+    { href: "/results", label: "Results", mobileLabel: "Results", icon: Trophy },
+    { href: "/analysis", label: "Analysis", mobileLabel: "Analysis", icon: TrendingUp },
     { href: "/trades", label: "Trades", mobileLabel: "Trades", icon: ArrowLeftRight },
     { href: "/dashboard", label: "Auction Results", mobileLabel: "Auction", icon: LayoutDashboard },
   ];

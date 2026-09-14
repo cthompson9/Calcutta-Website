@@ -347,7 +347,7 @@ describe("Results Calcutta data source", () => {
     expect(screen.queryByTestId("historical-results-notice")).not.toBeInTheDocument();
   });
 
-  it("shows only genuine stale MTM warnings", () => {
+  it("does not expose stale MTM diagnostics on Results", () => {
     mtmValuation = {
       available: true,
       mark: {
@@ -364,22 +364,9 @@ describe("Results Calcutta data source", () => {
       conditionalPayouts: {},
       gameEvSwings: [],
     };
-    const { unmount } = renderResults();
-    expect(screen.queryByTestId("stale-mtm-warning")).not.toBeInTheDocument();
-    unmount();
-
-    mtmValuation = {
-      ...mtmValuation,
-      mark: {
-        ...mtmValuation.mark,
-        stale: true,
-        staleReasons: ["The latest MTM refresh failed; the prior mark remains active."],
-      },
-    };
     renderResults();
-    expect(screen.getByTestId("stale-mtm-warning")).toHaveTextContent(
-      "The latest MTM refresh failed; the prior mark remains active.",
-    );
+    expect(screen.queryByTestId("stale-mtm-warning")).not.toBeInTheDocument();
+    expect(screen.queryByText(/stale market inputs/i)).not.toBeInTheDocument();
   });
 
   it("restores the By Team tab and originating ownership disclosure", async () => {
