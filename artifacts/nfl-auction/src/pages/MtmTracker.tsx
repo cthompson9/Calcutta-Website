@@ -15,6 +15,7 @@ import type {
   MtmGameEvSwing,
   MtmTeamEvSwing,
   MtmOwnerTeamEvSwing,
+  MtmQualityExposure,
 } from "@workspace/api-client-react";
 import { useQuery } from "@tanstack/react-query";
 import { formatCurrency } from "@/lib/utils";
@@ -207,6 +208,93 @@ function getGetMtmPipelineEvidenceQueryKey(
   params: { season: number; calcuttaId?: number; attemptId?: number },
 ) {
   return ["/api/mtm/pipeline/evidence", params] as const;
+}
+
+function formatMtmTimestamp(value: string | null | undefined): string {
+  if (!value) return "not available";
+  const date = new Date(value);
+  return Number.isNaN(date.getTime())
+    ? "not available"
+    : date.toLocaleString("en-US", {
+        timeZone: "America/New_York",
+        month: "short",
+        day: "numeric",
+        year: "numeric",
+        hour: "numeric",
+        minute: "2-digit",
+      });
+}
+
+export function MtmQualitySummary({
+  quality,
+}: {
+  quality?: MtmQualityExposure | null;
+}) {
+  if (!quality) return null;
+  const statusLabel = quality.status === "estimated-degraded"
+    ? "Estimated · degraded"
+    : quality.status === "stale-pending"
+      ? "Stale · pending recalculation"
+      : quality.status === "unavailable"
+        ? "Unavailable"
+        : "Official";
+  return (
+    <div
+      className="border-b border-border bg-muted/20 px-4 py-3"
+      data-testid="mtm-quality-summary"
+    >
+      <div className="flex flex-wrap items-center gap-x-3 gap-y-1">
+        <span className="font-mono text-[10px] font-bold uppercase tracking-widest text-muted-foreground">
+          Mark quality
+        </span>
+        <span
+          className={cn(
+            "font-mono text-xs font-bold uppercase",
+            quality.status === "official" ? "text-emerald-700 dark:text-emerald-300" : "text-amber-700 dark:text-amber-300",
+          )}
+          data-testid="mtm-quality-status"
+        >
+          {statusLabel}
+        </span>
+      </div>
+      {quality.reasons.length > 0 && (
+        <ul className="mt-1 list-disc pl-5 text-xs text-muted-foreground">
+          {quality.reasons.map((reason) => <li key={reason}>{reason}</li>)}
+        </ul>
+      )}
+      <div className="mt-2 grid gap-x-5 gap-y-1 text-[11px] text-muted-foreground sm:grid-cols-2 lg:grid-cols-4">
+        <span>Actuals cutoff: {formatMtmTimestamp(quality.actualsCutoff)}</span>
+        <span>Evidence cutoff: {formatMtmTimestamp(quality.evidenceCutoff)}</span>
+        <span>Mark timestamp: {formatMtmTimestamp(quality.markTimestamp)}</span>
+        <span>Model: {quality.modelVersion ?? "not available"}</span>
+        <span>Policy: {quality.policyVersion ?? "not available"}</span>
+        <span>Final ESS: {quality.finalEffectiveSampleSize == null ? "not available" : quality.finalEffectiveSampleSize.toFixed(1)}</span>
+        <span>Final max weight: {quality.finalMaxWeight == null ? "not available" : quality.finalMaxWeight.toFixed(3)}</span>
+        <span>Precision: {quality.precision == null ? "not available" : quality.precision.toFixed(3)}</span>
+      </div>
+      {(quality.priorModelVersion || quality.dominantEvidence || quality.excludedEvidence.length > 0) && (
+        <details className="mt-2 text-xs text-muted-foreground">
+          <summary className="cursor-pointer font-mono text-[10px] font-bold uppercase tracking-wider">
+            Evidence and version details
+          </summary>
+          <div className="mt-2 space-y-1">
+            {quality.priorModelVersion && <p>Prior model: {quality.priorModelVersion}</p>}
+            {quality.dominantEvidence && (
+              <p>Dominant evidence: {quality.dominantEvidence.id} (weight {quality.dominantEvidence.weight?.toFixed(3) ?? "not available"})</p>
+            )}
+            {quality.excludedEvidence.length > 0 && (
+              <p>Excluded evidence: {quality.excludedEvidence.map((item) => `${item.id} — ${item.reason}`).join("; ")}</p>
+            )}
+          </div>
+        </details>
+      )}
+      {quality.prefitDiagnostics.available && (
+        <p className="mt-2 text-[10px] italic text-muted-foreground">
+          {quality.prefitDiagnostics.label}
+        </p>
+      )}
+    </div>
+  );
 }
 
 // ── Page ──────────────────────────────────────────────────────────────────────
@@ -501,7 +589,6 @@ function PipelineMarkPanel({
     );
   }
 
-  const isPreview = true;
   return (
     <section className="border border-border bg-card">
       <div className="flex flex-wrap items-start justify-between gap-4 border-b border-border p-4">
@@ -541,9 +628,11 @@ function PipelineMarkPanel({
         </button>
       </div>
 
+      <MtmQualitySummary quality={valuation.quality} />
+
       <PipelineFailureNotice status={status} />
 
-      {(valuation.mark.stale || valuation.mark.selectionReason || valuation.mark.provisionalSuppressionReason) && !isPreview && (
+      {(valuation.mark.stale || valuation.mark.selectionReason || valuation.mark.provisionalSuppressionReason) && (
         <div className="border-b border-amber-500/30 bg-amber-500/10 px-4 py-3 text-sm text-amber-800">
           <p className="flex items-center gap-2 font-semibold">
             <AlertTriangle className="h-4 w-4 shrink-0" />
@@ -577,6 +666,9 @@ function PipelineMarkPanel({
                 <h3 className="font-mono text-xs font-bold uppercase tracking-widest">By team standings</h3>
                 <p className="mt-1 text-xs text-muted-foreground">
                   Current expected payout, auction price, multiple, and change from the prior mark.
+                </p>
+                <p className="mt-1 text-[11px] text-muted-foreground">
+                  Gross payout is the expected pool return; net payout is gross minus auction cost. Owner exposure keeps signed shares.
                 </p>
               </div>
               <label className="relative block sm:w-72">

@@ -10,6 +10,8 @@ export type MtmValuationOwnersItem = {
   bidderId?: number;
   bidderName?: string;
   grossExpectedPayout?: number;
+  /** Signed owner cost basis, retaining short/negative shares. */
   signedCostBasis?: number;
+  /** Signed gross expected payout minus signed cost basis. */
   net?: number;
 };

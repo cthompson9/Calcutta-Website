@@ -9,6 +9,7 @@ from datetime import datetime, timezone
 from pathlib import Path
 
 import engine_v3
+import joint_fit
 import playoffs
 import simulate
 import wins
@@ -40,12 +41,16 @@ def _effective_v3_config(config: dict) -> dict:
             review.get("min_conditional_share", sim.get("min_conditional_share", .01))),
         "max_win_residual": float(review.get("max_generated_win_residual", .25)),
         "max_playoff_residual": float(review.get("max_playoff_residual", .05)),
+        "return_path_library": bool(review.get("return_path_library", True)),
+        "max_joint_weight": float(review.get("max_joint_weight", .01)),
+        "joint_interval_tolerance": float(review.get("joint_interval_tolerance", 1e-9)),
+        "joint_group_caps": review.get("joint_group_caps", review.get("group_caps", {})),
     }
 
 
 def _code_version() -> str:
     digest = hashlib.sha256()
-    for name in ("engine_v3.py", "run_mtm_v3.py"):
+    for name in ("engine_v3.py", "joint_fit.py", "run_mtm_v3.py"):
         digest.update(Path(__file__).with_name(name).read_bytes())
     return f"nfl-mtm-v3-review-{digest.hexdigest()[:12]}"
 
@@ -108,6 +113,74 @@ def build_review_snapshot(config: dict, state: dict) -> dict:
                                       "residuals": normalized["residuals"]},
             "simulation": result.get("diagnostics", {}),
         })
+        # The v3 generator is the supported review path.  Reuse its legal
+        # worlds rather than asking callers to smuggle a second scenario
+        # library through state.
+        path_library = result.get("path_library", [])
+        if not path_library:
+            raise ValueError("review simulation did not return its legal path library")
+        scenarios = joint_fit.scenarios_from_path_library(
+            path_library, teams=teams, realized=state["realized"]
+        )
+        evidence = state.get("joint_fit_constraints")
+        if evidence is None:
+            evidence = joint_fit.constraints_from_markets(state)
+        resolved = {
+            f"actual:wins:{team}": float(state["realized"][team].get("wins", 0))
+            for team in teams
+        }
+        joint_review = config.get("joint_fit_review", {})
+        if not isinstance(joint_review, dict):
+            joint_review = {}
+        joint_result = simulate.fit_joint_review(
+            scenarios,
+            evidence,
+            resolved_facts=resolved,
+            precision_caps=state.get("joint_fit_group_caps", settings["joint_group_caps"]),
+            max_iterations=int(joint_review.get(
+                "max_iterations", 2000
+            )),
+            tolerance=float(joint_review.get(
+                "tolerance", 1e-9
+            )),
+            learning_rate=float(joint_review.get(
+                "learning_rate", .2
+            )),
+        )
+        joint_summary = joint_fit.summarize_path_library(
+            scenarios, joint_result["weights"], pool=float(state["pot"])
+        )
+        joint_diag = joint_result["diagnostics"]
+        min_ess = max(1000.0, .05 * len(scenarios))
+        gate_checks = {
+            "global_ess": joint_diag["effective_sample_size"] >= min_ess - 1e-9,
+            "max_weight": joint_diag["max_weight"] <= settings["max_joint_weight"] + 1e-12,
+            "support": not joint_diag["support_failures"],
+            "interval_conflicts": not joint_diag.get("interval_conflicts"),
+            "pool_conservation": abs(joint_summary["coverage"]["pool_error"]) <= .01,
+            "conditional_reconciliation": all(
+                abs(value - 1.0) <= 1e-9
+                for value in joint_summary["conditional_reconciliation"].values()
+            ),
+        }
+        diagnostics["joint_fit"] = joint_diag
+        diagnostics["joint_fit_summary"] = joint_summary
+        diagnostics["joint_fit_gates"] = {
+            "checks": gate_checks,
+            "passed": all(gate_checks.values()),
+            "min_global_ess": min_ess,
+            "max_weight": settings["max_joint_weight"],
+        }
+        if joint_result["status"] != "converged" or not all(gate_checks.values()):
+            return {
+                "status": "failed", "as_of": as_of,
+                "error": "joint review fit or review gates failed",
+                "diagnostics": diagnostics,
+                "model": {"name": diagnostics["engine_code_version"],
+                          "seed": settings["seed"]},
+            }
+        result["expected_payout"] = joint_summary["payout"]
+        result["conditionals"] = joint_summary["conditionals"]
         if result["status"] != "ok":
             return {"status": "failed", "as_of": as_of, "error": result["error"],
                     "diagnostics": diagnostics, "model": {

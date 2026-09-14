@@ -184,6 +184,7 @@ def value_simulation(rubric: dict, entries: list[dict], pot: float,
         "conservation_residual": round(total - pot, 6),
         "conservation_status": "ok" if abs(total - pot) <= max(.01, pot * 1e-6) else "warning",
         "effective_sample_size": round(simulation.get("effective_sample_size", runs), 2),
+        "max_weight": simulation.get("max_weight"),
         "market_calibration_converged": simulation.get("calibration_converged", True),
     }
     team_valuations = {

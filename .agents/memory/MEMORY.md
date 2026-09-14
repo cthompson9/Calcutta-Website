@@ -48,3 +48,4 @@
 - [MTM calibration bands](mtm-calibration-bands.md) — fit playoff marginals into the existing acceptance bands; exact point fitting can cycle on incompatible market targets.
 - [Canonical MTM schedule](canonical-mtm-schedule.md) — after the complete event refresh, MTM exports remaining games only from canonical events; unconfirmed kickoffs are never marquee.
 - [MTM production runtime](mtm-production-cpu-budget.md) — official recalculations need a Reserved VM; local benchmarks do not predict throttled Autoscale runtime.
+- [Liquidity-aware MTM evidence](liquidity-aware-mtm-evidence.md) — wide or incomplete books are bounded weak evidence; publication requires an authoritative final-distribution audit.

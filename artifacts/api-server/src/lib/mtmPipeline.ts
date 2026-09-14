@@ -36,6 +36,13 @@ import {
   NFL_SCORING_ADAPTER,
 } from "./competitionScoring";
 import { flattenEngineConditionals } from "./mtmValuationHelpers";
+import {
+  MTM_EVIDENCE_POLICY_VERSION,
+  assessMtmEvidence,
+  acceptedYesBounds,
+  estimateMtmTrades,
+  type MtmEvidenceInput,
+} from "./mtmEvidence";
 
 const execFileAsync = promisify(execFile);
 const WORKSPACE_ROOT = existsSync(resolve(process.cwd(), "mtm"))
@@ -82,8 +89,12 @@ type MtmState = {
     volume: number;
     status: string | null;
     result: string | null;
+    weak?: boolean;
   }>>;
   elimination_quotes: Record<string, Record<string, number>>;
+  /** Additive review-only evidence; canonical engine behavior ignores this. */
+  joint_fit_constraints?: Array<Record<string, unknown>>;
+  joint_fit_group_caps?: Record<string, number>;
 };
 
 type EngineSnapshot = {
@@ -107,13 +118,65 @@ type RawMarketQuote = {
   market: Record<string, unknown>;
   sourceUrl?: string;
   fetchedAt?: Date;
+  completenessManifest?: Record<string, unknown> | null;
+  captureMetadata?: Record<string, unknown> | null;
+};
+
+type WinMarketQuality = {
+  status: "good" | "weak" | "missing";
+  trustedRungs: number;
+  wideRungs: number;
+  missingRungs: number;
+  reason: string | null;
 };
 
 type FetchedMarkets = {
   markets: any[];
   sourceUrl: string;
   fetchedAt: Date;
+  completenessManifest?: Record<string, unknown> | null;
+  captureMetadata?: Record<string, unknown> | null;
 };
+
+type CaptureRequestAudit = {
+  identity: string;
+  team: string;
+  series: string;
+  ticker: string;
+  status: "fulfilled" | "failed";
+  market_count: number;
+  source_url: string | null;
+  fetched_at: string | null;
+  provider_manifest: Record<string, unknown> | null;
+  error: string | null;
+};
+
+type InternalCaptureManifest = {
+  policy: "internal-request-capture-v1";
+  expected_request_count: number;
+  fulfilled_request_count: number;
+  failed_request_count: number;
+  nonempty_request_count: number;
+  complete: boolean;
+  requests: CaptureRequestAudit[];
+};
+
+function buildInternalCaptureManifest(
+  expectedRequestCount: number,
+  requests: CaptureRequestAudit[],
+): InternalCaptureManifest {
+  const ordered = [...requests].sort((a, b) => a.identity.localeCompare(b.identity));
+  return {
+    policy: "internal-request-capture-v1",
+    expected_request_count: expectedRequestCount,
+    fulfilled_request_count: ordered.filter((request) => request.status === "fulfilled").length,
+    failed_request_count: ordered.filter((request) => request.status === "failed").length,
+    nonempty_request_count: ordered.filter((request) => request.market_count > 0).length,
+    complete: ordered.length === expectedRequestCount &&
+      ordered.every((request) => request.status === "fulfilled" && request.market_count > 0),
+    requests: ordered,
+  };
+}
 
 type InputSource = {
   provider: string;
@@ -214,18 +277,58 @@ export function buildCanonicalRemainingSchedule(
 function mergeTeamQuoteResults(
   teamCode: string,
   series: { win_totals: string; stage_of_elimination: string },
-  winResult: PromiseSettledResult<any[] | FetchedMarkets>,
-  stageResult: PromiseSettledResult<any[] | FetchedMarkets>,
-): { raw: RawMarketQuote[]; errors: string[] } {
+  tickersOrWinResult: { win: string; stage: string } | PromiseSettledResult<any[] | FetchedMarkets>,
+  winOrStageResult: PromiseSettledResult<any[] | FetchedMarkets>,
+  optionalStageResult?: PromiseSettledResult<any[] | FetchedMarkets>,
+): { raw: RawMarketQuote[]; errors: string[]; requests: CaptureRequestAudit[] } {
+  // Preserve the small direct-test/helper API used by older callers while
+  // normal collection supplies deterministic request identities.
+  const legacyCall = optionalStageResult == null;
+  const tickers = legacyCall
+    ? { win: `${teamCode}:${series.win_totals}`, stage: `${teamCode}:${series.stage_of_elimination}` }
+    : tickersOrWinResult as { win: string; stage: string };
+  const winResult = (legacyCall ? tickersOrWinResult : winOrStageResult) as PromiseSettledResult<any[] | FetchedMarkets>;
+  const stageResult = (legacyCall ? winOrStageResult : optionalStageResult) as PromiseSettledResult<any[] | FetchedMarkets>;
   const raw: RawMarketQuote[] = [];
   const errors: string[] = [];
+  const requests: CaptureRequestAudit[] = [];
+  const requestAudit = (
+    seriesName: string,
+    ticker: string,
+    result: PromiseSettledResult<any[] | FetchedMarkets>,
+  ): CaptureRequestAudit => {
+    if (result.status === "rejected") {
+      return {
+        identity: `${teamCode}:${seriesName}:${ticker}`,
+        team: teamCode, series: seriesName, ticker, status: "failed",
+        market_count: 0, source_url: null, fetched_at: null,
+        provider_manifest: null, error: String(result.reason),
+      };
+    }
+    const fetched = Array.isArray(result.value)
+      ? { markets: result.value, sourceUrl: null, fetchedAt: null, completenessManifest: null }
+      : result.value;
+    return {
+      identity: `${teamCode}:${seriesName}:${ticker}`,
+      team: teamCode, series: seriesName, ticker, status: "fulfilled",
+      market_count: fetched.markets.length,
+      source_url: fetched.sourceUrl ?? null,
+      fetched_at: fetched.fetchedAt?.toISOString() ?? null,
+      provider_manifest: fetched.completenessManifest ?? null,
+      error: null,
+    };
+  };
+  requests.push(requestAudit(series.win_totals, tickers.win, winResult));
+  requests.push(requestAudit(series.stage_of_elimination, tickers.stage, stageResult));
   if (winResult.status === "fulfilled") {
     const fetched = Array.isArray(winResult.value)
-      ? { markets: winResult.value, sourceUrl: undefined, fetchedAt: undefined }
+      ? { markets: winResult.value, sourceUrl: undefined, fetchedAt: undefined, completenessManifest: null, captureMetadata: null }
       : winResult.value;
     raw.push(...fetched.markets.map((market) => ({
       series: series.win_totals, team: teamCode, market,
       sourceUrl: fetched.sourceUrl, fetchedAt: fetched.fetchedAt,
+      completenessManifest: fetched.completenessManifest ?? null,
+      captureMetadata: fetched.captureMetadata ?? null,
     })));
     if (fetched.markets.length === 0) {
       errors.push(`${teamCode} win totals: no markets received`);
@@ -235,11 +338,13 @@ function mergeTeamQuoteResults(
   }
   if (stageResult.status === "fulfilled") {
     const fetched = Array.isArray(stageResult.value)
-      ? { markets: stageResult.value, sourceUrl: undefined, fetchedAt: undefined }
+      ? { markets: stageResult.value, sourceUrl: undefined, fetchedAt: undefined, completenessManifest: null, captureMetadata: null }
       : stageResult.value;
     raw.push(...fetched.markets.map((market) => ({
       series: series.stage_of_elimination, team: teamCode, market,
       sourceUrl: fetched.sourceUrl, fetchedAt: fetched.fetchedAt,
+      completenessManifest: fetched.completenessManifest ?? null,
+      captureMetadata: fetched.captureMetadata ?? null,
     })));
     if (fetched.markets.length === 0) {
       errors.push(`${teamCode} stage of elimination: no markets received`);
@@ -247,7 +352,7 @@ function mergeTeamQuoteResults(
   } else {
     errors.push(`${teamCode} stage of elimination: ${String(stageResult.reason)}`);
   }
-  return { raw, errors };
+  return { raw, errors, requests };
 }
 
 function validateScheduleIdentitySets(completed: string[], remaining: string[]): string | null {
@@ -386,10 +491,20 @@ async function fetchKalshiEvent(baseUrl: string, ticker: string): Promise<Fetche
   );
   if (!response.ok) throw new Error(`Kalshi event ${ticker} returned HTTP ${response.status}.`);
   const body = await response.json() as { event?: { markets?: any[] } };
+  const event = body.event as Record<string, unknown> | undefined;
+  const completenessManifest =
+    (event?.completeness_manifest ?? event?.completenessManifest
+      ?? (body as Record<string, unknown>).completeness_manifest);
   return {
     markets: body.event?.markets ?? [],
     sourceUrl,
     fetchedAt: new Date(),
+    completenessManifest: completenessManifest && typeof completenessManifest === "object"
+      ? completenessManifest as Record<string, unknown>
+      : null,
+    captureMetadata: event?.metadata && typeof event.metadata === "object"
+      ? event.metadata as Record<string, unknown>
+      : null,
   };
 }
 
@@ -412,6 +527,41 @@ function quoteVolume(market: any): number {
   return Number.isFinite(parsed) ? Math.trunc(parsed) : 0;
 }
 
+/**
+ * A market without an order book is evidence of a missing quote, not a
+ * probability of zero.  Settled contracts are still valid evidence, but an
+ * unsettled contract must explicitly be active and must not carry a result.
+ * Keep this check here (rather than in the Python engine) so every publisher
+ * uses the same input contract.
+ */
+function validateActiveQuote(market: any): string | null {
+  const status = market?.status == null ? "" : String(market.status).trim().toLowerCase();
+  const result = market?.result == null ? "" : String(market.result).trim().toLowerCase();
+  const settled = new Set(["closed", "determined", "finalized", "settled"]);
+  const active = new Set(["active", "open", "initialized"]);
+  if (settled.has(status)) {
+    if (status === "closed" && result !== "yes" && result !== "no") {
+      return `market status ${JSON.stringify(market?.status)} is not active`;
+    }
+    return result === "yes" || result === "no"
+      ? null
+      : `settled market has invalid result ${JSON.stringify(market?.result)}`;
+  }
+  if (!active.has(status)) {
+    return `market status ${JSON.stringify(market?.status)} is not active`;
+  }
+  if (result) return `active market has settled result ${JSON.stringify(market?.result)}`;
+  const bid = quoteValue(market, "yes_bid");
+  const ask = quoteValue(market, "yes_ask");
+  // An active market can legitimately have an empty or one-sided book.  It
+  // remains weak/missing and is handled by assessWinMarketQuality below.
+  if (bid == null || ask == null) return null;
+  if (!Number.isFinite(bid) || !Number.isFinite(ask) || bid < 0 || ask > 1 || bid > ask) {
+    return "active market has an invalid yes bid/ask";
+  }
+  return null;
+}
+
 function classifyEliminationMarket(market: any): string | null {
   const text = `${market?.ticker ?? ""} ${market?.title ?? ""} ${market?.subtitle ?? ""}`.toLowerCase();
   const suffix = String(market?.ticker ?? "").split("-").at(-1);
@@ -432,7 +582,7 @@ function classifyEliminationMarket(market: any): string | null {
 async function collectQuotes(
   config: Record<string, any>,
   teams: Array<{ code: string; name: string }>,
-): Promise<{ raw: RawMarketQuote[]; errors: string[] }> {
+): Promise<{ raw: RawMarketQuote[]; errors: string[]; captureManifest: InternalCaptureManifest }> {
   const baseUrl = config.kalshi.base_url as string;
   const series = config.kalshi.series as Record<string, string>;
   const code = seasonCode(config.season as number);
@@ -446,11 +596,13 @@ async function collectQuotes(
     return mergeTeamQuoteResults(team.code, series as {
       win_totals: string;
       stage_of_elimination: string;
-    }, winResult, stageResult);
+    }, { win: winTicker, stage: stageTicker }, winResult, stageResult);
   }));
+  const requests = results.flatMap((result) => result.requests);
   return {
     raw: results.flatMap((result) => result.raw),
     errors: results.flatMap((result) => result.errors),
+    captureManifest: buildInternalCaptureManifest(teams.length * 2, requests),
   };
 }
 
@@ -470,21 +622,48 @@ function deriveQuoteState(
       .filter((quote) => quote.team === team.code && quote.series === series.stage_of_elimination)
       .map((quote) => quote.market);
     const ladders = winMarkets
-      .map((market) => ({ market, strike: Number(market.floor_strike ?? market.floor_strike_fp) }))
+      .map((market) => {
+        const validationError = validateActiveQuote(market);
+        if (validationError) {
+          throw new Error(`Invalid win-total quote for ${team.code}: ${validationError}.`);
+        }
+        return { market, strike: Number(market.floor_strike ?? market.floor_strike_fp) };
+      })
       .filter(({ strike }) => Number.isFinite(strike) && strike >= 1 && strike <= 17)
       .sort((a, b) => a.strike - b.strike)
-      .map(({ market, strike }) => ({
-        strike,
-        yes_bid: quoteValue(market, "yes_bid"),
-        yes_ask: quoteValue(market, "yes_ask"),
-        volume: quoteVolume(market),
-        status: market.status == null ? null : String(market.status),
-        result: market.result == null ? null : String(market.result),
-      }));
+      .map(({ market, strike }) => {
+        const yesBid = quoteValue(market, "yes_bid");
+        const yesAsk = quoteValue(market, "yes_ask");
+        const settled = ["closed", "determined", "finalized", "settled"].includes(
+          String(market.status ?? "").trim().toLowerCase(),
+        );
+        const wide = !settled && yesBid != null && yesAsk != null &&
+          yesAsk - yesBid > asNumber(config.pricing?.max_spread_for_mid, 0.15);
+        return {
+          strike,
+          // Do not let a 1/97 (or any other wide) book become a 49c
+          // pseudo-observation.  It is retained in diagnostics as weak
+          // evidence and treated as missing by the engine.
+          yes_bid: wide ? null : yesBid,
+          yes_ask: wide ? null : yesAsk,
+          volume: quoteVolume(market),
+          status: market.status == null ? null : String(market.status),
+          result: market.result == null ? null : String(market.result),
+          ...(wide ? { weak: true } : {}),
+        };
+      });
     if (ladders.length === 0) throw new Error(`No win-total ladder was discovered for ${team.code}.`);
     winLadders[team.code] = ladders;
     const classified: Record<string, number> = {};
     for (const market of stageMarkets) {
+      // Historical fixtures may omit status metadata.  When the provider does
+      // send it, apply the same active/settled contract validation as wins.
+      if (market.status != null) {
+        const validationError = validateActiveQuote(market);
+        if (validationError) {
+          throw new Error(`Invalid stage-of-elimination quote for ${team.code}: ${validationError}.`);
+        }
+      }
       const outcome = classifyEliminationMarket(market);
       const bid = quoteValue(market, "yes_bid");
       if (outcome && bid != null) classified[outcome] = Math.min(1, bid + 0.01);
@@ -498,11 +677,237 @@ function deriveQuoteState(
   return { winLadders, elimination };
 }
 
+function assessWinMarketQuality(
+  config: Record<string, any>,
+  teams: Array<{ code: string; name: string }>,
+  winLadders: MtmState["win_ladders"],
+): Record<string, WinMarketQuality> {
+  const maxSpread = asNumber(config.pricing?.max_spread_for_mid, 0.15);
+  return Object.fromEntries(teams.map((team) => {
+    const ladder = winLadders[team.code] ?? [];
+    let trustedRungs = 0;
+    let wideRungs = 0;
+    let missingRungs = Math.max(0, 17 - ladder.length);
+    for (const rung of ladder) {
+      const settled = ["closed", "determined", "finalized", "settled"].includes(
+        String(rung.status ?? "").trim().toLowerCase(),
+      ) && (rung.result === "yes" || rung.result === "no");
+      if (settled) {
+        trustedRungs += 1;
+      } else if (rung.weak) {
+        wideRungs += 1;
+      } else if (rung.yes_bid == null || rung.yes_ask == null) {
+        missingRungs += 1;
+      } else if (rung.yes_ask - rung.yes_bid > maxSpread) {
+        wideRungs += 1;
+      } else {
+        trustedRungs += 1;
+      }
+    }
+    const status: WinMarketQuality["status"] =
+      trustedRungs >= 2 ? "good" : trustedRungs > 0 ? "weak" : "missing";
+    return [team.code, {
+      status,
+      trustedRungs,
+      wideRungs,
+      missingRungs,
+      reason: status === "good"
+        ? null
+        : `${team.code} has ${trustedRungs} trusted win-total rungs; `
+          + `${wideRungs} wide and ${missingRungs} missing/absent rungs.`,
+    }];
+  }));
+}
+
+function buildJointFitConstraints(
+  rawQuotes: RawMarketQuote[],
+  configuredGroupCaps: Record<string, number> = {},
+): Array<Record<string, unknown>> {
+  const rows: Array<Record<string, unknown>> = [];
+  const stageEvidence = new Map<string, Map<string, {
+    lower: number;
+    upper: number;
+    reliability: number;
+    resolved: boolean;
+    qualityStatus: string;
+    policyVersion: string;
+    evidenceGroup: string | null;
+    groupCap: number;
+  }>>();
+  const ordered = [...rawQuotes].sort((a, b) =>
+    a.series.localeCompare(b.series) ||
+    a.team.localeCompare(b.team) ||
+    String(a.market.ticker ?? "").localeCompare(String(b.market.ticker ?? "")),
+  );
+  for (const quote of ordered) {
+    const market = quote.market;
+    const evidence = evidenceInputForQuote(quote);
+    const assessment = assessMtmEvidence(evidence, quote.fetchedAt ?? new Date(0));
+    const settled = evidence.status === "settled" && evidence.settlement != null;
+    if (assessment.qualityStatus === "insufficient" && !settled) continue;
+    const evidenceGroup = evidence.evidenceGroup && typeof evidence.evidenceGroup === "object"
+      ? evidence.evidenceGroup : null;
+    const evidenceGroupId = assessment.groupId;
+    const groupKey = evidenceGroupId ?? `evidence:${quote.series}:${quote.team}`;
+    const groupCap = Math.min(
+      evidenceGroup?.cap == null ? 0.5 : evidenceGroup.cap,
+      configuredGroupCaps[groupKey] == null ? 0.5 : configuredGroupCaps[groupKey]!,
+    );
+    const strike = Number(market.floor_strike ?? market.floor_strike_fp);
+    const isWin = Number.isInteger(strike) && strike >= 1 && strike <= 17;
+    const outcome = isWin ? null : classifyEliminationMarket(market);
+    if (isWin) {
+      const usableBook = !settled &&
+        (evidence.yesBid != null || evidence.yesAsk != null) &&
+        (assessment.factors.spread == null || assessment.factors.spread <= 0.15);
+      if (!settled && !usableBook) continue;
+      const bounds = settled
+        ? acceptedYesBounds(evidence)
+        : acceptedYesBounds(evidence);
+      const width = bounds.upper - bounds.lower;
+      rows.push({
+        name: `wins-${quote.team}-${strike}`,
+        metric: `wins:${quote.team}:${strike}`,
+        lower: bounds.lower,
+        upper: bounds.upper,
+        reliability: assessment.score,
+        group: `wins:${quote.team}`,
+        group_cap: groupCap,
+        resolved: settled,
+        // Precision rises as an active accepted interval narrows. Settled
+        // rows are hard filters and deliberately have no soft precision.
+        precision: settled ? 0 : 1 / Math.max(width, 0.01),
+        evidence_group: assessment.groupId,
+        quality_status: assessment.qualityStatus,
+        policy_version: assessment.policyVersion,
+      });
+      continue;
+    }
+    if (!outcome || (!settled && evidence.yesBid == null) ||
+        (settled && evidence.settlement == null)) continue;
+    const stageBounds = acceptedYesBounds(evidence);
+    const teamOutcomes = stageEvidence.get(quote.team) ?? new Map();
+    teamOutcomes.set(outcome, {
+      lower: stageBounds.lower,
+      upper: stageBounds.upper,
+      reliability: assessment.score,
+      resolved: settled,
+      qualityStatus: assessment.qualityStatus,
+      policyVersion: assessment.policyVersion,
+      evidenceGroup: evidenceGroupId,
+      groupCap,
+    });
+    stageEvidence.set(quote.team, teamOutcomes);
+  }
+  for (const team of [...stageEvidence.keys()].sort()) {
+    const outcomes = stageEvidence.get(team)!;
+    const noPlayoffs = outcomes.get("no_playoffs");
+    if (noPlayoffs) {
+      rows.push({
+        name: `advancement-${team}-no_playoffs`,
+        metric: `no_playoffs:${team}`,
+        lower: noPlayoffs.lower,
+        upper: noPlayoffs.upper,
+        reliability: noPlayoffs.reliability,
+        resolved: noPlayoffs.resolved,
+        group: `advancement:${team}`,
+        group_cap: noPlayoffs.groupCap,
+        precision: noPlayoffs.resolved ? 0 : 1 / Math.max(noPlayoffs.upper - noPlayoffs.lower, 0.01),
+        evidence_group: noPlayoffs.evidenceGroup,
+        quality_status: noPlayoffs.qualityStatus,
+        policy_version: noPlayoffs.policyVersion,
+      });
+    }
+    const reachDefinitions: Array<[string, string[]]> = [
+      ["berth", ["no_playoffs"]],
+      ["divisional", ["no_playoffs", "wild_card"]],
+      ["conference", ["no_playoffs", "wild_card", "divisional"]],
+      ["sb_berth", ["no_playoffs", "wild_card", "divisional", "conference"]],
+    ];
+    for (const [stage, excluded] of reachDefinitions) {
+      const evidenceRows = excluded.map((outcome) => outcomes.get(outcome));
+      // A reach probability is a complement of mutually exclusive
+      // elimination outcomes. Never use the exact wild-card elimination
+      // quote as a berth probability.
+      if (evidenceRows.some((row) => row == null)) continue;
+      const lower = Math.max(0, 1 - evidenceRows.reduce((sum, row) => sum + row!.upper, 0));
+      const upper = Math.min(1, 1 - evidenceRows.reduce((sum, row) => sum + row!.lower, 0));
+      rows.push({
+        name: `advancement-${team}-${stage}`,
+        metric: `stage:${team}:${stage}`,
+        lower,
+        upper,
+        reliability: Math.min(...evidenceRows.map((row) => row!.reliability)),
+        resolved: evidenceRows.every((row) => row!.resolved),
+        group: `advancement:${team}`,
+        group_cap: Math.min(...evidenceRows.map((row) => row!.groupCap)),
+        precision: evidenceRows.every((row) => row!.resolved)
+          ? 0
+          : 1 / Math.max(upper - lower, 0.01),
+        evidence_group: evidenceRows.map((row) => row!.evidenceGroup).filter(Boolean).sort().join(",") || null,
+        quality_status: evidenceRows.some((row) => row!.qualityStatus !== "good") ? "warning" : "good",
+        policy_version: evidenceRows[0]!.policyVersion,
+      });
+    }
+    const sbWin = outcomes.get("sb_win");
+    if (sbWin) {
+      rows.push({
+        name: `advancement-${team}-sb_win`,
+        metric: `stage:${team}:sb_win`,
+        lower: sbWin.lower,
+        upper: sbWin.upper,
+        reliability: sbWin.reliability,
+        resolved: sbWin.resolved,
+        group: `advancement:${team}`,
+        group_cap: sbWin.groupCap,
+        precision: sbWin.resolved ? 0 : 1 / Math.max(sbWin.upper - sbWin.lower, 0.01),
+        evidence_group: sbWin.evidenceGroup,
+        quality_status: sbWin.qualityStatus,
+        policy_version: sbWin.policyVersion,
+      });
+    }
+  }
+  const groupCaps = new Map<string, number>();
+  for (const row of rows) {
+    const group = String(row.group);
+    const cap = Number(row.group_cap);
+    const configured = configuredGroupCaps[group];
+    groupCaps.set(group, Math.min(
+      groupCaps.get(group) ?? 0.5,
+      cap,
+      configured == null ? 0.5 : configured,
+    ));
+  }
+  for (const row of rows) {
+    row.group_cap = groupCaps.get(String(row.group)) ?? Number(row.group_cap);
+  }
+  const grouped = new Map<string, Array<Record<string, unknown>>>();
+  for (const row of rows) {
+    const group = String(row.group);
+    const members = grouped.get(group) ?? [];
+    members.push(row);
+    grouped.set(group, members);
+  }
+  // Apply caps to the actual reliability passed to review fitting, not just
+  // as metadata. This keeps correlated ladders from dominating the fit.
+  for (const [group, members] of grouped) {
+    const cap = groupCaps.get(group) ?? 0.5;
+    const total = members.reduce((sum, row) => sum + Number(row.reliability ?? 0), 0);
+    const scale = total > cap ? cap / total : 1;
+    for (const row of members) row.reliability = Number(row.reliability ?? 0) * scale;
+  }
+  return rows.sort((a, b) =>
+    String(a.group).localeCompare(String(b.group)) ||
+    String(a.name).localeCompare(String(b.name)) ||
+    String(a.metric).localeCompare(String(b.metric)));
+}
+
 async function exportState(seasonYear: number, calcuttaId?: number): Promise<{
   poolId: number;
   state: MtmState;
   rawQuotes: RawMarketQuote[];
   quoteErrors: string[];
+  captureManifest: InternalCaptureManifest;
   quoteTeams: Array<{ code: string; name: string }>;
   inputProvenance: MtmInputProvenance;
 }> {
@@ -681,6 +1086,7 @@ async function exportState(seasonYear: number, calcuttaId?: number): Promise<{
     state,
     rawQuotes: quotes.raw,
     quoteErrors: quotes.errors,
+    captureManifest: quotes.captureManifest,
     quoteTeams: teams,
     inputProvenance,
   };
@@ -809,7 +1215,7 @@ export async function runMtmV3Review(input: {
     }).returning({ id: mtmSnapshotTable.id });
     return { id: row!.id, poolId, status: "review", error: message, diagnostics: { ...baseDiagnostics, pipelineError: message } };
   }
-  const { state, rawQuotes, quoteErrors, quoteTeams, inputProvenance } = exported;
+  const { state, rawQuotes, quoteErrors, quoteTeams, inputProvenance, captureManifest } = exported;
   state.completed_results = inputProvenance.realized_results.map((game) => ({
     week: game.week,
     home: game.home,
@@ -835,6 +1241,24 @@ export async function runMtmV3Review(input: {
     const derived = deriveQuoteState(config, quoteTeams, rawQuotes);
     state.win_ladders = derived.winLadders;
     state.elimination_quotes = derived.elimination;
+    // The supported review endpoint supplies the same validated evidence
+    // contract as the canonical exporter, plus deterministic group caps.
+    // run_mtm_v3 consumes these only in its explicitly noncanonical path.
+    const jointFitConstraints = buildJointFitConstraints(
+      rawQuotes,
+      (config.joint_fit_group_caps ?? config.prototype_review?.joint_fit_group_caps ?? {}) as Record<string, number>,
+    );
+    state.joint_fit_constraints = jointFitConstraints;
+    state.joint_fit_group_caps = Object.fromEntries(
+      [...new Set(jointFitConstraints.map((row) => String(row.group)))]
+        .sort()
+        .map((group) => [
+          group,
+          Math.min(...jointFitConstraints
+            .filter((row) => String(row.group) === group)
+            .map((row) => Number(row.group_cap))),
+        ]),
+    );
     const engine = await runReviewEngine(state, CONFIG_PATH);
     diagnostics = {
       ...diagnostics,
@@ -968,6 +1392,324 @@ function validateCompleteEngineSnapshot(engine: EngineSnapshot, state: MtmState)
   return null;
 }
 
+function finalEffectiveSampleSize(engine: EngineSnapshot): number | null {
+  const diagnostics = engine.diagnostics ?? {};
+  const simulation = diagnostics.simulation;
+  const candidates = [
+    simulation && typeof simulation === "object"
+      ? (simulation as Record<string, unknown>).effective_sample_size
+      : null,
+    diagnostics.effective_sample_size,
+    diagnostics.effectiveSampleSize,
+  ];
+  const value = candidates.map((candidate) => Number(candidate))
+    .find((candidate) => Number.isFinite(candidate) && candidate > 0);
+  return value == null ? null : value;
+}
+
+/**
+ * Check the final, weighted win-market calibration after the engine has
+ * produced its paths.  The engine's prefit diagnostics are intentionally not
+ * used as the publication decision: posterior_probability is the final
+ * simulated probability and target_probability is the market target.
+ */
+function validateFinalWinMarketQuality(
+  engine: EngineSnapshot,
+  state: MtmState,
+  config: Record<string, any>,
+  quality: Record<string, WinMarketQuality>,
+): {
+  error: string | null;
+  diagnostics: Record<string, unknown>;
+  effectiveSampleSize: number | null;
+} {
+  const tolerance = asNumber(config.sim?.calibration_tolerance, 0.03);
+  const calibration = engine.calibration
+    ?? engine.calibration_metrics
+    ?? ((engine.diagnostics?.market_calibration as Record<string, unknown> | undefined)
+      ?.metrics as Array<Record<string, unknown>> | undefined)
+    ?? [];
+  const winMetrics = calibration.filter((metric) =>
+    String(metric.metric ?? metric.metric_key ?? metric.metricKey) === "remaining_win_probability",
+  );
+  const projectionTeams = Object.keys(state.realized);
+  const rows = winMetrics.map((metric) => {
+    const team = String(metric.team ?? "");
+    const metadata = metric.sample_metadata ?? metric.sampleMetadata;
+    const finalFromMetadata = metadata && typeof metadata === "object"
+      ? Number((metadata as Record<string, unknown>).posterior_probability)
+      : Number.NaN;
+    const nGames = (state.remaining_schedule ?? []).filter((game) =>
+      game.home === team || game.away === team).length;
+    const projection = engine.projections?.[team] as Record<string, unknown> | undefined;
+    const finalProbability = Number.isFinite(finalFromMetadata)
+      ? finalFromMetadata
+      : nGames > 0 && projection
+        ? Number(projection.e_remaining_wins) / nGames
+        : Number.NaN;
+    const targetProbability = Number(metric.target_probability);
+    const evidence = quality[team];
+    // Weight by trusted market evidence, never by a wide/empty book.  The
+    // quality gate below still requires every team to have enough evidence.
+    const weight = evidence?.trustedRungs ?? 0;
+    const residual = finalProbability - targetProbability;
+    return {
+      team,
+      target_probability: targetProbability,
+      final_probability: finalProbability,
+      residual,
+      weight,
+      quality_status: evidence?.status ?? "missing",
+      wide_rungs: evidence?.wideRungs ?? 0,
+      missing_rungs: evidence?.missingRungs ?? 0,
+    };
+  });
+  const usableRows = rows.filter((row) =>
+    projectionTeams.includes(row.team) &&
+    Number.isFinite(row.target_probability) &&
+    Number.isFinite(row.final_probability) &&
+    row.weight > 0,
+  );
+  const weightTotal = usableRows.reduce((sum, row) => sum + row.weight, 0);
+  const weightedAbsoluteResidual = weightTotal
+    ? usableRows.reduce((sum, row) => sum + row.weight * Math.abs(row.residual), 0) / weightTotal
+    : Number.POSITIVE_INFINITY;
+  const maxAbsoluteResidual = usableRows.reduce(
+    (maximum, row) => Math.max(maximum, Math.abs(row.residual)),
+    0,
+  );
+  const finalEss = finalEffectiveSampleSize(engine);
+  const weakTeams = projectionTeams.filter((team) => quality[team]?.status !== "good");
+  const missingTeams = projectionTeams.filter((team) =>
+    !usableRows.some((row) => row.team === team),
+  );
+  const diagnostics = {
+    status: weakTeams.length || missingTeams.length || !finalEss ||
+      weightedAbsoluteResidual > tolerance ? "warning" : "good",
+    tolerance,
+    rows,
+    weighted_absolute_residual: Number.isFinite(weightedAbsoluteResidual)
+      ? weightedAbsoluteResidual
+      : null,
+    max_absolute_residual: maxAbsoluteResidual,
+    weight_total: weightTotal,
+    weak_teams: weakTeams,
+    missing_teams: missingTeams,
+    final_effective_sample_size: finalEss,
+  };
+  let error: string | null = null;
+  if (weakTeams.length) {
+    error = `Final win-market quality is weak for ${weakTeams.join(", ")}.`;
+  } else if (missingTeams.length || usableRows.length !== projectionTeams.length) {
+    error = "Final win-market quality is missing one or more team targets.";
+  } else if (!finalEss) {
+    error = "Final simulation effective sample size is missing.";
+  } else if (weightedAbsoluteResidual > tolerance || maxAbsoluteResidual > tolerance) {
+    error = `Final weighted win-market residual ${weightedAbsoluteResidual.toFixed(6)} exceeds ${tolerance.toFixed(6)}.`;
+  }
+  return { error, diagnostics, effectiveSampleSize: finalEss };
+}
+
+function validateFinalPublicationQuality(
+  engine: EngineSnapshot,
+  config: Record<string, any>,
+  rawQuotes: RawMarketQuote[],
+  captureManifest?: InternalCaptureManifest | null,
+): { error: string | null; audit: Record<string, unknown> } {
+  const settings = (config.prototype_review ?? {}) as Record<string, unknown>;
+  const pathCount = Number(engine.path_count);
+  const finalEss = finalEffectiveSampleSize(engine);
+  const minEss = Math.max(
+    asNumber(settings.min_global_ess, 1000),
+    Number.isFinite(pathCount) ? pathCount * asNumber(settings.min_ess_fraction, 0.05) : 1000,
+  );
+  const reasons: string[] = [];
+  const providerManifests = rawQuotes
+    .map((quote) => quote.completenessManifest)
+    .filter((manifest): manifest is Record<string, unknown> => manifest != null);
+  const providerManifestComplete = providerManifests.length === 0
+    ? null
+    : providerManifests.every((manifest) =>
+      manifest.complete === true ||
+      (Number.isFinite(Number(manifest.expected)) &&
+        Number.isFinite(Number(manifest.received)) &&
+        Number(manifest.expected) === Number(manifest.received)) ||
+      (Number.isFinite(Number(manifest.expected_markets)) &&
+        Number.isFinite(Number(manifest.received_markets)) &&
+        Number(manifest.expected_markets) === Number(manifest.received_markets)),
+    );
+  // A newly generated canonical candidate is never allowed to promote
+  // without a capture manifest.  The legacy pointer is read separately and
+  // remains available/stale when this candidate is rejected.
+  const requireManifest = settings.require_complete_capture_manifest !== false;
+  const completeManifest = captureManifest?.complete === true;
+  if (requireManifest && !completeManifest) {
+    reasons.push(captureManifest == null
+      ? "internal capture manifest is unavailable"
+      : "internal capture manifest is incomplete");
+  }
+
+  const evidenceRows = rawQuotes.map((quote) => {
+    const assessment = assessMtmEvidence(evidenceInputForQuote(quote), quote.fetchedAt ?? new Date(0));
+    return {
+      qualityStatus: assessment.qualityStatus,
+      freshness: assessment.factors.freshness,
+      metadata: assessment.factors.metadata,
+      stale: assessment.degradationReasons.includes("evidence is stale"),
+      provider: evidenceInputForQuote(quote).provider?.provider ?? null,
+    };
+  });
+  const freshnessStatus = evidenceRows.length === 0
+    ? "not_available"
+    : evidenceRows.some((row) => row.stale || row.freshness === 0)
+      ? "failed"
+      : evidenceRows.some((row) => row.freshness == null)
+        ? "not_available"
+        : "good";
+  const metadataStatus = evidenceRows.length === 0
+    ? "not_available"
+    : evidenceRows.some((row) => !row.provider || row.metadata <= 0)
+      ? "failed"
+      : "good";
+  if (freshnessStatus === "failed") reasons.push("market evidence is stale");
+  if (metadataStatus === "failed") reasons.push("market evidence metadata is incomplete");
+
+  const essStatus = finalEss == null
+    ? "not_available"
+    : finalEss >= minEss ? "good" : "failed";
+  if (essStatus === "failed") {
+    reasons.push(`global ESS ${finalEss!.toFixed(2)} is below ${minEss.toFixed(2)}`);
+  } else if (essStatus === "not_available") {
+    reasons.push("global ESS diagnostic is unavailable");
+  }
+
+  const simulation = engine.diagnostics?.simulation;
+  const simDiagnostics = simulation && typeof simulation === "object"
+    ? simulation as Record<string, unknown> : {};
+  const monteCarlo = engine.diagnostics?.monte_carlo_sampling;
+  const monteCarloDiagnostics = monteCarlo && typeof monteCarlo === "object"
+    ? monteCarlo as Record<string, unknown> : {};
+  const maxWeightValue = [
+    simDiagnostics.max_weight,
+    simDiagnostics.weight_max,
+    monteCarloDiagnostics.max_weight,
+    engine.diagnostics?.max_weight,
+  ].map(Number).find((value) => Number.isFinite(value));
+  const maxWeightLimit = asNumber(settings.max_weight, 0.01);
+  const maxWeightStatus = maxWeightValue == null
+    ? "not_available"
+    : maxWeightValue <= maxWeightLimit ? "good" : "failed";
+  if (maxWeightStatus === "failed") {
+    reasons.push(`maximum path weight ${maxWeightValue!.toFixed(6)} exceeds ${maxWeightLimit.toFixed(6)}`);
+  }
+
+  const reviewGates = engine.diagnostics?.review_gates;
+  const reviewChecks = reviewGates && typeof reviewGates === "object"
+    ? (reviewGates as Record<string, unknown>).checks : null;
+  const reviewCheck = (name: string): "good" | "failed" | "not_available" => {
+    if (!reviewChecks || typeof reviewChecks !== "object" ||
+        !(name in (reviewChecks as Record<string, unknown>))) return "not_available";
+    return (reviewChecks as Record<string, unknown>)[name] === true ? "good" : "failed";
+  };
+  const explicitDiagnosticStatus = (name: string): "good" | "failed" | "not_available" => {
+    const candidates = [
+      engine.diagnostics?.[name],
+      (engine.diagnostics?.review as Record<string, unknown> | undefined)?.[name],
+      simDiagnostics[name],
+    ];
+    const candidate = candidates.find((value) => value != null);
+    if (candidate == null) return "not_available";
+    if (typeof candidate === "boolean") return candidate ? "good" : "failed";
+    if (typeof candidate === "object") {
+      const record = candidate as Record<string, unknown>;
+      if (record.passed != null) return record.passed === true ? "good" : "failed";
+      if (record.status != null) return ["good", "ok", "passed"].includes(String(record.status).toLowerCase()) ? "good" : "failed";
+      if (Array.isArray(record.failures) || Array.isArray(record.unresolved_targets)) {
+        return (record.failures as unknown[] | undefined)?.length ||
+          (record.unresolved_targets as unknown[] | undefined)?.length ? "failed" : "good";
+      }
+    }
+    return "not_available";
+  };
+  const precisionStatus = reviewCheck("precision") === "not_available"
+    ? explicitDiagnosticStatus("precision") : reviewCheck("precision");
+  const supportStatus = reviewCheck("support") === "not_available"
+    ? (() => {
+        const explicit = explicitDiagnosticStatus("support");
+        if (explicit !== "not_available") return explicit;
+        const support = simDiagnostics.support_sampling;
+        if (!support || typeof support !== "object") return "not_available" as const;
+        const unresolved = (support as Record<string, unknown>).unresolved_targets;
+        return Array.isArray(unresolved) && unresolved.length > 0 ? "failed" as const : "good" as const;
+      })()
+    : reviewCheck("support");
+  const requirePrecisionSupport = settings.require_precision_support === true ||
+    settings.require_review_diagnostics === true || reviewGates != null;
+  if (freshnessStatus === "not_available") reasons.push("freshness diagnostic is unavailable");
+  if (metadataStatus === "not_available") reasons.push("metadata diagnostic is unavailable");
+  if (maxWeightStatus === "not_available") reasons.push("maximum path weight diagnostic is unavailable");
+  if (precisionStatus === "not_available" && requirePrecisionSupport) {
+    reasons.push("precision diagnostic is unavailable");
+  }
+  if (supportStatus === "not_available" && requirePrecisionSupport) {
+    reasons.push("support diagnostic is unavailable");
+  }
+  if (precisionStatus === "failed" && requirePrecisionSupport) reasons.push("precision review diagnostic failed");
+  if (supportStatus === "failed" && requirePrecisionSupport) reasons.push("simulation support diagnostic failed");
+
+  const missingDiagnostics = [
+    !completeManifest ? "capture_manifest" : null,
+    freshnessStatus === "not_available" ? "freshness" : null,
+    metadataStatus === "not_available" ? "metadata" : null,
+    maxWeightStatus === "not_available" ? "max_weight" : null,
+    precisionStatus === "not_available" ? "precision" : null,
+    supportStatus === "not_available" ? "support" : null,
+  ].filter((value): value is string => value != null);
+  const gateResults = {
+    capture_completeness: completeManifest === true ? "passed" : "failed",
+    freshness: freshnessStatus === "good" ? "passed" : freshnessStatus === "failed" ? "failed" : "missing",
+    metadata: metadataStatus === "good" ? "passed" : metadataStatus === "failed" ? "failed" : "missing",
+    final_ess: essStatus === "good" ? "passed" : "failed",
+    max_weight: maxWeightStatus === "good" ? "passed" : "failed",
+    precision: !requirePrecisionSupport && precisionStatus === "not_available"
+      ? "not_applicable"
+      : precisionStatus === "good" ? "passed" : precisionStatus === "failed" ? "failed" : "missing",
+    support: !requirePrecisionSupport && supportStatus === "not_available"
+      ? "not_applicable"
+      : supportStatus === "good" ? "passed" : supportStatus === "failed" ? "failed" : "missing",
+    win_market_quality: "passed",
+  };
+  const audit: Record<string, unknown> = {
+    policy_version: MTM_EVIDENCE_POLICY_VERSION,
+    status: reasons.length ? "failed" : "good",
+    publication_decision: reasons.length ? "blocked" : "approved",
+    gate_results: gateResults,
+    gate_reasons: reasons,
+    final_ess: { status: essStatus, value: finalEss, minimum: minEss, path_count: pathCount },
+    final_effective_sample_size: finalEss,
+    max_weight: { status: maxWeightStatus, value: maxWeightValue ?? null, maximum: maxWeightLimit },
+    precision: precisionStatus,
+    support: supportStatus,
+    calibration: { status: "good" },
+    evidence_completeness: {
+      status: completeManifest === true ? "complete" : "incomplete",
+      request_count: captureManifest?.expected_request_count ?? 0,
+      fulfilled_request_count: captureManifest?.fulfilled_request_count ?? 0,
+      failed_request_count: captureManifest?.failed_request_count ?? 0,
+      nonempty_request_count: captureManifest?.nonempty_request_count ?? 0,
+      requests: captureManifest?.requests ?? [],
+      provider_manifest_count: providerManifests.length,
+      provider_manifest_status: providerManifestComplete == null
+        ? "not_available" : providerManifestComplete ? "complete" : "incomplete",
+    },
+    missing_diagnostics: missingDiagnostics,
+  };
+  return {
+    error: reasons.length ? `Final publication quality failed: ${reasons.join("; ")}.` : null,
+    audit,
+  };
+}
+
 async function resolveMtmPoolId(seasonYear: number, calcuttaId?: number): Promise<number | null> {
   const rows = await db.select({ poolId: calcuttasTable.id }).from(calcuttasTable)
     .innerJoin(seasonsTable, eq(seasonsTable.id, calcuttasTable.seasonId))
@@ -984,26 +1726,164 @@ function quoteStrike(market: Record<string, unknown>): string | null {
   return value == null || value === "" ? null : String(value);
 }
 
+function quoteTimestamp(value: unknown): Date | null {
+  if (value instanceof Date && Number.isFinite(value.getTime())) return value;
+  if (typeof value !== "string" && typeof value !== "number") return null;
+  const date = new Date(value);
+  return Number.isFinite(date.getTime()) ? date : null;
+}
+
+function evidenceStatus(market: Record<string, unknown>): MtmEvidenceInput["status"] {
+  const status = String(market.status ?? "").trim().toLowerCase();
+  const outcome = String(market.result ?? "").trim().toLowerCase();
+  if (["yes", "no", "void"].includes(outcome) ||
+      ["closed", "determined", "finalized", "settled"].includes(status)) return "settled";
+  if (["active", "open", "initialized"].includes(status)) return "active";
+  if (["paused", "suspended"].includes(status)) return "suspended";
+  return "unknown";
+}
+
+function evidenceInputForQuote(quote: RawMarketQuote): MtmEvidenceInput {
+  const market = quote.market;
+  const status = evidenceStatus(market);
+  const result = String(market.result ?? "").trim().toLowerCase();
+  const sourceObservedAt = quoteTimestamp(
+    market.updated_time ?? market.updatedTime ?? market.last_updated ?? market.lastUpdated,
+  );
+  const configuredGroup = market.evidence_group ?? market.evidenceGroup;
+  const evidenceGroup = typeof configuredGroup === "string"
+    ? configuredGroup
+    : configuredGroup && typeof configuredGroup === "object"
+      ? configuredGroup as MtmEvidenceInput["evidenceGroup"]
+      : {
+          id: `kalshi:${quote.series}:${quote.team}`,
+          cap: 0.5,
+          label: `${quote.series}/${quote.team}`,
+        };
+  const depth = market.depth && typeof market.depth === "object"
+    ? market.depth as Record<string, unknown>
+    : (market.yes_bid_size != null || market.yes_ask_size != null
+      ? { bid: Number(market.yes_bid_size), ask: Number(market.yes_ask_size) }
+      : null);
+  const rawTrades = Array.isArray(market.trades) ? market.trades : null;
+  const trades = rawTrades?.every((trade) =>
+    trade && typeof trade === "object" && typeof trade.id === "string" &&
+    Number.isFinite(Number(trade.price))
+  ) ? rawTrades.map((trade) => ({
+    id: String(trade.id),
+    price: Number(trade.price),
+    size: trade.size == null ? null : Number(trade.size),
+    timestamp: trade.timestamp == null ? null : String(trade.timestamp),
+  })) : null;
+  return {
+    id: String(market.observation_id ?? market.observationId ?? market.id ?? market.ticker),
+    yesBid: quoteValue(market, "yes_bid"),
+    yesAsk: quoteValue(market, "yes_ask"),
+    status,
+    settlement: ["yes", "no", "void"].includes(result)
+      ? result as "yes" | "no" | "void"
+      : null,
+    depth: depth as MtmEvidenceInput["depth"],
+    observedAt: sourceObservedAt?.toISOString() ?? quote.fetchedAt?.toISOString() ?? null,
+    fetchedAt: quote.fetchedAt?.toISOString() ?? null,
+    provider: {
+      provider: "kalshi",
+      sourceId: String(market.event_ticker ?? market.eventTicker ?? quote.series),
+      sourceUrl: quote.sourceUrl ?? null,
+    },
+    evidenceGroup,
+    materialEvent: market.material_event && typeof market.material_event === "object"
+      ? market.material_event as MtmEvidenceInput["materialEvent"]
+      : null,
+    metadata: quote.captureMetadata ?? null,
+    trades,
+  };
+}
+
 function buildMarketQuoteRows(
   snapshotId: number,
   rawQuotes: RawMarketQuote[],
 ) {
-  return rawQuotes.map(({ series, team, market, sourceUrl, fetchedAt }) => {
+  return rawQuotes.map((quote) => {
+    const { series, team, market, sourceUrl, fetchedAt } = quote;
     if (!sourceUrl || !fetchedAt) {
       throw new Error(`Missing capture-time provenance for Kalshi market ${String(market.ticker)}.`);
     }
+    const evidence = evidenceInputForQuote(quote);
+    const asOf = fetchedAt ?? new Date();
+    const assessment = assessMtmEvidence(evidence, asOf);
+    const bounds = acceptedYesBounds(evidence);
+    const tradeEstimate = estimateMtmTrades(evidence);
+    const status = evidenceStatus(market);
+    const result = String(market.result ?? "").trim().toLowerCase();
+    const sourceObservedAt = quoteTimestamp(
+      market.updated_time ?? market.updatedTime ?? market.last_updated ?? market.lastUpdated,
+    );
+    const completenessManifest = quote.completenessManifest
+      ?? (market.completeness_manifest && typeof market.completeness_manifest === "object"
+        ? market.completeness_manifest as Record<string, unknown>
+        : market.completenessManifest && typeof market.completenessManifest === "object"
+          ? market.completenessManifest as Record<string, unknown>
+          : null);
     return {
-    snapshotId,
-    sourceUrl,
-    series,
-    marketTicker: String(market.ticker),
-    team,
-    strike: quoteStrike(market),
-    yesBid: quoteValue(market, "yes_bid") == null ? null : String(quoteValue(market, "yes_bid")),
-    yesAsk: quoteValue(market, "yes_ask") == null ? null : String(quoteValue(market, "yes_ask")),
-    volume: market.volume_fp == null && market.volume == null ? null : quoteVolume(market),
-    fetchedAt,
-    rawQuote: market,
+      snapshotId,
+      source: "kalshi",
+      sourceUrl,
+      series,
+      marketTicker: String(market.ticker),
+      team,
+      strike: quoteStrike(market),
+      yesBid: quoteValue(market, "yes_bid") == null ? null : String(quoteValue(market, "yes_bid")),
+      yesAsk: quoteValue(market, "yes_ask") == null ? null : String(quoteValue(market, "yes_ask")),
+      volume: market.volume_fp == null && market.volume == null ? null : quoteVolume(market),
+      fetchedAt,
+      rawQuote: market,
+      observationId: String(
+        market.observation_id ?? market.observationId ?? market.id ?? market.ticker,
+      ),
+      provider: "kalshi",
+      contract: String(market.ticker),
+      settlementPredicate: market.settlement_predicate == null
+        ? null : String(market.settlement_predicate),
+      family: series,
+      eventId: Number.isInteger(Number(market.event_id ?? market.eventId))
+        ? Number(market.event_id ?? market.eventId) : null,
+      sourceObservedAt,
+      capturedAt: fetchedAt,
+      normalizedYesBid: evidence.yesBid == null ? null : String(evidence.yesBid),
+      normalizedYesAsk: evidence.yesAsk == null ? null : String(evidence.yesAsk),
+      depth: evidence.depth == null ? null : evidence.depth as Record<string, unknown>,
+      status,
+      outcome: ["yes", "no", "void"].includes(result) ? result : null,
+      materialEvent: evidence.materialEvent == null ? null : evidence.materialEvent as Record<string, unknown>,
+      stateVersion: market.state_version == null && market.stateVersion == null
+        ? null : String(market.state_version ?? market.stateVersion),
+      qualityReport: {
+        classification: assessment.classification,
+        qualityStatus: assessment.qualityStatus,
+        score: assessment.score,
+        factors: assessment.factors,
+        reasons: assessment.reasons,
+        exclusionReasons: assessment.exclusionReasons,
+        degradationReasons: assessment.degradationReasons,
+        acceptedBounds: assessment.acceptedBounds,
+        groupId: assessment.groupId,
+        policyVersion: assessment.policyVersion,
+      },
+      qualityPolicyVersion: assessment.policyVersion,
+      acceptedLower: String(bounds.lower),
+      acceptedUpper: String(bounds.upper),
+      tradeEstimate: tradeEstimate.estimate == null ? null : String(tradeEstimate.estimate),
+      tradeUncertainty: String(tradeEstimate.uncertainty),
+      fallbackIdentity: null,
+      fallbackAge: null,
+      evidenceGroup: evidence.evidenceGroup == null
+        ? null
+        : typeof evidence.evidenceGroup === "string"
+          ? { id: evidence.evidenceGroup }
+          : evidence.evidenceGroup,
+      completenessManifest,
+      rawMetadata: quote.captureMetadata ?? null,
     };
   });
 }
@@ -1279,7 +2159,7 @@ export async function runMtmPipeline(input: { seasonYear: number; calcuttaId?: n
       stale: true, staleReasons: [message], diagnostics, valuations: [], projections: {},
     };
   }
-  const { poolId, state, rawQuotes, quoteErrors, quoteTeams, inputProvenance } = exported;
+  const { poolId, state, rawQuotes, quoteErrors, quoteTeams, inputProvenance, captureManifest } = exported;
   const snapshot = await db.insert(mtmSnapshotTable).values({
     poolId, asOf: now, asOfHour, trigger: input.trigger, status: "failed", methodVersion,
     stateJson: state,
@@ -1306,6 +2186,12 @@ export async function runMtmPipeline(input: { seasonYear: number; calcuttaId?: n
     const derivedQuotes = deriveQuoteState(config, quoteTeams, rawQuotes);
     state.win_ladders = derivedQuotes.winLadders;
     state.elimination_quotes = derivedQuotes.elimination;
+    state.joint_fit_constraints = buildJointFitConstraints(rawQuotes);
+    state.joint_fit_group_caps = Object.fromEntries(
+      [...new Set(state.joint_fit_constraints.map((row) => String(row.group)))]
+        .sort()
+        .map((group) => [group, 0.5]),
+    );
     const inputHash = createHash("sha256").update(canonicalJson({
       state,
       inputProvenance,
@@ -1358,6 +2244,48 @@ export async function runMtmPipeline(input: { seasonYear: number; calcuttaId?: n
       staleReasons: [engineValidationError], diagnostics, valuations: [], projections: {},
     };
   }
+  const publicationCheck = validateFinalPublicationQuality(engine, config, rawQuotes, captureManifest);
+  const winMarketCheck = validateFinalWinMarketQuality(
+    engine,
+    state,
+    config,
+    assessWinMarketQuality(config, quoteTeams, state.win_ladders),
+  );
+  const finalDiagnostics: Record<string, unknown> = {
+    ...(engine.diagnostics ?? {}),
+    market_quality: winMarketCheck.diagnostics,
+    final_effective_sample_size: winMarketCheck.effectiveSampleSize,
+    publication_audit: publicationCheck.audit,
+  };
+  const publicationAudit = finalDiagnostics.publication_audit as Record<string, unknown>;
+  const gateResults = publicationAudit.gate_results as Record<string, unknown>;
+  const gateReasons = publicationAudit.gate_reasons as string[];
+  gateResults.win_market_quality = winMarketCheck.error ? "failed" : "passed";
+  publicationAudit.calibration = { status: winMarketCheck.error ? "failed" : "good" };
+  if (winMarketCheck.error) {
+    gateReasons.push(winMarketCheck.error);
+    publicationAudit.publication_decision = "blocked";
+    publicationAudit.status = "failed";
+  } else if (!publicationCheck.error) {
+    publicationAudit.status = "good";
+  }
+  if (winMarketCheck.error || publicationCheck.error) {
+    const publicationError = publicationCheck.error ?? winMarketCheck.error!;
+    const diagnostics = {
+      ...finalDiagnostics,
+      engineError: publicationError,
+    };
+    await db.update(mtmSnapshotTable).set({
+      status: "failed",
+      error: publicationError,
+      diagnostics,
+    }).where(eq(mtmSnapshotTable.id, snapshotId));
+    return {
+      id: snapshotId, currentSnapshotId: null, poolId, asOf: now.toISOString(),
+      currentAsOf: null, status: "failed", error: publicationError, stale: true,
+      staleReasons: [publicationError], diagnostics, valuations: [], projections: {},
+    };
+  }
   const engineCalibration = engine.calibration
     ?? engine.calibration_metrics
     ?? ((engine.diagnostics?.market_calibration as Record<string, unknown> | undefined)?.metrics as Array<Record<string, unknown>> | undefined)
@@ -1395,7 +2323,9 @@ export async function runMtmPipeline(input: { seasonYear: number; calcuttaId?: n
     tolerance: metric.tolerance == null ? null : String(metric.tolerance),
     sampleCount: metric.sample_count == null ? null : Math.trunc(asNumber(metric.sample_count)),
     sampleShare: metric.sample_share == null ? null : String(metric.sample_share),
-    effectiveSampleSize: metric.effective_sample_size == null ? null : String(metric.effective_sample_size),
+    effectiveSampleSize: winMarketCheck.effectiveSampleSize == null
+      ? (metric.effective_sample_size == null ? null : String(metric.effective_sample_size))
+      : String(winMarketCheck.effectiveSampleSize),
     qualityStatus: String(metric.quality_status ?? "insufficient"),
     sampleMetadata: { ...(metric.sample_metadata as Record<string, unknown> | undefined), metric: metric.metric ?? null, team: metric.team ?? null },
   }));
@@ -1473,7 +2403,9 @@ export async function runMtmPipeline(input: { seasonYear: number; calcuttaId?: n
       // this status transition and projection publication in this transaction.
       await tx.update(mtmSnapshotTable).set({
         status: "ok", error: null,
-        diagnostics: engine.diagnostics ?? null,
+        // Keep all prefit/runtime diagnostics and append publication-time
+        // quality checks; consumers need both to audit the final mark.
+        diagnostics: finalDiagnostics,
         pathCount: engine.path_count == null ? null : Math.trunc(asNumber(engine.path_count)),
         randomSeed: engine.model?.seed == null ? null : Math.trunc(asNumber(engine.model.seed)),
         calibrationStatus:
@@ -1779,7 +2711,14 @@ export const mtmPipelineTestUtils = {
   hourStart,
   quoteValue,
   quoteVolume,
+  validateActiveQuote,
   deriveQuoteState,
+  assessWinMarketQuality,
+  buildJointFitConstraints,
+  finalEffectiveSampleSize,
+  validateFinalWinMarketQuality,
+  validateFinalPublicationQuality,
+  buildInternalCaptureManifest,
   validateCompleteEngineSnapshot,
   conditionalPersistenceBatches<T>(rows: T[]): T[][] {
     const batches: T[][] = [];

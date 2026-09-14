@@ -1,6 +1,7 @@
 import { sql } from "drizzle-orm";
 import {
   check,
+  foreignKey,
   index,
   integer,
   jsonb,
@@ -15,6 +16,7 @@ import { createInsertSchema } from "drizzle-zod";
 import { z } from "zod/v4";
 import { calcuttasTable } from "./calcuttas";
 import { calcuttaEntriesTable } from "./calcuttaEntries";
+import { eventsTable } from "./events";
 
 /**
  * Additive, engine-facing MTM ledger.  These tables intentionally do not
@@ -62,8 +64,7 @@ export const mtmMarketQuoteTable = pgTable(
   "mtm_market_quote",
   {
     snapshotId: integer("snapshot_id")
-      .notNull()
-      .references(() => mtmSnapshotTable.id, { onDelete: "cascade" }),
+      .notNull(),
     source: text("source").notNull().default("kalshi"),
     sourceUrl: text("source_url"),
     series: text("series").notNull(),
@@ -75,10 +76,101 @@ export const mtmMarketQuoteTable = pgTable(
     volume: integer("volume"),
     fetchedAt: timestamp("fetched_at", { withTimezone: true }).notNull(),
     rawQuote: jsonb("raw_quote").$type<Record<string, unknown> | null>(),
+    /**
+     * The fields below are additive evidence metadata.  The original quote
+     * columns remain the compatibility path used by the first MTM pipeline;
+     * nullable fields deliberately preserve "unknown" as NULL rather than
+     * inventing a value for older observations.
+     */
+    observationId: text("observation_id"),
+    provider: text("provider"),
+    contract: text("contract"),
+    settlementPredicate: text("settlement_predicate"),
+    family: text("family"),
+    eventId: integer("event_id"),
+    sourceObservedAt: timestamp("source_observed_at", { withTimezone: true }),
+    capturedAt: timestamp("captured_at", { withTimezone: true }),
+    normalizedYesBid: numeric("normalized_yes_bid", { precision: 5, scale: 4 }),
+    normalizedYesAsk: numeric("normalized_yes_ask", { precision: 5, scale: 4 }),
+    depth: jsonb("depth").$type<Record<string, unknown> | null>(),
+    status: text("status"),
+    outcome: text("outcome"),
+    materialEvent: jsonb("material_event").$type<Record<string, unknown> | null>(),
+    stateVersion: text("state_version"),
+    qualityReport: jsonb("quality_report").$type<Record<string, unknown> | null>(),
+    qualityPolicyVersion: text("quality_policy_version"),
+    acceptedLower: numeric("accepted_lower", { precision: 5, scale: 4 }),
+    acceptedUpper: numeric("accepted_upper", { precision: 5, scale: 4 }),
+    tradeEstimate: numeric("trade_estimate", { precision: 5, scale: 4 }),
+    tradeUncertainty: numeric("trade_uncertainty", { precision: 5, scale: 4 }),
+    fallbackIdentity: text("fallback_identity"),
+    fallbackAge: numeric("fallback_age", { precision: 14, scale: 3 }),
+    evidenceGroup: jsonb("evidence_group").$type<Record<string, unknown> | null>(),
+    completenessManifest: jsonb("completeness_manifest").$type<Record<string, unknown> | null>(),
+    rawMetadata: jsonb("raw_metadata").$type<Record<string, unknown> | null>(),
   },
   (t) => [
     uniqueIndex("mtm_market_quote_snapshot_ticker_idx").on(t.snapshotId, t.marketTicker),
+    uniqueIndex("mtm_market_quote_snapshot_observation_idx")
+      .on(t.snapshotId, t.observationId)
+      .where(sql`${t.observationId} IS NOT NULL`),
     index("mtm_market_quote_snapshot_idx").on(t.snapshotId),
+    index("mtm_market_quote_event_idx").on(t.eventId),
+    index("mtm_market_quote_provider_contract_idx").on(t.provider, t.contract),
+    foreignKey({
+      columns: [t.snapshotId],
+      foreignColumns: [mtmSnapshotTable.id],
+      name: "mtm_quote_snapshot_fk",
+    }).onDelete("cascade"),
+    foreignKey({
+      columns: [t.eventId],
+      foreignColumns: [eventsTable.id],
+      name: "mtm_quote_event_fk",
+    }).onDelete("set null"),
+    check(
+      "mtm_market_quote_yes_bid_bounds",
+      sql`${t.yesBid} IS NULL OR (${t.yesBid} >= 0 AND ${t.yesBid} <= 1)`,
+    ),
+    check(
+      "mtm_market_quote_yes_ask_bounds",
+      sql`${t.yesAsk} IS NULL OR (${t.yesAsk} >= 0 AND ${t.yesAsk} <= 1)`,
+    ),
+    check(
+      "mtm_market_quote_normalized_bid_bounds",
+      sql`${t.normalizedYesBid} IS NULL OR (${t.normalizedYesBid} >= 0 AND ${t.normalizedYesBid} <= 1)`,
+    ),
+    check(
+      "mtm_market_quote_normalized_ask_bounds",
+      sql`${t.normalizedYesAsk} IS NULL OR (${t.normalizedYesAsk} >= 0 AND ${t.normalizedYesAsk} <= 1)`,
+    ),
+    check(
+      "mtm_market_quote_normalized_bid_ask_order",
+      sql`${t.normalizedYesBid} IS NULL OR ${t.normalizedYesAsk} IS NULL OR ${t.normalizedYesBid} <= ${t.normalizedYesAsk}`,
+    ),
+    check(
+      "mtm_market_quote_accepted_bounds",
+      sql`${t.acceptedLower} IS NULL OR ${t.acceptedUpper} IS NULL OR (${t.acceptedLower} >= 0 AND ${t.acceptedUpper} <= 1 AND ${t.acceptedLower} <= ${t.acceptedUpper})`,
+    ),
+    check(
+      "mtm_market_quote_trade_estimate_bounds",
+      sql`${t.tradeEstimate} IS NULL OR (${t.tradeEstimate} >= 0 AND ${t.tradeEstimate} <= 1)`,
+    ),
+    check(
+      "mtm_market_quote_trade_uncertainty_non_negative",
+      sql`${t.tradeUncertainty} IS NULL OR ${t.tradeUncertainty} >= 0`,
+    ),
+    check(
+      "mtm_market_quote_fallback_age_non_negative",
+      sql`${t.fallbackAge} IS NULL OR ${t.fallbackAge} >= 0`,
+    ),
+    check(
+      "mtm_market_quote_status_supported",
+      sql`${t.status} IS NULL OR ${t.status} IN ('active', 'settled', 'suspended', 'unknown')`,
+    ),
+    check(
+      "mtm_market_quote_outcome_supported",
+      sql`${t.outcome} IS NULL OR ${t.outcome} IN ('yes', 'no', 'void')`,
+    ),
   ],
 );
 
@@ -127,3 +219,6 @@ export const insertMtmPipelineSnapshotSchema = createInsertSchema(mtmSnapshotTab
 });
 export type InsertMtmPipelineSnapshot = z.infer<typeof insertMtmPipelineSnapshotSchema>;
 export type MtmSnapshotPipelineRow = typeof mtmSnapshotTable.$inferSelect;
+export const insertMtmMarketQuoteSchema = createInsertSchema(mtmMarketQuoteTable);
+export type InsertMtmMarketQuote = z.infer<typeof insertMtmMarketQuoteSchema>;
+export type MtmMarketQuote = typeof mtmMarketQuoteTable.$inferSelect;

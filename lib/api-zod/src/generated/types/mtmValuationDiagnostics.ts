@@ -5,8 +5,10 @@
  * NFL Auction Manager API
  * OpenAPI spec version: 0.1.0
  */
+import type { MtmQualityExposure } from './mtmQualityExposure';
 import type { MtmValuationDiagnosticsMarketCalibration } from './mtmValuationDiagnosticsMarketCalibration';
 import type { MtmValuationDiagnosticsMarketDrift } from './mtmValuationDiagnosticsMarketDrift';
+import type { MtmValuationDiagnosticsRaw } from './mtmValuationDiagnosticsRaw';
 
 /**
  * @nullable
@@ -14,4 +16,7 @@ import type { MtmValuationDiagnosticsMarketDrift } from './mtmValuationDiagnosti
 export type MtmValuationDiagnostics = {
   market_calibration?: MtmValuationDiagnosticsMarketCalibration;
   market_drift?: MtmValuationDiagnosticsMarketDrift;
+  quality?: MtmQualityExposure;
+  /** @nullable */
+  raw?: MtmValuationDiagnosticsRaw;
 } | null;

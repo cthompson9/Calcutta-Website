@@ -15,6 +15,9 @@ export type MtmValuationTeamsItem = {
   grossExpectedPayout: number;
   /** @nullable */
   auctionPrice?: number | null;
-  /** @nullable */
+  /**
+     * Gross expected payout minus auction price (cost).
+     * @nullable
+     */
   net?: number | null;
 };

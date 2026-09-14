@@ -1,0 +1,14 @@
+{
+  "manifestVersion": 1,
+  "fixturePolicy": "synthetic-only",
+  "historicalSha256": null,
+  "sourceBytes": null,
+  "sourceNote": "Historical SHA/source bytes unavailable; no production evidence or ownership was copied.",
+  "fixtures": [
+    {
+      "path": "legacy-normalization-incident.json",
+      "sha256": "c042628c4879076406bf6256e25e5f5785a738bb369d02408de76a398982343f",
+      "bytes": 9259
+    }
+  ]
+}

@@ -1,10 +1,11 @@
 import { render, screen, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { describe, expect, it } from "vitest";
-import type { MtmGameEvSwing, MtmTeamEvSwing } from "@workspace/api-client-react";
+import type { MtmGameEvSwing, MtmQualityExposure, MtmTeamEvSwing } from "@workspace/api-client-react";
 import {
   NetPayoutHistoryChart,
   PipelineFailureNotice,
+  MtmQualitySummary,
   UpcomingEvSwings,
 } from "./MtmTracker";
 import { momentumBaselineNetPayout } from "@/lib/mtmMomentum";
@@ -348,5 +349,39 @@ describe("PipelineFailureNotice", () => {
       valuations: [],
     }} />);
     expect(container).toBeEmptyDOMElement();
+  });
+});
+
+describe("MtmQualitySummary", () => {
+  const quality: MtmQualityExposure = {
+    status: "stale-pending",
+    reasons: ["Unincorporated finalized games require recalculation."],
+    actualsCutoff: "2026-09-12T16:00:00.000Z",
+    evidenceCutoff: "2026-09-12T15:00:00.000Z",
+    markTimestamp: "2026-09-11T20:00:00.000Z",
+    priorVersion: 14,
+    priorModelVersion: "mtm-v1",
+    modelVersion: "mtm-v1",
+    policyVersion: "mtm-evidence-v1",
+    excludedEvidence: [{ id: "BUF", reason: "wide market" }],
+    dominantEvidence: { id: "KC", weight: 0.4 },
+    finalEffectiveSampleSize: 1200,
+    finalMaxWeight: 0.2,
+    precision: 4,
+    publicationDecision: "published",
+    prefitDiagnostics: {
+      label: "Prefit diagnostics (informational; not the publication decision)",
+      marketCalibration: {},
+      available: true,
+    },
+  };
+
+  it("labels pending quality and retains audit timestamps and prefit warning", () => {
+    render(<MtmQualitySummary quality={quality} />);
+    expect(screen.getByTestId("mtm-quality-status")).toHaveTextContent("Stale · pending recalculation");
+    expect(screen.getByTestId("mtm-quality-summary")).toHaveTextContent("Actuals cutoff");
+    expect(screen.getByTestId("mtm-quality-summary")).toHaveTextContent("Final ESS: 1200.0");
+    expect(screen.getByTestId("mtm-quality-summary")).toHaveTextContent("Prefit diagnostics");
+    expect(screen.getByTestId("mtm-quality-summary")).toHaveTextContent("Unincorporated finalized games");
   });
 });

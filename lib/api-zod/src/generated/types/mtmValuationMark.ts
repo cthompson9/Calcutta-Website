@@ -5,9 +5,11 @@
  * NFL Auction Manager API
  * OpenAPI spec version: 0.1.0
  */
+import type { MtmQualityExposure } from './mtmQualityExposure';
 import type { MtmValuationMarkModel } from './mtmValuationMarkModel';
 import type { MtmValuationMarkProvisionalOutcome } from './mtmValuationMarkProvisionalOutcome';
 import type { MtmValuationMarkQuality } from './mtmValuationMarkQuality';
+import type { MtmValuationMarkQualityStatus } from './mtmValuationMarkQualityStatus';
 import type { MtmValuationMarkStatus } from './mtmValuationMarkStatus';
 import type { MtmValuationMarkType } from './mtmValuationMarkType';
 
@@ -38,6 +40,10 @@ export type MtmValuationMark = {
   /** @nullable */
   mtmAsOf?: string | null;
   /** @nullable */
+  evidenceCutoff?: Date | null;
+  /** @nullable */
+  markTimestamp?: Date | null;
+  /** @nullable */
   actualsStateHash?: string | null;
   /** @nullable */
   provisionalEventId?: number | null;
@@ -51,5 +57,12 @@ export type MtmValuationMark = {
   selectionReason?: string | null;
   /** @nullable */
   provisionalSuppressionReason?: string | null;
+  /**
+     * Additive public quality state; status remains the durable version status.
+     * @nullable
+     */
+  qualityStatus?: MtmValuationMarkQualityStatus;
+  qualityReasons?: string[];
+  qualityExposure?: MtmQualityExposure;
   model?: MtmValuationMarkModel;
 };

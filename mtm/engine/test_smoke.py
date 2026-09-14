@@ -211,6 +211,8 @@ def test_monte_carlo_runs():
     sums = {s: sum(mc["stage_probs"][t][s] for t in teams)
             for s in ["berth", "divisional", "conference", "sb_berth", "sb_win"]}
     assert abs(sums["berth"] - 14) < 0.01 and abs(sums["sb_win"] - 1) < 0.01, sums
+    assert math.isfinite(mc["max_weight"]) and 0 <= mc["max_weight"] <= 1
+    assert math.isfinite(mc["effective_sample_size"]) and mc["effective_sample_size"] > 0
     print(f"monte carlo ok: stage sums {dict((k, round(v,2)) for k,v in sums.items())}")
 
 

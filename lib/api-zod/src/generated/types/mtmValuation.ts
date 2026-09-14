@@ -6,6 +6,7 @@
  * OpenAPI spec version: 0.1.0
  */
 import type { MtmGameEvSwing } from './mtmGameEvSwing';
+import type { MtmQualityExposure } from './mtmQualityExposure';
 import type { MtmValuationConditionalPayouts } from './mtmValuationConditionalPayouts';
 import type { MtmValuationDiagnostics } from './mtmValuationDiagnostics';
 import type { MtmValuationIncorporatedGamesItem } from './mtmValuationIncorporatedGamesItem';
@@ -19,6 +20,7 @@ import type { MtmValuationTeamsItem } from './mtmValuationTeamsItem';
 
 export interface MtmValuation {
   available: boolean;
+  quality?: MtmQualityExposure;
   mark: MtmValuationMark;
   /** @nullable */
   versionId?: number | null;
@@ -34,6 +36,10 @@ export interface MtmValuation {
   actualsAsOf?: string | null;
   /** @nullable */
   mtmAsOf?: string | null;
+  /** @nullable */
+  evidenceCutoff?: Date | null;
+  /** @nullable */
+  markTimestamp?: Date | null;
   incorporatedGames?: MtmValuationIncorporatedGamesItem[];
   pendingGames?: MtmValuationPendingGamesItem[];
   /** @nullable */

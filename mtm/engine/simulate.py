@@ -262,6 +262,18 @@ def fit_ratings(target_remaining_wins: dict[str, float],
     }
 
 
+def fit_joint_review(scenarios, evidence, **settings) -> dict:
+    """Delegate the opt-in joint review fit without affecting legacy paths.
+
+    Keeping this small adapter in the simulation module gives callers one
+    engine-facing entrypoint while the constrained solver remains isolated
+    from the production Monte Carlo implementation.
+    """
+    import joint_fit
+
+    return joint_fit.fit_joint_weights(scenarios, evidence, **settings)
+
+
 def expected_remaining_diff(ratings: dict[str, float],
                             remaining: list[Game],
                             hfa: float = 1.6) -> dict[str, dict[str, float]]:
@@ -425,7 +437,8 @@ def monte_carlo(ratings: dict[str, float],
                  support_runs_per_team: int = 0,
                  support_prior_weight: float = 0.01,
                  diagnostics: RuntimeDiagnostics | None = None,
-                 aggregation_chunk_size: int = 4096) -> dict:
+                  aggregation_chunk_size: int = 4096,
+                  return_path_library: bool = False) -> dict:
     """Joint season simulator. Simplified seeding: division winners by wins
     (random tiebreak), wildcards by wins. Playoff games decided by Phi on
     neutral-adjusted ratings (home field to better seed until SB, SB neutral).
@@ -982,11 +995,25 @@ def monte_carlo(ratings: dict[str, float],
         total_weight ** 2 / float(np.sum(np.square(weights), dtype=np.float64))
         if len(weights) else 0.0
     )
+    # ``weights`` are intentionally kept on the historical count scale
+    # (their sum is the number of paths), so expose max weight only after the
+    # same final normalization used by all aggregate consumers.
+    normalized_weights = (
+        weights / total_weight if total_weight > 0 else np.asarray([], dtype=np.float64)
+    )
+    max_weight = (
+        float(np.max(normalized_weights)) if len(normalized_weights) else 0.0
+    )
     runtime_details = _runtime_calibration_details()
     out = {"stage_probs": probs,
            "diff_samples": {t: list(values) for t, values in diff_samples.items()},
            "runs": runs,
            "effective_sample_size": effective_sample_size,
+           "max_weight": max_weight,
+           "weight_diagnostics": {
+               "effective_sample_size": effective_sample_size,
+               "max_weight": max_weight,
+           },
            "calibration_converged": calibration_converged,
            "calibration_residuals": calibration_residuals,
            "calibration_diagnostics": {
@@ -1022,4 +1049,30 @@ def monte_carlo(ratings: dict[str, float],
         out["payout_sq_sum"] = payout_sq_sum
         out["win_sum"] = win_sum
         out["conditional_payouts"] = conditional
+    if return_path_library:
+        # Keep this opt-in: the canonical snapshot intentionally does not
+        # retain one dictionary per simulated path.  Review callers use this
+        # compact library to fit a second set of market constraints without
+        # generating outcomes that were absent from the simulator.
+        out["path_library"] = [
+            {
+                "id": f"path-{i:08d}",
+                "prior_weight": float(proposal_weights[i]),
+                "wins": {t: int(path_wins[t][i]) for t in teams},
+                "outcomes": {
+                    str(gi): ("home_win" if path_outcomes[gi][i] == 0 else "away_win")
+                    for gi in range(len(path_outcomes))
+                },
+                "advancement": {
+                    t: {s: int(i in hit_indices[(t, s)]) for s in stages}
+                    for t in teams
+                },
+                "payout": (
+                    {t: float(path_gross[t][i]) for t in teams}
+                    if path_gross is not None else {}
+                ),
+                "legal": True,
+            }
+            for i in range(runs)
+        ]
     return out

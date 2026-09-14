@@ -1565,6 +1565,34 @@ export const GetMtmValuationQueryParams = zod.object({
 
 export const GetMtmValuationResponse = zod.object({
   "available": zod.boolean(),
+  "quality": zod.object({
+  "status": zod.enum(['official', 'estimated-degraded', 'stale-pending', 'unavailable']),
+  "reasons": zod.array(zod.string()),
+  "actualsCutoff": zod.coerce.date().nullish(),
+  "evidenceCutoff": zod.coerce.date().nullish(),
+  "markTimestamp": zod.coerce.date().nullish(),
+  "priorVersion": zod.number().nullish(),
+  "priorModelVersion": zod.string().nullish(),
+  "modelVersion": zod.string().nullish(),
+  "policyVersion": zod.string().nullish(),
+  "excludedEvidence": zod.array(zod.object({
+  "id": zod.string(),
+  "reason": zod.string()
+})),
+  "dominantEvidence": zod.object({
+  "id": zod.string(),
+  "weight": zod.number().nullable()
+}).nullish(),
+  "finalEffectiveSampleSize": zod.number().nullish(),
+  "finalMaxWeight": zod.number().nullish(),
+  "precision": zod.number().nullish(),
+  "publicationDecision": zod.string(),
+  "prefitDiagnostics": zod.object({
+  "label": zod.string(),
+  "marketCalibration": zod.record(zod.string(), zod.unknown()).nullish(),
+  "available": zod.boolean()
+})
+}).optional().describe('Additive audit summary for mark quality. It does not change numeric pricing.'),
   "mark": zod.object({
   "snapshotId": zod.number().nullish(),
   "type": zod.enum(['authoritative', 'latest', 'canonical', 'official', 'provisional', 'pending_recalculation']),
@@ -1578,6 +1606,8 @@ export const GetMtmValuationResponse = zod.object({
   "asOf": zod.string().nullish(),
   "actualsAsOf": zod.string().nullish(),
   "mtmAsOf": zod.string().nullish(),
+  "evidenceCutoff": zod.coerce.date().nullish(),
+  "markTimestamp": zod.coerce.date().nullish(),
   "actualsStateHash": zod.string().nullish(),
   "provisionalEventId": zod.number().nullish(),
   "provisionalOutcome": zod.union([zod.literal('home_win'),zod.literal('away_win'),zod.literal('tie'),zod.literal(null)]).nullish(),
@@ -1585,6 +1615,36 @@ export const GetMtmValuationResponse = zod.object({
   "pathCount": zod.number().nullish(),
   "selectionReason": zod.string().nullish(),
   "provisionalSuppressionReason": zod.string().nullish(),
+  "qualityStatus": zod.union([zod.literal('official'),zod.literal('estimated-degraded'),zod.literal('stale-pending'),zod.literal('unavailable'),zod.literal(null)]).nullish().describe('Additive public quality state; status remains the durable version status.'),
+  "qualityReasons": zod.array(zod.string()).optional(),
+  "qualityExposure": zod.object({
+  "status": zod.enum(['official', 'estimated-degraded', 'stale-pending', 'unavailable']),
+  "reasons": zod.array(zod.string()),
+  "actualsCutoff": zod.coerce.date().nullish(),
+  "evidenceCutoff": zod.coerce.date().nullish(),
+  "markTimestamp": zod.coerce.date().nullish(),
+  "priorVersion": zod.number().nullish(),
+  "priorModelVersion": zod.string().nullish(),
+  "modelVersion": zod.string().nullish(),
+  "policyVersion": zod.string().nullish(),
+  "excludedEvidence": zod.array(zod.object({
+  "id": zod.string(),
+  "reason": zod.string()
+})),
+  "dominantEvidence": zod.object({
+  "id": zod.string(),
+  "weight": zod.number().nullable()
+}).nullish(),
+  "finalEffectiveSampleSize": zod.number().nullish(),
+  "finalMaxWeight": zod.number().nullish(),
+  "precision": zod.number().nullish(),
+  "publicationDecision": zod.string(),
+  "prefitDiagnostics": zod.object({
+  "label": zod.string(),
+  "marketCalibration": zod.record(zod.string(), zod.unknown()).nullish(),
+  "available": zod.boolean()
+})
+}).optional().describe('Additive audit summary for mark quality. It does not change numeric pricing.'),
   "model": zod.object({
   "name": zod.string(),
   "seed": zod.number().nullish()
@@ -1597,6 +1657,8 @@ export const GetMtmValuationResponse = zod.object({
   "provisionalOutcome": zod.union([zod.literal('home_win'),zod.literal('away_win'),zod.literal('tie'),zod.literal(null)]).nullish(),
   "actualsAsOf": zod.string().nullish(),
   "mtmAsOf": zod.string().nullish(),
+  "evidenceCutoff": zod.coerce.date().nullish(),
+  "markTimestamp": zod.coerce.date().nullish(),
   "incorporatedGames": zod.array(zod.record(zod.string(), zod.unknown())).optional(),
   "pendingGames": zod.array(zod.record(zod.string(), zod.unknown())).optional(),
   "staleReason": zod.string().nullish(),
@@ -1606,14 +1668,14 @@ export const GetMtmValuationResponse = zod.object({
   "teamName": zod.string().nullish(),
   "grossExpectedPayout": zod.number(),
   "auctionPrice": zod.number().nullish(),
-  "net": zod.number().nullish()
+  "net": zod.number().nullish().describe('Gross expected payout minus auction price (cost).')
 })),
   "owners": zod.array(zod.object({
   "bidderId": zod.number().optional(),
   "bidderName": zod.string().optional(),
   "grossExpectedPayout": zod.number().optional(),
-  "signedCostBasis": zod.number().optional(),
-  "net": zod.number().optional()
+  "signedCostBasis": zod.number().optional().describe('Signed owner cost basis, retaining short\/negative shares.'),
+  "net": zod.number().optional().describe('Signed gross expected payout minus signed cost basis.')
 })),
   "conditionalPayouts": zod.record(zod.string(), zod.unknown()),
   "gameEvSwings": zod.array(zod.object({
@@ -1665,7 +1727,36 @@ export const GetMtmValuationResponse = zod.object({
   "maxDrift": zod.number().nullish(),
   "weightedDrift": zod.number().nullish(),
   "recommendsRerun": zod.boolean().optional()
-}).optional()
+}).optional(),
+  "quality": zod.object({
+  "status": zod.enum(['official', 'estimated-degraded', 'stale-pending', 'unavailable']),
+  "reasons": zod.array(zod.string()),
+  "actualsCutoff": zod.coerce.date().nullish(),
+  "evidenceCutoff": zod.coerce.date().nullish(),
+  "markTimestamp": zod.coerce.date().nullish(),
+  "priorVersion": zod.number().nullish(),
+  "priorModelVersion": zod.string().nullish(),
+  "modelVersion": zod.string().nullish(),
+  "policyVersion": zod.string().nullish(),
+  "excludedEvidence": zod.array(zod.object({
+  "id": zod.string(),
+  "reason": zod.string()
+})),
+  "dominantEvidence": zod.object({
+  "id": zod.string(),
+  "weight": zod.number().nullable()
+}).nullish(),
+  "finalEffectiveSampleSize": zod.number().nullish(),
+  "finalMaxWeight": zod.number().nullish(),
+  "precision": zod.number().nullish(),
+  "publicationDecision": zod.string(),
+  "prefitDiagnostics": zod.object({
+  "label": zod.string(),
+  "marketCalibration": zod.record(zod.string(), zod.unknown()).nullish(),
+  "available": zod.boolean()
+})
+}).optional().describe('Additive audit summary for mark quality. It does not change numeric pricing.'),
+  "raw": zod.record(zod.string(), zod.unknown()).nullish()
 }).nullable(),
   "invariants": zod.object({
   "teamGrossPoolConservation": zod.record(zod.string(), zod.unknown()).optional(),

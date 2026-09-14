@@ -1,0 +1,97 @@
+{
+  "fixtureVersion": 1,
+  "synthetic": true,
+  "scenario": "legacy-normalization-incident",
+  "source": {
+    "kind": "synthetic",
+    "historicalSha256": null,
+    "sourceBytes": null,
+    "note": "Historical SHA and source bytes are unavailable and are intentionally not inferred."
+  },
+  "config": {
+    "season": 2026,
+    "pricing": {
+      "max_spread_for_mid": 0.15
+    },
+    "kalshi": {
+      "series": {
+        "win_totals": "SYNTHETIC-WINS",
+        "stage_of_elimination": "SYNTHETIC-STAGE"
+      }
+    }
+  },
+  "teams": [
+    {
+      "code": "PHI",
+      "name": "Synthetic Philadelphia"
+    },
+    {
+      "code": "HOU",
+      "name": "Synthetic Houston"
+    }
+  ],
+  "rawQuotes": [
+    { "series": "SYNTHETIC-WINS", "team": "PHI", "market": { "ticker": "SYNTHETIC-WINS-PHI-1", "floor_strike": 1, "yes_bid": 1, "yes_ask": 97, "volume": 11, "status": "active" } },
+    { "series": "SYNTHETIC-WINS", "team": "PHI", "market": { "ticker": "SYNTHETIC-WINS-PHI-2", "floor_strike": 2, "yes_bid": 40, "yes_ask": 42, "volume": 12, "status": "active" } },
+    { "series": "SYNTHETIC-WINS", "team": "PHI", "market": { "ticker": "SYNTHETIC-WINS-PHI-3", "floor_strike": 3, "yes_bid": 38, "yes_ask": 40, "volume": 13, "status": "active" } },
+    { "series": "SYNTHETIC-WINS", "team": "PHI", "market": { "ticker": "SYNTHETIC-WINS-PHI-4", "floor_strike": 4, "yes_bid": 36, "yes_ask": 38, "volume": 14, "status": "active" } },
+    { "series": "SYNTHETIC-WINS", "team": "PHI", "market": { "ticker": "SYNTHETIC-WINS-PHI-5", "floor_strike": 5, "yes_bid": 34, "yes_ask": 36, "volume": 15, "status": "active" } },
+    { "series": "SYNTHETIC-WINS", "team": "PHI", "market": { "ticker": "SYNTHETIC-WINS-PHI-6", "floor_strike": 6, "yes_bid": 32, "yes_ask": 34, "volume": 16, "status": "active" } },
+    { "series": "SYNTHETIC-WINS", "team": "PHI", "market": { "ticker": "SYNTHETIC-WINS-PHI-7", "floor_strike": 7, "yes_bid": 30, "yes_ask": 32, "volume": 17, "status": "active" } },
+    { "series": "SYNTHETIC-WINS", "team": "PHI", "market": { "ticker": "SYNTHETIC-WINS-PHI-8", "floor_strike": 8, "yes_bid": 28, "yes_ask": 30, "volume": 18, "status": "active" } },
+    { "series": "SYNTHETIC-WINS", "team": "PHI", "market": { "ticker": "SYNTHETIC-WINS-PHI-9", "floor_strike": 9, "yes_bid": 26, "yes_ask": 28, "volume": 19, "status": "active" } },
+    { "series": "SYNTHETIC-WINS", "team": "PHI", "market": { "ticker": "SYNTHETIC-WINS-PHI-10", "floor_strike": 10, "yes_bid": 24, "yes_ask": 26, "volume": 20, "status": "active" } },
+    { "series": "SYNTHETIC-WINS", "team": "PHI", "market": { "ticker": "SYNTHETIC-WINS-PHI-11", "floor_strike": 11, "yes_bid": 22, "yes_ask": 24, "volume": 21, "status": "active" } },
+    { "series": "SYNTHETIC-WINS", "team": "PHI", "market": { "ticker": "SYNTHETIC-WINS-PHI-12", "floor_strike": 12, "yes_bid": 20, "yes_ask": 22, "volume": 22, "status": "active" } },
+    { "series": "SYNTHETIC-WINS", "team": "PHI", "market": { "ticker": "SYNTHETIC-WINS-PHI-13", "floor_strike": 13, "yes_bid": 18, "yes_ask": 20, "volume": 23, "status": "active" } },
+    { "series": "SYNTHETIC-WINS", "team": "PHI", "market": { "ticker": "SYNTHETIC-WINS-PHI-14", "floor_strike": 14, "yes_bid": 16, "yes_ask": 18, "volume": 24, "status": "active" } },
+    { "series": "SYNTHETIC-WINS", "team": "PHI", "market": { "ticker": "SYNTHETIC-WINS-PHI-15", "floor_strike": 15, "yes_bid": 14, "yes_ask": 16, "volume": 25, "status": "active" } },
+    { "series": "SYNTHETIC-WINS", "team": "PHI", "market": { "ticker": "SYNTHETIC-WINS-PHI-16", "floor_strike": 16, "yes_bid": 12, "yes_ask": 14, "volume": 26, "status": "active" } },
+    { "series": "SYNTHETIC-WINS", "team": "PHI", "market": { "ticker": "SYNTHETIC-WINS-PHI-17", "floor_strike": 17, "yes_bid": 10, "yes_ask": 12, "volume": 27, "status": "active" } },
+    { "series": "SYNTHETIC-WINS", "team": "HOU", "market": { "ticker": "SYNTHETIC-WINS-HOU-1", "floor_strike": 1, "yes_bid": 50, "yes_ask": 52, "volume": 11, "status": "active" } },
+    { "series": "SYNTHETIC-WINS", "team": "HOU", "market": { "ticker": "SYNTHETIC-WINS-HOU-2", "floor_strike": 2, "yes_bid": 48, "yes_ask": 50, "volume": 12, "status": "active" } },
+    { "series": "SYNTHETIC-WINS", "team": "HOU", "market": { "ticker": "SYNTHETIC-WINS-HOU-3", "floor_strike": 3, "yes_bid": 46, "yes_ask": 48, "volume": 13, "status": "active" } },
+    { "series": "SYNTHETIC-WINS", "team": "HOU", "market": { "ticker": "SYNTHETIC-WINS-HOU-4", "floor_strike": 4, "yes_bid": 44, "yes_ask": 46, "volume": 14, "status": "active" } },
+    { "series": "SYNTHETIC-WINS", "team": "HOU", "market": { "ticker": "SYNTHETIC-WINS-HOU-5", "floor_strike": 5, "yes_bid": 42, "yes_ask": 44, "volume": 15, "status": "active" } },
+    { "series": "SYNTHETIC-WINS", "team": "HOU", "market": { "ticker": "SYNTHETIC-WINS-HOU-6", "floor_strike": 6, "yes_bid": 40, "yes_ask": 42, "volume": 16, "status": "active" } },
+    { "series": "SYNTHETIC-WINS", "team": "HOU", "market": { "ticker": "SYNTHETIC-WINS-HOU-7", "floor_strike": 7, "yes_bid": 38, "yes_ask": 40, "volume": 17, "status": "active" } },
+    { "series": "SYNTHETIC-WINS", "team": "HOU", "market": { "ticker": "SYNTHETIC-WINS-HOU-8", "floor_strike": 8, "yes_bid": 36, "yes_ask": 38, "volume": 18, "status": "active" } },
+    { "series": "SYNTHETIC-WINS", "team": "HOU", "market": { "ticker": "SYNTHETIC-WINS-HOU-9", "floor_strike": 9, "yes_bid": 34, "yes_ask": 36, "volume": 19, "status": "active" } },
+    { "series": "SYNTHETIC-WINS", "team": "HOU", "market": { "ticker": "SYNTHETIC-WINS-HOU-10", "floor_strike": 10, "yes_bid": 32, "yes_ask": 34, "volume": 20, "status": "active" } },
+    { "series": "SYNTHETIC-WINS", "team": "HOU", "market": { "ticker": "SYNTHETIC-WINS-HOU-11", "floor_strike": 11, "yes_bid": 30, "yes_ask": 32, "volume": 21, "status": "active" } },
+    { "series": "SYNTHETIC-WINS", "team": "HOU", "market": { "ticker": "SYNTHETIC-WINS-HOU-12", "floor_strike": 12, "yes_bid": 28, "yes_ask": 30, "volume": 22, "status": "active" } },
+    { "series": "SYNTHETIC-WINS", "team": "HOU", "market": { "ticker": "SYNTHETIC-WINS-HOU-13", "floor_strike": 13, "yes_bid": 26, "yes_ask": 28, "volume": 23, "status": "active" } },
+    { "series": "SYNTHETIC-WINS", "team": "HOU", "market": { "ticker": "SYNTHETIC-WINS-HOU-14", "floor_strike": 14, "yes_bid": 24, "yes_ask": 26, "volume": 24, "status": "active" } },
+    { "series": "SYNTHETIC-WINS", "team": "HOU", "market": { "ticker": "SYNTHETIC-WINS-HOU-15", "floor_strike": 15, "yes_bid": 22, "yes_ask": 24, "volume": 25, "status": "active" } },
+    { "series": "SYNTHETIC-WINS", "team": "HOU", "market": { "ticker": "SYNTHETIC-WINS-HOU-16", "floor_strike": 16, "yes_bid": 20, "yes_ask": 22, "volume": 26, "status": "active" } },
+    { "series": "SYNTHETIC-WINS", "team": "HOU", "market": { "ticker": "SYNTHETIC-WINS-HOU-17", "floor_strike": 17, "yes_bid": 18, "yes_ask": 20, "volume": 27, "status": "active" } },
+    { "series": "SYNTHETIC-STAGE", "team": "PHI", "market": { "ticker": "SYNTHETIC-STAGE-PHI-REG", "yes_bid": 8, "status": "active" } },
+    { "series": "SYNTHETIC-STAGE", "team": "PHI", "market": { "ticker": "SYNTHETIC-STAGE-PHI-WC", "yes_bid": 7, "status": "active" } },
+    { "series": "SYNTHETIC-STAGE", "team": "PHI", "market": { "ticker": "SYNTHETIC-STAGE-PHI-DIV", "yes_bid": 6, "status": "active" } },
+    { "series": "SYNTHETIC-STAGE", "team": "PHI", "market": { "ticker": "SYNTHETIC-STAGE-PHI-CONF", "yes_bid": 5, "status": "active" } },
+    { "series": "SYNTHETIC-STAGE", "team": "PHI", "market": { "ticker": "SYNTHETIC-STAGE-PHI-FL", "yes_bid": 4, "status": "active" } },
+    { "series": "SYNTHETIC-STAGE", "team": "PHI", "market": { "ticker": "SYNTHETIC-STAGE-PHI-FW", "yes_bid": 3, "status": "active" } },
+    { "series": "SYNTHETIC-STAGE", "team": "HOU", "market": { "ticker": "SYNTHETIC-STAGE-HOU-REG", "yes_bid": 8, "status": "active" } },
+    { "series": "SYNTHETIC-STAGE", "team": "HOU", "market": { "ticker": "SYNTHETIC-STAGE-HOU-WC", "yes_bid": 7, "status": "active" } },
+    { "series": "SYNTHETIC-STAGE", "team": "HOU", "market": { "ticker": "SYNTHETIC-STAGE-HOU-DIV", "yes_bid": 6, "status": "active" } },
+    { "series": "SYNTHETIC-STAGE", "team": "HOU", "market": { "ticker": "SYNTHETIC-STAGE-HOU-CONF", "yes_bid": 5, "status": "active" } },
+    { "series": "SYNTHETIC-STAGE", "team": "HOU", "market": { "ticker": "SYNTHETIC-STAGE-HOU-FL", "yes_bid": 4, "status": "active" } },
+    { "series": "SYNTHETIC-STAGE", "team": "HOU", "market": { "ticker": "SYNTHETIC-STAGE-HOU-FW", "yes_bid": 3, "status": "active" } }
+  ],
+  "refreshes": [
+    { "id": "synthetic-refresh-1", "asOf": "2026-09-20T14:00:00.000Z", "attempt": 1 },
+    { "id": "synthetic-refresh-1", "asOf": "2026-09-20T14:00:00.000Z", "attempt": 2 }
+  ],
+  "trades": [
+    { "id": "synthetic-trade-1", "price": 0.41, "size": 2, "timestamp": "2026-09-20T13:59:00.000Z" },
+    { "id": "synthetic-trade-1", "price": 0.43, "size": 2, "timestamp": "2026-09-20T13:59:30.000Z" },
+    { "id": "synthetic-trade-2", "price": 0.44, "size": 1, "timestamp": "2026-09-20T13:59:15.000Z" }
+  ],
+  "houSpilloverSensitivity": {
+    "diagnosticOnly": true,
+    "targetAssertion": null,
+    "baseline": 0.5,
+    "oneRungSpilloverVariant": 0.49,
+    "expectedDelta": -0.01
+  }
+}

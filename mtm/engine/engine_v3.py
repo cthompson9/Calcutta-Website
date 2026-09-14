@@ -268,7 +268,8 @@ def simulate_v3(*, ratings: dict[str, float], games: list[Game],
                 min_conditional_share: float,
                 win_targets: dict[str, float],
                 max_win_residual: float,
-                max_playoff_residual: float) -> dict:
+                 max_playoff_residual: float,
+                 return_path_library: bool = False) -> dict:
     teams = sorted(ratings)
     errors = validate_state(teams, divisions, games, completed_results)
     if errors or runs <= 0 or pilot_runs < 0 or margin_sd <= 0 or strength_sd <= 0 or pot <= 0:
@@ -549,9 +550,55 @@ def simulate_v3(*, ratings: dict[str, float], games: list[Game],
             and max(abs(row["residual"]) for row in residuals) <= max_playoff_residual
         ),
     }
+    if return_path_library:
+        # Review-only consumers fit weights over these already legal worlds.
+        # Keep this behind an explicit flag so the noncanonical engine's
+        # historical aggregate-only result remains compact.
+        diagnostics["path_library_count"] = len(paths)
     if unsupported:
         return {"status": "failed", "error": "positive playoff outcome remains unsupported after adaptive sampling",
-                "diagnostics": diagnostics}
+                "diagnostics": diagnostics,
+                **({"path_library": _review_path_library(paths, teams)}
+                   if return_path_library else {})}
     return {"status": "ok", "runs": runs, "expected_payout": payout,
             "stage_probs": stage_probs, "conditionals": conditionals,
-            "diagnostics": diagnostics}
+            "diagnostics": diagnostics,
+            **({"path_library": _review_path_library(paths, teams)}
+               if return_path_library else {})}
+
+
+def _review_path_library(paths: list[dict[str, Any]],
+                         teams: list[str]) -> list[dict[str, Any]]:
+    """Convert internal legal worlds to the shared joint-fit path schema."""
+    return [
+        {
+            "id": f"v3-path-{index:08d}",
+            "prior_weight": 1.0,
+            "wins": {team: float(path["wins"][team]) for team in teams},
+            "advancement": {
+                team: {
+                    stage: int(level >= stage_level)
+                    for stage, stage_level in (
+                        ("berth", 1), ("divisional", 2), ("conference", 3),
+                        ("sb_berth", 4), ("sb_win", 5),
+                    )
+                }
+                for team, level in (
+                    (team, max(
+                        (4 if path["stage"][team].get("sb_berth") else
+                         3 if path["stage"][team].get("conference") else
+                         2 if path["stage"][team].get("divisional") else
+                         1 if path["stage"][team].get("berth") else 0),
+                        5 if path["stage"][team].get("sb_win") else 0,
+                    ))
+                    for team in teams
+                )
+            },
+            "outcomes": {
+                str(game): outcome for game, outcome in enumerate(path["outcomes"])
+            },
+            "payout": {team: float(path["gross"][team]) for team in teams},
+            "legal": True,
+        }
+        for index, path in enumerate(paths)
+    ]

@@ -3838,6 +3838,8 @@ components:
       type: object
       properties:
         available: { type: boolean }
+        quality:
+          $ref: "#/components/schemas/MtmQualityExposure"
         mark:
           type: object
           properties:
@@ -3855,6 +3857,8 @@ components:
             asOf: { type: ["string", "null"] }
             actualsAsOf: { type: ["string", "null"] }
             mtmAsOf: { type: ["string", "null"] }
+            evidenceCutoff: { type: ["string", "null"], format: date-time }
+            markTimestamp: { type: ["string", "null"], format: date-time }
             actualsStateHash: { type: ["string", "null"] }
             provisionalEventId: { type: ["number", "null"] }
             provisionalOutcome: { type: ["string", "null"], enum: [home_win, away_win, tie, null] }
@@ -3862,6 +3866,15 @@ components:
             pathCount: { type: ["number", "null"] }
             selectionReason: { type: ["string", "null"] }
             provisionalSuppressionReason: { type: ["string", "null"] }
+            qualityStatus:
+              type: ["string", "null"]
+              enum: [official, estimated-degraded, stale-pending, unavailable, null]
+              description: Additive public quality state; status remains the durable version status.
+            qualityReasons:
+              type: array
+              items: { type: string }
+            qualityExposure:
+              $ref: "#/components/schemas/MtmQualityExposure"
             model:
               type: object
               properties:
@@ -3876,6 +3889,8 @@ components:
         provisionalOutcome: { type: ["string", "null"], enum: [home_win, away_win, tie, null] }
         actualsAsOf: { type: ["string", "null"] }
         mtmAsOf: { type: ["string", "null"] }
+        evidenceCutoff: { type: ["string", "null"], format: date-time }
+        markTimestamp: { type: ["string", "null"], format: date-time }
         incorporatedGames:
           type: array
           items: { type: object, additionalProperties: true }
@@ -3892,8 +3907,11 @@ components:
               teamId: { type: ["number", "null"] }
               teamName: { type: ["string", "null"] }
               grossExpectedPayout: { type: number }
+              # Gross expected pool payout before subtracting auction cost.
               auctionPrice: { type: ["number", "null"] }
-              net: { type: ["number", "null"] }
+              net:
+                type: ["number", "null"]
+                description: Gross expected payout minus auction price (cost).
             required: [entryId, grossExpectedPayout]
         owners:
           type: array
@@ -3903,8 +3921,12 @@ components:
               bidderId: { type: number }
               bidderName: { type: string }
               grossExpectedPayout: { type: number }
-              signedCostBasis: { type: number }
-              net: { type: number }
+              signedCostBasis:
+                type: number
+                description: Signed owner cost basis, retaining short/negative shares.
+              net:
+                type: number
+                description: Signed gross expected payout minus signed cost basis.
         conditionalPayouts:
           type: object
           additionalProperties: true
@@ -3927,6 +3949,11 @@ components:
                 maxDrift: { type: ["number", "null"] }
                 weightedDrift: { type: ["number", "null"] }
                 recommendsRerun: { type: boolean }
+            quality:
+              $ref: "#/components/schemas/MtmQualityExposure"
+            raw:
+              type: ["object", "null"]
+              additionalProperties: true
         invariants:
           type: object
           properties:
@@ -3940,6 +3967,52 @@ components:
               type: object
               additionalProperties: true
       required: [available, mark, teams, owners, conditionalPayouts, gameEvSwings, diagnostics, invariants]
+
+    MtmQualityExposure:
+      type: object
+      description: Additive audit summary for mark quality. It does not change numeric pricing.
+      properties:
+        status:
+          type: string
+          enum: [official, estimated-degraded, stale-pending, unavailable]
+        reasons:
+          type: array
+          items: { type: string }
+        actualsCutoff: { type: ["string", "null"], format: date-time }
+        evidenceCutoff: { type: ["string", "null"], format: date-time }
+        markTimestamp: { type: ["string", "null"], format: date-time }
+        priorVersion: { type: ["number", "null"] }
+        priorModelVersion: { type: ["string", "null"] }
+        modelVersion: { type: ["string", "null"] }
+        policyVersion: { type: ["string", "null"] }
+        excludedEvidence:
+          type: array
+          items:
+            type: object
+            properties:
+              id: { type: string }
+              reason: { type: string }
+            required: [id, reason]
+        dominantEvidence:
+          type: ["object", "null"]
+          properties:
+            id: { type: string }
+            weight: { type: ["number", "null"] }
+          required: [id, weight]
+        finalEffectiveSampleSize: { type: ["number", "null"] }
+        finalMaxWeight: { type: ["number", "null"] }
+        precision: { type: ["number", "null"] }
+        publicationDecision: { type: string }
+        prefitDiagnostics:
+          type: object
+          properties:
+            label: { type: string }
+            marketCalibration:
+              type: ["object", "null"]
+              additionalProperties: true
+            available: { type: boolean }
+          required: [label, available]
+      required: [status, reasons, excludedEvidence, publicationDecision, prefitDiagnostics]
 
     MtmGameEvSwing:
       type: object

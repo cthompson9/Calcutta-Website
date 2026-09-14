@@ -36,6 +36,198 @@ import playoffs
 import simulate
 import valuation
 import wins
+import joint_fit
+
+
+def _joint_fit_settings(config: dict) -> dict:
+    """Return review settings without changing the canonical sim settings."""
+    settings = config.get("joint_fit_review", config.get("review_joint_fit", {}))
+    if settings is True:
+        settings = {}
+    if not isinstance(settings, dict):
+        raise ValueError("joint_fit_review must be an object")
+    return settings
+
+
+def build_joint_review_snapshot(config: dict, state: dict) -> dict:
+    """Build the opt-in deterministic joint-fit candidate.
+
+    Scenario generation remains owned by the caller/simulation fixture.  This
+    function only fits legal scenarios already present in state, so a review
+    can never invent an outcome that the season engine could not produce.
+    """
+    settings = _joint_fit_settings(config)
+    scenarios = state.get("joint_fit_scenarios", state.get("review_scenarios"))
+    if scenarios is None:
+        simulation_output = state.get("simulation_output", state.get("simulation", {}))
+        path_library = (
+            state.get("path_library")
+            if isinstance(state.get("path_library"), list)
+            else simulation_output.get("path_library")
+            if isinstance(simulation_output, dict)
+            else None
+        )
+        if path_library is None and isinstance(simulation_output, dict):
+            path_library = simulation_output.get("scenarios", simulation_output.get("paths"))
+        if path_library is not None:
+            scenarios = joint_fit.scenarios_from_path_library(
+                path_library, teams=state.get("realized", {}),
+                realized=state.get("realized", {}),
+            )
+    evidence = state.get("joint_fit_constraints", settings.get("constraints"))
+    if evidence is None:
+        evidence = joint_fit.constraints_from_markets(
+            state, interval_tolerance=float(settings.get("interval_tolerance", 0.03))
+        )
+    diagnostics = {
+        "review_only": True,
+        "deterministic_ordering": "scenario_id,evidence_group,evidence_name,evidence_metric",
+        "effective_settings": {
+            "max_iterations": int(settings.get("max_iterations", 2000)),
+            "tolerance": float(settings.get("tolerance", 1e-9)),
+            "learning_rate": float(settings.get("learning_rate", 0.2)),
+            "max_seconds": settings.get("max_seconds"),
+        },
+    }
+    try:
+        if not isinstance(scenarios, list) or not scenarios:
+            raise joint_fit.JointFitError(
+                "joint fit requires state.joint_fit_scenarios (legal scenarios only)"
+            )
+        resolved_facts = joint_fit._normalise_facts(state.get(
+            "resolved_facts", settings.get("resolved_facts", {})
+        ))
+        # Path libraries produced by simulate carry realized records on every
+        # path.  Turn those into exact constraints; no review fit may move an
+        # actual game or realized win count.
+        realized = state.get("realized", {})
+        actual_keys = [
+            f"actual:wins:{team}" for team in sorted(realized)
+        ]
+        if actual_keys and all(
+            isinstance(row.get("metrics"), dict)
+            and all(key in row["metrics"] for key in actual_keys)
+            for row in scenarios
+        ):
+            resolved_facts.update({
+                f"actual:wins:{team}": float(values.get("wins", values))
+                for team, values in sorted(realized.items())
+            })
+        result = simulate.fit_joint_review(
+            scenarios,
+            evidence,
+            resolved_facts=resolved_facts,
+            precision_caps=settings.get("precision_caps"),
+            **diagnostics["effective_settings"],
+        )
+        diagnostics["joint_fit"] = result["diagnostics"]
+        summary = joint_fit.summarize_path_library(
+            scenarios, result["weights"], pool=state.get("pot")
+        )
+        diagnostics["review_summary"] = summary
+        fit_diag = result["diagnostics"]
+        n_scenarios = fit_diag["scenario_count"]
+        min_ess = float(settings.get("min_global_ess", max(1000.0, 0.05 * n_scenarios)))
+        max_weight = float(settings.get("max_weight", 0.01))
+        gate_rows = {
+            "global_ess": fit_diag["effective_sample_size"] >= min_ess,
+            "max_weight": fit_diag["max_weight"] <= max_weight + 1e-12,
+            "support": not fit_diag["support_failures"],
+            "intervals": not fit_diag.get("interval_conflicts"),
+        }
+        coverage = summary["coverage"]
+        if any(row.get("payout") for row in scenarios):
+            pool = state.get("pot")
+            gate_rows["pool_conservation"] = (
+                pool is None or abs(float(coverage["pool_error"])) <=
+                float(settings.get("pool_tolerance", 0.01))
+            )
+            gate_rows["payout_coverage"] = (
+                coverage["payout_team_count"] >= len(state.get("realized", {}))
+            )
+        if summary["conditionals"]:
+            gate_rows["conditional_reconciliation"] = (
+                all(
+                    abs(probability - 1.0) <=
+                    float(settings.get("conditional_tolerance", 1e-9))
+                    for probability in summary["conditional_reconciliation"].values()
+                )
+            )
+        diagnostics["review_gates"] = {
+            "checks": gate_rows,
+            "thresholds": {"min_global_ess": min_ess, "max_weight": max_weight},
+            "passed": all(gate_rows.values()),
+        }
+        if result["status"] != "converged" or not all(gate_rows.values()):
+            return {
+                "status": "failed",
+                "review_only": True,
+                "error": (
+                    "joint fit did not converge or review gates failed"
+                    if result["status"] != "converged"
+                    else "joint fit review gates failed"
+                ),
+                "diagnostics": diagnostics,
+                "model": {"name": "nfl-joint-fit-review", "seed": settings.get("seed")},
+            }
+        projections = {}
+        for team in sorted(state.get("realized", {})):
+            prefix = f"wins:{team}:"
+            win_metrics = [
+                value for metric, value in result["expected_metrics"].items()
+                if metric.startswith(prefix)
+            ]
+            projections[team] = {
+                "e_wins_total": (
+                    float(state["realized"][team].get("wins", 0))
+                    + (float(sum(win_metrics)) if win_metrics else 0.0)
+                ),
+                "p_stage": {
+                    metric.rsplit(":", 1)[-1]: value
+                    for metric, value in result["expected_metrics"].items()
+                    if metric.startswith(f"stage:{team}:")
+                },
+            }
+        valuations = []
+        for entry in state.get("entries", []):
+            team_payout = summary["payout"].get(entry.get("team"))
+            if team_payout is None:
+                continue
+            price = float(entry.get("price", 0.0))
+            valuations.append({
+                "entry_id": entry.get("entry_id"), "team": entry.get("team"),
+                "expected_payout": round(team_payout, 2),
+                "expected_share": (
+                    team_payout / float(state["pot"]) if state.get("pot") else None
+                ),
+                "auction_price": price,
+                "mtm_multiple": round(team_payout / price, 3) if price else None,
+            })
+        return {
+            "status": "ok",
+            "review_only": True,
+            "as_of": datetime.now(timezone.utc).isoformat(),
+            "model": {"name": "nfl-joint-fit-review", "settings": diagnostics["effective_settings"]},
+            "projections": projections,
+            "joint_fit": {
+                "weights": result["weights"],
+                "expected_metrics": result["expected_metrics"],
+                "payout": summary["payout"],
+                "conditionals": summary["conditionals"],
+            },
+            "valuations": valuations,
+            "diagnostics": diagnostics,
+        }
+    except Exception as error:
+        diagnostics["error_type"] = type(error).__name__
+        diagnostics["error"] = str(error)
+        return {
+            "status": "failed",
+            "review_only": True,
+            "error": str(error),
+            "diagnostics": diagnostics,
+            "model": {"name": "nfl-joint-fit-review", "settings": diagnostics["effective_settings"]},
+        }
 
 
 def _build_snapshot(config: dict, state: dict,
@@ -204,6 +396,10 @@ def _build_snapshot(config: dict, state: dict,
             "simulation": sim_valued["diagnostics"],
             "support_sampling": mc.get("support_sampling", {}),
             "calibration": mc.get("calibration_diagnostics", {}),
+            "monte_carlo_sampling": {
+                "effective_sample_size": mc.get("effective_sample_size"),
+                "max_weight": mc.get("max_weight"),
+            },
             "market_calibration": {"metrics": calibration,
                 "status": "good" if all(v["quality_status"] == "good"
                                         for v in calibration) else "warning",
@@ -214,8 +410,17 @@ def _build_snapshot(config: dict, state: dict,
 
 
 def build_snapshot(config: dict, state: dict,
-                   runtime: simulate.RuntimeDiagnostics | None = None) -> dict:
+                   runtime: simulate.RuntimeDiagnostics | None = None,
+                   *, review_joint_fit: bool = False) -> dict:
     """Build an official snapshot; production callers always enforce the gate."""
+    review_settings = config.get(
+        "joint_fit_review", config.get("review_joint_fit", {})
+    )
+    enabled = review_settings is True or (
+        isinstance(review_settings, dict) and review_settings.get("enabled", False)
+    )
+    if review_joint_fit or enabled:
+        return build_joint_review_snapshot(config, state)
     return _build_snapshot(config, state, runtime=runtime, enforce_gate=True)
 
 
@@ -224,6 +429,9 @@ def main() -> int:
     ap.add_argument("--config", required=True)
     ap.add_argument("--state", required=True)
     ap.add_argument("--out", required=True)
+    ap.add_argument("--review-joint-fit", "--joint-fit-review", "--review",
+                    dest="review_joint_fit", action="store_true",
+                    help="run the deterministic review-only joint fit")
     args = ap.parse_args()
 
     with open(args.config) as f:
@@ -234,7 +442,8 @@ def main() -> int:
     runtime = simulate.RuntimeDiagnostics()
     simulate.install_sigterm_diagnostics(runtime)
     try:
-        snapshot = build_snapshot(config, state, runtime=runtime)
+        snapshot = build_snapshot(config, state, runtime=runtime,
+                                 review_joint_fit=args.review_joint_fit)
     except Exception as e:  # failed snapshot: repo keeps serving the prior one
         snapshot = {"status": "failed", "error": str(e),
                     "as_of": datetime.now(timezone.utc).isoformat(),

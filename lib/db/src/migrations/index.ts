@@ -42,3 +42,4 @@ export { mtmPendingReplacementMigration } from "./0044MtmPendingReplacement";
 export { mtmPendingEvidenceIntegrityMigration } from "./0047MtmPendingEvidenceIntegrity";
 export { mtmRetainedEvidenceIdentityMigration } from "./0048MtmRetainedEvidenceIdentity";
 export { mtmDurableJobLeaseMigration } from "./0049MtmDurableJobLease";
+export { mtmEvidenceStorageMigration } from "./0050MtmEvidenceStorage";

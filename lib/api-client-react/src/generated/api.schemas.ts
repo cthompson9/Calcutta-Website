@@ -1880,11 +1880,94 @@ export const MtmValuationMarkProvisionalOutcome = {
   tie: 'tie',
 } as const;
 
+/**
+ * Additive public quality state; status remains the durable version status.
+ * @nullable
+ */
+export type MtmValuationMarkQualityStatus = typeof MtmValuationMarkQualityStatus[keyof typeof MtmValuationMarkQualityStatus] | null;
+
+
+export const MtmValuationMarkQualityStatus = {
+  official: 'official',
+  'estimated-degraded': 'estimated-degraded',
+  'stale-pending': 'stale-pending',
+  unavailable: 'unavailable',
+} as const;
+
 export type MtmValuationMarkModel = {
   name: string;
   /** @nullable */
   seed?: number | null;
 };
+
+export type MtmQualityExposureStatus = typeof MtmQualityExposureStatus[keyof typeof MtmQualityExposureStatus];
+
+
+export const MtmQualityExposureStatus = {
+  official: 'official',
+  'estimated-degraded': 'estimated-degraded',
+  'stale-pending': 'stale-pending',
+  unavailable: 'unavailable',
+} as const;
+
+export type MtmQualityExposureExcludedEvidenceItem = {
+  id: string;
+  reason: string;
+};
+
+/**
+ * @nullable
+ */
+export type MtmQualityExposureDominantEvidence = {
+  id: string;
+  /** @nullable */
+  weight: number | null;
+} | null;
+
+/**
+ * @nullable
+ */
+export type MtmQualityExposurePrefitDiagnosticsMarketCalibration = { [key: string]: unknown } | null;
+
+export type MtmQualityExposurePrefitDiagnostics = {
+  label: string;
+  /** @nullable */
+  marketCalibration?: MtmQualityExposurePrefitDiagnosticsMarketCalibration;
+  available: boolean;
+};
+
+/**
+ * Additive audit summary for mark quality. It does not change numeric pricing.
+ */
+export interface MtmQualityExposure {
+  status: MtmQualityExposureStatus;
+  reasons: string[];
+  /** @nullable */
+  actualsCutoff?: string | null;
+  /** @nullable */
+  evidenceCutoff?: string | null;
+  /** @nullable */
+  markTimestamp?: string | null;
+  /** @nullable */
+  priorVersion?: number | null;
+  /** @nullable */
+  priorModelVersion?: string | null;
+  /** @nullable */
+  modelVersion?: string | null;
+  /** @nullable */
+  policyVersion?: string | null;
+  excludedEvidence: MtmQualityExposureExcludedEvidenceItem[];
+  /** @nullable */
+  dominantEvidence?: MtmQualityExposureDominantEvidence;
+  /** @nullable */
+  finalEffectiveSampleSize?: number | null;
+  /** @nullable */
+  finalMaxWeight?: number | null;
+  /** @nullable */
+  precision?: number | null;
+  publicationDecision: string;
+  prefitDiagnostics: MtmQualityExposurePrefitDiagnostics;
+}
 
 export type MtmValuationMark = {
   /** @nullable */
@@ -1913,6 +1996,10 @@ export type MtmValuationMark = {
   /** @nullable */
   mtmAsOf?: string | null;
   /** @nullable */
+  evidenceCutoff?: string | null;
+  /** @nullable */
+  markTimestamp?: string | null;
+  /** @nullable */
   actualsStateHash?: string | null;
   /** @nullable */
   provisionalEventId?: number | null;
@@ -1926,6 +2013,13 @@ export type MtmValuationMark = {
   selectionReason?: string | null;
   /** @nullable */
   provisionalSuppressionReason?: string | null;
+  /**
+     * Additive public quality state; status remains the durable version status.
+     * @nullable
+     */
+  qualityStatus?: MtmValuationMarkQualityStatus;
+  qualityReasons?: string[];
+  qualityExposure?: MtmQualityExposure;
   model?: MtmValuationMarkModel;
 };
 
@@ -1954,7 +2048,10 @@ export type MtmValuationTeamsItem = {
   grossExpectedPayout: number;
   /** @nullable */
   auctionPrice?: number | null;
-  /** @nullable */
+  /**
+     * Gross expected payout minus auction price (cost).
+     * @nullable
+     */
   net?: number | null;
 };
 
@@ -1962,7 +2059,9 @@ export type MtmValuationOwnersItem = {
   bidderId?: number;
   bidderName?: string;
   grossExpectedPayout?: number;
+  /** Signed owner cost basis, retaining short/negative shares. */
   signedCostBasis?: number;
+  /** Signed gross expected payout minus signed cost basis. */
   net?: number;
 };
 
@@ -1985,9 +2084,17 @@ export type MtmValuationDiagnosticsMarketDrift = {
 /**
  * @nullable
  */
+export type MtmValuationDiagnosticsRaw = { [key: string]: unknown } | null;
+
+/**
+ * @nullable
+ */
 export type MtmValuationDiagnostics = {
   market_calibration?: MtmValuationDiagnosticsMarketCalibration;
   market_drift?: MtmValuationDiagnosticsMarketDrift;
+  quality?: MtmQualityExposure;
+  /** @nullable */
+  raw?: MtmValuationDiagnosticsRaw;
 } | null;
 
 export type MtmValuationInvariantsTeamGrossPoolConservation = { [key: string]: unknown };
@@ -2093,6 +2200,7 @@ export interface MtmGameEvSwing {
 
 export interface MtmValuation {
   available: boolean;
+  quality?: MtmQualityExposure;
   mark: MtmValuationMark;
   /** @nullable */
   versionId?: number | null;
@@ -2108,6 +2216,10 @@ export interface MtmValuation {
   actualsAsOf?: string | null;
   /** @nullable */
   mtmAsOf?: string | null;
+  /** @nullable */
+  evidenceCutoff?: string | null;
+  /** @nullable */
+  markTimestamp?: string | null;
   incorporatedGames?: MtmValuationIncorporatedGamesItem[];
   pendingGames?: MtmValuationPendingGamesItem[];
   /** @nullable */
