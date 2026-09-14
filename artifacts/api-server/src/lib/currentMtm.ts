@@ -1,3 +1,4 @@
+import { createHash } from "node:crypto";
 import { and, desc, eq, inArray, sql } from "drizzle-orm";
 import {
   calcuttaEntriesTable,
@@ -39,6 +40,91 @@ type LinkageGame = FinalizedActual & {
   isProvisional?: boolean;
 };
 const CURRENT_MTM_LOCK_NAMESPACE = 9_881;
+
+type MtmPromotionRank = {
+  actualsAsOfMs: number;
+  mtmAsOfMs: number;
+  markPriority: number;
+  fingerprint: string;
+};
+
+function stableJson(value: unknown): string {
+  if (value instanceof Date) return JSON.stringify(value.toISOString());
+  if (Array.isArray(value)) return `[${value.map(stableJson).join(",")}]`;
+  if (value && typeof value === "object") {
+    return `{${Object.entries(value as Record<string, unknown>)
+      .sort(([left], [right]) => left < right ? -1 : left > right ? 1 : 0)
+      .map(([key, item]) => `${JSON.stringify(key)}:${stableJson(item)}`)
+      .join(",")}}`;
+  }
+  return JSON.stringify(value) ?? "null";
+}
+
+export function buildMtmPromotionRank(args: {
+  version: {
+    actualsAsOf: Date | string;
+    mtmAsOf: Date | string;
+    actualsStateHash: string;
+    markType: string;
+    provisionalEventId?: number | null;
+    provisionalOutcome?: string | null;
+  };
+  sourceSnapshot: Record<string, any>;
+  valuations: Array<Record<string, any>>;
+}): MtmPromotionRank {
+  const actualsAsOfMs = new Date(args.version.actualsAsOf).getTime();
+  const mtmAsOfMs = new Date(args.version.mtmAsOf).getTime();
+  if (!Number.isFinite(actualsAsOfMs) || !Number.isFinite(mtmAsOfMs)) {
+    throw new Error("MTM promotion candidates require valid evidence timestamps.");
+  }
+  const valuations = [...args.valuations]
+    .sort((left, right) => Number(left.entryId) - Number(right.entryId))
+    .map((row) => ({
+      entryId: Number(row.entryId),
+      expectedPoints: row.expectedPoints == null ? null : Number(row.expectedPoints),
+      expectedShare: row.expectedShare == null ? null : Number(row.expectedShare),
+      expectedPayout: row.expectedPayout == null ? null : Number(row.expectedPayout),
+      auctionPrice: row.auctionPrice == null ? null : Number(row.auctionPrice),
+      mtmMultiple: row.mtmMultiple == null ? null : Number(row.mtmMultiple),
+    }));
+  const fingerprint = createHash("sha256").update(stableJson({
+    actualsStateHash: args.version.actualsStateHash,
+    markType: args.version.markType,
+    provisionalEventId: args.version.provisionalEventId ?? null,
+    provisionalOutcome: args.version.provisionalOutcome ?? null,
+    source: {
+      asOf: args.sourceSnapshot.asOf,
+      asOfHour: args.sourceSnapshot.asOfHour,
+      inputHash: args.sourceSnapshot.inputHash ?? null,
+      stateJson: args.sourceSnapshot.stateJson ?? null,
+      inputProvenance: args.sourceSnapshot.inputProvenance ?? null,
+    },
+    valuations,
+  })).digest("hex");
+  const markPriority = args.version.markType === "official"
+    ? 3
+    : args.version.markType === "provisional"
+      ? 2
+      : 1;
+  return { actualsAsOfMs, mtmAsOfMs, markPriority, fingerprint };
+}
+
+export function compareMtmPromotionRanks(
+  left: MtmPromotionRank,
+  right: MtmPromotionRank,
+): number {
+  if (left.actualsAsOfMs !== right.actualsAsOfMs) {
+    return left.actualsAsOfMs > right.actualsAsOfMs ? 1 : -1;
+  }
+  if (left.mtmAsOfMs !== right.mtmAsOfMs) {
+    return left.mtmAsOfMs > right.mtmAsOfMs ? 1 : -1;
+  }
+  if (left.markPriority !== right.markPriority) {
+    return left.markPriority > right.markPriority ? 1 : -1;
+  }
+  if (left.fingerprint === right.fingerprint) return 0;
+  return left.fingerprint < right.fingerprint ? 1 : -1;
+}
 
 export const MTM_CANONICAL_DATA_MAX_AGE_MS = 6 * 60 * 60 * 1_000;
 export type CurrentMtmValidationArgs = {
@@ -554,7 +640,9 @@ export async function validateAndPromoteCurrentMtm(
   args: PromoteCurrentMtmArgs,
 ): Promise<{ versionId: number; sourceSnapshotId: number; status: "current" }> {
   return db.transaction((tx) => promoteCurrentMtmInTransaction(tx, args, true), {
-    isolationLevel: "serializable",
+    // The advisory lock is the serialization boundary. READ COMMITTED ensures
+    // a waiter sees the winner that committed while it was waiting for the lock.
+    isolationLevel: "read committed",
   });
 }
 
@@ -716,22 +804,12 @@ async function promoteCurrentMtmInTransaction(
       actualsStateHash: mtmValuationVersionTable.actualsStateHash,
       provisionalEventId: mtmValuationVersionTable.provisionalEventId,
       provisionalOutcome: mtmValuationVersionTable.provisionalOutcome,
+      actualsAsOf: mtmValuationVersionTable.actualsAsOf,
+      mtmAsOf: mtmValuationVersionTable.mtmAsOf,
     }).from(mtmValuationVersionTable).where(and(
       eq(mtmValuationVersionTable.poolId, args.poolId),
       eq(mtmValuationVersionTable.status, "current"),
     )).limit(1);
-    if (existingCurrent &&
-        existingCurrent.sourceSnapshotId === candidateValues.sourceSnapshotId &&
-        existingCurrent.markType === candidateValues.markType &&
-        existingCurrent.actualsStateHash === candidateValues.actualsStateHash &&
-        existingCurrent.provisionalEventId === candidateValues.provisionalEventId &&
-        existingCurrent.provisionalOutcome === candidateValues.provisionalOutcome) {
-      return {
-        versionId: existingCurrent.id,
-        sourceSnapshotId: existingCurrent.sourceSnapshotId,
-        status: "current" as const,
-      };
-    }
     const [candidate] = await tx.insert(mtmValuationVersionTable).values(candidateValues)
       .returning({ id: mtmValuationVersionTable.id });
     if (!candidate) throw new Error("Failed to create MTM candidate.");
@@ -753,6 +831,44 @@ async function promoteCurrentMtmInTransaction(
       poolValue,
     });
     if (!validation.valid) throw new Error(`Current MTM validation failed: ${validation.errors.join("; ")}`);
+    if (existingCurrent) {
+      const [currentSourceSnapshot, currentValuations] = await Promise.all([
+        tx.select().from(mtmSnapshotTable)
+          .where(eq(mtmSnapshotTable.id, existingCurrent.sourceSnapshotId)).limit(1)
+          .then((rows) => rows[0] ?? null),
+        tx.select().from(mtmEntryValuationTable)
+          .where(eq(mtmEntryValuationTable.snapshotId, existingCurrent.sourceSnapshotId)),
+      ]);
+      const currentEntryIds = new Set(currentValuations.map((row) => row.entryId));
+      const currentIsRankable = currentSourceSnapshot &&
+        currentValuations.length === 32 &&
+        currentEntryIds.size === 32 &&
+        currentValuations.every((row) =>
+          Number.isFinite(Number(row.expectedPayout)) &&
+          Number(row.expectedPayout) >= 0);
+      if (currentIsRankable) {
+        const incomingRank = buildMtmPromotionRank({
+          version: candidateValues,
+          sourceSnapshot,
+          valuations,
+        });
+        const currentRank = buildMtmPromotionRank({
+          version: existingCurrent,
+          sourceSnapshot: currentSourceSnapshot!,
+          valuations: currentValuations,
+        });
+        if (compareMtmPromotionRanks(incomingRank, currentRank) <= 0) {
+          await tx.update(mtmValuationVersionTable)
+            .set({ status: "superseded" })
+            .where(eq(mtmValuationVersionTable.id, candidate.id));
+          return {
+            versionId: existingCurrent.id,
+            sourceSnapshotId: existingCurrent.sourceSnapshotId,
+            status: "current" as const,
+          };
+        }
+      }
+    }
     await tx.update(mtmValuationVersionTable)
       .set({ status: "superseded" })
       .where(and(eq(mtmValuationVersionTable.poolId, args.poolId), eq(mtmValuationVersionTable.status, "current")));
@@ -991,9 +1107,6 @@ async function reconcileNflPoolCurrentMtm(
     let basis = version
       ? await inspectMtmBasis(tx, poolId, version)
       : null;
-    if (version && !basis) {
-      return { poolId, status: "warning", warning: "Current MTM source/value basis is invalid; no replacement was published." };
-    }
     if (!basis) {
       const snapshots = await tx.select().from(mtmSnapshotTable).where(and(
         eq(mtmSnapshotTable.poolId, poolId),
@@ -1094,7 +1207,11 @@ async function reconcileNflPoolCurrentMtm(
       markType,
       versionId: promotion.versionId,
     };
-  }, { isolationLevel: "serializable" });
+  }, {
+    // Keep the advisory lock as the serialization boundary while allowing a
+    // waiter to observe the recalculation that committed before it acquired it.
+    isolationLevel: "read committed",
+  });
 }
 
 export type CurrentMtmResolution = {

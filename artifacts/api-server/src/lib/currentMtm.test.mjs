@@ -2,7 +2,9 @@ import assert from "node:assert/strict";
 import test from "node:test";
 import {
   buildCurrentMtmResolution,
+  buildMtmPromotionRank,
   classifyCanonicalNflFinals,
+  compareMtmPromotionRanks,
   conditionalRowMeetsPublicationPolicy,
   normalizeSourceActuals,
   planNflMtmReconciliation,
@@ -107,6 +109,76 @@ test("NFL MTM reconciliation plans official when there are no new finals", () =>
     sourceRunComplete: true,
     conditionalEvidenceValid: false,
   }), { markType: "official", staleReason: null });
+});
+
+test("simultaneous promotion ranks are independent of arrival order", () => {
+  const candidate = (actualsAsOf, mtmAsOf, payout) => buildMtmPromotionRank({
+    version: {
+      actualsAsOf,
+      mtmAsOf,
+      actualsStateHash: "same-actuals",
+      markType: "official",
+    },
+    sourceSnapshot: {
+      asOf: mtmAsOf,
+      asOfHour: mtmAsOf,
+      inputHash: `input-${payout}`,
+    },
+    valuations: [{ entryId: 1, expectedPayout: payout }],
+  });
+  const older = candidate("2026-09-14T12:00:00Z", "2026-09-14T13:00:00Z", 10);
+  const newer = candidate("2026-09-14T12:00:00Z", "2026-09-14T14:00:00Z", 11);
+  assert.equal(compareMtmPromotionRanks(newer, older), 1);
+  assert.equal(compareMtmPromotionRanks(older, newer), -1);
+});
+
+test("equal-time promotion ties use canonical content rather than insertion identity", () => {
+  const rank = (rows) => buildMtmPromotionRank({
+    version: {
+      actualsAsOf: "2026-09-14T12:00:00Z",
+      mtmAsOf: "2026-09-14T13:00:00Z",
+      actualsStateHash: "same-actuals",
+      markType: "official",
+    },
+    sourceSnapshot: {
+      asOf: "2026-09-14T13:00:00Z",
+      stateJson: { pot: 30 },
+      inputProvenance: { provider: "test" },
+    },
+    valuations: rows,
+  });
+  const left = rank([
+    { entryId: 2, expectedPayout: "20.00" },
+    { entryId: 1, expectedPayout: "10.00" },
+  ]);
+  const sameContentDifferentOrder = rank([
+    { entryId: 1, expectedPayout: 10 },
+    { entryId: 2, expectedPayout: 20 },
+  ]);
+  const differentContent = rank([
+    { entryId: 1, expectedPayout: 11 },
+    { entryId: 2, expectedPayout: 19 },
+  ]);
+  assert.equal(compareMtmPromotionRanks(left, sameContentDifferentOrder), 0);
+  assert.equal(
+    compareMtmPromotionRanks(left, differentContent),
+    -compareMtmPromotionRanks(differentContent, left),
+  );
+});
+
+test("equal-time promotion ranks prefer official over provisional and pending marks", () => {
+  const rank = (markType) => buildMtmPromotionRank({
+    version: {
+      actualsAsOf: "2026-09-14T12:00:00Z",
+      mtmAsOf: "2026-09-14T13:00:00Z",
+      actualsStateHash: "same-actuals",
+      markType,
+    },
+    sourceSnapshot: { asOf: "2026-09-14T13:00:00Z", inputHash: "same-input" },
+    valuations: [{ entryId: 1, expectedPayout: 10 }],
+  });
+  assert.equal(compareMtmPromotionRanks(rank("official"), rank("provisional")), 1);
+  assert.equal(compareMtmPromotionRanks(rank("provisional"), rank("pending_recalculation")), 1);
 });
 
 test("NFL MTM reconciliation cannot label an incomplete source run official", () => {

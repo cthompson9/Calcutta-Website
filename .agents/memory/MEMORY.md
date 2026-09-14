@@ -45,6 +45,7 @@
 - [Coherent MTM versions](coherent-mtm-versions.md) — actuals and displayed MTM advance through one validated version; multi-game changes retain the prior mark pending recalculation.
 - [MTM contract test isolation](mtm-contract-test-isolation.md) — tests that promote append-only valuation versions must use a dedicated database, never shared development data.
 - [MTM advisory lock lifetime](mtm-advisory-lock-lifetime.md) — production MTM must not hold one PostgreSQL session across external fetches and long Python runs.
+- [Deterministic MTM promotion](deterministic-mtm-promotion.md) — lock-protected contenders use fresh reads and a content-based total order, never arrival order.
 - [MTM calibration bands](mtm-calibration-bands.md) — fit playoff marginals into the existing acceptance bands; exact point fitting can cycle on incompatible market targets.
 - [Canonical MTM schedule](canonical-mtm-schedule.md) — after the complete event refresh, MTM exports remaining games only from canonical events; unconfirmed kickoffs are never marquee.
 - [MTM production runtime](mtm-production-cpu-budget.md) — official recalculations need a Reserved VM; local benchmarks do not predict throttled Autoscale runtime.
