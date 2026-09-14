@@ -31,6 +31,7 @@ import {
   sportPeriodsTable,
 } from "@workspace/db";
 import { loadSeasonOwnership } from "./seasonOwnership";
+import { allocateMtmPoolCents } from "./mtmMoney";
 import {
   isNflMarqueeKickoff,
   NFL_SCORING_ADAPTER,
@@ -1405,6 +1406,24 @@ function validateCompleteEngineSnapshot(engine: EngineSnapshot, state: MtmState)
   return null;
 }
 
+function normalizeEngineValuationPayouts(engine: EngineSnapshot, state: MtmState): string | null {
+  try {
+    const allocated = allocateMtmPoolCents(
+      (engine.valuations ?? []).map((valuation) => ({
+        entryId: Number(valuation.entry_id),
+        value: Number(valuation.expected_payout),
+      })),
+      state.pot,
+    );
+    for (const valuation of engine.valuations ?? []) {
+      valuation.expected_payout = allocated.get(Number(valuation.entry_id));
+    }
+    return null;
+  } catch (error) {
+    return error instanceof Error ? error.message : String(error);
+  }
+}
+
 function finalEffectiveSampleSize(engine: EngineSnapshot): number | null {
   const diagnostics = engine.diagnostics ?? {};
   const simulation = diagnostics.simulation;
@@ -2240,7 +2259,9 @@ export async function runMtmPipeline(input: { seasonYear: number; calcuttaId?: n
     };
   }
   const engine = await runEngine(state);
-  const engineValidationError = validateCompleteEngineSnapshot(engine, state);
+  const engineValidationError =
+    normalizeEngineValuationPayouts(engine, state) ??
+    validateCompleteEngineSnapshot(engine, state);
   if (engineValidationError) {
     const diagnostics = {
       ...(engine.diagnostics ?? {}),
@@ -2400,7 +2421,8 @@ export async function runMtmPipeline(input: { seasonYear: number; calcuttaId?: n
       if (projections.length) await tx.insert(mtmTeamProjectionTable).values(projections);
       const valuations = (engine.valuations ?? []).map((valuation) => ({
         snapshotId, entryId: Number(valuation.entry_id), expectedPoints: String(asNumber(valuation.expected_points)),
-        expectedShare: String(asNumber(valuation.expected_share)), expectedPayout: String(asNumber(valuation.expected_payout)),
+        expectedShare: String(asNumber(valuation.expected_share)),
+        expectedPayout: String(asNumber(valuation.expected_payout)),
         auctionPrice: valuation.auction_price == null ? null : String(asNumber(valuation.auction_price)),
         mtmMultiple: valuation.mtm_multiple == null ? null : String(asNumber(valuation.mtm_multiple)),
       }));
@@ -2732,6 +2754,7 @@ export const mtmPipelineTestUtils = {
   validateFinalWinMarketQuality,
   validateFinalPublicationQuality,
   buildInternalCaptureManifest,
+  normalizeEngineValuationPayouts,
   validateCompleteEngineSnapshot,
   conditionalPersistenceBatches<T>(rows: T[]): T[][] {
     const batches: T[][] = [];

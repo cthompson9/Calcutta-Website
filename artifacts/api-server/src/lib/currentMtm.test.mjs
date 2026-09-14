@@ -10,6 +10,7 @@ import {
 import {
   computeActualsStateHash,
 } from "./mtmValuationHelpers.ts";
+import { allocateMtmPoolCents } from "./mtmMoney.ts";
 
 const game = (eventId, homeScore = 10, awayScore = 7) => ({
   eventId, week: eventId, homeTeamId: eventId * 2, awayTeamId: eventId * 2 + 1,
@@ -280,6 +281,7 @@ test("resolver reconciles signed owner totals to team MTM", () => {
       { entryId: 1, teamId: 101, teamName: "A", expectedPayout: 100, auctionPrice: 40 },
       { entryId: 2, teamId: 102, teamName: "B", expectedPayout: 200, auctionPrice: 60 },
     ],
+    poolValue: 300,
     ownership: [
       {
         bidderId: 7, bidderName: "Owner", teamId: 101, effectiveShare: 0.5,
@@ -300,6 +302,44 @@ test("resolver reconciles signed owner totals to team MTM", () => {
   assert.equal(result.owners.find((owner) => owner.bidderId === 7).net, 62);
   assert.equal(result.owners.find((owner) => owner.bidderId === 8).grossExpectedPayout, -50);
   assert.equal(result.owners.find((owner) => owner.bidderId === 8).net, -40);
+});
+
+test("cent allocation preserves the exact pool with deterministic residual assignment", () => {
+  const allocated = allocateMtmPoolCents([
+    { entryId: 3, value: 33.335 },
+    { entryId: 1, value: 33.335 },
+    { entryId: 2, value: 33.33 },
+  ], 100);
+  assert.equal(allocated.get(1), 33.33);
+  assert.equal(allocated.get(2), 33.33);
+  assert.equal(allocated.get(3), 33.34);
+  assert.equal([...allocated.values()].reduce((sum, value) => sum + Math.round(value * 100), 0), 10_000);
+});
+
+test("cent allocation rejects a material mismatch instead of hiding it", () => {
+  assert.throws(() => allocateMtmPoolCents([
+    { entryId: 1, value: 40 },
+    { entryId: 2, value: 40 },
+  ], 100), /maximum cent-rounding residual/);
+});
+
+test("resolver publishes official and provisional team values that exactly equal the pool", () => {
+  const result = buildCurrentMtmResolution({
+    version: {
+      id: 20, sourceSnapshotId: 52, status: "current", markType: "provisional",
+      actualsAsOf: "2026-09-14T12:00:00Z", mtmAsOf: "2026-09-14T12:00:00Z",
+    },
+    poolValue: 100,
+    teamValues: [
+      { entryId: 1, teamId: 101, expectedPayout: 33.335, currentExpectedPayout: 20.005 },
+      { entryId: 2, teamId: 102, expectedPayout: 33.335, currentExpectedPayout: 39.995 },
+      { entryId: 3, teamId: 103, expectedPayout: 33.33, currentExpectedPayout: 40 },
+    ],
+  });
+  const officialCents = result.teams.reduce((sum, team) => sum + Math.round(team.officialMtm * 100), 0);
+  const currentCents = result.teams.reduce((sum, team) => sum + Math.round(team.currentMtm * 100), 0);
+  assert.equal(officialCents, 10_000);
+  assert.equal(currentCents, 10_000);
 });
 
 test("resolver exposes promoted version identity and pending/provisional state", () => {

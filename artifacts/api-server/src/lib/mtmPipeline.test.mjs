@@ -209,6 +209,33 @@ test("rejects fractional-cent published payouts", () => {
   );
 });
 
+test("normalizes a legitimate independent-rounding residual before validation", () => {
+  const { state, engine } = completeEngineFixture();
+  engine.valuations[0].expected_payout = 100.005;
+  engine.valuations[1].expected_payout = 100.005;
+  assert.equal(
+    mtmPipelineTestUtils.normalizeEngineValuationPayouts(engine, state),
+    null,
+  );
+  assert.equal(
+    mtmPipelineTestUtils.validateCompleteEngineSnapshot(engine, state),
+    null,
+  );
+  assert.equal(
+    engine.valuations.reduce((sum, valuation) => sum + Math.round(valuation.expected_payout * 100), 0),
+    320_000,
+  );
+});
+
+test("does not normalize a material engine payout mismatch", () => {
+  const { state, engine } = completeEngineFixture();
+  engine.valuations[0].expected_payout = 110;
+  assert.match(
+    mtmPipelineTestUtils.normalizeEngineValuationPayouts(engine, state),
+    /maximum cent-rounding residual/,
+  );
+});
+
 test("bounds full-season conditional persistence batches", () => {
   const rows = Array.from({ length: 272 * 3 * 32 }, (_, index) => index);
   const batches = mtmPipelineTestUtils.conditionalPersistenceBatches(rows);

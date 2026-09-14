@@ -14,6 +14,7 @@ import {
 } from "@workspace/db";
 import { loadSeasonOwnership } from "./seasonOwnership";
 import { TEAM_ABBREVIATION_ALIASES } from "./nflEventSync";
+import { allocateMtmPoolCents } from "./mtmMoney";
 import {
   calculateSignedOwnerValue,
   canonicalizeActuals,
@@ -1041,6 +1042,7 @@ export function buildCurrentMtmResolution(args: {
     tradePaid: number;
     tradeReceived: number;
   }>;
+  poolValue?: number;
 }): CurrentMtmResolution {
   if (!args.version) {
     return {
@@ -1050,17 +1052,31 @@ export function buildCurrentMtmResolution(args: {
       incorporatedGames: [], pendingGames: [], staleReason: "No current coherent MTM version is available.",
     };
   }
-  const teams = (args.teamValues ?? []).map((team) => ({
+  const teamValues = args.teamValues ?? [];
+  const poolValue = args.poolValue ??
+    teamValues.reduce((sum, team) => sum + team.expectedPayout, 0);
+  const officialByEntry = allocateMtmPoolCents(
+    teamValues.map((team) => ({ entryId: team.entryId, value: team.expectedPayout })),
+    poolValue,
+  );
+  const currentByEntry = allocateMtmPoolCents(
+    teamValues.map((team) => ({
+      entryId: team.entryId,
+      value: team.currentExpectedPayout ?? team.expectedPayout,
+    })),
+    poolValue,
+  );
+  const teams = teamValues.map((team) => ({
     entryId: team.entryId,
     teamId: team.teamId,
     teamName: team.teamName ?? null,
-    officialMtm: team.expectedPayout,
-    currentMtm: team.currentExpectedPayout ?? team.expectedPayout,
-    grossExpectedPayout: team.currentExpectedPayout ?? team.expectedPayout,
+    officialMtm: officialByEntry.get(team.entryId)!,
+    currentMtm: currentByEntry.get(team.entryId)!,
+    grossExpectedPayout: currentByEntry.get(team.entryId)!,
     auctionPrice: team.auctionPrice ?? null,
     net: team.auctionPrice == null
       ? null
-      : (team.currentExpectedPayout ?? team.expectedPayout) - team.auctionPrice,
+      : currentByEntry.get(team.entryId)! - team.auctionPrice,
   }));
   const ownersById = new Map<number, Record<string, any>>();
   for (const position of args.ownership ?? []) {
@@ -1226,11 +1242,19 @@ export async function resolveCurrentMtm(poolId: number): Promise<CurrentMtmResol
         tradeReceived: position.tradeReceived,
       })))
     : [];
-  return buildCurrentMtmResolution({
-    version,
-    sourceSnapshotId: sourceSnapshot.id,
-    teamValues,
-    games,
-    ownership: ownerRows,
-  });
+  try {
+    return buildCurrentMtmResolution({
+      version,
+      sourceSnapshotId: sourceSnapshot.id,
+      teamValues,
+      poolValue: Number((sourceSnapshot.stateJson as Record<string, any> | null)?.pot),
+      games,
+      ownership: ownerRows,
+    });
+  } catch (error) {
+    return unavailableResolution(
+      version,
+      error instanceof Error ? error.message : "Published MTM values could not be reconciled to the auction pool.",
+    );
+  }
 }

@@ -7,4 +7,4 @@ For each successful pipeline snapshot, scale all expected payouts proportionally
 
 **Why:** Modeled league-point coverage can differ slightly from 1.0, so raw expected payouts may not equal the auction pool even when the engine is working correctly. Scaling preserves relative team valuations while making gains and losses reconcile to zero.
 
-**How to apply:** Use one scale factor per snapshot, never one factor across multiple weeks. Missing auction prices remain unavailable rather than being treated as zero.
+**How to apply:** Use one scale factor per snapshot, never one factor across multiple weeks. At publication, convert the complete normalized team set to cents and assign any legitimate rounding residual deterministically by entry identity. Reject discrepancies larger than aggregate cent rounding can explain. Apply the same cent allocation to provisional values before deriving owner values. Missing auction prices remain unavailable rather than being treated as zero.
