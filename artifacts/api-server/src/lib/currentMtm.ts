@@ -1248,6 +1248,105 @@ function unavailableResolution(version: any | null, staleReason: string): Curren
   };
 }
 
+async function resolveArchivedOfficialMtm(
+  poolId: number,
+  staleReason: string,
+): Promise<CurrentMtmResolution> {
+  const [entries, poolRows, versions] = await Promise.all([
+    db.select({
+      entryId: calcuttaEntriesTable.id,
+      teamId: calcuttaEntriesTable.teamId,
+      teamName: teamsTable.name,
+    }).from(calcuttaEntriesTable)
+      .innerJoin(teamsTable, eq(teamsTable.id, calcuttaEntriesTable.teamId))
+      .where(eq(calcuttaEntriesTable.calcuttaId, poolId)),
+    db.select({ seasonId: calcuttasTable.seasonId })
+      .from(calcuttasTable)
+      .where(eq(calcuttasTable.id, poolId))
+      .limit(1),
+    db.select().from(mtmValuationVersionTable)
+      .where(and(
+        eq(mtmValuationVersionTable.poolId, poolId),
+        eq(mtmValuationVersionTable.markType, "official"),
+        inArray(mtmValuationVersionTable.status, ["current", "superseded"]),
+      ))
+      .orderBy(desc(mtmValuationVersionTable.mtmAsOf), desc(mtmValuationVersionTable.id)),
+  ]);
+  if (entries.length === 0) return unavailableResolution(versions[0] ?? null, staleReason);
+
+  for (const version of versions) {
+    const [snapshot, valuations] = await Promise.all([
+      db.select().from(mtmSnapshotTable)
+        .where(and(
+          eq(mtmSnapshotTable.id, version.sourceSnapshotId),
+          eq(mtmSnapshotTable.poolId, poolId),
+          eq(mtmSnapshotTable.status, "ok"),
+        ))
+        .limit(1),
+      db.select().from(mtmEntryValuationTable)
+        .where(eq(mtmEntryValuationTable.snapshotId, version.sourceSnapshotId)),
+    ]);
+    const sourceSnapshot = snapshot[0];
+    if (!sourceSnapshot || sourceSnapshot.methodVersion === "mtm-v3-review") continue;
+
+    const valuationByEntry = new Map(valuations.map((row) => [row.entryId, row]));
+    const teamValues = entries.flatMap((entry) => {
+      const row = valuationByEntry.get(entry.entryId);
+      const expectedPayout = Number(row?.expectedPayout);
+      if (!row || !Number.isFinite(expectedPayout) || expectedPayout < 0) return [];
+      return [{
+        entryId: entry.entryId,
+        teamId: entry.teamId,
+        teamName: entry.teamName,
+        expectedPayout,
+        auctionPrice: row.auctionPrice == null ? null : Number(row.auctionPrice),
+      }];
+    });
+    const poolValue = Number((sourceSnapshot.stateJson as Record<string, unknown> | null)?.pot);
+    const savedTotal = teamValues.reduce((sum, team) => sum + team.expectedPayout, 0);
+    if (
+      teamValues.length !== entries.length ||
+      valuationByEntry.size !== entries.length ||
+      !Number.isFinite(poolValue) ||
+      poolValue <= 0 ||
+      Math.abs(savedTotal - poolValue) > 0.01
+    ) {
+      continue;
+    }
+
+    const seasonId = poolRows[0]?.seasonId;
+    const ownership = seasonId == null ? undefined : await loadSeasonOwnership(seasonId, poolId);
+    const ownerRows = ownership
+      ? [...ownership.byBidder.entries()].flatMap(([bidderId, positions]) =>
+        [...positions.entries()].map(([teamId, position]) => ({
+          bidderId,
+          bidderName: ownership.bidderNames.get(bidderId) ?? "Unknown",
+          teamId,
+          effectiveShare: position.effectiveShare,
+          originalCostBasis: position.originalCostBasis,
+          tradePaid: position.tradePaid,
+          tradeReceived: position.tradeReceived,
+        })))
+      : [];
+    const archived = buildCurrentMtmResolution({
+      version,
+      sourceSnapshotId: sourceSnapshot.id,
+      teamValues,
+      poolValue,
+      ownership: ownerRows,
+    });
+    return {
+      ...archived,
+      available: false,
+      incorporatedGames: [],
+      pendingGames: [],
+      staleReason: `${staleReason} Showing archived values from the last successful official MTM refresh.`,
+    };
+  }
+
+  return unavailableResolution(versions[0] ?? null, staleReason);
+}
+
 /**
  * Shared pure read-model assembly used by the database resolver and focused
  * reconciliation tests.
@@ -1368,7 +1467,9 @@ export async function resolveCurrentMtm(poolId: number): Promise<CurrentMtmResol
     .where(and(eq(mtmValuationVersionTable.poolId, poolId), eq(mtmValuationVersionTable.status, "current")))
     .orderBy(desc(mtmValuationVersionTable.createdAt), desc(mtmValuationVersionTable.id))
     .limit(1);
-  if (!version) return buildCurrentMtmResolution({ version: null });
+  if (!version) {
+    return resolveArchivedOfficialMtm(poolId, "No current coherent MTM version is available.");
+  }
   const [snapshot, entries, games, conditionalRows, poolRows] = await Promise.all([
     db.select().from(mtmSnapshotTable).where(eq(mtmSnapshotTable.id, version.sourceSnapshotId)).limit(1),
     db.select({
@@ -1389,16 +1490,21 @@ export async function resolveCurrentMtm(poolId: number): Promise<CurrentMtmResol
     db.select({ seasonId: calcuttasTable.seasonId }).from(calcuttasTable).where(eq(calcuttasTable.id, poolId)).limit(1),
   ]);
   const sourceSnapshot = snapshot[0];
-  if (!sourceSnapshot) return unavailableResolution(version, "Current MTM source snapshot is missing.");
+  if (!sourceSnapshot) {
+    return resolveArchivedOfficialMtm(poolId, "Current MTM source snapshot is missing.");
+  }
   if (sourceSnapshot.poolId !== poolId || sourceSnapshot.status !== "ok" ||
       sourceSnapshot.methodVersion === "mtm-v3-review") {
-    return unavailableResolution(version, "Current MTM source snapshot is invalid or review-only.");
+    return resolveArchivedOfficialMtm(poolId, "Current MTM source snapshot is invalid or review-only.");
   }
   let normalizedSourceActuals: NormalizedSourceActual[];
   try {
     normalizedSourceActuals = await mapSourceActualsForPool(db, poolId, sourceSnapshot);
   } catch (error) {
-    return unavailableResolution(version, error instanceof Error ? error.message : String(error));
+    return resolveArchivedOfficialMtm(
+      poolId,
+      error instanceof Error ? error.message : String(error),
+    );
   }
   const normalizedGames: LinkageGame[] = games.map((game) => ({
     eventId: game.eventId,
@@ -1437,7 +1543,9 @@ export async function resolveCurrentMtm(poolId: number): Promise<CurrentMtmResol
     expectedEntryIds: entries.map((entry) => entry.entryId),
     poolValue: Number((sourceSnapshot.stateJson as Record<string, any> | null)?.pot),
   });
-  if (!validation.valid) return unavailableResolution(version, validation.errors.join("; "));
+  if (!validation.valid) {
+    return resolveArchivedOfficialMtm(poolId, validation.errors.join("; "));
+  }
   const entryIds = entries.map((entry) => entry.entryId);
   const valuations = entryIds.length
     ? await db.select().from(mtmEntryValuationTable)
@@ -1483,8 +1591,8 @@ export async function resolveCurrentMtm(poolId: number): Promise<CurrentMtmResol
       ownership: ownerRows,
     });
   } catch (error) {
-    return unavailableResolution(
-      version,
+    return resolveArchivedOfficialMtm(
+      poolId,
       error instanceof Error ? error.message : "Published MTM values could not be reconciled to the auction pool.",
     );
   }

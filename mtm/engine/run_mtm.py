@@ -269,6 +269,11 @@ def _build_snapshot(config: dict, state: dict,
             hfa=simcfg["hfa_points"], margin_sd=simcfg["margin_sd"],
             lr=simcfg["rating_fit_lr"], iters=simcfg["rating_fit_iters"],
             diagnostics=runtime)
+        runtime.update_details({
+            "rating_fit_outcome": fit.get("fit_diagnostics", {}),
+            "fitted_ratings": fit.get("ratings", {}),
+            "rating_fit_max_win_error": fit.get("max_abs_win_error"),
+        })
         diffs = simulate.expected_remaining_diff(
             fit["ratings"],
             [simulate.Game(**g) for g in state["remaining_schedule"]],
@@ -286,6 +291,14 @@ def _build_snapshot(config: dict, state: dict,
             "p_stage": norm["probs"][t],
             "rating": fit["ratings"][t],
         }
+    runtime.record_detail("candidate_projections", {
+        team: {
+            "e_remaining_wins": projection["e_remaining_wins"],
+            "p_stage": projection["p_stage"],
+            "rating": projection["rating"],
+        }
+        for team, projection in projections.items()
+    })
 
     with runtime.stage("analytic_valuation"):
         valued = valuation.value_pool(rubric, state["realized"], projections,
@@ -312,6 +325,13 @@ def _build_snapshot(config: dict, state: dict,
             support_runs_per_team=simcfg.get("support_runs_per_team", 0),
             support_prior_weight=simcfg.get("support_prior_weight", 0.01),
             diagnostics=runtime)
+        runtime.update_details({
+            "actual_path_count": mc.get("runs"),
+            "actual_seed": seed,
+            "effective_sample_size": mc.get("effective_sample_size"),
+            "maximum_path_weight": mc.get("max_weight"),
+            "weighted_playoff_probabilities": mc.get("stage_probs", {}),
+        })
     if enforce_gate and not mc.get("calibration_converged", False):
         worst = max((abs(value) for value in mc.get("calibration_residuals", {}).values()),
                     default=float("inf"))
@@ -366,6 +386,7 @@ def _build_snapshot(config: dict, state: dict,
                                 "effective_sample_size": mc.get("effective_sample_size", mc["runs"]),
                                 "quality_status": "good" if abs(sim-target) <= tolerance else "warning"})
     failed_calibration = [row for row in calibration if row["quality_status"] != "good"]
+    runtime.record_detail("final_weighted_calibration_metrics", calibration)
     if failed_calibration and enforce_gate:
         worst = max(abs(row["residual"]) for row in failed_calibration)
         raise ValueError(

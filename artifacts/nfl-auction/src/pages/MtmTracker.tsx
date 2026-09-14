@@ -181,9 +181,9 @@ type PipelineStatus = {
 
 export function visiblePipelineHistory(
   status: PipelineStatus | null,
-  valuation: Pick<MtmValuation, "available" | "mark">,
+  valuation: Pick<MtmValuation, "available" | "mark" | "teams">,
 ): PipelineValuation[] {
-  const suppressedCurrentSnapshotId = valuation.available
+  const suppressedCurrentSnapshotId = valuation.available || valuation.teams.length > 0
     ? null
     : valuation.mark.sourceSnapshotId;
 

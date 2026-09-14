@@ -751,9 +751,38 @@ describe("visiblePipelineHistory", () => {
     const valuation = {
       available: false,
       mark: { sourceSnapshotId: 15 },
-    } as Parameters<typeof visiblePipelineHistory>[1];
+      teams: [],
+    } as unknown as Parameters<typeof visiblePipelineHistory>[1];
 
     expect(visiblePipelineHistory(status, valuation)[0]?.history.map((point) => point.snapshotId))
       .toEqual([9]);
+  });
+
+  it("keeps the archived source point when unavailable valuation rows are supplied for display", () => {
+    const status = {
+      valuations: [{
+        entryId: 1,
+        teamId: 10,
+        teamName: "Buffalo Bills",
+        expectedPoints: "0",
+        expectedPayout: "140",
+        previousExpectedPayout: null,
+        auctionPrice: "100",
+        mtmMultiple: "1.4",
+        owners: [],
+        history: [
+          { snapshotId: 9, label: "Week 1", asOf: "2026-09-07T12:00:00.000Z", expectedPayout: 120, auctionPrice: 100, netPayout: 20 },
+          { snapshotId: 15, label: "Week 2", asOf: "2026-09-14T12:00:00.000Z", expectedPayout: 140, auctionPrice: 100, netPayout: 40 },
+        ],
+      }],
+    } as unknown as Parameters<typeof visiblePipelineHistory>[0];
+    const valuation = {
+      available: false,
+      mark: { sourceSnapshotId: 15 },
+      teams: [{ teamId: 10 }],
+    } as Parameters<typeof visiblePipelineHistory>[1];
+
+    expect(visiblePipelineHistory(status, valuation)[0]?.history.map((point) => point.snapshotId))
+      .toEqual([9, 15]);
   });
 });

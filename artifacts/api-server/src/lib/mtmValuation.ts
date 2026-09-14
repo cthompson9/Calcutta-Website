@@ -447,6 +447,18 @@ export async function getNormalizedMtmValuation(args: {
     qualityExposure: unavailableQuality,
   };
   if (!resolution.available || resolution.sourceSnapshotId == null) {
+    const archivedTeams = resolution.teams.map((team: Record<string, any>) => ({
+      entryId: team.entryId,
+      teamId: team.teamId,
+      teamName: team.teamName,
+      grossExpectedPayout: Number(team.currentMtm ?? team.grossExpectedPayout),
+      auctionPrice: team.auctionPrice == null ? null : Number(team.auctionPrice),
+      net: team.net == null ? null : Number(team.net),
+    }));
+    const archivedOwners = resolution.owners
+      .filter((owner: Record<string, any>) =>
+        !args.owner ||
+        String(owner.bidderName).toLocaleLowerCase().includes(args.owner.toLocaleLowerCase()));
     return {
       available: false,
       mark: unavailableMark,
@@ -462,7 +474,10 @@ export async function getNormalizedMtmValuation(args: {
       incorporatedGames: resolution.incorporatedGames,
       pendingGames: resolution.pendingGames,
       staleReason: resolution.staleReason,
-      teams: [], owners: [], conditionalPayouts: {}, gameEvSwings: [],
+      teams: archivedTeams,
+      owners: archivedOwners,
+      conditionalPayouts: {},
+      gameEvSwings: [],
       diagnostics: null,
       quality: unavailableQuality,
       invariants: {

@@ -282,6 +282,27 @@ export type EvidenceAssessment = {
   policyVersion: string;
 };
 
+export type CanonicalQuoteRole = "active_price" | "settlement_fact" | "unusable";
+export type CanonicalQuoteTransformation =
+  | { kind: "bounds"; lower: number; upper: number }
+  | { kind: "bid_plus_cent"; value: number }
+  | { kind: "settlement"; value: 0 | 1 }
+  | { kind: "interpolated_missing"; reason: string }
+  | { kind: "none" };
+
+export type CanonicalQuoteDecision = {
+  observationId: string;
+  ticker: string;
+  role: CanonicalQuoteRole;
+  usedInFitting: boolean;
+  exclusionReasons: string[];
+  transformation: CanonicalQuoteTransformation;
+  captureTime: string | null;
+  metadataUpdatedAt: string | null;
+  sourceProvenance: EvidenceProviderMetadata | null;
+  assessment: EvidenceAssessment;
+};
+
 function freshnessScore(evidence: NormalizedMtmEvidence, asOfMs: number, policy: MtmEvidencePolicy): number | null {
   const timestamp = evidence.observedAt ?? evidence.fetchedAt ?? evidence.timestamp;
   if (!timestamp) return null;
@@ -382,6 +403,101 @@ export function assessMtmEvidence(
     acceptedBounds: bounds,
     groupId: evidence.evidenceGroup?.id ?? null,
     policyVersion: policy.version,
+  };
+}
+
+export function canonicalQuoteDecision(args: {
+  evidence: MtmEvidenceInput;
+  ticker: string;
+  evaluationTime: string | number | Date;
+  transformation: "bounds" | "bid_plus_cent";
+  maxSpread?: number;
+  metadataUpdatedAt?: string | null;
+}): CanonicalQuoteDecision {
+  const normalized = normalizeMtmEvidence(args.evidence);
+  const assessment = assessMtmEvidence(normalized, args.evaluationTime);
+  const evaluationMs = finiteAsOf(args.evaluationTime);
+  const captureTime = normalized.observedAt ?? normalized.fetchedAt ?? normalized.timestamp ?? null;
+  const captureMs = captureTime == null ? null : Date.parse(captureTime);
+  const settled = normalized.status === "settled" &&
+    (normalized.settlement === "yes" || normalized.settlement === "no");
+  const reasons: string[] = [];
+
+  if (settled) {
+    return {
+      observationId: normalized.id,
+      ticker: args.ticker,
+      role: "settlement_fact",
+      usedInFitting: true,
+      exclusionReasons: [],
+      transformation: {
+        kind: "settlement",
+        value: normalized.settlement === "yes" ? 1 : 0,
+      },
+      captureTime,
+      metadataUpdatedAt: args.metadataUpdatedAt ?? null,
+      sourceProvenance: normalized.provider ?? null,
+      assessment,
+    };
+  }
+
+  if (normalized.status !== "active") reasons.push("market is not active");
+  if (captureMs == null || !Number.isFinite(captureMs)) reasons.push("capture timestamp is missing");
+  else if (captureMs > evaluationMs) reasons.push("capture timestamp is in the future");
+  if (assessment.degradationReasons.includes("evidence is stale")) {
+    reasons.push("active price is stale");
+  }
+  reasons.push(...assessment.exclusionReasons);
+
+  const spread = normalized.yesBid != null && normalized.yesAsk != null
+    ? normalized.yesAsk - normalized.yesBid
+    : null;
+  if (args.transformation === "bounds" &&
+      spread != null && spread > (args.maxSpread ?? DEFAULT_MTM_EVIDENCE_POLICY.maxSpread)) {
+    reasons.push("book is too wide for direct fitting");
+    return {
+      observationId: normalized.id,
+      ticker: args.ticker,
+      role: "unusable",
+      usedInFitting: false,
+      exclusionReasons: [...new Set(reasons)],
+      transformation: {
+        kind: "interpolated_missing",
+        reason: "wide book is retained as missing and may be interpolated by the win-ladder model",
+      },
+      captureTime,
+      metadataUpdatedAt: args.metadataUpdatedAt ?? null,
+      sourceProvenance: normalized.provider ?? null,
+      assessment,
+    };
+  }
+  if (args.transformation === "bounds" &&
+      normalized.yesBid == null && normalized.yesAsk == null) {
+    reasons.push("no active price bounds");
+  }
+  if (args.transformation === "bid_plus_cent" && normalized.yesBid == null) {
+    reasons.push("no eligible YES bid");
+  }
+  if (assessment.qualityStatus === "insufficient") reasons.push("evidence quality is insufficient");
+
+  const exclusionReasons = [...new Set(reasons)];
+  const usedInFitting = exclusionReasons.length === 0;
+  const transformation: CanonicalQuoteTransformation = !usedInFitting
+    ? { kind: "none" }
+    : args.transformation === "bid_plus_cent"
+      ? { kind: "bid_plus_cent", value: Math.min(1, normalized.yesBid! + 0.01) }
+      : { kind: "bounds", ...acceptedYesBounds(normalized) };
+  return {
+    observationId: normalized.id,
+    ticker: args.ticker,
+    role: usedInFitting ? "active_price" : "unusable",
+    usedInFitting,
+    exclusionReasons,
+    transformation,
+    captureTime,
+    metadataUpdatedAt: args.metadataUpdatedAt ?? null,
+    sourceProvenance: normalized.provider ?? null,
+    assessment,
   };
 }
 

@@ -1,0 +1,80 @@
+Implement Stage 2 below only, after Stage 1’s focused tests pass. Use the supplied findings; do not repeat the investigation.
+Objective
+Make MTM audits accurately describe the simulated results, and preserve enough information to diagnose failed attempts. Keep existing publication thresholds unchanged.
+Confirmed findings
+- The win-market audit can report “good” based on the average residual even when an individual team exceeds tolerance.
+- The final playoff audit reads projections.p_stage, which the canonical engine populates with market targets. This can produce target-versus-target comparisons and misleading zero residuals.
+- Actual simulated playoff probabilities are available in the engine’s calibration metrics.
+- Failed attempts do not retain their seed or final team projections.
+- Earlier successful snapshots lack the newer publication audit.
+Scope
+Verify the current revision and preserve unrelated changes.
+Relevant files:
+- artifacts/api-server/src/lib/mtmPipeline.ts
+- mtm/engine/run_mtm.py
+- Existing pipeline and engine tests.
+Use existing diagnostic JSON storage where practical. Do not change historical records or official valuation selectors.
+Implementation
+1. Unify the win-audit decision.
+   Derive the audit status, gate result, and error from the same validation result.
+   Require:
+   - Complete, unique, usable team rows.
+   - Finite target and achieved probabilities.
+   - Valid ESS diagnostics.
+   - Both weighted-average and maximum absolute residual within the existing tolerance.
+   Include offending teams and their residuals. If only the maximum residual fails, the error must describe that failure rather than incorrectly blaming the average.
+2. Use actual achieved playoff probabilities.
+   Read simulated_probability from the engine’s weighted calibration metrics for each required team and playoff stage.
+   Do not use projections.p_stage as the achieved value.
+   Reject missing, duplicate, or nonfinite metrics. Retain distinct target, achieved, residual, tolerance, and pass/fail fields.
+   Preserve existing historical projection-field semantics.
+3. Separate prefit and final diagnostics.
+   Label these explicitly:
+   - Rating-fit expectations before path reweighting.
+   - Final weighted win probabilities.
+   - Final weighted playoff probabilities.
+   Publication checks must evaluate final weighted results. A successful prefit check must not substitute for a final check.
+4. Create a run-information record before launching Python.
+   Record:
+   - Requested seed and path count.
+   - Effective configuration hash.
+   - Engine/build identity when available.
+   - Input provenance identity.
+   - A separate hash of meaningful model inputs that excludes incidental capture timestamps.
+   - Diagnostic-policy version.
+   Never invent a deployed revision. Distinguish requested settings from settings confirmed by the engine.
+5. Preserve diagnostics when a run fails.
+   Save available:
+   - Rating-fit outcome and fitted ratings.
+   - Stage timings.
+   - Actual path count and seed.
+   - ESS and maximum weight.
+   - Final weighted calibration metrics.
+   - Compact candidate projections.
+   - Every publication gate result.
+   Store failed candidate information in attempt diagnostics. Do not insert it into official valuation tables or move current-snapshot pointers.
+6. Preserve partial Python results on exceptions.
+   If computation fails after fitting or calibration, retain diagnostics already computed. The API should also retain its pre-launch run information if Python produces no readable output.
+7. Keep historical compatibility.
+   Existing snapshots without these fields must remain readable. Display unavailable values honestly; do not infer missing historical seeds, revisions, or gate results.
+Required offline tests
+- Average win residual passes, but one team’s residual is 0.0753 against tolerance 0.03: audit fails and identifies that team.
+- Playoff target is 0.60, legacy projection is 0.60, and actual simulated probability is 0.50: audit fails.
+- Missing, duplicate, and nonfinite achieved metrics fail validation.
+- A publication failure retains seed/configuration information and computed diagnostics.
+- An engine exception retains pre-launch information and available partial diagnostics.
+- A failed attempt leaves official snapshots, valuations, and pointers unchanged.
+- Historical snapshots without the new fields remain readable.
+- Audit status, gate result, and error agree for every tested outcome.
+Run the focused pipeline tests and API typecheck:
+pnpm --filter @workspace/api-server exec tsx --test src/lib/mtmPipeline.test.mjs
+pnpm --filter @workspace/api-server typecheck
+Run the existing engine tests covering the changed output and exception behavior. Use offline fixtures.
+Boundaries
+Do not publish, restart, refresh providers or results, run production recalculations, modify production data, change thresholds, activate v3, or change the rating solver.
+Return
+- Changed files and commit, if created.
+- Explanation of corrected audit behavior.
+- Tests and results.
+- Remaining blockers.
+Stop after Stage 2. Stage 3 will introduce and test a separate schedule-feasible rating-fit candidate.

@@ -21,6 +21,7 @@ test("normalizes Kalshi fixed-point and legacy cent quotes", () => {
 });
 
 test("preserves settled win contracts and fixed-point volume for the engine", () => {
+  const fetchedAt = new Date("2026-09-20T14:04:00.000Z");
   const config = {
     kalshi: { series: {
       win_totals: "KXNFLWINS",
@@ -40,6 +41,7 @@ test("preserves settled win contracts and fixed-point volume for the engine", ()
         status: "finalized",
         result: "yes",
       },
+      fetchedAt,
     },
     ...["REG", "WC", "DIV", "CONF", "FL", "FW"].map((suffix) => ({
       series: "KXNFLSTAGEOFELIM",
@@ -47,17 +49,20 @@ test("preserves settled win contracts and fixed-point volume for the engine", ()
       market: {
         ticker: `KXNFLSTAGEOFELIM-27SEA-${suffix}`,
         yes_bid_dollars: "0.1000",
+        status: "active",
       },
+      fetchedAt,
     })),
   ];
   const derived = mtmPipelineTestUtils.deriveQuoteState(
     config,
     [{ code: "SEA", name: "Seattle Seahawks" }],
     raw,
+    fetchedAt,
   );
   assert.deepEqual(derived.winLadders.SEA[0], {
     strike: 1,
-    yes_bid: 0,
+    yes_bid: 1,
     yes_ask: 1,
     volume: 2139,
     status: "finalized",
@@ -349,6 +354,7 @@ test("requires an explicitly active unsettled quote", () => {
 });
 
 test("does not treat Snapshot-14-style 1/97 books as good win evidence", () => {
+  const fetchedAt = new Date("2026-09-20T14:04:00.000Z");
   const config = { pricing: { max_spread_for_mid: 0.15 } };
   const teams = [{ code: "BUF", name: "Buffalo Bills" }];
   const raw = [{
@@ -357,19 +363,22 @@ test("does not treat Snapshot-14-style 1/97 books as good win evidence", () => {
       ticker: "WINS-27BUF-1", floor_strike: 1, status: "active",
       yes_bid_dollars: "0.0100", yes_ask_dollars: "0.9700",
     },
+    fetchedAt,
   }, ...["REG", "WC", "DIV", "CONF", "FL", "FW"].map((suffix) => ({
     series: "STAGE", team: "BUF",
-    market: { ticker: `STAGE-27BUF-${suffix}`, yes_bid_dollars: "0.10" },
+    market: { ticker: `STAGE-27BUF-${suffix}`, yes_bid_dollars: "0.10", status: "active" },
+    fetchedAt,
   }))];
   const derived = mtmPipelineTestUtils.deriveQuoteState({
     ...config,
     kalshi: { series: { win_totals: "WINS", stage_of_elimination: "STAGE" } },
-  }, teams, raw);
+  }, teams, raw, fetchedAt);
   const quality = mtmPipelineTestUtils.assessWinMarketQuality(
     config, teams, derived.winLadders,
   );
   assert.equal(derived.winLadders.BUF[0].yes_bid, null);
   assert.equal(derived.winLadders.BUF[0].yes_ask, null);
+  assert.equal(derived.winLadders.BUF[0].interpolated, true);
   assert.equal(quality.BUF.status, "missing");
   assert.equal(quality.BUF.wideRungs, 1);
 });
@@ -394,7 +403,33 @@ test("checks final weighted win quality and reports the final ESS", () => {
   const rejected = mtmPipelineTestUtils.validateFinalWinMarketQuality(
     engine, state, { sim: { calibration_tolerance: 0.03 } }, quality,
   );
-  assert.match(rejected.error, /weighted win-market residual/);
+  assert.match(rejected.error, /maximum win-market residual/);
+  assert.equal(rejected.diagnostics.status, "failed");
+  assert.equal(rejected.diagnostics.gate_result, "failed");
+  assert.deepEqual(rejected.diagnostics.offending_teams, [{ team: "T0", residual: 0.4 }]);
+});
+
+test("fails the win audit when only one team's maximum residual exceeds tolerance", () => {
+  const { state, engine } = completeEngineFixture();
+  const teams = Object.keys(state.realized);
+  const quality = Object.fromEntries(teams.map((team) => [team, {
+    status: "good", trustedRungs: 2, wideRungs: 0, missingRungs: 15, reason: null,
+  }]));
+  engine.calibration = teams.map((team, index) => ({
+    metric: "remaining_win_probability",
+    team,
+    target_probability: 0.5,
+    sample_metadata: { posterior_probability: index === 0 ? 0.5753 : 0.5 },
+  }));
+  engine.diagnostics = { simulation: { effective_sample_size: 9876.5 } };
+  const result = mtmPipelineTestUtils.validateFinalWinMarketQuality(
+    engine, state, { sim: { calibration_tolerance: 0.03 } }, quality,
+  );
+  assert.ok(result.diagnostics.weighted_absolute_residual < 0.03);
+  assert.ok(Math.abs(result.diagnostics.max_absolute_residual - 0.0753) < 1e-12);
+  assert.match(result.error, /maximum win-market residual 0.075300.*T0/);
+  assert.equal(result.diagnostics.status, "failed");
+  assert.equal(result.diagnostics.gate_result, "failed");
 });
 
 test("blocks a win-calibrated run when any playoff family misses market expectations", () => {
@@ -412,7 +447,7 @@ test("blocks a win-calibrated run when any playoff family misses market expectat
       ["sb_berth", 0.0625],
       ["sb_win", 0.03125],
     ].map(([metric, target_probability]) => ({
-      metric, team, target_probability, tolerance: 0.03,
+      metric, team, target_probability, simulated_probability: target_probability, tolerance: 0.03,
     }))),
   ];
   const accepted = mtmPipelineTestUtils.validateFinalPlayoffMarketQuality(
@@ -422,7 +457,8 @@ test("blocks a win-calibrated run when any playoff family misses market expectat
   assert.equal(accepted.diagnostics.gate_result, "passed");
   assert.equal(accepted.diagnostics.families.sb_win.gate_result, "passed");
 
-  engine.projections.T0.p_stage.sb_win = 0.2;
+  engine.calibration.find((row) => row.metric === "sb_win" && row.team === "T0")
+    .simulated_probability = 0.2;
   const rejected = mtmPipelineTestUtils.validateFinalPlayoffMarketQuality(
     engine, state, { sim: { calibration_tolerance: 0.03 } },
   );
@@ -443,7 +479,7 @@ test("fails closed when a payout-driving playoff calibration family is missing",
     ["conference", 0.125],
     ["sb_berth", 0.0625],
   ].map(([metric, target_probability]) => ({
-    metric, team, target_probability, tolerance: 0.03,
+      metric, team, target_probability, simulated_probability: target_probability, tolerance: 0.03,
   })));
   const rejected = mtmPipelineTestUtils.validateFinalPlayoffMarketQuality(
     engine, state, { sim: { calibration_tolerance: 0.03 } },
@@ -451,6 +487,95 @@ test("fails closed when a payout-driving playoff calibration family is missing",
   assert.match(rejected.error, /missing targets for sb_win/);
   assert.equal(rejected.diagnostics.families.sb_win.gate_result, "failed");
   assert.deepEqual(rejected.diagnostics.families.sb_win.missing_teams, teams);
+});
+
+test("playoff audit uses achieved calibration metrics and rejects malformed coverage", () => {
+  const { state, engine } = completeEngineFixture();
+  const teams = Object.keys(state.realized);
+  engine.calibration = teams.flatMap((team) =>
+    ["berth", "divisional", "conference", "sb_berth", "sb_win"].map((metric) => ({
+      metric,
+      team,
+      target_probability: metric === "berth" ? 0.6 : 0.2,
+      simulated_probability: metric === "berth" && team === "T0" ? 0.5 : metric === "berth" ? 0.6 : 0.2,
+      tolerance: 0.03,
+    })));
+  engine.projections.T0.p_stage.berth = 0.6;
+  const achievedFailure = mtmPipelineTestUtils.validateFinalPlayoffMarketQuality(
+    engine, state, { sim: { calibration_tolerance: 0.03 } },
+  );
+  assert.match(achievedFailure.error, /exceeds tolerance for berth/);
+  assert.equal(achievedFailure.diagnostics.families.berth.rows[0].final_probability, 0.5);
+
+  const missing = structuredClone(engine);
+  missing.calibration = missing.calibration.filter((row) =>
+    !(row.metric === "sb_win" && row.team === "T0"));
+  assert.match(
+    mtmPipelineTestUtils.validateFinalPlayoffMarketQuality(missing, state, {}).error,
+    /missing targets for sb_win/,
+  );
+
+  const duplicate = structuredClone(engine);
+  duplicate.calibration.push(structuredClone(
+    duplicate.calibration.find((row) => row.metric === "sb_win" && row.team === "T0"),
+  ));
+  assert.match(
+    mtmPipelineTestUtils.validateFinalPlayoffMarketQuality(duplicate, state, {}).error,
+    /duplicate metrics for sb_win/,
+  );
+
+  const nonfinite = structuredClone(engine);
+  nonfinite.calibration.find((row) => row.metric === "sb_win" && row.team === "T0")
+    .simulated_probability = "not-a-number";
+  assert.match(
+    mtmPipelineTestUtils.validateFinalPlayoffMarketQuality(nonfinite, state, {}).error,
+    /missing targets for sb_win/,
+  );
+});
+
+test("run information separates requested settings and meaningful input identity", () => {
+  const state = { realized: { BUF: { wins: 1 } }, entries: [], remaining_schedule: [] };
+  const config = { sim: { seed: 17, monte_carlo_runs: 40000, model: "seeded_monte_carlo" } };
+  const first = mtmPipelineTestUtils.buildRunInformation({
+    config,
+    state,
+    inputProvenance: { fetched_at: "2026-09-20T14:00:00Z", source_id: "ledger-1" },
+    rawQuotes: [{
+      series: "WINS", team: "BUF", fetchedAt: new Date("2026-09-20T14:00:00Z"),
+      market: { ticker: "WINS-BUF-10", updated_time: "2026-09-20T13:00:00Z", yes_bid: 40 },
+    }],
+  });
+  const replayed = mtmPipelineTestUtils.buildRunInformation({
+    config,
+    state,
+    inputProvenance: { fetched_at: "2026-09-20T15:00:00Z", source_id: "ledger-1" },
+    rawQuotes: [{
+      series: "WINS", team: "BUF", fetchedAt: new Date("2026-09-20T15:00:00Z"),
+      market: { ticker: "WINS-BUF-10", updated_time: "2026-09-20T14:00:00Z", yes_bid: 40 },
+    }],
+  });
+  assert.equal(first.requested.seed, 17);
+  assert.equal(first.requested.path_count, 40000);
+  assert.equal(first.confirmed, null);
+  assert.equal(first.diagnostic_policy_version, "mtm-diagnostics-v2");
+  assert.equal(first.meaningful_model_inputs_hash, replayed.meaningful_model_inputs_hash);
+
+  const candidate = mtmPipelineTestUtils.compactCandidateDiagnostics({
+    status: "failed",
+    path_count: 123,
+    model: { name: "seeded_monte_carlo", seed: 17 },
+    projections: { BUF: { e_remaining_wins: 8, p_stage: { berth: 0.5 }, rating: 2 } },
+    calibration: [{ metric: "berth", team: "BUF", simulated_probability: 0.5 }],
+    diagnostics: {
+      rating_fit: { status: "good" },
+      runtime: { stages: { rating_fit: { completed: true } } },
+      monte_carlo_sampling: { effective_sample_size: 90, max_weight: 0.02 },
+    },
+  });
+  assert.equal(candidate.seed, 17);
+  assert.equal(candidate.path_count, 123);
+  assert.equal(candidate.projections.BUF.p_stage.berth, 0.5);
+  assert.equal(candidate.final_weighted_calibration.length, 1);
 });
 
 test("persists additive evidence metadata without collapsing one-sided books", () => {
@@ -479,6 +604,14 @@ test("persists additive evidence metadata without collapsing one-sided books", (
   assert.deepEqual(row.completenessManifest, { expected: 17, received: 1 });
   assert.deepEqual(row.rawMetadata, { request_id: "capture-1" });
   assert.equal(row.evidenceGroup.id, "kalshi:KXNFLWINS:BUF");
+  assert.equal(row.sourceObservedAt.toISOString(), "2026-09-20T14:03:00.000Z");
+  assert.equal(row.qualityReport.role, "active_price");
+  assert.equal(row.qualityReport.usedInFitting, true);
+  assert.equal(row.qualityReport.captureTime, fetchedAt.toISOString());
+  assert.equal(row.qualityReport.metadataUpdatedAt, "2026-09-20T14:03:00.000Z");
+  assert.deepEqual(row.qualityReport.transformation, {
+    kind: "bounds", lower: 0.42, upper: 1, oneSided: true, side: "bid-only",
+  });
 });
 
 test("builds stable review-only joint-fit constraints with correlated groups", () => {
@@ -583,6 +716,39 @@ test("publication audit fail-closes every required gate and emits an official-co
   assert.equal(accepted.audit.gate_results.precision, "passed");
   assert.equal(accepted.audit.gate_results.support, "passed");
 
+  const unusedStaleWide = {
+    series: "KXNFLWINS",
+    team: "BUF",
+    market: {
+      ticker: "WINS-27BUF-11",
+      floor_strike: 11,
+      status: "active",
+      yes_bid_dollars: "0.01",
+      yes_ask_dollars: "0.97",
+    },
+    sourceUrl: "https://example.test/events/BUF",
+    fetchedAt: new Date("2026-09-20T13:00:00.000Z"),
+  };
+  const acceptedWithUnusedStale = mtmPipelineTestUtils.validateFinalPublicationQuality(
+    engine,
+    {},
+    [...rawQuotes, unusedStaleWide],
+    captureManifest,
+    new Date("2026-09-20T14:04:00.000Z"),
+    new Date("2026-09-20T14:04:00.000Z"),
+  );
+  assert.equal(acceptedWithUnusedStale.error, null);
+
+  const expiredAtPublication = mtmPipelineTestUtils.validateFinalPublicationQuality(
+    engine,
+    {},
+    rawQuotes,
+    captureManifest,
+    new Date("2026-09-20T14:04:00.000Z"),
+    new Date("2026-09-20T14:10:00.000Z"),
+  );
+  assert.match(expiredAtPublication.error, /market evidence is stale/);
+
   const missingManifest = mtmPipelineTestUtils.validateFinalPublicationQuality(
     engine, {}, [{ ...rawQuotes[0], completenessManifest: undefined }], null,
   );
@@ -612,6 +778,47 @@ test("publication audit fail-closes every required gate and emits an official-co
     engine, {}, rawQuotes, captureManifest,
   );
   assert.match(rejected.error, /global ESS/);
+});
+
+test("excluded elimination evidence cannot enter fitting through the bid-plus-cent path", () => {
+  const capturedAt = new Date("2026-09-20T14:04:00.000Z");
+  const staleAt = new Date("2026-09-20T13:00:00.000Z");
+  const config = {
+    pricing: { max_spread_for_mid: 0.15 },
+    kalshi: { series: {
+      win_totals: "WINS",
+      stage_of_elimination: "STAGE",
+    } },
+  };
+  const raw = [{
+    series: "WINS",
+    team: "BUF",
+    market: {
+      ticker: "WINS-27BUF-1",
+      floor_strike: 1,
+      status: "finalized",
+      result: "yes",
+    },
+    fetchedAt: capturedAt,
+  }, ...["REG", "WC", "DIV", "CONF", "FL", "FW"].map((suffix) => ({
+    series: "STAGE",
+    team: "BUF",
+    market: {
+      ticker: `STAGE-27BUF-${suffix}`,
+      status: "active",
+      yes_bid_dollars: "0.10",
+    },
+    fetchedAt: suffix === "WC" ? staleAt : capturedAt,
+  }))];
+  assert.throws(
+    () => mtmPipelineTestUtils.deriveQuoteState(
+      config,
+      [{ code: "BUF", name: "Buffalo Bills" }],
+      raw,
+      capturedAt,
+    ),
+    /Incomplete stage-of-elimination quotes for BUF/,
+  );
 });
 
 test("internal capture manifest counts mixed and empty fetch outcomes independently of provider manifests", () => {

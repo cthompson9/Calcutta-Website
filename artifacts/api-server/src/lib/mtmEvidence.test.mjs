@@ -6,6 +6,7 @@ import {
   acceptedYesBounds,
   aggregateMtmEvidence,
   assessMtmEvidence,
+  canonicalQuoteDecision,
   estimateMtmTrades,
   normalizeMtmEvidence,
   validateMtmEvidence,
@@ -118,4 +119,79 @@ test("material events and missing timestamps are explicit degradation reasons", 
     "timestamp is missing",
     "material event requires review",
   ]);
+});
+
+test("canonical quote freshness uses capture time and keeps metadata update time separate", () => {
+  const decision = canonicalQuoteDecision({
+    evidence: {
+      id: "fresh-book",
+      status: "active",
+      yesBid: 0.4,
+      yesAsk: 0.42,
+      observedAt: "2026-09-20T13:59:00.000Z",
+      provider: { provider: "kalshi", sourceId: "event-1" },
+    },
+    ticker: "WINS-10",
+    evaluationTime: asOf,
+    transformation: "bounds",
+    metadataUpdatedAt: "2026-09-01T00:00:00.000Z",
+  });
+  assert.equal(decision.usedInFitting, true);
+  assert.equal(decision.role, "active_price");
+  assert.equal(decision.captureTime, "2026-09-20T13:59:00.000Z");
+  assert.equal(decision.metadataUpdatedAt, "2026-09-01T00:00:00.000Z");
+});
+
+test("saved, missing, and future capture provenance is never replaced with now", () => {
+  const base = {
+    status: "active",
+    yesBid: 0.4,
+    yesAsk: 0.42,
+    provider: { provider: "kalshi" },
+  };
+  const stale = canonicalQuoteDecision({
+    evidence: { id: "saved", ...base, observedAt: "2026-09-20T13:40:00.000Z" },
+    ticker: "SAVED",
+    evaluationTime: asOf,
+    transformation: "bounds",
+  });
+  assert.equal(stale.usedInFitting, false);
+  assert.ok(stale.exclusionReasons.includes("active price is stale"));
+
+  const missing = canonicalQuoteDecision({
+    evidence: { id: "missing", ...base },
+    ticker: "MISSING",
+    evaluationTime: asOf,
+    transformation: "bounds",
+  });
+  assert.equal(missing.captureTime, null);
+  assert.equal(missing.usedInFitting, false);
+  assert.ok(missing.exclusionReasons.includes("capture timestamp is missing"));
+
+  const future = canonicalQuoteDecision({
+    evidence: { id: "future", ...base, observedAt: "2026-09-20T14:01:00.000Z" },
+    ticker: "FUTURE",
+    evaluationTime: asOf,
+    transformation: "bounds",
+  });
+  assert.equal(future.usedInFitting, false);
+  assert.ok(future.exclusionReasons.includes("capture timestamp is in the future"));
+});
+
+test("validated settlement facts are eligible without an active-price freshness gate", () => {
+  const settled = canonicalQuoteDecision({
+    evidence: {
+      id: "settled",
+      status: "settled",
+      settlement: "yes",
+      observedAt: "2026-01-01T00:00:00.000Z",
+      provider: { provider: "kalshi" },
+    },
+    ticker: "SETTLED",
+    evaluationTime: asOf,
+    transformation: "bounds",
+  });
+  assert.equal(settled.role, "settlement_fact");
+  assert.equal(settled.usedInFitting, true);
+  assert.deepEqual(settled.transformation, { kind: "settlement", value: 1 });
 });

@@ -1,0 +1,74 @@
+Implement Stage 1 below only. Use the supplied findings; do not repeat the investigation. Return the changes, test results, and remaining blockers, then stop.
+Objective
+Correct MTM market-evidence freshness and eligibility handling. Preserve the existing ESS, maximum-path-weight, and calibration thresholds.
+Confirmed findings
+- Production failed attempts include the current Week 1 results.
+- The same 736 contracts repeatedly fail freshness checks despite fresh downloads.
+- The pipeline treats Kalshi’s market updated_time as a price-observation timestamp. Kalshi documents market updates as non-trading metadata changes.
+- Canonical fitting derives inputs separately from the evidence classifier, so “excluded” does not consistently mean excluded from fitting.
+- Low ESS is a separate problem. This stage must not attempt to solve it by weakening gates or changing the simulator.
+Scope
+First verify the current revision, unrelated uncommitted changes, and actual application source root. The repository has a nested Calcutta-Website/ copy; modify only the source used by the build. Preserve unrelated work.
+Relevant files:
+- artifacts/api-server/src/lib/mtmPipeline.ts
+- artifacts/api-server/src/lib/mtmEvidence.ts
+- artifacts/api-server/src/lib/mtmPipeline.test.mjs
+- artifacts/api-server/src/lib/mtmEvidence.test.mjs
+Relevant functions:
+- fetchKalshiEvent
+- evidenceInputForQuote
+- deriveQuoteState
+- buildMarketQuoteRows
+- validateFinalPublicationQuality
+Implementation
+1. Create one pure helper for canonical quote normalization and eligibility. It should return:
+   - Observation identity and ticker.
+   - Role: active_price, settlement_fact, or unusable.
+   - Whether it is used in fitting.
+   - Exclusion reasons.
+   - The transformed price, bounds, or settlement value passed to fitting.
+   - Capture time and source provenance.
+   Make input derivation, diagnostic persistence, and publication checks consume this shared decision.
+2. Preserve Kalshi’s updated_time as market-metadata update time. Do not treat it as the time of the latest bid/ask observation.
+3. Record capture time when a current-market response is successfully received. When no verified trading-event timestamp is available, use this capture time as the observation time of the returned book. Keep metadata-update time separate.
+   Do not give replayed or cached saved responses a new capture timestamp. Missing provenance must remain missing.
+4. Pass an explicit evaluation time into freshness checks:
+   - Preflight checks evaluate freshness at input validation.
+   - Final checks evaluate freshness at publication.
+   Preserve the existing time limits. A long-running calculation whose inputs expire must fail safely.
+5. Apply active-price freshness gates to evidence actually used in fitting. Unused raw records must not independently fail publication.
+   Required evidence coverage must still be enforced. If excluding an observation leaves a required team or market family without usable evidence, fail preflight with a specific explanation.
+6. Treat a validated settled result as a settlement fact, not an active price that must update every five minutes. A closed market without a definitive result is not a settlement fact.
+7. Preserve the existing treatment of wide win-total books:
+   - Do not use their midpoint as an observation.
+   - Record when a missing value is interpolated.
+   - Record settlement anchors separately.
+   - Retain raw records for audit.
+8. Remove the elimination-market bypass that consumes classified bids plus one cent without respecting evidence eligibility.
+   Preserve the existing pricing transformation for eligible observations in this stage. If eligibility leaves required elimination evidence missing, fail preflight. Do not invent replacement prices or enable another model.
+9. Persist a compact per-observation trace showing the role, eligibility decision, exclusion reasons, and actual transformation used. Keep raw provider responses and credentials out of user-facing errors.
+10. Keep provider-specific timestamp changes isolated so generic evidence consumers do not silently acquire different semantics.
+Required offline tests
+- A fresh capture with an old metadata-update timestamp does not fail solely because the metadata is old.
+- An old saved capture remains stale when replayed.
+- Missing capture provenance is not replaced with the current time.
+- Future timestamps are rejected or explicitly marked invalid.
+- A valid settled result does not fail an active-price freshness gate.
+- An unused stale record does not block an otherwise complete valid evidence set.
+- Excluding required evidence without a valid replacement fails coverage.
+- A wide win quote has no direct midpoint influence, and interpolation is identified.
+- An excluded elimination price cannot enter fitting through a separate path.
+- Evidence fresh at preflight but expired at publication fails publication.
+Run these focused checks from the repository root:
+pnpm --filter @workspace/api-server exec tsx --test src/lib/mtmEvidence.test.mjs src/lib/mtmPipeline.test.mjs
+pnpm --filter @workspace/api-server typecheck
+If existing unrelated failures occur, report them separately. Do not change dependencies or unrelated code to silence them.
+Boundaries
+Do not publish, restart the application, refresh provider data or results, run production recalculations, modify production data, change official snapshot pointers, activate v3, or change simulation parameters.
+Use synthetic offline fixtures. No additional production investigation is needed for this stage.
+Return
+- Changed files and commit, if created.
+- Concise explanation of the resulting behavior.
+- Tests run and their results.
+- Remaining blockers or compatibility concerns.
+Stop after Stage 1. Do not claim the low-ESS problem is fixed.
