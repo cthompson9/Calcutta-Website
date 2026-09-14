@@ -1,0 +1,86 @@
+{
+  "schema_version": "mtm-v3-capacity-evidence-v1",
+  "measured_at": "2026-09-14",
+  "purpose": "Complete noncanonical v3 review capacity measurement",
+  "service_class": {
+    "deployment_type": "reserved_vm",
+    "cgroup_cpu": {
+      "quota_us": 400000,
+      "period_us": 100000,
+      "cpus": 4.0
+    },
+    "cgroup_memory_limit_bytes": 8589934592
+  },
+  "workload": {
+    "engine": "mtm-v3-review",
+    "teams": 32,
+    "entries": 32,
+    "remaining_games": 270,
+    "path_count": 20000,
+    "pilot_path_count": 2000,
+    "input_policy": "Production-shaped private state was used for measurement; no private state or source bytes are committed."
+  },
+  "termination": {
+    "process_completed": true,
+    "exit_code": 1,
+    "engine_status": "failed",
+    "solver_status": "interval_residual",
+    "reason": "joint review fit or review gates failed",
+    "timed_out": false,
+    "signaled": false
+  },
+  "resources": {
+    "wall_seconds": 404.147722,
+    "cpu_seconds": 480.586131,
+    "peak_rss_bytes": 3467997184,
+    "memory_headroom_bytes": 5121937408,
+    "memory_headroom_percent": 59.627,
+    "api_worker_timeout_seconds": 900,
+    "timeout_headroom_seconds": 495.852278,
+    "timeout_headroom_percent": 55.095
+  },
+  "stage_timings": {
+    "rating_fit": {
+      "wall_seconds": 0.017647474,
+      "cpu_seconds": 0.064019233,
+      "completed": true
+    },
+    "v3_simulation": {
+      "wall_seconds": 209.247480794,
+      "cpu_seconds": 209.301014873,
+      "completed": true
+    },
+    "scenario_conversion": {
+      "wall_seconds": 6.902405829,
+      "cpu_seconds": 6.902334275,
+      "completed": true
+    },
+    "joint_fit": {
+      "wall_seconds": 42.49049677,
+      "cpu_seconds": 118.50347527,
+      "completed": true
+    },
+    "joint_summary": {
+      "wall_seconds": 145.480266484,
+      "cpu_seconds": 145.783294345,
+      "completed": true
+    }
+  },
+  "review_quality": {
+    "effective_sample_size": 102.33052943721817,
+    "minimum_effective_sample_size": 1000.0,
+    "max_weight": 0.02796100869056697,
+    "maximum_allowed_weight": 0.01,
+    "support_failure_count": 0,
+    "interval_conflict_count": 0,
+    "pool_conservation_passed": true,
+    "conditional_reconciliation_passed": true,
+    "review_ready": false
+  },
+  "decision": {
+    "capacity": "pass",
+    "activation": "hold",
+    "explanation": "The full workload fits the API worker and memory limits with operational headroom, but review quality gates failed.",
+    "production_pointers_changed": false
+  }
+}

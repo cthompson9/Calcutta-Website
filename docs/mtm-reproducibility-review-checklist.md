@@ -141,7 +141,7 @@ switch.
 | Historical replay thresholds approved | No approved replay artifact is referenced by the configured policy. | Blocking |
 | Side-by-side shadow thresholds approved | No approved shadow artifact is referenced by the configured policy. | Blocking |
 | Before/after payout bridge approved | No same-state legacy/review payout bridge is available for review. | Blocking |
-| Runtime fits the production service class | Partial. Existing measurements benchmark the canonical engine, not the v3 review path on the production service class. | Blocking |
+| Runtime fits the production service class | Measured. The complete 20,000-path v3 review reached its quality decision in 404.148 wall seconds on the intended 4-CPU/8-GiB Reserved VM class, leaving 495.852 seconds (55.1%) inside the 900-second API worker limit. | Capacity passed; activation remains blocked by review quality and the other evidence rows |
 | Explicit enable decision | **HOLD** | Review model remains disabled |
 
 The decision may change to **ENABLE** only in a separate, approved change that
@@ -185,8 +185,18 @@ Committed benchmark evidence currently establishes:
 Sources: `mtm/engine/benchmark-2026-09-13.json` and
 `mtm/engine/benchmark-numpy-2026-09-13.json`.
 
-These figures do **not** approve v3 activation. Before enablement, record one
-complete v3 run on the intended production service class, including wall time,
-CPU time, peak RSS, cgroup CPU/memory limits, path count, effective sample
-size, termination status, and stage timings. Confirm it completes inside the
-API worker timeout with operational headroom.
+These figures do **not** approve v3 activation.
+
+The complete v3 capacity run is recorded in
+`mtm/engine/v3-production-capacity-2026-09-14.json`. It exercised 20,000 paths
+on the intended 4-CPU/8-GiB Reserved VM class and reached the final review
+gates in 404.148 wall seconds, leaving 495.852 seconds (55.1%) inside the
+900-second API worker limit. Peak RSS was 3.230 GiB, leaving 4.770 GiB (59.6%)
+of the cgroup memory limit. The review subprocess now uses that same worker
+limit rather than an inconsistent five-minute limit.
+
+Capacity passed, but the measured attempt was **not review-ready**: joint-fit
+effective sample size was 102.331 against the 1,000 minimum, maximum weight was
+0.027961 against the 0.01 ceiling, and the solver ended with
+`interval_residual`. The activation decision therefore remains **HOLD**. No
+canonical selector, production pointer, or publication transaction changed.

@@ -109,6 +109,18 @@ def test_review_endpoint_reaches_joint_fit_without_becoming_canonical() -> None:
     assert snapshot["review_only"] is True
     assert "joint_fit" in snapshot["diagnostics"]
     assert snapshot["diagnostics"]["joint_fit_gates"]["passed"] is True
+    runtime = snapshot["diagnostics"]["runtime"]
+    assert runtime["details"]["path_count"] == 1000
+    assert abs(runtime["details"]["effective_sample_size"] - 1000) < 1e-9
+    assert runtime["details"]["termination_status"] == "converged"
+    assert runtime["wall_seconds"] >= 0
+    assert runtime["cpu_seconds"] >= 0
+    assert runtime["peak_rss_bytes"] > 0
+    assert set(runtime["stages"]) == {
+        "rating_fit", "v3_simulation", "scenario_conversion",
+        "joint_fit", "joint_summary",
+    }
+    assert all(stage["completed"] for stage in runtime["stages"].values())
 
 
 if __name__ == "__main__":

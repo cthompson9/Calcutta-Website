@@ -15,6 +15,14 @@ import simulate
 import wins
 
 
+def _json_default(value):
+    """Convert NumPy scalar diagnostics without importing NumPy in the CLI."""
+    item = getattr(value, "item", None)
+    if callable(item):
+        return item()
+    raise TypeError(f"Object of type {type(value).__name__} is not JSON serializable")
+
+
 def _effective_v3_config(config: dict) -> dict:
     sim = config["sim"]
     review = config.get("sim_v3_review", {})
@@ -60,6 +68,13 @@ def build_review_snapshot(config: dict, state: dict) -> dict:
     settings = _effective_v3_config(config)
     diagnostics = {"engine_code_version": _code_version(),
                    "effective_config": settings, "review_only": True}
+    runtime = simulate.RuntimeDiagnostics()
+    simulate.install_sigterm_diagnostics(runtime)
+    runtime.update_details({
+        "path_count": settings["runs"],
+        "pilot_path_count": settings["pilot_runs"],
+        "termination_status": "running",
+    })
     try:
         teams = sorted(state["realized"])
         expected_wins = {}
@@ -87,23 +102,29 @@ def build_review_snapshot(config: dict, state: dict) -> dict:
         effective_margin_sd = (
             settings["margin_sd"] ** 2 + 2 * settings["strength_sd"] ** 2
         ) ** .5
-        fitted = simulate.fit_ratings(
-            remaining_targets, rating_games, hfa=settings["hfa"],
-            margin_sd=effective_margin_sd, lr=config["sim"].get("rating_fit_lr", .5),
-            iters=config["sim"].get("rating_fit_iters", 200))
+        with runtime.stage("rating_fit"):
+            fitted = simulate.fit_ratings(
+                remaining_targets, rating_games, hfa=settings["hfa"],
+                margin_sd=effective_margin_sd, lr=config["sim"].get("rating_fit_lr", .5),
+                iters=config["sim"].get("rating_fit_iters", 200))
         market_means = engine_v3.blend_playoff_futures(
             fitted["ratings"], normalized["probs"], settings["futures_scale"])
+        joint_only_settings = {
+            "futures_scale", "max_joint_weight", "joint_interval_tolerance",
+            "joint_group_caps",
+        }
         simulation_settings = {
             key: value for key, value in settings.items()
-            if key != "futures_scale"
+            if key not in joint_only_settings
         }
-        result = engine_v3.simulate_v3(
-            ratings=market_means, games=games,
-            completed_results=state.get("completed_results", []),
-            realized=state["realized"], divisions=state["divisions"],
-            rubric=config["rubric"], pot=float(state["pot"]),
-            playoff_targets=normalized["probs"],
-            win_targets=expected_wins, **simulation_settings)
+        with runtime.stage("v3_simulation"):
+            result = engine_v3.simulate_v3(
+                ratings=market_means, games=games,
+                completed_results=state.get("completed_results", []),
+                realized=state["realized"], divisions=state["divisions"],
+                rubric=config["rubric"], pot=float(state["pot"]),
+                playoff_targets=normalized["probs"],
+                win_targets=expected_wins, **simulation_settings)
         diagnostics.update({
             "win_ladders": win_diagnostics,
             "rating_fit_max_win_error": fitted["max_abs_win_error"],
@@ -119,9 +140,10 @@ def build_review_snapshot(config: dict, state: dict) -> dict:
         path_library = result.get("path_library", [])
         if not path_library:
             raise ValueError("review simulation did not return its legal path library")
-        scenarios = joint_fit.scenarios_from_path_library(
-            path_library, teams=teams, realized=state["realized"]
-        )
+        with runtime.stage("scenario_conversion"):
+            scenarios = joint_fit.scenarios_from_path_library(
+                path_library, teams=teams, realized=state["realized"]
+            )
         evidence = state.get("joint_fit_constraints")
         if evidence is None:
             evidence = joint_fit.constraints_from_markets(state)
@@ -132,25 +154,31 @@ def build_review_snapshot(config: dict, state: dict) -> dict:
         joint_review = config.get("joint_fit_review", {})
         if not isinstance(joint_review, dict):
             joint_review = {}
-        joint_result = simulate.fit_joint_review(
-            scenarios,
-            evidence,
-            resolved_facts=resolved,
-            precision_caps=state.get("joint_fit_group_caps", settings["joint_group_caps"]),
-            max_iterations=int(joint_review.get(
-                "max_iterations", 2000
-            )),
-            tolerance=float(joint_review.get(
-                "tolerance", 1e-9
-            )),
-            learning_rate=float(joint_review.get(
-                "learning_rate", .2
-            )),
-        )
-        joint_summary = joint_fit.summarize_path_library(
-            scenarios, joint_result["weights"], pool=float(state["pot"])
-        )
+        with runtime.stage("joint_fit"):
+            joint_result = simulate.fit_joint_review(
+                scenarios,
+                evidence,
+                resolved_facts=resolved,
+                precision_caps=state.get("joint_fit_group_caps", settings["joint_group_caps"]),
+                max_iterations=int(joint_review.get(
+                    "max_iterations", 2000
+                )),
+                tolerance=float(joint_review.get(
+                    "tolerance", 1e-9
+                )),
+                learning_rate=float(joint_review.get(
+                    "learning_rate", .2
+                )),
+            )
+        with runtime.stage("joint_summary"):
+            joint_summary = joint_fit.summarize_path_library(
+                scenarios, joint_result["weights"], pool=float(state["pot"])
+            )
         joint_diag = joint_result["diagnostics"]
+        runtime.update_details({
+            "effective_sample_size": joint_diag["effective_sample_size"],
+            "termination_status": joint_result["status"],
+        })
         min_ess = max(1000.0, .05 * len(scenarios))
         gate_checks = {
             "global_ess": joint_diag["effective_sample_size"] >= min_ess - 1e-9,
@@ -226,12 +254,15 @@ def build_review_snapshot(config: dict, state: dict) -> dict:
             "diagnostics": diagnostics,
         }
     except Exception as error:
+        runtime.record_detail("termination_status", "failed")
         diagnostics["error_type"] = type(error).__name__
         diagnostics["error"] = str(error)
         return {"status": "failed", "as_of": as_of, "error": str(error),
                 "diagnostics": diagnostics,
                 "model": {"name": diagnostics["engine_code_version"],
                           "seed": settings["seed"]}}
+    finally:
+        diagnostics["runtime"] = runtime.snapshot()
 
 
 def main() -> int:
@@ -246,7 +277,7 @@ def main() -> int:
         state = json.load(handle)
     snapshot = build_review_snapshot(config, state)
     with open(args.out, "w") as handle:
-        json.dump(snapshot, handle, indent=2)
+        json.dump(snapshot, handle, indent=2, default=_json_default)
     print(f"v3 review: {snapshot['status']}")
     return 0 if snapshot["status"] == "ok" else 1
 

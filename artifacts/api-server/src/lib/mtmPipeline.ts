@@ -1160,7 +1160,7 @@ async function runReviewEngine(state: MtmState, configPath: string): Promise<Eng
     await writeFile(statePath, JSON.stringify(state), "utf8");
     await execFileAsync("python3", [
       "run_mtm_v3.py", "--config", configPath, "--state", statePath, "--out", outPath,
-    ], { cwd: ENGINE_DIR, timeout: 300_000 });
+    ], { cwd: ENGINE_DIR, timeout: ENGINE_TIMEOUT_MS });
     return JSON.parse(await readFile(outPath, "utf8")) as EngineSnapshot;
   } catch (error) {
     try {
