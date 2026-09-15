@@ -893,6 +893,17 @@ test("internal capture manifest counts mixed and empty fetch outcomes independen
   ]);
 });
 
+test("failed engine errors survive payout normalization without fabricated rounding failures", () => {
+  const { state } = completeEngineFixture();
+  for (const message of ["fresh rating fit failed", "set PYTHONHASHSEED=0 for reproducible bracket ordering"]) {
+    const engine = { status: "failed", error: message };
+    assert.equal(mtmPipelineTestUtils.normalizeEngineValuationPayouts(engine, state), message);
+    assert.equal(mtmPipelineTestUtils.validateCompleteEngineSnapshot(engine, state), message);
+    assert.equal(engine.valuations, undefined);
+  }
+  assert.equal(mtmPipelineTestUtils.normalizeEngineValuationPayouts({ status: "failed" }, state), "MTM engine failed.");
+});
+
 test("missing or malformed achieved win probabilities cannot fall back to target projections", () => {
   for (const invalid of [undefined, null, "", false, [], {}, -0.1, 1.1]) {
     const { state, engine } = completeEngineFixture();

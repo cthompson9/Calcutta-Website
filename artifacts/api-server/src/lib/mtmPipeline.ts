@@ -1453,6 +1453,9 @@ function validateCompleteEngineSnapshot(engine: EngineSnapshot, state: MtmState)
 }
 
 function normalizeEngineValuationPayouts(engine: EngineSnapshot, state: MtmState): string | null {
+  // A failed engine has no payout set to round. Preserve its original error
+  // rather than turning absent valuations into a misleading pool discrepancy.
+  if (engine.status !== "ok") return engine.error ?? "MTM engine failed.";
   try {
     const allocated = allocateMtmPoolCents(
       (engine.valuations ?? []).map((valuation) => ({
@@ -2626,6 +2629,7 @@ export async function runMtmPipeline(input: { seasonYear: number; calcuttaId?: n
       run_information: confirmedRunInformation,
       candidate: compactCandidateDiagnostics(engine),
       engineError: engineValidationError,
+      engine_outcome: { status: engine.status, error: engine.error ?? null },
     };
     await db.update(mtmSnapshotTable).set({
       status: "failed",
@@ -3116,6 +3120,7 @@ export async function getMtmPipelineStatus(seasonYear: number, calcuttaId?: numb
 export { withMtmLock };
 
 export const mtmPipelineTestUtils = {
+  runEngine,
   classifyEliminationMarket,
   hourStart,
   quoteValue,
