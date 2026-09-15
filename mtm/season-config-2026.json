@@ -47,13 +47,14 @@
     "stale_after_hours": 168
   },
   "sim": {
+    "pricing_policy": "market-interval-win-priority-v1",
     "margin_sd": 13.5,
     "hfa_points": 1.6,
     "rating_fit_lr": 0.5,
     "rating_fit_iters": 200,
     "monte_carlo_runs": 40000,
     "seed": 20260829,
-    "model": "seeded_monte_carlo_v2_support_strata",
+    "model": "market-interval-win-priority-v1",
     "min_conditional_samples": 100,
     "min_conditional_share": 0.01,
     "calibration_tolerance": 0.03,

@@ -434,6 +434,8 @@ def build_snapshot(config: dict, state: dict,
                    runtime: simulate.RuntimeDiagnostics | None = None,
                    *, review_joint_fit: bool = False) -> dict:
     """Build an official snapshot; production callers always enforce the gate."""
+    from market_interval_snapshot import selected_policy, POLICY, build_interval_snapshot
+    selected = selected_policy(config)
     review_settings = config.get(
         "joint_fit_review", config.get("review_joint_fit", {})
     )
@@ -441,7 +443,11 @@ def build_snapshot(config: dict, state: dict,
         isinstance(review_settings, dict) and review_settings.get("enabled", False)
     )
     if review_joint_fit or enabled:
+        if selected == POLICY:
+            raise ValueError('interval pricing cannot be combined with a review-only runner')
         return build_joint_review_snapshot(config, state)
+    if selected == POLICY:
+        return build_interval_snapshot(config, state, runtime or simulate.RuntimeDiagnostics())
     return _build_snapshot(config, state, runtime=runtime, enforce_gate=True)
 
 

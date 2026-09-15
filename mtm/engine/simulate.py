@@ -458,6 +458,7 @@ def monte_carlo(ratings: dict[str, float],
     # Arrays keep the large path library compact during a 100k-path run.  The
     # public result is converted back to ordinary lists below.
     diff_samples: dict[str, array] = {t: array("d") for t in teams}
+    raw_diff_samples = {t: array("d") for t in teams} if return_review_arrays else None
     # These are deliberately aggregates, rather than paths.  They make the
     # simulator useful to the mark without turning the snapshot into a dump of
     # (potentially very large) simulated outcomes.
@@ -556,6 +557,7 @@ def monte_carlo(ratings: dict[str, float],
         realized_diff = {t: (v.get("adj_pt_diff", 0) if isinstance(v, dict) else 0)
                          for t, v in (realized_stats or {}).items()}
         diff = {t: 0.0 for t in teams}
+        raw_diff = {t: 0.0 for t in teams} if return_review_arrays else None
         outcomes = []
         for gi, g in enumerate(remaining):
             winner, margin = play(
@@ -567,10 +569,15 @@ def monte_carlo(ratings: dict[str, float],
             adjusted_margin = margin * (2 if g.marquee else 1)
             diff[g.home] += sgn * adjusted_margin
             diff[g.away] -= sgn * adjusted_margin
+            if raw_diff is not None:
+                raw_diff[g.home] += sgn * margin
+                raw_diff[g.away] -= sgn * margin
             outcome_code = 0 if winner == g.home else 1
             path_outcomes[gi].append(outcome_code)
         for t in teams:
             diff_samples[t].append(diff[t])
+            if raw_diff_samples is not None:
+                raw_diff_samples[t].append(raw_diff[t])
             path_wins[t].append(min(wins.get(t, 0), 65535))
 
         # seeding per conference
@@ -1067,6 +1074,7 @@ def monte_carlo(ratings: dict[str, float],
             "weights": normalized_weights, "gross": path_gross,
             "wins": path_wins, "hits": hit_indices,
             "outcomes": path_outcomes, "prior_weights": proposal_weights,
+            "raw_diff": raw_diff_samples, "adjusted_diff": diff_samples,
         }
     if return_path_library:
         # Keep this opt-in: the canonical snapshot intentionally does not

@@ -1,6 +1,6 @@
 import unittest
 import numpy as np
-from market_policy_review import DEFAULTS, eligible_book, latest_trade, win_quality, select_playoff_constraint, fit_intervals, timestamp, captured_win_targets
+from market_policy_review import DEFAULTS, eligible_book, latest_trade, win_quality, select_playoff_constraint, fit_intervals, timestamp, captured_win_targets, resolve_provisional_conflicts
 
 NOW=timestamp('2026-09-15T12:00:00Z')
 def quote(**changes):
@@ -78,5 +78,26 @@ class JointSolverTests(unittest.TestCase):
     def test_invalid_prior_rejected(self):
         for p in [[0,1],[float('nan'),1],[-1,2]]:
             with self.assertRaises(ValueError):fit_intervals([[1,0]],p,[.2],[.8],[np.inf],self.policy)
+
+class FinalConflictTests(unittest.TestCase):
+    def resolve(self, *, mode='hard', residual=0, win_error=.02, converged=True, other_violation=0):
+        d=select_playoff_constraint(quote(material_event_at=None),.1,STRONG,NOW,DEFAULTS)
+        d['mode']=mode
+        blockers=[{'id':d['id'],'reason':d['reason']},{'team':'CHI','reason':'incomplete_elimination_coverage'}]
+        rows=[{'id':d['id'],'mode':mode,'achieved':.4,'violation':residual},
+              {'id':'other','mode':'hard','achieved':.5,'violation':other_violation}]
+        remaining=resolve_provisional_conflicts([d],blockers,rows,converged=converged,
+            max_win_error=win_error,policy=DEFAULTS)
+        return d,remaining
+    def test_satisfied_joint_hard_fit_resolves_provisional_warning_only(self):
+        d,b=self.resolve()
+        self.assertFalse(d['blocked']);self.assertEqual(d['prefit_reason'],'needs_information_cutoff')
+        self.assertEqual(d['reason'],'resolved_by_hard_joint_fit');self.assertFalse(d['exception_applied'])
+        self.assertEqual(b,[{'team':'CHI','reason':'incomplete_elimination_coverage'}])
+    def test_unresolved_hard_soft_timeout_and_win_failures_remain_blocked(self):
+        for args in [dict(mode='soft'),dict(residual=.001),dict(win_error=.031),
+                     dict(converged=False),dict(other_violation=.001)]:
+            with self.subTest(args=args):
+                d,b=self.resolve(**args);self.assertTrue(d['blocked']);self.assertEqual(len(b),2)
 
 if __name__=='__main__':unittest.main()

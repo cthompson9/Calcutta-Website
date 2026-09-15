@@ -1,6 +1,14 @@
 # Market intervals and conditional win priority
 
-Implemented policy: `market-interval-win-priority-shadow-v1`. This is an explicit offline shadow command. Neither the official runner nor ordinary Recalculate selects it. Every report has `review_only: true` and `publishable: false`.
+The offline command remains `market-interval-win-priority-shadow-v1`. The canonical adapter is `market-interval-win-priority-v1`, explicitly selected by `sim.pricing_policy` in the season configuration. Unknown policies and engine/API policy mismatches fail closed. The committed configuration selects the interval adapter for the next source deployment; applying source alone does not publish the application or change the current successful mark.
+
+The API passes an immutable copy of the effective configuration to `run_mtm.py`, saves that full configuration and its hash, and records requested/actual policy, seed and path count. Interval runs use `uv run --frozen` with the repository lockfile (SciPy 1.18.1), and `PYTHONHASHSEED=0`. Python diagnostics retain source hashes, fresh rating/proposal provenance, and prior, win-only and final ESS/maximum weights.
+
+The canonical adapter rebuilds unconditional payouts, game conditionals, mean wins, raw differential, marquee additions and stage probabilities from the same final posterior. Pool scaling happens before aggregation. The API independently derives all six exclusive outcomes from final cumulative probabilities and checks the captured books. A soft exception must also pass independent execution-time, event-cutoff and tighter-win-evidence checks.
+
+Provisional requests for trade/cutoff information are resolved only if the converged final hard joint fit satisfies every hard interval and the mean-win tolerance. The original reason is retained as `prefit_reason`; no exception was applied. Missing coverage, unresolved hard conflicts, solver failures and invalid soft exceptions still block publication.
+
+Rollback: explicitly select `normalized-point-v2` (and the prior model label) in a separately deployed configuration. The API then restores the existing point-target validator. There is no automatic fallback after a failed interval calculation.
 
 The API capture retains an additive `state.market_evidence_review` object with canonical eligibility, accepted bounds, execution records supplied by the provider, bare last price, capture time and any supplied material-event cutoff. It does not fetch extra trades or manufacture missing execution timestamps. Capture errors are recorded without bypassing existing canonical failure handling.
 
@@ -34,6 +42,10 @@ For a controlled fixed-inventory comparison, supply `--inventory /private/invent
 Run tests with `python3 -m unittest discover -s mtm/engine -p test_market_policy_review.py`. The capture adapter is covered by the API pipeline tests.
 
 ## Saved replay validation
+
+Current snapshot-23 integration: three predeclared fresh 40,000-path batches through `run_mtm.build_snapshot` pass with ESS 5,237.11 / 6,820.80 / 4,338.01 and maximum weights 0.6530% / 0.3794% / 0.9526%. All 192 hard elimination intervals pass; mean-win errors are 1.660 / 1.840 / 1.851 percentage points. Previously provisional conflicts resolve without any soft exception. All three conserve a synthetic 100-unit pool and reconcile game conditionals. The Replit Python 3.13 / NumPy 2.5.3 / SciPy 1.18.1 runtime reproduces the first batch's ESS and maximum weight. These are saved-data integration checks, not a fresh production mark or a universal precision guarantee.
+
+Earlier snapshot validation (before snapshot 23):
 
 All three original 40,000-path inventories pass the new numerical checks: ESS 9,177â€“9,705, maximum weight 0.324â€“0.377%, mean-win error 2.18â€“2.27 percentage points. All remain blocked on Chicago's ineligible wild-card elimination quote. No win-priority exception was necessary in those batches; the exception branch is tested with explicit trade/conflict fixtures, not claimed as observed real-data validation. Saved execution records were unavailable and none were invented.
 

@@ -76,7 +76,7 @@ dependencies = [
 [package.metadata]
 requires-dist = [
     { name = "numpy", specifier = ">=2.5.3" },
-    { name = "scipy", specifier = ">=1.14,<2" },
+    { name = "scipy", specifier = "==1.18.1" },
 ]
 
 [[package]]

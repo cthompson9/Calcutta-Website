@@ -1,6 +1,15 @@
 import assert from "node:assert/strict";
 import test from "node:test";
 import { mtmPipelineTestUtils } from "./mtmPipeline.ts";
+import { intervalFixture } from "./mtmIntervalPolicy.test.mjs";
+
+test("canonical playoff publication validator selects interval policy and rejects runner mismatch", () => {
+  const { engine, state, config } = intervalFixture();
+  assert.equal(mtmPipelineTestUtils.validateFinalPlayoffMarketQuality(engine, state, config).error, null);
+  engine.model.name = "legacy";
+  delete engine.model.pricing_policy;
+  assert.match(mtmPipelineTestUtils.validateFinalPlayoffMarketQuality(engine, state, config).error, /mismatch/);
+});
 
 test("shadow capture preserves books and executions without inventing last-trade timestamps", () => {
   const at = new Date("2026-09-20T14:04:00Z");
@@ -585,6 +594,11 @@ test("run information separates requested settings and meaningful input identity
   });
   assert.equal(first.requested.seed, 17);
   assert.equal(first.requested.path_count, 40000);
+  assert.deepEqual(first.effective_configuration, config);
+  assert.equal(first.requested.pricing_policy, "normalized-point-v2");
+  const retainedSeed = first.effective_configuration.sim.seed;
+  config.sim.seed = 99;
+  assert.equal(first.effective_configuration.sim.seed, retainedSeed);
   assert.equal(first.confirmed, null);
   assert.equal(first.diagnostic_policy_version, "mtm-diagnostics-v2");
   assert.equal(first.meaningful_model_inputs_hash, replayed.meaningful_model_inputs_hash);

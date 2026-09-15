@@ -46,6 +46,7 @@ import {
   type MtmEvidenceInput,
 } from "./mtmEvidence";
 import { validateMtmCanonicalDataFreshness } from "./currentMtm";
+import { INTERVAL_POLICY, selectedMtmPolicy, validateMtmPolicyIdentity, validateFinalIntervalMarketQuality } from "./mtmIntervalPolicy";
 
 const execFileAsync = promisify(execFile);
 const WORKSPACE_ROOT = existsSync(resolve(process.cwd(), "mtm"))
@@ -110,7 +111,7 @@ type EngineSnapshot = {
   valuations?: Array<Record<string, unknown>>;
   diagnostics?: Record<string, unknown>;
   path_count?: number;
-  model?: { name?: string; seed?: number };
+  model?: { name?: string; seed?: number; pricing_policy?: string; pricing_basis?: string };
   calibration?: Array<Record<string, unknown>>;
   conditionals?: Array<Record<string, unknown>>;
   calibration_metrics?: Array<Record<string, unknown>>;
@@ -1126,16 +1127,21 @@ async function exportState(seasonYear: number, calcuttaId?: number): Promise<{
   };
 }
 
-async function runEngine(state: MtmState): Promise<EngineSnapshot> {
+async function runEngine(state: MtmState, config: Record<string, any>): Promise<EngineSnapshot> {
   const dir = await mkdtemp(resolve(tmpdir(), "calcutta-mtm-"));
   const statePath = resolve(dir, "state.json");
   const outPath = resolve(dir, "snapshot.json");
+  const configPath = resolve(dir, "effective-config.json");
   try {
     await writeFile(statePath, JSON.stringify(state), "utf8");
+    await writeFile(configPath, JSON.stringify(config), "utf8");
+    const interval = selectedMtmPolicy(config) === INTERVAL_POLICY;
     await execFileAsync(
-      "python3",
-      ["run_mtm.py", "--config", CONFIG_PATH, "--state", statePath, "--out", outPath],
-      { cwd: ENGINE_DIR, timeout: ENGINE_TIMEOUT_MS, maxBuffer: 16 * 1024 * 1024 },
+      interval ? "uv" : "python3",
+      [...(interval ? ["run", "--frozen", "--project", WORKSPACE_ROOT, "python"] : []),
+        "run_mtm.py", "--config", configPath, "--state", statePath, "--out", outPath],
+      { cwd: ENGINE_DIR, timeout: ENGINE_TIMEOUT_MS, maxBuffer: 16 * 1024 * 1024,
+        env: { ...process.env, PYTHONHASHSEED: "0" } },
     );
     return JSON.parse(await readFile(outPath, "utf8")) as EngineSnapshot;
   } catch (error) {
@@ -1649,9 +1655,11 @@ function buildRunInformation(args: {
       path_count: sim.monte_carlo_runs == null ? null : Math.trunc(Number(sim.monte_carlo_runs)),
       engine: String(sim.model ?? "seeded_monte_carlo"),
       executable: "run_mtm.py",
+      pricing_policy: selectedMtmPolicy(args.config),
     },
     confirmed: null,
     effective_configuration_hash: hash(args.config),
+    effective_configuration: JSON.parse(JSON.stringify(args.config)),
     input_provenance_identity: hash(withoutIncidentalTimestamps(args.inputProvenance)),
     meaningful_model_inputs_hash: hash(meaningfulInputs),
   };
@@ -1690,6 +1698,9 @@ function validateFinalPlayoffMarketQuality(
   error: string | null;
   diagnostics: Record<string, unknown>;
 } {
+  const identityError = validateMtmPolicyIdentity(engine, config);
+  if (identityError) return { error: identityError, diagnostics: { status: "failed", gate_result: "failed" } };
+  if (selectedMtmPolicy(config) === INTERVAL_POLICY) return validateFinalIntervalMarketQuality(engine, state, config);
   const defaultTolerance = asNumber(config.sim?.calibration_tolerance, 0.03);
   const calibration = engine.calibration
     ?? engine.calibration_metrics
@@ -2489,7 +2500,9 @@ export async function runMtmPipeline(input: { seasonYear: number; calcuttaId?: n
   if (input.seasonYear !== Number(config.season)) {
     throw new Error(`The frozen MTM configuration supports season ${config.season}, not ${input.seasonYear}.`);
   }
-  const methodVersion = `frozen-mtm-${config.season}`;
+  const pricingPolicy = selectedMtmPolicy(config);
+  const methodVersion = pricingPolicy === INTERVAL_POLICY
+    ? `${INTERVAL_POLICY}-${config.season}` : `frozen-mtm-${config.season}`;
   const selected = await db.select({ poolId: calcuttasTable.id }).from(calcuttasTable)
     .innerJoin(seasonsTable, eq(seasonsTable.id, calcuttasTable.seasonId))
     .where(and(eq(seasonsTable.year, input.seasonYear), eq(calcuttasTable.sport, "NFL"), input.calcuttaId == null ? eq(calcuttasTable.isCanonical, true) : eq(calcuttasTable.id, input.calcuttaId)))
@@ -2593,13 +2606,15 @@ export async function runMtmPipeline(input: { seasonYear: number; calcuttaId?: n
   await db.update(mtmSnapshotTable).set({
     diagnostics: { run_information: runInformation },
   }).where(eq(mtmSnapshotTable.id, snapshotId));
-  const engine = await runEngine(state);
+  const engine = await runEngine(state, config);
   const confirmedRunInformation = {
     ...runInformation,
     confirmed: {
       seed: engine.model?.seed ?? null,
       path_count: engine.path_count ?? null,
       engine: engine.model?.name ?? null,
+      pricing_policy: engine.model?.pricing_policy ?? null,
+      pricing_basis: engine.model?.pricing_basis ?? null,
     },
   };
   const engineValidationError =

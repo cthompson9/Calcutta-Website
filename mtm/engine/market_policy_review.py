@@ -1,4 +1,4 @@
-"""Explicit offline market-policy shadow. No production runner imports this module.
+"""Market interval fitter shared by the canonical adapter and offline shadow.
 
 Books define intervals. Qualified recent executions are corroboration only.
 Win evidence may take precedence over conflicting wide playoff evidence when
@@ -139,6 +139,9 @@ def generate_inventory(state, capture, config, seed, runs=40000):
     a=result['_review_arrays']
     inventory={'prior':np.asarray(a['prior_weights']),'teams':np.asarray(teams),'stages':np.asarray(STAGES),
         'wins':np.column_stack([a['wins'][t] for t in teams]),'gross':np.column_stack([a['gross'][t] for t in teams]),
+        'outcomes':np.asarray(a['outcomes'],dtype=np.uint8),
+        'raw_diff':np.column_stack([a['raw_diff'][t] for t in teams]),
+        'adjusted_diff':np.column_stack([a['adjusted_diff'][t] for t in teams]),
         'hits':np.column_stack([np.isin(np.arange(runs),a['hits'][(t,s)]) for t in teams for s in STAGES])}
     return inventory,{'source':'fresh rating fit from captured win books','seed':seed,'runs':runs,
         'rating_fit':fit,'proposal':proposal.diagnostics()}
@@ -194,7 +197,30 @@ def fit_intervals(features, prior, lower, upper, penalties, policy):
     return {'status':status,'message':message,'weights':w,'achieved':a,'residuals':residual,
         'max_hard_residual':maxhard,'iterations':len(history),'seconds':time.monotonic()-start}
 
-def run_shadow(state, capture, inventory, config, policy=None):
+def resolve_provisional_conflicts(decisions, blockers, residuals, *, converged,
+                                  max_win_error, policy):
+    """A satisfied hard constraint needs no permission to override evidence.
+
+    Keep the pre-fit finding for audit. Resolve only provisional exception
+    evidence requests, after the joint fit meets every hard constraint and wins.
+    """
+    resolved=set()
+    joint_ok=(converged and max_win_error<=policy['win_tolerance'] and
+              all(r['violation']<=policy['numerical_tolerance']
+                  for r in residuals if r['mode']=='hard'))
+    by_id={r['id']:r for r in residuals}
+    for d in decisions:
+        r=by_id.get(d['id'])
+        if (joint_ok and d.get('blocked') and d['mode']=='hard' and
+            d['reason'] in {'needs_information_cutoff','needs_trade_evidence','book_trade_disagreement'} and
+            r and r['mode']=='hard' and r['violation']<=policy['numerical_tolerance']):
+            d.update(prefit_reason=d['reason'],reason='resolved_by_hard_joint_fit',
+                     blocked=False,final_probability=r['achieved'],exception_applied=False)
+            resolved.add(d['id'])
+    return [b for b in blockers if b.get('id') not in resolved]
+
+
+def run_shadow(state, capture, inventory, config, policy=None, *, result_arrays=None):
     policy=dict(DEFAULTS if policy is None else policy)
     if capture.get('schema_version')!='market-policy-input-v1':raise ValueError('unsupported evidence schema')
     now=timestamp(capture.get('evaluation_time'))
@@ -254,12 +280,21 @@ def run_shadow(state, capture, inventory, config, policy=None):
     ess=float(1/(w@w));maximum=float(w.max());maxwin=float(max(abs(achieved[i]-mean_targets[t]) for i,t in enumerate(teams)))
     hard=np.isinf(penalties);maxhard=float(residual[hard].max())
     numerical_pass=fit['status']=='converged' and maxhard<=policy['numerical_tolerance'] and ess>=policy['min_ess'] and maximum<=policy['max_weight'] and maxwin<=policy['win_tolerance']
+    residual_rows=[{'id':names[i],'achieved':float(achieved[i]),'violation':float(residual[i]),'mode':'hard' if hard[i] else 'soft'} for i in range(len(names))]
+    blockers=resolve_provisional_conflicts(decisions,blockers,residual_rows,
+        converged=fit['status']=='converged',max_win_error=maxwin,policy=policy)
+    report['blockers']=blockers
+    p=np.asarray(prior,dtype=float);p=p/p.sum()
+    report['weight_stages']={label:{'ess':float(1/(v@v)),'max_weight':float(v.max())}
+        for label,v in [('prior',p),('after_wins',baseline['weights']),('final',w)]}
+    # Private in-process boundary: never serialize path weights in snapshots.
+    if result_arrays is not None:result_arrays.update(weights=w)
     report.update(numerical_checks_pass=numerical_pass,ess=ess,max_weight=maximum,max_mean_win_error=maxwin,
         max_hard_interval_violation=maxhard,max_any_interval_violation=float(residual.max()),
         pool_conservation_error=float(abs((w@gross).sum()-100)),
         team_payout_per_100=dict(zip(teams,(w@gross).tolist())),
         status='shadow_candidate' if numerical_pass and not blockers else 'blocked',
-        constraint_residuals=[{'id':names[i],'achieved':float(achieved[i]),'violation':float(residual[i]),'mode':'hard' if hard[i] else 'soft'} for i in range(len(names))])
+        constraint_residuals=residual_rows)
     return report
 
 def main():
