@@ -238,3 +238,31 @@ mtime_ms = 1789278720443
 storage_uri = "gcs://replit-rams-assets-picard/rams/assets/repl:20ced4e6-12f6-4285-a30b-9d56cdf8826c/6c4a9f4e-8c3c-466f-8f0a-f2c9365ab30f/12028266-6f5a-40d0-aa35-2ba7e232b9d2"
 storage_version_token = "1789278730986853"
 content_type = "application/octet-stream"
+
+[[outputs]]
+id = "LJlhZbeCcJEXdH4CdYsZ8"
+uri = "file://.local/exports/stage4/stage3-3ac2943.patch.txt"
+type = "text"
+title = "Stage 3 source patch (3ac2943)"
+description = "Single-commit patch for the offline schedule-feasible candidate. Apply only after prerequisite parent f7423f8; excludes the other commits since GitHub c37e71b."
+logical_id = "0fbfabbd-0a15-411e-88f1-07a29f56a6db"
+content_hash = "sha256:88ba1a9d7d4cbbee2e817ce8826d5183bdbf8f9b2ff17c4acb784b79f43da91e"
+size = 21041
+mtime_ms = 1789478380173
+storage_uri = "gcs://replit-rams-assets-picard/rams/assets/repl:20ced4e6-12f6-4285-a30b-9d56cdf8826c/0fbfabbd-0a15-411e-88f1-07a29f56a6db/57cad434-656b-4cba-98ab-3a6176b88c9f"
+storage_version_token = "1789478503546022"
+content_type = "text/plain"
+
+[[outputs]]
+id = "Y3dKElxEAqq3HZ1qkobiJ"
+uri = "file://.local/exports/stage4/snapshot-21-private-replay.tar.gz"
+type = "unspecified"
+title = "Snapshot 21 private replay bundle"
+description = "Redacted immutable offline replay evidence from SELECT-only production reads. Contains manifest, section hashes, model state, diagnostics, provenance, and 736 compact quote observations; excludes credentials and holding identities."
+logical_id = "07d560e1-9240-444d-9039-9b9a1f1f8e96"
+content_hash = "sha256:030b445b5f062ac95e04ce72c7ab7c3ec910132551ddd6e7f08fed78080101f4"
+size = 114348
+mtime_ms = 1789478489586
+storage_uri = "gcs://replit-rams-assets-picard/rams/assets/repl:20ced4e6-12f6-4285-a30b-9d56cdf8826c/07d560e1-9240-444d-9039-9b9a1f1f8e96/cb22f588-f9d6-4f5d-bf3c-3b74b25bce1e"
+storage_version_token = "1789478504328211"
+content_type = "application/octet-stream"
