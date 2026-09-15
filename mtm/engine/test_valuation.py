@@ -20,6 +20,19 @@ class PayoutAllocationTests(unittest.TestCase):
         with self.assertRaisesRegex(ValueError, "do not conserve the pool"):
             _allocate_payout_cents({"A": 60.0, "B": 39.99}, 100.0)
 
+    def test_absorbs_a_tiny_negative_path_aggregation_residual(self):
+        allocated = _allocate_payout_cents({
+            "A": 60.0000004,
+            "B": 40.0,
+            "C": -0.0000004,
+        }, 100.0)
+
+        self.assertEqual(allocated, {"A": 60.0, "B": 40.0, "C": 0.0})
+
+    def test_rejects_a_materially_negative_team_payout(self):
+        with self.assertRaisesRegex(ValueError, "materially negative"):
+            _allocate_payout_cents({"A": 100.01, "B": -0.01}, 100.0)
+
 
 if __name__ == "__main__":
     unittest.main()

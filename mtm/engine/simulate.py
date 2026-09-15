@@ -308,6 +308,19 @@ def implied_total_wins(ratings: dict[str, float],
     return totals
 
 
+def _normalize_path_payouts(points: dict[str, float],
+                            pot: float) -> dict[str, float]:
+    """Convert one path's signed rubric points into nonnegative pool payouts."""
+    payable_points = {team: max(0.0, value) for team, value in points.items()}
+    total = sum(payable_points.values())
+    if total <= 0:
+        raise ValueError("simulation path has no positive payable points")
+    return {
+        team: pot * payable_points[team] / total
+        for team in payable_points
+    }
+
+
 def _aggregate_path_statistics(teams, path_outcomes, path_wins, path_gross,
                                weights, *, chunk_size=4096):
     """Compactly reduce simulated paths to the public aggregate statistics.
@@ -633,11 +646,9 @@ def monte_carlo(ratings: dict[str, float],
                 for s in stages:
                     p += rubric["bonuses"][s] * path_stage[t][s]
                 points[t] = p
-            total = sum(points.values())
-            if total > 0:
-                gross = {t: pot * points[t] / total for t in teams}
-                for t in teams:
-                    path_gross[t].append(gross[t])
+            gross = _normalize_path_payouts(points, pot)
+            for t in teams:
+                path_gross[t].append(gross[t])
         elif path_gross is not None:
             for t in teams:
                 path_gross[t].append(0.0)

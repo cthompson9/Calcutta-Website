@@ -20,37 +20,52 @@ market and price correctly with no special casing.
 from __future__ import annotations
 
 import math
+from decimal import Decimal, ROUND_FLOOR, ROUND_HALF_EVEN
 
 STAGES = ["berth", "divisional", "conference", "sb_berth", "sb_win"]
 
 
 def _allocate_payout_cents(expected: dict[str, float], pot: float) -> dict[str, float]:
     """Round team payouts to cents while preserving the pool exactly."""
-    total = sum(expected.values())
-    conservation_tolerance = max(1e-6, abs(pot) * 1e-12)
-    if not math.isclose(
-        total,
-        pot,
-        rel_tol=0.0,
-        abs_tol=conservation_tolerance,
-    ):
+    pot_decimal = Decimal(str(pot))
+    tolerance = max(Decimal("0.000001"), abs(pot_decimal) * Decimal("1e-12"))
+    decimal_expected = {
+        team: Decimal(str(value))
+        for team, value in expected.items()
+    }
+    materially_negative = {
+        team: value
+        for team, value in decimal_expected.items()
+        if value < -tolerance
+    }
+    if materially_negative:
+        team, value = min(materially_negative.items(), key=lambda item: item[1])
         raise ValueError(
-            f"simulated payouts do not conserve the pool before rounding: "
-            f"{total:.12f} versus {pot:.12f}"
+            f"simulated payout for {team} is materially negative before rounding: "
+            f"{value:.12f}"
         )
 
-    # Each simulation path is normalized to the pool. Aggregating many paths can
-    # nevertheless leave a binary-float residual below one millionth of a
-    # dollar. Put that residual on one deterministic lot before applying the
-    # largest-remainder cent allocation.
-    adjusted = dict(expected)
-    if adjusted:
-        anchor = max(adjusted, key=lambda team: (adjusted[team], team))
-        adjusted[anchor] += pot - total
+    # Path aggregation can produce negative zero or another sub-millionth
+    # residual for a lot whose true payout is zero.
+    adjusted = {
+        team: max(Decimal(0), value)
+        for team, value in decimal_expected.items()
+    }
+    total = sum(adjusted.values(), Decimal(0))
+    if abs(total - pot_decimal) > tolerance:
+        raise ValueError(
+            f"simulated payouts do not conserve the pool before rounding: "
+            f"{total:.12f} versus {pot_decimal:.12f}"
+        )
 
-    target_cents = round(pot * 100)
-    raw_cents = {team: max(0.0, value * 100) for team, value in adjusted.items()}
-    cents = {team: math.floor(value) for team, value in raw_cents.items()}
+    target_cents = int(
+        (pot_decimal * 100).quantize(Decimal("1"), rounding=ROUND_HALF_EVEN)
+    )
+    raw_cents = {team: value * 100 for team, value in adjusted.items()}
+    cents = {
+        team: int(value.to_integral_value(rounding=ROUND_FLOOR))
+        for team, value in raw_cents.items()
+    }
     remainder = target_cents - sum(cents.values())
     ranked = sorted(
         adjusted,
@@ -59,12 +74,12 @@ def _allocate_payout_cents(expected: dict[str, float], pot: float) -> dict[str, 
     )
     if remainder < 0 or remainder > len(ranked):
         raise ValueError(
-            f"simulated payouts do not conserve the pool before rounding: "
-            f"{sum(expected.values()):.6f} versus {pot:.6f}"
+            f"exact cent allocation failed after conservation validation: "
+            f"remainder={remainder}, lots={len(ranked)}"
         )
     for team in ranked[:remainder]:
         cents[team] += 1
-    return {team: value / 100 for team, value in cents.items()}
+    return {team: float(Decimal(value) / 100) for team, value in cents.items()}
 
 
 def value_team(rubric: dict,
