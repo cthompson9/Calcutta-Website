@@ -26,12 +26,34 @@ STAGES = ["berth", "divisional", "conference", "sb_berth", "sb_win"]
 
 def _allocate_payout_cents(expected: dict[str, float], pot: float) -> dict[str, float]:
     """Round team payouts to cents while preserving the pool exactly."""
+    total = sum(expected.values())
+    conservation_tolerance = max(1e-6, abs(pot) * 1e-12)
+    if not math.isclose(
+        total,
+        pot,
+        rel_tol=0.0,
+        abs_tol=conservation_tolerance,
+    ):
+        raise ValueError(
+            f"simulated payouts do not conserve the pool before rounding: "
+            f"{total:.12f} versus {pot:.12f}"
+        )
+
+    # Each simulation path is normalized to the pool. Aggregating many paths can
+    # nevertheless leave a binary-float residual below one millionth of a
+    # dollar. Put that residual on one deterministic lot before applying the
+    # largest-remainder cent allocation.
+    adjusted = dict(expected)
+    if adjusted:
+        anchor = max(adjusted, key=lambda team: (adjusted[team], team))
+        adjusted[anchor] += pot - total
+
     target_cents = round(pot * 100)
-    raw_cents = {team: max(0.0, value * 100) for team, value in expected.items()}
+    raw_cents = {team: max(0.0, value * 100) for team, value in adjusted.items()}
     cents = {team: math.floor(value) for team, value in raw_cents.items()}
     remainder = target_cents - sum(cents.values())
     ranked = sorted(
-        expected,
+        adjusted,
         key=lambda team: (raw_cents[team] - cents[team], team),
         reverse=True,
     )

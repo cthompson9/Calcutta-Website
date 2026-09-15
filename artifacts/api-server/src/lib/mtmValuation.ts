@@ -367,6 +367,105 @@ export async function assessMarketDrift(snapshotId: number, threshold = 0.05) {
   return { ...result, laterSnapshotId: later.id, reason: result.available ? null : "No comparable quote intersection is available." };
 }
 
+export function isUpcomingMtmEvent(
+  event: { status: string; kickoffAt: Date | null },
+  now = new Date(),
+) {
+  return event.status !== "final" &&
+    (event.kickoffAt == null || event.kickoffAt.getTime() > now.getTime());
+}
+
+async function loadGameEvSwingReadModel(args: {
+  snapshotId: number;
+  seasonId: number;
+  poolId: number;
+}) {
+  const entries = await db.select({
+    entryId: calcuttaEntriesTable.id,
+    teamId: calcuttaEntriesTable.teamId,
+    teamName: teamsTable.name,
+  }).from(calcuttaEntriesTable)
+    .innerJoin(teamsTable, eq(teamsTable.id, calcuttaEntriesTable.teamId))
+    .where(eq(calcuttaEntriesTable.calcuttaId, args.poolId));
+  const ownership = await loadSeasonOwnership(args.seasonId, args.poolId);
+  const entryById = new Map(entries.map((entry) => [entry.entryId, entry]));
+  const conditionals = await db.select().from(mtmGameConditionalTable)
+    .where(eq(mtmGameConditionalTable.snapshotId, args.snapshotId));
+  const conditionalEventIds = [...new Set(conditionals.map((row) => row.eventId))];
+  const conditionalEvents = conditionalEventIds.length
+    ? await db.select({
+        id: eventsTable.id,
+        week: eventsTable.week,
+        home: eventsTable.homeTeamId,
+        away: eventsTable.awayTeamId,
+        status: eventsTable.status,
+        kickoffAt: eventsTable.kickoffAt,
+        homeScore: eventsTable.homeScore,
+        awayScore: eventsTable.awayScore,
+        updatedAt: eventsTable.updatedAt,
+      }).from(eventsTable).where(inArray(eventsTable.id, conditionalEventIds))
+    : [];
+  const eventById = new Map(conditionalEvents.map((event) => [event.id, event]));
+  const conditionalPayouts: Record<string, any> = {};
+  for (const row of conditionals) {
+    const event = eventById.get(row.eventId);
+    if (!event || !isUpcomingMtmEvent(event)) continue;
+    const key = String(row.eventId);
+    const item = conditionalPayouts[key] ?? {
+      event_id: row.eventId,
+      home: event?.home ?? null,
+      away: event?.away ?? null,
+      week: event?.week ?? null,
+      outcomes: {},
+    };
+    const outcome = item.outcomes[row.outcome] ?? { teams: [], owners: [] };
+    outcome.teams.push({
+      entry_id: row.entryId,
+      team_id: entryById.get(row.entryId)?.teamId ?? null,
+      gross_baseline: row.grossBaseline == null ? null : Number(row.grossBaseline),
+      gross_expected_payout: row.grossConditional == null ? null : Number(row.grossConditional),
+      gross_delta: row.grossDelta == null ? null : Number(row.grossDelta),
+      probability: row.probability == null ? null : Number(row.probability),
+      sample_count: row.sampleCount,
+      sample_share: row.sampleShare == null ? null : Number(row.sampleShare),
+      effective_sample_size: row.effectiveSampleSize == null ? null : Number(row.effectiveSampleSize),
+      standard_error: row.standardError == null ? null : Number(row.standardError),
+      quality_status: row.qualityStatus,
+      reconciliation_residual: row.reconciliationResidual == null ? null : Number(row.reconciliationResidual),
+    });
+    item.outcomes[row.outcome] = outcome;
+    conditionalPayouts[key] = item;
+  }
+  for (const event of Object.values(conditionalPayouts)) {
+    for (const outcome of Object.values(event.outcomes) as any[]) {
+      const grossByTeam = new Map(
+        outcome.teams.map((team: any) => [team.team_id, team.gross_expected_payout]),
+      );
+      outcome.owners = [...ownership.byBidder.entries()].map(([bidderId, positions]) => ({
+        bidderId,
+        bidderName: ownership.bidderNames.get(bidderId) ?? "Unknown",
+        grossExpectedPayout: [...positions.entries()].reduce(
+          (sum, [teamId, position]) =>
+            sum + Number(grossByTeam.get(teamId) ?? 0) * position.effectiveShare,
+          0,
+        ),
+      }));
+    }
+  }
+  const gameEvSwings = deriveOwnerGameEvSwings(
+    deriveGameEvSwings(
+      Object.values(conditionalPayouts),
+      new Map(entries.map((entry) => [entry.teamId, entry.teamName])),
+    ),
+    [...ownership.byBidder.entries()].map(([bidderId, positions]) => ({
+      bidderId,
+      bidderName: ownership.bidderNames.get(bidderId) ?? "Unknown",
+      positions,
+    })),
+  );
+  return { ownership, conditionalPayouts, gameEvSwings };
+}
+
 /**
  * Normalized valuation read model. This is intentionally shared by HTTP and
  * MCP callers; it never starts a simulation or mutates a mark.
@@ -459,6 +558,13 @@ export async function getNormalizedMtmValuation(args: {
       .filter((owner: Record<string, any>) =>
         !args.owner ||
         String(owner.bidderName).toLocaleLowerCase().includes(args.owner.toLocaleLowerCase()));
+    const archivedSwings = poolId != null && seasonId != null && resolution.sourceSnapshotId != null
+      ? await loadGameEvSwingReadModel({
+          snapshotId: resolution.sourceSnapshotId,
+          seasonId,
+          poolId,
+        })
+      : { conditionalPayouts: {}, gameEvSwings: [] };
     return {
       available: false,
       mark: unavailableMark,
@@ -476,8 +582,8 @@ export async function getNormalizedMtmValuation(args: {
       staleReason: resolution.staleReason,
       teams: archivedTeams,
       owners: archivedOwners,
-      conditionalPayouts: {},
-      gameEvSwings: [],
+      conditionalPayouts: archivedSwings.conditionalPayouts,
+      gameEvSwings: archivedSwings.gameEvSwings,
       diagnostics: null,
       quality: unavailableQuality,
       invariants: {
@@ -532,12 +638,15 @@ export async function getNormalizedMtmValuation(args: {
     (resolution.markType === "pending_recalculation"
       ? "Current MTM version is pending recalculation."
       : null);
-  const entries = await db.select({
-    entryId: calcuttaEntriesTable.id, teamId: calcuttaEntriesTable.teamId, teamName: teamsTable.name,
-  }).from(calcuttaEntriesTable).innerJoin(teamsTable, eq(teamsTable.id, calcuttaEntriesTable.teamId))
-    .where(eq(calcuttaEntriesTable.calcuttaId, poolId!));
-  const ownership = await loadSeasonOwnership(seasonId!, poolId!);
-  const entryById = new Map(entries.map((entry) => [entry.entryId, entry]));
+  const {
+    ownership,
+    conditionalPayouts,
+    gameEvSwings,
+  } = await loadGameEvSwingReadModel({
+    snapshotId: snapshot.id,
+    seasonId: seasonId!,
+    poolId: poolId!,
+  });
   // The durable resolver is the sole authority for current team and owner
   // values. In particular, do not rebuild provisional values from live events.
   const teams = resolution.teams.map((team: Record<string, any>) => ({
@@ -550,68 +659,6 @@ export async function getNormalizedMtmValuation(args: {
   }));
   const owners = resolution.owners
     .filter((owner: Record<string, any>) => !args.owner || String(owner.bidderName).toLocaleLowerCase().includes(args.owner.toLocaleLowerCase()));
-  const conditionals = await db.select().from(mtmGameConditionalTable)
-    .where(eq(mtmGameConditionalTable.snapshotId, snapshot.id));
-  const conditionalEventIds = [...new Set(conditionals.map((row) => row.eventId))];
-  const conditionalEvents = conditionalEventIds.length
-    ? await db.select({
-        id: eventsTable.id,
-        week: eventsTable.week,
-        home: eventsTable.homeTeamId,
-        away: eventsTable.awayTeamId,
-        status: eventsTable.status,
-        homeScore: eventsTable.homeScore,
-        awayScore: eventsTable.awayScore,
-        updatedAt: eventsTable.updatedAt,
-      })
-      .from(eventsTable).where(inArray(eventsTable.id, conditionalEventIds))
-    : [];
-  const eventById = new Map(conditionalEvents.map((event) => [event.id, event]));
-  const conditionalPayouts: Record<string, any> = {};
-  for (const row of conditionals) {
-    const event = eventById.get(row.eventId);
-    const key = String(row.eventId);
-    const item = conditionalPayouts[key] ?? { event_id: row.eventId, home: event?.home ?? null, away: event?.away ?? null, week: event?.week ?? null, outcomes: {} };
-    const outcome = item.outcomes[row.outcome] ?? { teams: [], owners: [] };
-    outcome.teams.push({
-      entry_id: row.entryId,
-      team_id: entryById.get(row.entryId)?.teamId ?? null,
-      gross_baseline: row.grossBaseline == null ? null : Number(row.grossBaseline),
-      gross_expected_payout: row.grossConditional == null ? null : Number(row.grossConditional),
-      gross_delta: row.grossDelta == null ? null : Number(row.grossDelta),
-      probability: row.probability == null ? null : Number(row.probability),
-      sample_count: row.sampleCount,
-      sample_share: row.sampleShare == null ? null : Number(row.sampleShare),
-      effective_sample_size: row.effectiveSampleSize == null ? null : Number(row.effectiveSampleSize),
-      standard_error: row.standardError == null ? null : Number(row.standardError),
-      quality_status: row.qualityStatus,
-      reconciliation_residual: row.reconciliationResidual == null ? null : Number(row.reconciliationResidual),
-    });
-    item.outcomes[row.outcome] = outcome;
-    conditionalPayouts[key] = item;
-  }
-  for (const event of Object.values(conditionalPayouts)) {
-    for (const outcome of Object.values(event.outcomes) as any[]) {
-      const grossByTeam = new Map(outcome.teams.map((team: any) => [team.team_id, team.gross_expected_payout]));
-      outcome.owners = [...ownership.byBidder.entries()].map(([bidderId, positions]) => ({
-        bidderId,
-        bidderName: ownership.bidderNames.get(bidderId) ?? "Unknown",
-        grossExpectedPayout: [...positions.entries()].reduce((sum, [teamId, position]) =>
-          sum + Number(grossByTeam.get(teamId) ?? 0) * position.effectiveShare, 0),
-      }));
-    }
-  }
-  const gameEvSwings = deriveOwnerGameEvSwings(
-    deriveGameEvSwings(
-      Object.values(conditionalPayouts),
-      new Map(entries.map((entry) => [entry.teamId, entry.teamName])),
-    ),
-    [...ownership.byBidder.entries()].map(([bidderId, positions]) => ({
-      bidderId,
-      bidderName: ownership.bidderNames.get(bidderId) ?? "Unknown",
-      positions,
-    })),
-  );
   const expectedPot = Number((snapshot.stateJson as Record<string, unknown> | null)?.pot ?? 0);
   const secondaryTradePaid = [...ownership.byBidder.values()].reduce((sum, positions) =>
     sum + [...positions.values()].reduce((inner, position) => inner + position.tradePaid, 0), 0);

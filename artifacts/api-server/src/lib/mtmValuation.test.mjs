@@ -1,6 +1,6 @@
 import assert from "node:assert/strict";
 import test from "node:test";
-import { buildMtmQualityExposure } from "./mtmValuation.ts";
+import { buildMtmQualityExposure, isUpcomingMtmEvent } from "./mtmValuation.ts";
 
 const resolution = {
   available: true,
@@ -182,4 +182,20 @@ test("pre-audit publication quality is displayable but cannot certify official",
   assert.equal(quality.finalEffectiveSampleSize, 256);
   assert.equal(quality.publicationDecision, "approved");
   assert.match(quality.reasons.join(" "), /authoritative publication audit/i);
+});
+
+test("upcoming EV swings advance past stale scheduled games after kickoff", () => {
+  const now = new Date("2026-09-15T12:00:00.000Z");
+  assert.equal(isUpcomingMtmEvent({
+    status: "scheduled",
+    kickoffAt: new Date("2026-09-14T23:00:00.000Z"),
+  }, now), false);
+  assert.equal(isUpcomingMtmEvent({
+    status: "scheduled",
+    kickoffAt: new Date("2026-09-17T23:00:00.000Z"),
+  }, now), true);
+  assert.equal(isUpcomingMtmEvent({
+    status: "final",
+    kickoffAt: new Date("2026-09-17T23:00:00.000Z"),
+  }, now), false);
 });
