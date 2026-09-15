@@ -95,6 +95,8 @@ type MtmState = {
     weak?: boolean;
   }>>;
   elimination_quotes: Record<string, Record<string, number>>;
+  /** Captured evidence for the explicit offline market-policy shadow runner. */
+  market_evidence_review?: Record<string, unknown>;
   /** Additive review-only evidence; canonical engine behavior ignores this. */
   joint_fit_constraints?: Array<Record<string, unknown>>;
   joint_fit_group_caps?: Record<string, number>;
@@ -1289,6 +1291,7 @@ export async function runMtmV3Review(input: {
   let diagnostics: Record<string, unknown> = { ...baseDiagnostics };
   try {
     const derived = deriveQuoteState(config, quoteTeams, rawQuotes, evidencePreflightAt);
+    state.market_evidence_review = buildMarketEvidenceReview(rawQuotes, evidencePreflightAt);
     state.win_ladders = derived.winLadders;
     state.elimination_quotes = derived.elimination;
     // The supported review endpoint supplies the same validated evidence
@@ -1482,6 +1485,14 @@ function finalEffectiveSampleSize(engine: EngineSnapshot): number | null {
  * used as the publication decision: posterior_probability is the final
  * simulated probability and target_probability is the market target.
  */
+function achievedProbability(value: unknown): number {
+  if ((typeof value !== "number" && typeof value !== "string") ||
+      (typeof value === "string" && value.trim() === "")) return Number.NaN;
+  const numeric = Number(value);
+  return Number.isFinite(numeric) && numeric >= 0 && numeric <= 1
+    ? numeric : Number.NaN;
+}
+
 function validateFinalWinMarketQuality(
   engine: EngineSnapshot,
   state: MtmState,
@@ -1505,18 +1516,12 @@ function validateFinalWinMarketQuality(
   const rows = winMetrics.map((metric) => {
     const team = String(metric.team ?? "");
     const metadata = metric.sample_metadata ?? metric.sampleMetadata;
-    const finalFromMetadata = metadata && typeof metadata === "object"
-      ? Number((metadata as Record<string, unknown>).posterior_probability)
+    const finalProbability = metadata && typeof metadata === "object"
+      ? achievedProbability((metadata as Record<string, unknown>).posterior_probability)
       : Number.NaN;
-    const nGames = (state.remaining_schedule ?? []).filter((game) =>
-      game.home === team || game.away === team).length;
-    const projection = engine.projections?.[team] as Record<string, unknown> | undefined;
-    const finalProbability = Number.isFinite(finalFromMetadata)
-      ? finalFromMetadata
-      : nGames > 0 && projection
-        ? Number(projection.e_remaining_wins) / nGames
-        : Number.NaN;
-    const targetProbability = Number(metric.target_probability);
+    // Projections can contain the raw target: they are not evidence of an
+    // achieved posterior. Missing final measurements must fail closed.
+    const targetProbability = achievedProbability(metric.target_probability);
     const evidence = quality[team];
     // Weight by trusted market evidence, never by a wide/empty book.  The
     // quality gate below still requires every team to have enough evidence.
@@ -1698,11 +1703,11 @@ function validateFinalPlayoffMarketQuality(
         String(candidate.metric ?? candidate.metric_key ?? candidate.metricKey) === family &&
         String(candidate.team ?? "") === team);
       const metric = matchingMetrics.length === 1 ? matchingMetrics[0] : null;
-      const targetProbability = Number(metric?.target_probability);
-      const finalProbability = Number(metric?.simulated_probability);
+      const targetProbability = achievedProbability(metric?.target_probability);
+      const finalProbability = achievedProbability(metric?.simulated_probability);
       const configuredTolerance = Number(metric?.tolerance);
       const tolerance = Number.isFinite(configuredTolerance) && configuredTolerance >= 0
-        ? configuredTolerance
+        ? Math.min(configuredTolerance, defaultTolerance)
         : defaultTolerance;
       const residual = finalProbability - targetProbability;
       const present = matchingMetrics.length === 1 &&
@@ -2077,6 +2082,42 @@ function evidenceInputForQuote(quote: RawMarketQuote): MtmEvidenceInput {
       : null,
     metadata: quote.captureMetadata ?? null,
     trades,
+  };
+}
+
+function buildMarketEvidenceReview(rawQuotes: RawMarketQuote[], evaluationTime: Date) {
+  return {
+    schema_version: "market-policy-input-v1",
+    evaluation_time: evaluationTime.toISOString(),
+    review_only: true,
+    rows: rawQuotes.map((quote) => {
+      try {
+      const evidence = evidenceInputForQuote(quote);
+      const strike = Number(quote.market.floor_strike ?? quote.market.floor_strike_fp);
+      const isWin = Number.isInteger(strike) && strike >= 1 && strike <= 17;
+      const decision = quoteDecisionForPipeline(quote, evaluationTime, isWin ? "bounds" : "bid_plus_cent");
+      return {
+        id: String(quote.market.ticker ?? evidence.id), team: quote.team,
+        family: isWin ? "wins" : "elimination",
+        outcome: isWin ? String(strike) : classifyEliminationMarket(quote.market),
+        eligible: decision.usedInFitting, resolved: decision.role === "settlement_fact",
+        bounds: decision.assessment.acceptedBounds,
+        score: decision.assessment.score,
+        exclusion_reasons: decision.exclusionReasons,
+        captured_at: evidence.observedAt,
+        material_event_at: evidence.materialEvent?.occurredAt ?? null,
+        depth: evidence.depth ?? null,
+        trades: evidence.trades ?? [],
+        // A bare last price has no verified execution time/size. The shadow
+        // policy records it but cannot promote it to a qualifying trade.
+        last_price: quoteValue(quote.market, "last_price"),
+        evidence_policy_version: decision.assessment.policyVersion,
+      };
+      } catch (error) {
+        return { id: String(quote.market.ticker ?? "unknown"), team: quote.team,
+          eligible: false, capture_error: error instanceof Error ? error.message : String(error) };
+      }
+    }),
   };
 }
 
@@ -2474,6 +2515,7 @@ export async function runMtmPipeline(input: { seasonYear: number; calcuttaId?: n
   }
   const { poolId, state, rawQuotes, quoteErrors, quoteTeams, inputProvenance, captureManifest } = exported;
   const evidencePreflightAt = new Date();
+  state.market_evidence_review = buildMarketEvidenceReview(rawQuotes, evidencePreflightAt);
   const snapshot = await db.insert(mtmSnapshotTable).values({
     poolId, asOf: now, asOfHour, trigger: input.trigger, status: "failed", methodVersion,
     stateJson: state,
@@ -3086,5 +3128,6 @@ export const mtmPipelineTestUtils = {
   mergeTeamQuoteResults,
   validateScheduleIdentitySets,
   buildMarketQuoteRows,
+  buildMarketEvidenceReview,
   kalshiEventUrl,
 };

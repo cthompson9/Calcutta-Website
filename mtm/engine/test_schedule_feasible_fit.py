@@ -101,6 +101,17 @@ def test_candidate_does_not_change_official_fitter_results():
     assert before == after
 
 
+def test_compatibility_uses_probability_units_and_bad_confidence_fails():
+    result = _fit({'A':5.1,'B':5.1}, [{'home':'A','away':'B','week':i} for i in range(10)])
+    assert result['market_compatibility']['passed']
+    assert result['fit']['max_absolute_error'] > .03
+    assert result['fit']['max_absolute_probability_error'] < .03
+    malformed = _fit({'A':.5,'B':.5},[{'home':'A','away':'B'}],
+                     accepted_evidence_confidence={'A':'bad','B':1})
+    assert malformed['status'] == 'failed'
+    assert malformed['termination']['reason'] == 'invalid_evidence_confidence'
+
+
 if __name__ == "__main__":
     test_feasible_targets_fit_and_conserve()
     test_incompatible_one_game_exposes_discrepancy_without_rescaling()
@@ -108,4 +119,5 @@ if __name__ == "__main__":
     test_completed_and_disconnected_schedules_are_explicit()
     test_invalid_schedule_and_numerical_failure_fail_closed()
     test_candidate_does_not_change_official_fitter_results()
+    test_compatibility_uses_probability_units_and_bad_confidence_fails()
     print("all schedule-feasible candidate tests passed")

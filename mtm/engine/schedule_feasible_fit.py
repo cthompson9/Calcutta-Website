@@ -108,12 +108,15 @@ def fit_schedule_feasible_candidate(
         if targets[team] < 0 or targets[team] > games_by_team[team]
     ]
 
-    confidence_complete = (
-        accepted_evidence_confidence is not None
-        and set(accepted_evidence_confidence) == set(teams)
-        and all(math.isfinite(float(accepted_evidence_confidence[team]))
-                and float(accepted_evidence_confidence[team]) > 0 for team in teams)
-    )
+    try:
+        confidence_complete = (
+            accepted_evidence_confidence is not None
+            and set(accepted_evidence_confidence) == set(teams)
+            and all(math.isfinite(float(accepted_evidence_confidence[team]))
+                    and float(accepted_evidence_confidence[team]) > 0 for team in teams)
+        )
+    except (TypeError, ValueError, OverflowError):
+        return _failure("invalid_evidence_confidence")
     if confidence_complete:
         weights = {team: float(accepted_evidence_confidence[team]) for team in teams}
         weighting_basis = "accepted_evidence_confidence"
@@ -218,7 +221,12 @@ def fit_schedule_feasible_candidate(
     adjustments = {
         team: expectations[team] - targets[team] for team in teams}
     max_error = max((abs(value) for value in adjustments.values()), default=0.0)
-    compatibility = max_error <= publication_tolerance and not invalid_targets
+    probability_adjustments = {
+        team: adjustments[team] / games_by_team[team] if games_by_team[team] else 0.0
+        for team in teams
+    }
+    max_probability_error = max(map(abs, probability_adjustments.values()), default=0.0)
+    compatibility = max_probability_error <= publication_tolerance and not invalid_targets
     available_wins = float(len(games))
     raw_total = sum(targets.values())
     schedule_status = (
@@ -253,10 +261,12 @@ def fit_schedule_feasible_candidate(
         "fitted_expectations": expectations,
         "ratings": ratings,
         "adjustments": adjustments,
+        "probability_adjustments": probability_adjustments,
         "absolute_adjustment_total": sum(abs(value) for value in adjustments.values()),
         "fit": {
             "weighted_squared_error": 2.0 * objective,
             "max_absolute_error": max_error,
+            "max_absolute_probability_error": max_probability_error,
             "gradient_norm": math.sqrt(sum(value * value for value in gradient.values())),
             "invalid_target_teams": invalid_targets,
         },
@@ -272,6 +282,7 @@ def fit_schedule_feasible_candidate(
         "market_compatibility": {
             "status": "compatible" if compatibility else "incompatible",
             "publication_tolerance": publication_tolerance,
+            "tolerance_units": "remaining_win_probability_per_scheduled_game",
             "passed": compatibility,
         },
         "assumptions": {

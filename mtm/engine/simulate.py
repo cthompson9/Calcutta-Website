@@ -438,7 +438,9 @@ def monte_carlo(ratings: dict[str, float],
                  support_prior_weight: float = 0.01,
                  diagnostics: RuntimeDiagnostics | None = None,
                   aggregation_chunk_size: int = 4096,
-                  return_path_library: bool = False) -> dict:
+                  return_path_library: bool = False,
+                  review_proposal=None,
+                  return_review_arrays: bool = False) -> dict:
     """Joint season simulator. Simplified seeding: division winners by wins
     (random tiebreak), wildcards by wins. Playoff games decided by Phi on
     neutral-adjusted ratings (home field to better seed until SB, SB neutral).
@@ -446,6 +448,8 @@ def monte_carlo(ratings: dict[str, float],
     stage marginals before they price payouts. Also returns per-team season
     diff samples for rank-based rubrics.
     """
+    if review_proposal is not None and support_runs_per_team:
+        raise ValueError("Review mixture cannot combine with reflected support paths")
     rng = random.Random(seed)
     teams = list(ratings.keys())
     stages = ("berth", "divisional", "conference", "sb_berth", "sb_win")
@@ -492,7 +496,9 @@ def monte_carlo(ratings: dict[str, float],
              allow_support: bool = False) -> tuple[str, float]:
         adv = hfa if home == a else (-hfa if home == b else 0.0)
         mean = ratings[a] - ratings[b] + adv
-        margin = rng.gauss(mean, margin_sd)
+        margin = (review_proposal.sample_margin(
+            a, b, mean, margin_sd, playoff=allow_support, rng=rng)
+            if review_proposal is not None else rng.gauss(mean, margin_sd))
         # Proposal strata preserve feasible joint paths while ensuring that
         # long shots can appear in the finite path library. Reflecting the
         # sampled margin keeps magnitudes plausible; it never inserts a team
@@ -504,6 +510,8 @@ def monte_carlo(ratings: dict[str, float],
         return (a, margin) if margin >= 0 else (b, -margin)
 
     for run_index in range(runs):
+        if review_proposal is not None:
+            review_proposal.start_path(rng)
         if diagnostics is not None:
             diagnostics.update_progress("monte_carlo", run_index + 1, runs)
         if run_index == ordinary_runs and support_budget:
@@ -630,6 +638,9 @@ def monte_carlo(ratings: dict[str, float],
             for s in stages:
                 if path_stage[t][s]:
                     hit_indices[(t, s)].append(run_index)
+
+        if review_proposal is not None:
+            proposal_weights[-1] = review_proposal.path_weight()
 
     weights = np.asarray(proposal_weights, dtype=np.float64)
     calibration_residuals = {}
@@ -1049,6 +1060,14 @@ def monte_carlo(ratings: dict[str, float],
         out["payout_sq_sum"] = payout_sq_sum
         out["win_sum"] = win_sum
         out["conditional_payouts"] = conditional
+    if review_proposal is not None:
+        out["review_proposal"] = review_proposal.diagnostics()
+    if return_review_arrays:
+        out["_review_arrays"] = {
+            "weights": normalized_weights, "gross": path_gross,
+            "wins": path_wins, "hits": hit_indices,
+            "outcomes": path_outcomes, "prior_weights": proposal_weights,
+        }
     if return_path_library:
         # Keep this opt-in: the canonical snapshot intentionally does not
         # retain one dictionary per simulated path.  Review callers use this

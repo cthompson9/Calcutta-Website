@@ -2,6 +2,35 @@ import assert from "node:assert/strict";
 import test from "node:test";
 import { mtmPipelineTestUtils } from "./mtmPipeline.ts";
 
+test("shadow capture preserves books and executions without inventing last-trade timestamps", () => {
+  const at = new Date("2026-09-20T14:04:00Z");
+  const capture = mtmPipelineTestUtils.buildMarketEvidenceReview([{
+    team: "CHI", series: "KXNFLSTAGEOFELIM", fetchedAt: at,
+    market: { ticker: "KXNFLSTAGEOFELIM-27CHI-WC", status: "active",
+      yes_bid: 30, yes_ask: 50, last_price: 42,
+      trades: [{ id: "t", price: .41, size: 4, timestamp: "2026-09-20T14:03:00Z" }] },
+  }], at);
+  assert.equal(capture.review_only, true);
+  assert.equal(capture.rows[0].last_price, .42);
+  assert.equal(capture.rows[0].trades.length, 1);
+  assert.equal(capture.rows[0].trades[0].timestamp, "2026-09-20T14:03:00Z");
+  assert.deepEqual(capture.rows[0].bounds, { lower: .3, upper: .5, oneSided: false, side: "two-sided" });
+  const bare = mtmPipelineTestUtils.buildMarketEvidenceReview([{
+    team: "CHI", series: "KXNFLSTAGEOFELIM", fetchedAt: at,
+    market: { ticker: "KXNFLSTAGEOFELIM-27CHI-WC", status: "active", yes_bid: 30, yes_ask: 50, last_price: 42 },
+  }], at);
+  assert.deepEqual(bare.rows[0].trades, []);
+});
+
+test("malformed shadow evidence is retained as an error without bypassing canonical failure handling", () => {
+  const capture = mtmPipelineTestUtils.buildMarketEvidenceReview([{
+    team: "CHI", series: "KXNFLSTAGEOFELIM", fetchedAt: new Date("2026-09-20T14:04:00Z"),
+    market: { ticker: "bad", status: "active", yes_bid: 90, yes_ask: 10 },
+  }], new Date("2026-09-20T14:04:00Z"));
+  assert.equal(capture.rows[0].eligible, false);
+  assert.ok(capture.rows[0].capture_error);
+});
+
 test("normalizes Kalshi fixed-point and legacy cent quotes", () => {
   assert.equal(
     mtmPipelineTestUtils.quoteValue(
@@ -848,4 +877,47 @@ test("internal capture manifest counts mixed and empty fetch outcomes independen
   assert.deepEqual(complete.requests.map((row) => row.identity), [
     "ARI:STAGE:stage", "ARI:WIN:wins",
   ]);
+});
+
+test("missing or malformed achieved win probabilities cannot fall back to target projections", () => {
+  for (const invalid of [undefined, null, "", false, [], {}, -0.1, 1.1]) {
+    const { state, engine } = completeEngineFixture();
+    const teams = Object.keys(state.realized);
+    const quality = Object.fromEntries(teams.map((team) => [team, {
+      status: "good", trustedRungs: 2, wideRungs: 0, missingRungs: 15, reason: null,
+    }]));
+    engine.calibration = teams.map((team) => ({
+      metric: "remaining_win_probability", team, target_probability: 0.5,
+      sample_metadata: { posterior_probability: 0.5 },
+    }));
+    engine.diagnostics = { simulation: { effective_sample_size: 9876.5 } };
+    engine.calibration[0].sample_metadata.posterior_probability = invalid;
+    const result = mtmPipelineTestUtils.validateFinalWinMarketQuality(
+      engine, state, { sim: { calibration_tolerance: 0.03 } }, quality,
+    );
+    assert.notEqual(result.error, null);
+    assert.equal(result.diagnostics.gate_result, "failed");
+    assert.ok(result.diagnostics.missing_teams.includes(teams[0]));
+  }
+});
+
+test("playoff null measurements fail and supplied tolerances cannot relax the configured gate", () => {
+  const { state, engine } = completeEngineFixture();
+  const teams = Object.keys(state.realized);
+  engine.calibration = teams.flatMap((team) =>
+    ["berth", "divisional", "conference", "sb_berth", "sb_win"].map((metric) => ({
+      metric, team, target_probability: 0, simulated_probability: 0, tolerance: 0.03,
+    })));
+  engine.calibration[0].simulated_probability = null;
+  let result = mtmPipelineTestUtils.validateFinalPlayoffMarketQuality(
+    engine, state, { sim: { calibration_tolerance: 0.03 } },
+  );
+  assert.equal(result.diagnostics.gate_result, "failed");
+  engine.calibration[0].simulated_probability = 0.2;
+  engine.calibration[0].tolerance = 1;
+  result = mtmPipelineTestUtils.validateFinalPlayoffMarketQuality(
+    engine, state, { sim: { calibration_tolerance: 0.03 } },
+  );
+  assert.equal(result.diagnostics.gate_result, "failed");
+  assert.equal(result.diagnostics.families.berth.rows[0].tolerance, 0.03);
 });
