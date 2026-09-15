@@ -66,5 +66,14 @@ class SnapshotBridgeTests(unittest.TestCase):
         with patch.object(run_mtm,'_build_snapshot',return_value={'status':'ok'}) as legacy:
             run_mtm.build_snapshot(config,state);legacy.assert_called_once()
 
+    def test_failed_rating_details_survive_the_canonical_failure_path(self):
+        config,state,*_=self.fixture();config['sim']['monte_carlo_runs']=40000
+        fit={'status':'failed','termination':{'reason':'maximum_iterations'},'fit':{'gradient_norm':.01}}
+        runtime=simulate.RuntimeDiagnostics()
+        with patch.object(adapter.policy,'generate_inventory',side_effect=adapter.policy.RatingFitFailure(fit)):
+            with self.assertRaisesRegex(ValueError,'fresh rating fit failed: maximum_iterations'):
+                adapter.build_interval_snapshot(config,state,runtime)
+        self.assertEqual(runtime.snapshot()['details']['rating_fit'],fit)
+
 
 if __name__=='__main__':unittest.main()

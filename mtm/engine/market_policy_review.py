@@ -23,6 +23,11 @@ OUTCOMES = ['no_playoffs', 'wild_card', 'divisional', 'conference', 'sb_loss', '
 ALIASES = dict(zip(['REG','WC','DIV','CONF','FL','FW'],OUTCOMES))
 STAGES = ['berth','divisional','conference','sb_berth','sb_win']
 
+class RatingFitFailure(ValueError):
+    def __init__(self, fit):
+        self.fit = fit
+        super().__init__('fresh rating fit failed: '+str(fit.get('termination', {}).get('reason', 'unknown')))
+
 def timestamp(value):
     try:
         dt=datetime.fromisoformat(value.replace('Z','+00:00'))
@@ -129,7 +134,7 @@ def generate_inventory(state, capture, config, seed, runs=40000):
     sc=config['sim'];fit=fit_schedule_feasible_candidate(remaining,
         [{k:g[k] for k in ('home','away','week','event_id') if k in g} for g in state['remaining_schedule']],
         hfa=sc['hfa_points'],margin_sd=sc['margin_sd'])
-    if fit['status']!='ok':raise ValueError('fresh rating fit failed')
+    if fit['status']!='ok':raise RatingFitFailure(fit)
     # Broad fixed proposal; no within-batch selection of favorable teams.
     proposal=MarginMixtureProposal(teams)
     result=simulate.monte_carlo(fit['ratings'],[simulate.Game(**g) for g in state['remaining_schedule']],

@@ -146,6 +146,18 @@ def fit_schedule_feasible_candidate(
     ]
     ratings = {team: 0.0 for team in teams}
 
+    # In each connected schedule component, residuals must sum to available
+    # wins minus raw targets. Weighted Cauchy-Schwarz gives a global lower
+    # bound on the least-squares objective, even when market totals disagree.
+    # At that bound, tiny platform-dependent erf/summation differences must
+    # not turn an optimal fit into a failed Armijo line search.
+    objective_lower_bound = math.fsum(
+        0.5 * (row['available_wins'] - math.fsum(targets[t] for t in row['teams'])) ** 2
+        / math.fsum(1.0 / weights[t] for t in row['teams'])
+        for row in component_conservation
+    )
+    objective_roundoff_tolerance = None
+
     def evaluate(candidate: dict[str, float]):
         expectations = {team: 0.0 for team in teams}
         derivatives = []
@@ -191,6 +203,11 @@ def fit_schedule_feasible_candidate(
             if gradient_norm <= gradient_tolerance:
                 numerically_converged = True
                 termination_reason = "gradient_tolerance"
+                break
+            objective_roundoff_tolerance = 64 * math.ulp(max(1.0, abs(objective), abs(objective_lower_bound)))
+            if abs(objective - objective_lower_bound) <= objective_roundoff_tolerance:
+                numerically_converged = True
+                termination_reason = "conservation_lower_bound_within_roundoff"
                 break
             step = margin_sd * margin_sd
             accepted = False
@@ -295,5 +312,8 @@ def fit_schedule_feasible_candidate(
         "diagnostics": {
             "objective_start": objective_history[0] if objective_history else objective,
             "objective_end": objective,
+            "conservation_objective_lower_bound": objective_lower_bound,
+            "objective_gap_to_lower_bound": objective - objective_lower_bound,
+            "objective_roundoff_tolerance": objective_roundoff_tolerance,
         },
     }

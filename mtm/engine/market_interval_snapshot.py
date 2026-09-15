@@ -97,7 +97,11 @@ def build_interval_snapshot(config, state, runtime):
         max_weight=min(.01,float(gates.get('max_weight',.01))),
         win_tolerance=min(.03,float(sc.get('calibration_tolerance',.03))))
     with runtime.stage('interval_inventory'):
-        inventory,generation=policy.generate_inventory(state,state['market_evidence_review'],config,seed,runs)
+        try:
+            inventory,generation=policy.generate_inventory(state,state['market_evidence_review'],config,seed,runs)
+        except policy.RatingFitFailure as error:
+            runtime.record_detail('rating_fit',error.fit)
+            raise
     generation['proposal'].update(review_only=False,selection='fixed all-team mixture; no within-batch adaptation')
     result={}
     with runtime.stage('interval_fit'):

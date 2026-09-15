@@ -1,4 +1,5 @@
 import math
+from unittest.mock import patch
 
 import schedule_feasible_fit as candidate
 import simulate
@@ -112,6 +113,28 @@ def test_compatibility_uses_probability_units_and_bad_confidence_fails():
     assert malformed['termination']['reason'] == 'invalid_evidence_confidence'
 
 
+def test_roundoff_certificate_uses_the_weighted_conservation_minimum():
+    # min .5*(3*a^2+b^2), a+b=-.4, is .06 at a=-.1,b=-.3.
+    result = _fit({'A':.7,'B':.7}, [{'home':'A','away':'B'}],
+                  accepted_evidence_confidence={'A':3,'B':1}, gradient_tolerance=0)
+    assert result['status']=='ok'
+    assert math.isclose(result['diagnostics']['conservation_objective_lower_bound'],.06,abs_tol=1e-15)
+    assert math.isclose(result['fitted_expectations']['A'],.6,abs_tol=2e-7)
+    assert not result['market_compatibility']['passed']  # convergence never overrides market tolerance
+    assert result['termination']['reason']=='conservation_lower_bound_within_roundoff'
+
+
+def test_rounded_probability_arithmetic_does_not_create_a_false_fit_failure():
+    original=candidate._phi
+    with patch.object(candidate,'_phi',side_effect=lambda z:round(original(z),12)):
+        result=_fit({'A':.65,'B':.45},[{'home':'A','away':'B'}],gradient_tolerance=0)
+    assert result['status']=='ok'
+    assert result['termination']['reason']=='conservation_lower_bound_within_roundoff'
+    d=result['diagnostics']
+    assert abs(d['objective_gap_to_lower_bound'])<=d['objective_roundoff_tolerance']
+    assert math.isclose(d['conservation_objective_lower_bound'],.0025,abs_tol=1e-15)
+
+
 if __name__ == "__main__":
     test_feasible_targets_fit_and_conserve()
     test_incompatible_one_game_exposes_discrepancy_without_rescaling()
@@ -120,4 +143,6 @@ if __name__ == "__main__":
     test_invalid_schedule_and_numerical_failure_fail_closed()
     test_candidate_does_not_change_official_fitter_results()
     test_compatibility_uses_probability_units_and_bad_confidence_fails()
+    test_roundoff_certificate_uses_the_weighted_conservation_minimum()
+    test_rounded_probability_arithmetic_does_not_create_a_false_fit_failure()
     print("all schedule-feasible candidate tests passed")
