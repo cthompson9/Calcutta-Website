@@ -47,6 +47,7 @@ import {
 } from "./mtmEvidence";
 import { validateMtmCanonicalDataFreshness } from "./currentMtm";
 import { INTERVAL_POLICY, selectedMtmPolicy, validateMtmPolicyIdentity, validateFinalIntervalMarketQuality } from "./mtmIntervalPolicy";
+import { nflDisplayWeek } from "./nflDisplayWeek";
 
 const execFileAsync = promisify(execFile);
 const WORKSPACE_ROOT = existsSync(resolve(process.cwd(), "mtm"))
@@ -3084,7 +3085,7 @@ export async function getMtmPipelineStatus(seasonYear: number, calcuttaId?: numb
           : null;
         return [{
           snapshotId: snapshot.id,
-          label: `Week ${pipelineMarkWeek(snapshot.stateJson)}`,
+          label: `Week ${nflDisplayWeek(snapshot.asOf)}`,
           asOf: snapshot.asOf.toISOString(),
           expectedPayout,
           auctionPrice,
