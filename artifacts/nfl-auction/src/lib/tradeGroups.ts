@@ -5,6 +5,12 @@ export type TradeGroup = {
   trades: TradeRow[];
 };
 
+const ZACH_SAM_LION_KING_UPSIZE_ID = "XII-ZACH-SAM-20260913-ADD1X";
+
+function isZachSamLionKingUpsize(notes: string | null | undefined): boolean {
+  return (notes ?? "").includes(ZACH_SAM_LION_KING_UPSIZE_ID);
+}
+
 export function sharedTradeDescription(notes: string | null | undefined): string {
   const description = (notes ?? "")
     .normalize("NFKC")
@@ -27,7 +33,9 @@ function normalizeTradeDescription(notes: string | null | undefined): string {
 }
 
 function tradeGroupKey(trade: TradeRow): string {
-  const description = normalizeTradeDescription(trade.notes);
+  const description = isZachSamLionKingUpsize(trade.notes)
+    ? ZACH_SAM_LION_KING_UPSIZE_ID.toLowerCase()
+    : normalizeTradeDescription(trade.notes);
   const counterparties = [trade.fromBidderId, trade.toBidderId].sort((a, b) => a - b);
   return [
     description,
@@ -57,6 +65,7 @@ function hasTransactionSignal(trades: TradeRow[]): boolean {
   if (!description) return false;
 
   return (
+    trades.every((trade) => isZachSamLionKingUpsize(trade.notes)) ||
     trades.every((trade) => hasExplicitLegLabel(trade.notes)) ||
     /\bcrossbook\b/.test(description) ||
     teamNamesInDescription(trades, description)
