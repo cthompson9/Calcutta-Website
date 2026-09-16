@@ -12,8 +12,6 @@ import {
   getGetResultsAvailabilityQueryKey,
   useGetAuctionSummary,
   getGetAuctionSummaryQueryKey,
-  useGetMtmSnapshots,
-  getGetMtmSnapshotsQueryKey,
   useGetTrades,
   getGetTradesQueryKey,
   useGetHistoricalPools,
@@ -34,7 +32,6 @@ import type {
   CalcuttaComparisonCell,
   CalcuttaComparisonAggregate,
   AuctionSummary,
-  MtmData,
   TradeRow,
   MtmValuation,
 } from "@workspace/api-client-react";
@@ -67,6 +64,22 @@ import { HistoricalResultsView } from "@/components/HistoricalResultsView";
 import { trackEvent } from "@/lib/analytics";
 
 type TabId = "byOwner" | "byTeam" | "historicalTrades";
+
+type PipelineHistoryPoint = {
+  snapshotId: number;
+  label: string;
+  asOf: string;
+  expectedPayout: number;
+};
+
+type PipelineHistoryTeam = {
+  teamId: number | null;
+  history: PipelineHistoryPoint[];
+};
+
+type PipelineHistoryStatus = {
+  valuations: PipelineHistoryTeam[];
+};
 
 function readResultsReturnState(): {
   tab: TabId;
@@ -108,6 +121,8 @@ export default function Results() {
   const [tab, setTab] = useState<TabId>(returnState.tab);
   const [expandedOwner, setExpandedOwner] = useState<number | null>(null);
   const [period, setPeriod] = useState<number | undefined>(undefined);
+  const [pipelineHistoryStatus, setPipelineHistoryStatus] =
+    useState<PipelineHistoryStatus | null>(null);
   const consortiumBasis = "mtm" as const;
   const teamBasis = "realized" as const;
   const viewBasis = tab === "byTeam" ? teamBasis : consortiumBasis;
@@ -125,6 +140,33 @@ export default function Results() {
 
   const currentValuation = period == null ? valuation : undefined;
   const previewLastUpdated = valuation?.mark?.asOf ?? null;
+
+  useEffect(() => {
+    if (!usesLiveResults || !calcuttaId) {
+      setPipelineHistoryStatus(null);
+      return;
+    }
+
+    const controller = new AbortController();
+    const params = new URLSearchParams({
+      season: String(year),
+      calcuttaId: String(calcuttaId),
+    });
+    void fetch(`/api/mtm/pipeline/status?${params}`, {
+      signal: controller.signal,
+    })
+      .then((response) => {
+        if (!response.ok) throw new Error("Unable to load MTM history");
+        return response.json() as Promise<{ status: PipelineHistoryStatus | null }>;
+      })
+      .then((payload) => setPipelineHistoryStatus(payload.status))
+      .catch((error: unknown) => {
+        if (error instanceof DOMException && error.name === "AbortError") return;
+        setPipelineHistoryStatus(null);
+      });
+
+    return () => controller.abort();
+  }, [calcuttaId, usesLiveResults, year]);
 
   const {
     data: historicalPools,
@@ -240,16 +282,6 @@ export default function Results() {
       query: {
         enabled: usesLiveResults && tab === "byOwner",
         queryKey: getGetAuctionSummaryQueryKey({ season: year, calcuttaId }),
-      },
-    },
-  );
-  // Retained for historical trend series charting only.
-  const { data: mtmData } = useGetMtmSnapshots(
-    { season: year, calcuttaId },
-    {
-      query: {
-        enabled: usesLiveResults && tab === "byOwner",
-        queryKey: getGetMtmSnapshotsQueryKey({ season: year, calcuttaId }),
       },
     },
   );
@@ -412,7 +444,7 @@ export default function Results() {
                 previousRows={previousOwnerResults ?? []}
                 seasonYear={year}
                 summary={auctionSummary}
-                mtmData={mtmData}
+                pipelineHistoryStatus={pipelineHistoryStatus}
                 valuation={currentValuation}
                 trades={trades}
                 consortiumByBidderId={consortiumByBidderId}
@@ -498,6 +530,17 @@ function getTeamNetMtm(team: TeamResultRow, valuation?: MtmValuation): number {
   return provisional?.net ?? team.netMtm;
 }
 
+export function getOwnerTeamNetMtm(
+  team: TeamResultRow,
+  bidderId: number,
+  valuation?: MtmValuation,
+): number {
+  const provisional = valuation?.teams?.find((item) => item.teamId === team.teamId);
+  const position = team.owners.find((entry) => entry.bidderId === bidderId);
+  if (!provisional || !position) return team.netMtm;
+  return (provisional.grossExpectedPayout * position.ownershipShare) - team.cost;
+}
+
 function getTeamMtm(team: TeamResultRow, valuation?: MtmValuation): number {
   const provisional = valuation?.teams?.find(t => t.teamId === team.teamId);
   return provisional?.grossExpectedPayout ?? team.markToMarket;
@@ -567,65 +610,111 @@ function RelativeReturnBar({
   );
 }
 
-function TrendSparkline({ values }: { values: Array<number | null> }) {
-  const validValues = values.filter((value): value is number => value != null);
-  if (validValues.length < 2) {
+export function ownerMtmTrend(
+  owner: OwnerResultRow,
+  status: PipelineHistoryStatus | null,
+): Array<PipelineHistoryPoint & { netPayout: number }> {
+  const positions = owner.teams.flatMap((team) => {
+    const position = team.owners.find((entry) => entry.bidderId === owner.bidderId);
+    return position && Math.abs(position.ownershipShare) >= 0.00005
+      ? [{ teamId: team.teamId, share: position.ownershipShare, cost: team.cost }]
+      : [];
+  });
+  if (positions.length === 0) return [];
+
+  const historyByTeam = new Map(
+    (status?.valuations ?? [])
+      .filter((team): team is PipelineHistoryTeam & { teamId: number } => team.teamId != null)
+      .map((team) => [
+        team.teamId,
+        new Map(team.history.map((point) => [point.snapshotId, point])),
+      ]),
+  );
+  const firstHistory = historyByTeam.get(positions[0]!.teamId);
+  if (!firstHistory) return [];
+
+  return [...firstHistory.values()]
+    .flatMap((firstPoint) => {
+      let netPayout = 0;
+      for (const position of positions) {
+        const point = historyByTeam.get(position.teamId)?.get(firstPoint.snapshotId);
+        if (!point) return [];
+        netPayout += (point.expectedPayout * position.share) - position.cost;
+      }
+      return [{ ...firstPoint, netPayout: Math.round(netPayout * 100) / 100 }];
+    })
+    .sort((a, b) => Date.parse(a.asOf) - Date.parse(b.asOf));
+}
+
+function OwnerMtmTrendTile({
+  owner,
+  status,
+}: {
+  owner: OwnerResultRow;
+  status: PipelineHistoryStatus | null;
+}) {
+  const points = ownerMtmTrend(owner, status);
+  if (points.length < 2) {
     return (
       <div className="flex h-16 items-center justify-center border border-dashed border-border/70 text-[10px] font-mono uppercase tracking-widest text-muted-foreground">
-        No complete weekly snapshot data
+        No complete pipeline history
       </div>
     );
   }
 
-  const min = Math.min(...validValues);
-  const max = Math.max(...validValues);
+  const transform = (value: number) =>
+    Math.sign(value) * Math.log1p(Math.abs(value) / 300);
+  const transformed = points.map((point) => transform(point.netPayout));
+  const min = Math.min(0, ...transformed);
+  const max = Math.max(0, ...transformed);
   const span = max - min || 1;
-  const pointAt = (value: number, index: number) => {
-      const x = (index / (values.length - 1)) * 220;
-      const y = 54 - ((value - min) / span) * 44;
-      return `${x.toFixed(1)},${y.toFixed(1)}`;
-    };
-  const lineSegments: string[] = [];
-  let currentSegment: string[] = [];
-  values.forEach((value, index) => {
-    if (value == null) {
-      if (currentSegment.length > 1) lineSegments.push(currentSegment.join(" "));
-      currentSegment = [];
-      return;
-    }
-    currentSegment.push(pointAt(value, index));
-  });
-  if (currentSegment.length > 1) lineSegments.push(currentSegment.join(" "));
-  const firstValue = validValues[0]!;
-  const lastValue = validValues[validValues.length - 1]!;
+  const x = (index: number) => (index / (points.length - 1)) * 220;
+  const y = (value: number) => 54 - ((transform(value) - min) / span) * 44;
+  const path = points
+    .map((point, index) =>
+      `${index === 0 ? "M" : "L"}${x(index).toFixed(1)},${y(point.netPayout).toFixed(1)}`,
+    )
+    .join(" ");
+  const zeroY = y(0);
+  const area = `${path} L220,${zeroY.toFixed(1)} L0,${zeroY.toFixed(1)} Z`;
+  const lastValue = points.at(-1)!.netPayout;
+  const tone = lastValue >= 0 ? "text-emerald-600" : "text-rose-600";
 
   return (
-    <svg
-      viewBox="0 0 220 64"
-      className="h-16 w-full overflow-visible"
-      role="img"
-      aria-label="MTM trend over eight weeks"
-    >
-      <line x1="0" y1="54" x2="220" y2="54" stroke="currentColor" opacity="0.15" />
-      {lineSegments.map((points, index) => (
-        <polyline
-          key={`${points}-${index}`}
-          points={points}
+    <div className="border border-border/70 bg-card px-3 py-3">
+      <div className="flex items-baseline justify-between gap-2">
+        <span className="font-mono text-[10px] uppercase tracking-wider text-muted-foreground">
+          Current portfolio
+        </span>
+        <span className={cn("font-mono text-xs font-bold tabular-nums", tone)}>
+          {signedCurrency(lastValue)}
+        </span>
+      </div>
+      <svg
+        viewBox="0 0 220 64"
+        className={cn("mt-1 h-16 w-full", tone)}
+        preserveAspectRatio="none"
+        role="img"
+        aria-label={`Compressed MTM trend from ${points[0]!.label} to ${points.at(-1)!.label}`}
+      >
+        <line x1="0" y1={zeroY} x2="220" y2={zeroY} stroke="currentColor" opacity="0.18" />
+        <path d={area} fill="currentColor" opacity="0.08" />
+        <path
+          d={path}
           fill="none"
           stroke="currentColor"
-          strokeWidth="2.5"
+          strokeWidth="2"
           strokeLinejoin="round"
           strokeLinecap="round"
-          className={lastValue >= firstValue ? "text-emerald-500" : "text-rose-500"}
         />
-      ))}
-      {values.map((value, index) => {
-        if (value == null) return null;
-        const x = (index / (values.length - 1)) * 220;
-        const y = 54 - ((value - min) / span) * 44;
-        return <circle key={`${value}-${index}`} cx={x} cy={y} r="2.5" className="fill-current" />;
-      })}
-    </svg>
+        <circle cx="220" cy={y(lastValue)} r="2.5" fill="currentColor" />
+      </svg>
+      <div className="mt-1 flex justify-between font-mono text-[9px] text-muted-foreground">
+        <span>{points[0]!.label}</span>
+        <span>Compressed</span>
+        <span>{points.at(-1)!.label}</span>
+      </div>
+    </div>
   );
 }
 
@@ -634,7 +723,7 @@ function DesktopResultsCommandCenter({
   previousRows,
   seasonYear,
   summary,
-  mtmData,
+  pipelineHistoryStatus,
   valuation,
   trades,
   consortiumByBidderId,
@@ -643,7 +732,7 @@ function DesktopResultsCommandCenter({
   previousRows: OwnerResultRow[];
   seasonYear: number;
   summary?: AuctionSummary;
-  mtmData?: MtmData;
+  pipelineHistoryStatus: PipelineHistoryStatus | null;
   valuation?: MtmValuation;
   trades?: TradeRow[];
   consortiumByBidderId: Map<number, string>;
@@ -977,7 +1066,7 @@ function DesktopResultsCommandCenter({
           <DesktopOwnerDetail
             owner={selectedOwner}
             seasonYear={seasonYear}
-            mtmData={mtmData}
+            pipelineHistoryStatus={pipelineHistoryStatus}
             valuation={valuation}
             trades={trades ?? []}
             consortiumByBidderId={consortiumByBidderId}
@@ -1053,7 +1142,7 @@ function CommandCallout({
 function DesktopOwnerDetail({
   owner,
   seasonYear,
-  mtmData,
+  pipelineHistoryStatus,
   valuation,
   trades,
   consortiumByBidderId,
@@ -1062,7 +1151,7 @@ function DesktopOwnerDetail({
 }: {
   owner: OwnerResultRow;
   seasonYear: number;
-  mtmData?: MtmData;
+  pipelineHistoryStatus: PipelineHistoryStatus | null;
   valuation?: MtmValuation;
   trades: TradeRow[];
   consortiumByBidderId: Map<number, string>;
@@ -1078,25 +1167,6 @@ function DesktopOwnerDetail({
   }, [onClose]);
 
   const ownerName = ownerLabelById(owner.bidderId, owner.bidderName, consortiumByBidderId);
-  const series = mtmData?.owners?.find((item) => item.bidderName === owner.bidderName);
-  const currentPositionTeamIds = owner.teams
-    .filter((team) => {
-      const position = effectivePositionsForTeam(team).find(
-        (entry) => entry.bidderId === owner.bidderId,
-      )?.ownershipShare ?? 0;
-      return Math.abs(position) >= 0.00005;
-    })
-    .map((team) => team.teamId);
-  const trendWeeks = mtmData?.weeks?.slice(-8) ?? [];
-  const trendStartIndex = (mtmData?.weeks?.length ?? 0) - trendWeeks.length;
-  const trendValues = trendWeeks.map((week, index) => {
-    const hasEveryPosition = currentPositionTeamIds.every((teamId) =>
-      week.teamValues.some((team) => team.teamId === teamId),
-    );
-    return hasEveryPosition
-      ? series?.weeklyTotals[trendStartIndex + index] ?? null
-      : null;
-  });
   const ownerTradeGroups = useMemo(
     () =>
       buildTradeGroups(trades.filter((trade) => trade.status === "approved"))
@@ -1154,19 +1224,13 @@ function DesktopOwnerDetail({
         <section>
           <div className="flex items-center justify-between">
             <p className="font-mono text-[10px] font-bold uppercase tracking-widest text-muted-foreground">MTM Trend</p>
-            <span className="font-mono text-[10px] text-muted-foreground">Current portfolio</span>
+            <span className="font-mono text-[10px] text-muted-foreground">Analysis history</span>
           </div>
-          <div className="mt-2 border border-border/70 p-2 text-primary">
-            <TrendSparkline values={trendValues} />
+          <div className="mt-2">
+            <OwnerMtmTrendTile owner={owner} status={pipelineHistoryStatus} />
           </div>
-          {trendWeeks.length > 0 && (
-            <div className="mt-1 flex justify-between font-mono text-[9px] text-muted-foreground">
-              <span>{trendWeeks[0]?.label}</span>
-              <span>{trendWeeks[trendWeeks.length - 1]?.label}</span>
-            </div>
-          )}
           <p className="mt-2 text-[10px] leading-relaxed text-muted-foreground">
-            MTM of current positions over last eight weeks
+            Current signed positions valued across the same pipeline snapshots as Analysis
           </p>
         </section>
 
@@ -1210,7 +1274,7 @@ function DesktopOwnerDetail({
                         Realized net <strong className={team.netReturn >= 0 ? "text-emerald-600 dark:text-emerald-400" : "text-rose-600 dark:text-rose-400"}>{signedCurrency(team.netReturn)}</strong>
                       </span>
                       <span className="text-muted-foreground">
-                        MTM <strong className={getTeamNetMtm(team, valuation) >= 0 ? "text-emerald-600 dark:text-emerald-400" : "text-rose-600 dark:text-rose-400"}>{signedCurrency(getTeamNetMtm(team, valuation))}</strong>
+                        MTM <strong className={getOwnerTeamNetMtm(team, owner.bidderId, valuation) >= 0 ? "text-emerald-600 dark:text-emerald-400" : "text-rose-600 dark:text-rose-400"}>{signedCurrency(getOwnerTeamNetMtm(team, owner.bidderId, valuation))}</strong>
                       </span>
                       <span className="text-muted-foreground">
                         Realized pts to BE <BreakevenPoints points={team.ptsToBreakeven} />
