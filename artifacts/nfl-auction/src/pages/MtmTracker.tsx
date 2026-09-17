@@ -788,6 +788,15 @@ function PipelineMarkPanel({
         </div>
       )}
 
+      {chartValuations.length > 0 && (
+        <div className="border-b border-border p-4">
+          <div className="mb-3">
+            <h3 className="font-mono text-xs font-bold uppercase tracking-widest">Lot values over time</h3>
+          </div>
+          <NetPayoutHistoryChart valuations={chartValuations} />
+        </div>
+      )}
+
       <div className="border-b border-border p-4">
         <div className="mb-3 flex flex-col gap-3 sm:flex-row sm:items-end sm:justify-between">
               <div>
@@ -918,15 +927,6 @@ function PipelineMarkPanel({
       ) : (
         <div className="border-b border-border px-4 py-8 text-center font-mono text-xs text-muted-foreground">
           {query ? `No teams match “${search.trim()}”.` : "No team values are available for this mark."}
-        </div>
-      )}
-
-      {chartValuations.length > 0 && (
-        <div className="border-b border-border p-4">
-          <div className="mb-3">
-            <h3 className="font-mono text-xs font-bold uppercase tracking-widest">Lot values over time</h3>
-          </div>
-          <NetPayoutHistoryChart valuations={chartValuations} />
         </div>
       )}
 
