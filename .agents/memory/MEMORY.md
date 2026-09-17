@@ -54,3 +54,4 @@
 - [Archived MTM visibility](archived-mtm-visibility.md) — retained published history may remain visible when the current mark is unavailable, but never expose the suppressed current snapshot.
 - [Kalshi MTM timestamps](kalshi-mtm-timestamps.md) — market updated_time is metadata-only; active-price freshness uses the response capture time.
 - [Nonnegative path payouts](nonnegative-path-payouts.md) — floor signed team points before each simulation path is normalized to the pool, never after aggregation.
+- [Polymorphic delete triggers](polymorphic-delete-triggers.md) — generic PostgreSQL trigger functions must branch by table before reading table-specific OLD/NEW fields.

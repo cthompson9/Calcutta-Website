@@ -368,6 +368,20 @@ describe("MTM pipeline evidence", { skip: !canRun }, () => {
     assert.equal(response.status, 401);
   });
 
+  test("allows authorized deletion guards on valuation game rows without a status column", async () => {
+    await db.transaction(async (tx) => {
+      await tx.execute(sql`select set_config('app.mtm_attempt_delete', 'on', true)`);
+      await tx.execute(sql`create temporary table mtm_valuation_game_delete_probe (id integer primary key) on commit drop`);
+      await tx.execute(sql`
+        create trigger mtm_valuation_game_delete_probe_guard
+        before delete on mtm_valuation_game_delete_probe
+        for each row execute function mtm_admin_attempt_delete_guard()
+      `);
+      await tx.execute(sql`insert into mtm_valuation_game_delete_probe (id) values (1)`);
+      await tx.execute(sql`delete from mtm_valuation_game_delete_probe where id = 1`);
+    });
+  });
+
   test("rejects deletion through the wrong Calcutta", async () => {
     const response = await fetch(
       `${baseUrl}/api/mtm/pipeline/attempts/${failedAttemptId}`,

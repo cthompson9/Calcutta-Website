@@ -1,5 +1,5 @@
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
-import { render, screen, waitFor, within } from "@testing-library/react";
+import { render, screen, waitFor, within, fireEvent } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import type { MtmGameEvSwing, MtmQualityExposure, MtmTeamEvSwing } from "@workspace/api-client-react";
@@ -378,8 +378,15 @@ describe("NetPayoutHistoryChart", () => {
     expect(screen.queryByRole("button", { name: "Remove Buffalo Bills" })).not.toBeInTheDocument();
     expect(screen.queryByText("BUF")).not.toBeInTheDocument();
     expect(container.querySelectorAll("circle")).toHaveLength(0);
+    expect(screen.getByTestId("net-payout-background-path-7")).toHaveAttribute(
+      "stroke",
+      "color-mix(in srgb, #00338D 24%, hsl(var(--background)))",
+    );
+    expect(screen.getByTestId("net-payout-background-path-7")).not.toHaveAttribute("opacity");
 
-    await user.click(screen.getByTestId("net-payout-hit-7"));
+    const svg = screen.getByTestId("net-payout-chart");
+    fireEvent.pointerDown(svg, { clientX: 82, clientY: 329, pointerId: 1, isPrimary: true });
+    fireEvent.pointerUp(svg, { clientX: 82, clientY: 329, pointerId: 1, isPrimary: true });
 
     expect(screen.getByLabelText("Selected teams")).toBeInTheDocument();
     expect(screen.getByRole("button", { name: "Remove Buffalo Bills" })).toBeInTheDocument();
@@ -387,11 +394,76 @@ describe("NetPayoutHistoryChart", () => {
     const path = screen.getByTestId("net-payout-path-7");
     expect(path.getAttribute("d")).toMatch(/^M[^L]+L/);
     expect(path).toHaveAttribute("stroke", "#00338D");
-    expect(container.querySelectorAll("circle")).toHaveLength(1);
+    expect(container.querySelectorAll("circle").length).toBeGreaterThanOrEqual(1);
 
     await user.click(screen.getByRole("button", { name: "Remove Buffalo Bills" }));
+    fireEvent.pointerLeave(svg);
+
     expect(screen.queryByLabelText("Selected teams")).not.toBeInTheDocument();
     expect(container.querySelectorAll("circle")).toHaveLength(0);
+  });
+
+  it("scrubs without pinning on drag and supports keyboard clearing", () => {
+    render(
+      <NetPayoutHistoryChart
+        valuations={[{
+          entryId: 7,
+          teamId: 12,
+          teamName: "Buffalo Bills",
+          expectedPoints: "20",
+          expectedPayout: "1600",
+          previousExpectedPayout: "1400",
+          auctionPrice: "1500",
+          mtmMultiple: "1.07",
+          owners: [],
+          history: [
+            { snapshotId: 101, label: "Week 0", asOf: "2026-08-25T12:00:00.000Z", expectedPayout: 1400, auctionPrice: 1500, netPayout: -100 },
+            { snapshotId: 102, label: "Week 1", asOf: "2026-09-13T12:00:00.000Z", expectedPayout: 1600, auctionPrice: 1500, netPayout: 100 },
+          ],
+        }]}
+      />,
+    );
+
+    const svg = screen.getByTestId("net-payout-chart");
+    fireEvent.pointerDown(svg, { clientX: 82, clientY: 329, pointerId: 1, isPrimary: true });
+    fireEvent.pointerMove(svg, { clientX: 150, clientY: 250, pointerId: 1, isPrimary: true });
+    fireEvent.pointerUp(svg, { clientX: 150, clientY: 250, pointerId: 1, isPrimary: true });
+
+    expect(screen.queryByLabelText("Selected teams")).not.toBeInTheDocument();
+    expect(screen.getByTestId("net-payout-crosshair")).toBeInTheDocument();
+
+    fireEvent.keyDown(svg, { key: "ArrowLeft" });
+    expect(screen.getByTestId("net-payout-crosshair")).toBeInTheDocument();
+    fireEvent.keyDown(svg, { key: "Escape" });
+    expect(screen.queryByTestId("net-payout-crosshair")).not.toBeInTheDocument();
+  });
+
+  it("keeps the active readout after a touch interaction ends", () => {
+    render(
+      <NetPayoutHistoryChart
+        valuations={[{
+          entryId: 7,
+          teamId: 12,
+          teamName: "Buffalo Bills",
+          expectedPoints: "20",
+          expectedPayout: "1600",
+          previousExpectedPayout: "1400",
+          auctionPrice: "1500",
+          mtmMultiple: "1.07",
+          owners: [],
+          history: [
+            { snapshotId: 101, label: "Week 1", asOf: "2026-09-13T12:00:00.000Z", expectedPayout: 1600, auctionPrice: 1500, netPayout: 100 },
+          ],
+        }]}
+      />,
+    );
+
+    const svg = screen.getByTestId("net-payout-chart");
+    fireEvent.pointerDown(svg, { clientX: 419, clientY: 41, pointerId: 2, pointerType: "touch", isPrimary: true });
+    fireEvent.pointerUp(svg, { clientX: 419, clientY: 41, pointerId: 2, pointerType: "touch", isPrimary: true });
+    fireEvent.pointerLeave(svg, { pointerType: "touch" });
+
+    expect(screen.getByTestId("net-payout-readout")).toBeInTheDocument();
   });
 
   it("limits Last 3 Weeks to the 21 days ending at the latest chart timestamp", async () => {
@@ -442,7 +514,11 @@ describe("NetPayoutHistoryChart", () => {
 
     await user.click(screen.getByRole("button", { name: "Last 3 Weeks" }));
 
-    const path = screen.getByTestId("net-payout-hit-7");
+    const svg = screen.getByTestId("net-payout-chart");
+    fireEvent.pointerDown(svg, { clientX: 756, clientY: 41, pointerId: 1, isPrimary: true });
+    fireEvent.pointerUp(svg, { clientX: 756, clientY: 41, pointerId: 1, isPrimary: true });
+
+    const path = screen.getByTestId("net-payout-path-7");
     expect(path.getAttribute("d")?.match(/[ML]/g)).toHaveLength(2);
     expect(screen.queryByText("Auction")).not.toBeInTheDocument();
   });

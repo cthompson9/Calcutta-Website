@@ -48,3 +48,4 @@ export { mtmAttemptDeletionGuardReconciliationMigration } from "./0052MtmAttempt
 export { mtmPeriodSelectionAttemptDeletionMigration } from "./0053MtmPeriodSelectionAttemptDeletion";
 export { mtmPendingTriggerReconciliationMigration } from "./0054MtmPendingTriggerReconciliation";
 export { competitionScoringConstraintConvergenceMigration } from "./0055CompetitionScoringConstraintConvergence";
+export { mtmAttemptDeleteGameGuardMigration } from "./0056MtmAttemptDeleteGameGuard";

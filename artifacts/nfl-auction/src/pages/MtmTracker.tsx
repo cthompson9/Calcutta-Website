@@ -1,4 +1,4 @@
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import {
   useGetTeams,
   useCaptureWeekZeroMtm,
@@ -1422,6 +1422,13 @@ export function NetPayoutHistoryChart({
   const [pinned, setPinned] = useState<number[]>([]);
   const [hovered, setHovered] = useState<number | null>(null);
   const [crosshair, setCrosshair] = useState<number | null>(null);
+  const pointerState = useRef<{
+    isDown: boolean;
+    startX: number;
+    startY: number;
+    hasMoved: boolean;
+    activeEntryId: number | null;
+  } | null>(null);
 
   const points = valuations.flatMap((valuation) =>
     (valuation.history ?? [])
@@ -1472,7 +1479,8 @@ export function NetPayoutHistoryChart({
   const tMax = transform(maxVal, scaleMode);
   const tSpan = tMax - tMin || 1;
 
-  const PAD = { top: 24, right: 64, bottom: 44, left: 82 };
+  const isNarrow = width < 600;
+  const PAD = { top: 24, right: isNarrow ? 40 : 64, bottom: isNarrow ? 32 : 44, left: isNarrow ? 48 : 82 };
   const innerW = Math.max(width - PAD.left - PAD.right, 10);
   const bottomY = Math.max(height - PAD.bottom, 40);
 
@@ -1519,23 +1527,108 @@ export function NetPayoutHistoryChart({
     return NFL_PRIMARY_COLOR_BY_TEAM[valuation.teamName] ?? "hsl(var(--primary))";
   }
 
-  const handleMove = (event: React.MouseEvent<SVGSVGElement>) => {
-    if (filteredTimestamps.length === 0) return;
-    const rect = event.currentTarget.getBoundingClientRect();
-    const px = event.clientX - rect.left;
+  const updatePointer = (e: React.PointerEvent<SVGSVGElement>) => {
+    if (filteredTimestamps.length === 0) return null;
+    const rect = e.currentTarget.getBoundingClientRect();
+    const px = e.clientX - rect.left;
+    const py = e.clientY - rect.top;
+
+    // Nearest timestamp
     const ratio = (px - PAD.left) / Math.max(innerW, 1);
     const targetTimestamp = minTimestamp + ratio * timestampRange;
-    
-    let closest = filteredTimestamps[0];
-    let minDist = Math.abs(targetTimestamp - closest);
+    let closestTs = filteredTimestamps[0];
+    let minTsDist = Math.abs(targetTimestamp - closestTs);
     for (const ts of filteredTimestamps) {
       const dist = Math.abs(targetTimestamp - ts);
-      if (dist < minDist) {
-        minDist = dist;
-        closest = ts;
+      if (dist < minTsDist) {
+        minTsDist = dist;
+        closestTs = ts;
       }
     }
-    setCrosshair(closest);
+    setCrosshair(closestTs);
+
+    // Nearest line within 30px
+    let bestId: number | null = null;
+    let bestLineDist = 30; // threshold
+    for (const v of valuations) {
+      const point = (v.history ?? []).find(p => Date.parse(p.asOf) === closestTs);
+      if (point && point.netPayout != null) {
+        const lineY = yPos(point.netPayout);
+        const dist = Math.abs(py - lineY);
+        if (dist < bestLineDist) {
+          bestLineDist = dist;
+          bestId = v.entryId;
+        }
+      }
+    }
+    setHovered(bestId);
+    if (pointerState.current) pointerState.current.activeEntryId = bestId;
+    return bestId;
+  };
+
+  const handlePointerDown = (e: React.PointerEvent<SVGSVGElement>) => {
+    // Only capture if not a multi-touch gesture
+    if (e.isPrimary) {
+      e.currentTarget.setPointerCapture?.(e.pointerId);
+    }
+    pointerState.current = {
+      isDown: true,
+      startX: e.clientX,
+      startY: e.clientY,
+      hasMoved: false,
+      activeEntryId: null,
+    };
+    updatePointer(e);
+  };
+
+  const handlePointerMove = (e: React.PointerEvent<SVGSVGElement>) => {
+    if (pointerState.current?.isDown) {
+      const dx = e.clientX - pointerState.current.startX;
+      const dy = e.clientY - pointerState.current.startY;
+      if (Math.abs(dx) > 8 || Math.abs(dy) > 8) {
+        pointerState.current.hasMoved = true;
+      }
+    }
+    updatePointer(e);
+  };
+
+  const handlePointerUp = (e: React.PointerEvent<SVGSVGElement>) => {
+    if (e.isPrimary && e.currentTarget.hasPointerCapture?.(e.pointerId)) {
+      e.currentTarget.releasePointerCapture?.(e.pointerId);
+    }
+    const interaction = pointerState.current;
+    if (interaction && !interaction.hasMoved && interaction.activeEntryId !== null) {
+      togglePin(interaction.activeEntryId);
+    }
+    pointerState.current = null;
+  };
+
+  const handlePointerCancel = () => {
+    pointerState.current = null;
+  };
+
+  const handleKeyDown = (e: React.KeyboardEvent<SVGSVGElement>) => {
+    if (filteredTimestamps.length === 0) return;
+    if (e.key === "ArrowLeft" || e.key === "ArrowRight") {
+      e.preventDefault();
+      const currentIdx = crosshair !== null ? filteredTimestamps.indexOf(crosshair) : filteredTimestamps.length - 1;
+      let nextIdx = currentIdx;
+      if (e.key === "ArrowLeft") nextIdx = Math.max(0, currentIdx - 1);
+      if (e.key === "ArrowRight") nextIdx = Math.min(filteredTimestamps.length - 1, currentIdx + 1);
+      setCrosshair(filteredTimestamps[nextIdx]);
+
+      // Re-evaluate hovered line at new crosshair if we had one
+      if (hovered !== null) {
+        const v = valuations.find(val => val.entryId === hovered);
+        if (v && !(v.history ?? []).some(p => Date.parse(p.asOf) === filteredTimestamps[nextIdx] && p.netPayout != null)) {
+          setHovered(null);
+        }
+      }
+    } else if (e.key === "Escape") {
+      setCrosshair(null);
+      setHovered(null);
+      e.currentTarget.blur();
+    }
   };
 
   const togglePin = (id: number) => {
@@ -1559,6 +1652,51 @@ export function NetPayoutHistoryChart({
       .map((point, i) => `${i === 0 ? "M" : "L"}${xPos(point.timestamp).toFixed(1)},${yPos(point.netPayout as number).toFixed(1)}`)
       .join(" ");
   };
+
+  // Label Dodging
+  const labelPositions = emphasized.map((v) => {
+    const history = (v.history ?? [])
+      .filter((p) => p.netPayout != null && Date.parse(p.asOf) >= minTimestampBound)
+      .sort((a, b) => Date.parse(a.asOf) - Date.parse(b.asOf));
+    const lastPoint = history[history.length - 1];
+    const targetY = lastPoint ? yPos(lastPoint.netPayout as number) : 0;
+    return { v, lastPoint, targetY, renderY: targetY };
+  }).filter(l => l.lastPoint != null);
+
+  labelPositions.sort((a, b) => a.targetY - b.targetY);
+
+  const labelMinY = PAD.top + 5;
+  const labelMaxY = bottomY - 5;
+  const labelHeight = labelPositions.length > 1
+    ? Math.min(13, (labelMaxY - labelMinY) / (labelPositions.length - 1))
+    : 13;
+  if (labelPositions[0]) {
+    labelPositions[0].renderY = Math.max(labelMinY, labelPositions[0].targetY);
+  }
+  for (let i = 1; i < labelPositions.length; i++) {
+    labelPositions[i].renderY = Math.max(
+      labelPositions[i].targetY,
+      labelPositions[i - 1].renderY + labelHeight,
+    );
+  }
+  const finalLabel = labelPositions.at(-1);
+  if (finalLabel && finalLabel.renderY > labelMaxY) {
+    const shift = finalLabel.renderY - labelMaxY;
+    for (const label of labelPositions) {
+      label.renderY -= shift;
+    }
+  }
+
+  // Crosshair dots rendering
+  const crosshairDots = emphasized.map(v => {
+    if (crosshair === null) return null;
+    const pt = (v.history ?? []).find(p => p.netPayout != null && Date.parse(p.asOf) === crosshair);
+    if (!pt) return null;
+    return { v, pt };
+  }).filter((x): x is NonNullable<typeof x> => x !== null);
+
+  // Readout corner logic
+  const isRightHalf = crosshair !== null && xPos(crosshair) > PAD.left + innerW / 2;
 
   return (
     <div className="mt-4 space-y-4">
@@ -1621,15 +1759,24 @@ export function NetPayoutHistoryChart({
       <div ref={ref} className="relative h-[300px] w-full sm:h-[380px] lg:h-[460px] border border-border bg-background/40">
         {width > 0 && height > 0 && (
           <svg
+            data-testid="net-payout-chart"
             width={width}
             height={height}
             role="img"
             aria-label="Net payout history by team over time"
-            onMouseMove={handleMove}
-            onMouseLeave={() => {
-              setCrosshair(null);
-              setHovered(null);
+            tabIndex={0}
+            className="outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-inset touch-pan-y"
+            onPointerDown={handlePointerDown}
+            onPointerMove={handlePointerMove}
+            onPointerUp={handlePointerUp}
+            onPointerCancel={handlePointerCancel}
+            onPointerLeave={(event) => {
+              if (event.pointerType !== "touch" && !pointerState.current?.isDown) {
+                setCrosshair(null);
+                setHovered(null);
+              }
             }}
+            onKeyDown={handleKeyDown}
           >
             {keptTicks.map((tick) => {
               const y = yPos(tick);
@@ -1647,11 +1794,11 @@ export function NetPayoutHistoryChart({
                     opacity={isZero ? 0.45 : 1}
                   />
                   <text
-                    x={PAD.left - 10}
+                    x={PAD.left - (isNarrow ? 6 : 10)}
                     y={y + 3.5}
                     textAnchor="end"
                     className="font-mono"
-                    fontSize={10}
+                    fontSize={isNarrow ? 9 : 10}
                     fill={isZero ? "currentColor" : "hsl(var(--muted-foreground))"}
                   >
                     {isZero ? "Breakeven" : moneyCompact(tick)}
@@ -1661,7 +1808,8 @@ export function NetPayoutHistoryChart({
             })}
 
             {timeTicks.map(([label, timestamp], i) => {
-              const showText = timeTicks.length <= 14 || i % Math.ceil(timeTicks.length / 10) === 0 || i === timeTicks.length - 1;
+              const textDivisor = isNarrow ? 20 : 10;
+              const showText = timeTicks.length <= (isNarrow ? 7 : 14) || i % Math.ceil(timeTicks.length / textDivisor) === 0 || i === timeTicks.length - 1;
               return (
                 <g key={`${label}-${timestamp}`}>
                   <line
@@ -1677,7 +1825,7 @@ export function NetPayoutHistoryChart({
                       x={xPos(timestamp)}
                       y={height - 14}
                       textAnchor="middle"
-                      fontSize={10}
+                      fontSize={isNarrow ? 9 : 10}
                       fontWeight={crosshair === timestamp ? 700 : 400}
                       fill="currentColor"
                       fillOpacity={crosshair === timestamp ? 1 : 0.68}
@@ -1692,6 +1840,7 @@ export function NetPayoutHistoryChart({
 
             {crosshair !== null && (
               <line
+                data-testid="net-payout-crosshair"
                 x1={xPos(crosshair)}
                 x2={xPos(crosshair)}
                 y1={PAD.top - 6}
@@ -1702,22 +1851,26 @@ export function NetPayoutHistoryChart({
               />
             )}
 
+            {/* Render unselected lines with flat color blended against background */}
             {background.map((v) => {
               const path = pathFor(v);
               if (!path) return null;
+              const teamColor = colorFor(v);
               return (
                 <path
                   key={v.entryId}
+                  data-testid={`net-payout-background-path-${v.entryId}`}
                   d={path}
                   fill="none"
-                  stroke="hsl(var(--muted-foreground))"
-                  strokeWidth={1}
+                  stroke={`color-mix(in srgb, ${teamColor} 24%, hsl(var(--background)))`}
+                  strokeWidth={1.5}
                   strokeLinecap="round"
-                  opacity={0.3}
+                  strokeLinejoin="round"
                 />
               );
             })}
 
+            {/* Render selected/hovered lines */}
             {emphasized.map((v) => {
               const path = pathFor(v);
               if (!path) return null;
@@ -1748,11 +1901,49 @@ export function NetPayoutHistoryChart({
                     stroke={color}
                     strokeWidth={1.5}
                   />
+                </g>
+              );
+            })}
+
+            {/* Crosshair dots for active lines at hovered timestamp */}
+            {crosshairDots.map(({ v, pt }) => {
+              const color = colorFor(v);
+              return (
+                <circle
+                  key={`crosshair-dot-${v.entryId}`}
+                  cx={xPos(crosshair!)}
+                  cy={yPos(pt.netPayout as number)}
+                  r={4}
+                  fill={color}
+                  stroke="hsl(var(--background))"
+                  strokeWidth={1.5}
+                />
+              );
+            })}
+
+            {/* Render dodged labels */}
+            {labelPositions.map((pos) => {
+              const { v, lastPoint, targetY, renderY } = pos;
+              const color = colorFor(v);
+              const endX = xPos(Date.parse(lastPoint.asOf));
+              const r = radius(lastPoint.auctionPrice);
+
+              return (
+                <g key={`label-${v.entryId}`}>
+                  {Math.abs(targetY - renderY) > 2 && (
+                    <path
+                      d={`M ${endX + r + 1} ${targetY} C ${endX + r + 6} ${targetY}, ${endX + r + 4} ${renderY}, ${width - PAD.right + 6} ${renderY}`}
+                      fill="none"
+                      stroke={color}
+                      strokeWidth={0.5}
+                      opacity={0.5}
+                    />
+                  )}
                   <text
-                    x={width - PAD.right + 10}
-                    y={yPos(lastPoint.netPayout as number) + 3.5}
+                    x={width - PAD.right + 8}
+                    y={renderY + 3.5}
                     className="font-mono"
-                    fontSize={10}
+                    fontSize={isNarrow ? 9 : 10}
                     fill={color}
                   >
                     {NFL_ABBREVIATION_BY_TEAM[v.teamName] ?? v.teamName}
@@ -1760,33 +1951,15 @@ export function NetPayoutHistoryChart({
                 </g>
               );
             })}
-
-            {valuations.map((v) => {
-              const path = pathFor(v);
-              if (!path) return null;
-              return (
-                <path
-                  key={`hit-${v.entryId}`}
-                  data-testid={`net-payout-hit-${v.entryId}`}
-                  aria-label={`Select ${v.teamName}`}
-                  d={path}
-                  fill="none"
-                  stroke="transparent"
-                  strokeWidth={16}
-                  style={{ cursor: "pointer" }}
-                  onMouseEnter={() => setHovered(v.entryId)}
-                  onClick={() => togglePin(v.entryId)}
-                />
-              );
-            })}
           </svg>
         )}
 
         {crosshair !== null && emphasized.length > 0 && (
           <div
+            data-testid="net-payout-readout"
             className="pointer-events-none absolute top-4 rounded-sm border border-border bg-card/95 px-3 py-2 shadow-sm"
             style={{
-              left: Math.min(Math.max(xPos(crosshair) + 12, 8), Math.max(width - 240, 8)),
+              [isRightHalf ? 'left' : 'right']: isRightHalf ? PAD.left + 12 : PAD.right + 12,
               zIndex: 10,
             }}
           >
@@ -1804,17 +1977,19 @@ export function NetPayoutHistoryChart({
                 .filter((item) => item.point != null)
                 .sort((a, b) => (b.point.netPayout as number) - (a.point.netPayout as number))
                 .slice(0, 8)
-                .map(({ v, point }) => (
-                  <li key={v.entryId} className="flex items-baseline gap-4 whitespace-nowrap text-xs">
-                    <span className="font-mono w-24 truncate text-foreground font-bold">{v.teamName}</span>
-                    <span
-                      className={cn("ml-auto font-mono tabular-nums font-bold", point.netPayout! >= 0 ? "text-emerald-600 dark:text-emerald-500" : "text-destructive")}
-                      
-                    >
-                      {moneySigned(point.netPayout as number)}
-                    </span>
-                  </li>
-                ))}
+                .map(({ v, point }) => {
+                   const val = point.netPayout as number;
+                   return (
+                    <li key={v.entryId} className="flex items-baseline gap-4 whitespace-nowrap text-xs">
+                      <span className="font-mono w-24 truncate text-foreground font-bold">{v.teamName}</span>
+                      <span
+                        className={cn("ml-auto font-mono tabular-nums font-bold", val >= 0 ? "text-emerald-600 dark:text-emerald-500" : "text-amber-700 dark:text-amber-500")}
+                      >
+                        {moneySigned(val)}
+                      </span>
+                    </li>
+                  )
+                })}
             </ul>
           </div>
         )}
@@ -1822,6 +1997,7 @@ export function NetPayoutHistoryChart({
     </div>
   );
 }
+
 
 
 // ── Admin auth panel ──────────────────────────────────────────────────────────
