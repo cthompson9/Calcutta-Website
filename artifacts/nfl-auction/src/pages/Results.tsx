@@ -6,7 +6,6 @@ import {
   getGetResultsByOwnerQueryKey,
   useGetBidders,
   getGetBiddersQueryKey,
-  useGetSportPeriods,
   useGetSeasons,
   useGetResultsAvailability,
   getGetResultsAvailabilityQueryKey,
@@ -120,7 +119,6 @@ export default function Results() {
   const [returnState, setReturnState] = useState(readResultsReturnState);
   const [tab, setTab] = useState<TabId>(returnState.tab);
   const [expandedOwner, setExpandedOwner] = useState<number | null>(null);
-  const [period, setPeriod] = useState<number | undefined>(undefined);
   const [pipelineHistoryStatus, setPipelineHistoryStatus] =
     useState<PipelineHistoryStatus | null>(null);
   const consortiumBasis = "mtm" as const;
@@ -138,7 +136,7 @@ export default function Results() {
     }
   );
 
-  const currentValuation = period == null ? valuation : undefined;
+  const currentValuation = valuation;
   const previewLastUpdated = valuation?.mark?.asOf ?? null;
 
   useEffect(() => {
@@ -207,7 +205,6 @@ export default function Results() {
       },
     });
 
-  const { data: periods } = useGetSportPeriods({ sport: "NFL" });
   const { data: allSeasons } = useGetSeasons();
   const availabilityParams = { season: year, calcuttaId, basis: viewBasis };
   const { data: availability } = useGetResultsAvailability(
@@ -219,10 +216,9 @@ export default function Results() {
       },
     },
   );
-  const selectedPeriod = period ?? availability?.latestPeriod ?? undefined;
+  const selectedPeriod = availability?.latestPeriod ?? undefined;
 
   useEffect(() => {
-    setPeriod(undefined);
     if (!prefersHistoricalResults && tab === "historicalTrades") {
       setTab("byOwner");
     }
@@ -232,7 +228,7 @@ export default function Results() {
     { season: year, calcuttaId, period: selectedPeriod, basis: teamBasis },
     {
       query: {
-        enabled: usesLiveResults && tab === "byTeam" && (period != null || availability !== undefined),
+        enabled: usesLiveResults && tab === "byTeam" && availability !== undefined,
         queryKey: getGetResultsQueryKey({ season: year, calcuttaId, period: selectedPeriod, basis: teamBasis }),
       },
     },
@@ -256,12 +252,7 @@ export default function Results() {
       },
     },
   );
-  const previousPeriod =
-    period != null
-      ? period > 0
-        ? period - 1
-        : undefined
-      : availability?.previousPeriod ?? undefined;
+  const previousPeriod = availability?.previousPeriod ?? undefined;
   const { data: previousOwnerResults } = useGetResultsByOwner(
     { season: year, calcuttaId, period: previousPeriod, basis: consortiumBasis },
     {
@@ -343,42 +334,6 @@ export default function Results() {
       <div className="hidden px-4 md:block md:px-0">
         <ReleaseNotes />
       </div>
-
-      {!prefersHistoricalResults && (
-      <div className="px-4 md:px-0">
-        <div className="flex flex-col gap-4 rounded-none md:rounded-lg border-y md:border border-border bg-card p-4 sm:flex-row sm:items-center sm:justify-between -mx-4 md:mx-0 shadow-sm">
-          <label className="flex flex-col sm:flex-row sm:items-center gap-1.5 text-xs font-mono font-bold uppercase tracking-widest text-muted-foreground">
-            <span className="text-[10px]">Through period</span>
-            <div className="relative">
-              <select
-                data-testid="select-period"
-                value={period ?? ""}
-                onChange={(event) => {
-                  const nextPeriod = event.target.value === "" ? undefined : Number(event.target.value);
-                  trackEvent("results_period_selected", {
-                    period: nextPeriod ?? "latest",
-                    view: tab,
-                    year,
-                  });
-                  setPeriod(nextPeriod);
-                }}
-                className="w-full sm:w-auto appearance-none rounded-sm border border-border/60 bg-muted/30 px-3 py-1.5 pr-8 text-foreground outline-none focus:border-primary focus:ring-1 focus:ring-primary text-xs"
-              >
-                <option value="">Latest available</option>
-                {(periods ?? []).map((item) => (
-                  <option key={item.sequence} value={item.sequence}>
-                    {item.label}
-                  </option>
-                ))}
-              </select>
-              <div className="pointer-events-none absolute inset-y-0 right-0 flex items-center pr-2 text-muted-foreground">
-                <ChevronDown className="h-4 w-4" />
-              </div>
-            </div>
-          </label>
-        </div>
-      </div>
-      )}
 
       {/* Tabs */}
       <div className="flex border-b border-border overflow-x-auto no-scrollbar mx-4 md:mx-0">
