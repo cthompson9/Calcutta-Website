@@ -324,7 +324,7 @@ export const GetCalendarsResponseItem = zod.object({
   "points": zod.number()
 })),
   "currentProjection": zod.object({
-  "mtmSnapshotId": zod.number(),
+  "mtmSnapshotId": zod.number().nullable(),
   "status": zod.enum(['available', 'unavailable']),
   "reason": zod.string().nullable()
 }).nullable()
@@ -408,7 +408,7 @@ export const GetCalendarResponse = zod.object({
   "points": zod.number()
 })),
   "currentProjection": zod.object({
-  "mtmSnapshotId": zod.number(),
+  "mtmSnapshotId": zod.number().nullable(),
   "status": zod.enum(['available', 'unavailable']),
   "reason": zod.string().nullable()
 }).nullable()

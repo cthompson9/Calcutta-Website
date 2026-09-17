@@ -294,7 +294,7 @@ describe("Calcutta calendar REST/MCP integration", { skip: !canRun }, () => {
       const payload = GetCalendarsResponse.element.parse(
         await (await fetch(`${baseUrl}/api/calendars/${calendar.id}`)).json(),
       );
-      assert.equal(payload.currentProjection.mtmSnapshotId, newer.id);
+      assert.equal(payload.currentProjection.mtmSnapshotId, null);
       assert.equal(payload.currentProjection.status, "unavailable");
       assert.match(payload.currentProjection.reason, /no successful MTM snapshot/i);
       assert.ok(payload.rounds.every((round) =>

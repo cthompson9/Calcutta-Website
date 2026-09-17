@@ -27,14 +27,14 @@ const ADMIN_KEY = process.env.ADMIN_API_KEY;
 const canRun = Boolean(DATABASE_URL && ADMIN_KEY);
 
 // Deferred imports — must not execute when DATABASE_URL is absent (lib/db throws)
-let db, eventsTable, mtmSnapshotsTable, mtmSnapshotTable, mtmEntryValuationTable, mtmValuationVersionTable, snapshotMetricsTable, seasonsTable, teamsTable, teamSeasonAuctionsTable, calcuttasTable, calcuttaEntriesTable, positionsTable, biddersTable;
+let db, eventsTable, mtmSnapshotsTable, mtmSnapshotTable, mtmEntryValuationTable, mtmValuationVersionTable, snapshotMetricsTable, seasonsTable, teamsTable, teamSeasonAuctionsTable, calcuttasTable, calcuttaEntriesTable, positionsTable, biddersTable, mtmCanonicalPeriodSelectionTable, calendarProjectionSnapshotsTable;
 let app;
 let WEEK_ZERO_SNAPSHOT_KEY;
 let getMtmPipelineStatus;
 let validateAndPromoteCurrentMtm;
 
 if (canRun) {
-  ({ db, eventsTable, mtmSnapshotsTable, mtmSnapshotTable, mtmEntryValuationTable, mtmValuationVersionTable, snapshotMetricsTable, seasonsTable, teamsTable, teamSeasonAuctionsTable, calcuttasTable, calcuttaEntriesTable, positionsTable, biddersTable } =
+  ({ db, eventsTable, mtmSnapshotsTable, mtmSnapshotTable, mtmEntryValuationTable, mtmValuationVersionTable, snapshotMetricsTable, seasonsTable, teamsTable, teamSeasonAuctionsTable, calcuttasTable, calcuttaEntriesTable, positionsTable, biddersTable, mtmCanonicalPeriodSelectionTable, calendarProjectionSnapshotsTable } =
     await import("@workspace/db"));
   ({ default: app } = await import("../app.ts"));
   ({ WEEK_ZERO_SNAPSHOT_KEY } = await import("../lib/weekZeroValuation.ts"));
@@ -563,6 +563,28 @@ describe(
         await assert.rejects(
           seedCoherentOfficialVersion(777, { asOf: staleAt, fetchedAt: staleAt }),
           /Canonical event ledger is stale.*Actual-results ledger is stale.*coherent-test-event.*is stale/,
+        );
+        const rejected = await db.select({ id: mtmSnapshotTable.id })
+          .from(mtmSnapshotTable)
+          .where(and(
+            eq(mtmSnapshotTable.methodVersion, "coherent-test"),
+            eq(mtmSnapshotTable.asOf, staleAt),
+          ));
+        assert.ok(rejected.length > 0);
+        const rejectedIds = rejected.map((row) => row.id);
+        assert.equal(
+          (await db.select({ id: mtmCanonicalPeriodSelectionTable.id })
+            .from(mtmCanonicalPeriodSelectionTable)
+            .where(inArray(mtmCanonicalPeriodSelectionTable.snapshotId, rejectedIds))).length,
+          0,
+          "rejected official attempts must not select a canonical period",
+        );
+        assert.equal(
+          (await db.select({ id: calendarProjectionSnapshotsTable.id })
+            .from(calendarProjectionSnapshotsTable)
+            .where(inArray(calendarProjectionSnapshotsTable.mtmSnapshotId, rejectedIds))).length,
+          0,
+          "rejected official attempts must not publish calendar projections",
         );
         await resetPipelineLedger();
       },

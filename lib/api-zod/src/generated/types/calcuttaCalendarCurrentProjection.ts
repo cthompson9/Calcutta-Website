@@ -8,7 +8,7 @@
 import type { CalcuttaCalendarCurrentProjectionStatus } from './calcuttaCalendarCurrentProjectionStatus';
 
 export type CalcuttaCalendarCurrentProjection = {
-  mtmSnapshotId: number;
+  mtmSnapshotId: number | null;
   status: CalcuttaCalendarCurrentProjectionStatus;
   /** @nullable */
   reason: string | null;

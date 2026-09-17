@@ -104,7 +104,7 @@ export async function readCalendar(id: number) {
     rubric: rubric.map((row) => ({ label: row.label, points: Number(row.points) })),
     currentProjection: pipelineStatus
       ? {
-          mtmSnapshotId: pipelineStatus.currentSnapshotId ?? pipelineStatus.id,
+           mtmSnapshotId: pipelineStatus.currentSnapshotId ?? null,
           status: pipelineStatus.stale
             ? "unavailable"
             : (current[0]?.snapshot.status ?? "unavailable"),

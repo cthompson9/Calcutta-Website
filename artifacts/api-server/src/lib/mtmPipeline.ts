@@ -17,10 +17,6 @@ import {
   mtmTeamProjectionTable,
   mtmCalibrationMetricTable,
   mtmGameConditionalTable,
-  calcuttaCalendarsTable,
-  calendarRoundsTable,
-  calendarSlotsTable,
-  calendarProjectionSnapshotsTable,
   nflGamesTable,
   positionsTable,
   seasonsTable,
@@ -2819,9 +2815,9 @@ export async function runMtmPipeline(input: { seasonYear: number; calcuttaId?: n
           conditionalRows.slice(offset, offset + CONDITIONAL_PERSISTENCE_BATCH_SIZE),
         );
       }
-      // Calendar projection parents are guarded by a database trigger that
-      // requires the referenced MTM snapshot to already be successful. Keep
-      // this status transition and projection publication in this transaction.
+      // Mark the simulation evidence successful only after all persisted
+      // outputs and publication-quality gates have passed. This is not an
+      // official publication transition.
       await tx.update(mtmSnapshotTable).set({
         status: "ok", error: null,
         // Keep all prefit/runtime diagnostics and append publication-time
@@ -2838,44 +2834,9 @@ export async function runMtmPipeline(input: { seasonYear: number; calcuttaId?: n
           team.wins === 0 && team.ties === 0 && team.adj_pt_diff === 0
         ) ? "week_0" : input.trigger === "manual" ? "manual" : "scheduled",
       }).where(eq(mtmSnapshotTable.id, snapshotId));
-      const periodSequence = pipelineMarkWeek(state);
-      const period = await tx.select({ id: sportPeriodsTable.id })
-        .from(sportPeriodsTable)
-        .where(and(
-          eq(sportPeriodsTable.sport, "NFL"),
-          eq(sportPeriodsTable.competition, "NFL_REGULAR_SEASON"),
-          eq(sportPeriodsTable.sequence, periodSequence),
-        )).limit(1);
-      if (period[0]) {
-        const existingSelection = await tx.select({ id: mtmCanonicalPeriodSelectionTable.id })
-          .from(mtmCanonicalPeriodSelectionTable)
-          .where(and(
-            eq(mtmCanonicalPeriodSelectionTable.poolId, poolId),
-            eq(mtmCanonicalPeriodSelectionTable.sportPeriodId, period[0].id),
-            eq(mtmCanonicalPeriodSelectionTable.snapshotId, snapshotId),
-          )).limit(1);
-        if (!existingSelection[0]) {
-          await tx.insert(mtmCanonicalPeriodSelectionTable).values({
-            poolId, sportPeriodId: period[0].id, snapshotId,
-            selectedReason: "successful MTM publication",
-          });
-        }
-      }
-      const calendars = await tx.select({ calendarId: calcuttaCalendarsTable.id })
-        .from(calcuttaCalendarsTable).where(eq(calcuttaCalendarsTable.calcuttaId, poolId));
-      for (const calendar of calendars) {
-        const calendarSlots = await tx.select({ id: calendarSlotsTable.id })
-          .from(calendarSlotsTable).innerJoin(calendarRoundsTable, eq(calendarRoundsTable.id, calendarSlotsTable.roundId))
-          .where(eq(calendarRoundsTable.calendarId, calendar.calendarId));
-        if (calendarSlots.length) {
-          await tx.insert(calendarProjectionSnapshotsTable).values(calendarSlots.map((slot) => ({
-            slotId: slot.id,
-            mtmSnapshotId: snapshotId,
-            status: "unavailable" as const,
-            unavailableReason: "The current MTM engine does not provide exact-slot probabilities.",
-          })));
-        }
-      }
+      // A successful simulation is evidence, not publication. Canonical
+      // period selections and calendar projections are published only by the
+      // locked, fully validated current-version promotion boundary.
     });
   } catch (error) {
     const message = `MTM persistence failed: ${error instanceof Error ? error.message : String(error)}`;
@@ -2959,11 +2920,19 @@ export async function getMtmPipelineStatus(seasonYear: number, calcuttaId?: numb
     ? successfulRows.find((snapshot) => snapshot.id === currentVersion.sourceSnapshotId)
     : undefined;
   const previous = successfulRows.find((snapshot) => snapshot.id !== current?.id);
-  const dataSnapshotId = current?.id ?? attempt.id;
+  // Attempt metadata and current valuation data are intentionally independent:
+  // this status endpoint may observe a newer attempt while current-version
+  // rows still reflect the last committed promotion. Never expose attempt
+  // evidence as current data unless it is linked by a validated current version.
+  const dataSnapshotId = current?.id ?? null;
   const successfulSnapshotIds = successfulRows.map((snapshot) => snapshot.id);
   const [projections, valuations, historicalValuations, entryRows, ownership, weekZeroRows, primaryCostRows] = await Promise.all([
-    db.select().from(mtmTeamProjectionTable).where(eq(mtmTeamProjectionTable.snapshotId, dataSnapshotId)),
-    db.select().from(mtmEntryValuationTable).where(eq(mtmEntryValuationTable.snapshotId, dataSnapshotId)),
+    dataSnapshotId != null
+      ? db.select().from(mtmTeamProjectionTable).where(eq(mtmTeamProjectionTable.snapshotId, dataSnapshotId))
+      : Promise.resolve([] as Array<typeof mtmTeamProjectionTable.$inferSelect>),
+    dataSnapshotId != null
+      ? db.select().from(mtmEntryValuationTable).where(eq(mtmEntryValuationTable.snapshotId, dataSnapshotId))
+      : Promise.resolve([] as Array<typeof mtmEntryValuationTable.$inferSelect>),
     successfulSnapshotIds.length > 0
       ? db.select().from(mtmEntryValuationTable)
           .where(inArray(mtmEntryValuationTable.snapshotId, successfulSnapshotIds))

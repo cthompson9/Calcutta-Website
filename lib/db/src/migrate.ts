@@ -52,6 +52,7 @@ import {
   mtmPendingTriggerReconciliationMigration,
   competitionScoringConstraintConvergenceMigration,
   mtmAttemptDeleteGameGuardMigration,
+  mtmCanonicalPeriodSelectionIdentityMigration,
 } from "./migrations";
 
 const migrations = [
@@ -106,6 +107,7 @@ const migrations = [
   mtmPendingTriggerReconciliationMigration,
   competitionScoringConstraintConvergenceMigration,
   mtmAttemptDeleteGameGuardMigration,
+  mtmCanonicalPeriodSelectionIdentityMigration,
 ] as const;
 
 /**

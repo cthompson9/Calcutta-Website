@@ -113,6 +113,7 @@ export const mtmCanonicalPeriodSelectionTable = pgTable(
     foreignKey({ columns: [t.snapshotId], foreignColumns: [mtmSnapshotTable.id], name: "mtm_period_sel_snapshot_fk" }).onDelete("restrict"),
     index("mtm_period_sel_latest_idx").on(t.poolId, t.sportPeriodId, t.selectedAt.desc()),
     index("mtm_period_sel_history_idx").on(t.poolId, t.sportPeriodId, t.snapshotId),
+    uniqueIndex("mtm_period_sel_pool_period_snapshot_uq").on(t.poolId, t.sportPeriodId, t.snapshotId),
   ],
 );
 

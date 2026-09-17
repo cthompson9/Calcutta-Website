@@ -2,16 +2,22 @@ import { createHash } from "node:crypto";
 import { and, desc, eq, inArray, sql } from "drizzle-orm";
 import {
   calcuttaEntriesTable,
+  calcuttaCalendarsTable,
   calcuttasTable,
+  calendarProjectionSnapshotsTable,
+  calendarRoundsTable,
+  calendarSlotsTable,
   db,
   eventsTable,
   mtmEntryValuationTable,
   mtmGameConditionalTable,
   MTM_CONDITIONAL_PUBLICATION_POLICY,
   mtmSnapshotTable,
+  mtmCanonicalPeriodSelectionTable,
   mtmValuationGameTable,
   mtmValuationVersionTable,
   seasonsTable,
+  sportPeriodsTable,
   teamsTable,
 } from "@workspace/db";
 import { loadSeasonOwnership } from "./seasonOwnership";
@@ -648,6 +654,88 @@ export async function validateAndPromoteCurrentMtm(
 
 type MtmTransaction = Parameters<Parameters<typeof db.transaction>[0]>[0];
 
+function markWeekFromSnapshot(stateJson: Record<string, unknown> | null): number {
+  const remaining = stateJson?.remaining_schedule;
+  if (!Array.isArray(remaining)) return 0;
+  const weeks = remaining
+    .map((game) => game && typeof game === "object" && "week" in game ? Number(game.week) : Number.NaN)
+    .filter((week) => Number.isInteger(week) && week > 0);
+  return weeks.length === 0 ? 18 : Math.max(0, Math.min(...weeks) - 1);
+}
+
+async function publishOfficialArtifacts(
+  tx: MtmTransaction,
+  poolId: number,
+  sourceSnapshot: typeof mtmSnapshotTable.$inferSelect,
+  snapshotId: number,
+): Promise<void> {
+  const periodSequence = markWeekFromSnapshot(sourceSnapshot.stateJson);
+  const [period] = await tx.select({ id: sportPeriodsTable.id })
+    .from(sportPeriodsTable)
+    .where(and(
+      eq(sportPeriodsTable.sport, "NFL"),
+      eq(sportPeriodsTable.competition, "NFL_REGULAR_SEASON"),
+      eq(sportPeriodsTable.sequence, periodSequence),
+    ))
+    .limit(1);
+  if (!period) {
+    throw new Error(
+      `Cannot publish official MTM: no NFL regular-season sport period exists for sequence ${periodSequence}.`,
+    );
+  }
+  await tx.insert(mtmCanonicalPeriodSelectionTable).values({
+    poolId,
+    sportPeriodId: period.id,
+    snapshotId,
+    selectedReason: "validated official MTM promotion",
+  }).onConflictDoNothing({
+    target: [
+      mtmCanonicalPeriodSelectionTable.poolId,
+      mtmCanonicalPeriodSelectionTable.sportPeriodId,
+      mtmCanonicalPeriodSelectionTable.snapshotId,
+    ],
+  });
+
+  const calendars = await tx.select({ calendarId: calcuttaCalendarsTable.id })
+    .from(calcuttaCalendarsTable)
+    .where(eq(calcuttaCalendarsTable.calcuttaId, poolId));
+  for (const calendar of calendars) {
+    const slots = await tx.select({ id: calendarSlotsTable.id })
+      .from(calendarSlotsTable)
+      .innerJoin(calendarRoundsTable, eq(calendarRoundsTable.id, calendarSlotsTable.roundId))
+      .where(eq(calendarRoundsTable.calendarId, calendar.calendarId));
+    for (const slot of slots) {
+      await tx.insert(calendarProjectionSnapshotsTable).values({
+        slotId: slot.id,
+        mtmSnapshotId: snapshotId,
+        status: "unavailable",
+        unavailableReason: "The current MTM engine does not provide exact-slot probabilities.",
+      }).onConflictDoNothing({
+        target: [calendarProjectionSnapshotsTable.slotId, calendarProjectionSnapshotsTable.mtmSnapshotId],
+      });
+    }
+  }
+}
+
+async function assertMtmLeaseStillOwned(
+  tx: MtmTransaction,
+  poolId: number,
+  lease: NonNullable<PromoteCurrentMtmArgs["lease"]> | undefined,
+): Promise<void> {
+  if (!lease) return;
+  const owned = await tx.execute<{ run_id: string }>(sql`
+    select run_id
+    from mtm_job_leases
+    where pool_id = ${poolId}
+      and owner_token = ${lease.ownerToken}
+      and run_id = ${lease.runId}
+      and lease_until > clock_timestamp()
+  `);
+  if (owned.rows.length === 0) {
+    throw new Error("MTM lease was lost before official promotion commit.");
+  }
+}
+
 async function promoteCurrentMtmInTransaction(
   tx: MtmTransaction,
   args: PromoteCurrentMtmArgs,
@@ -861,6 +949,7 @@ async function promoteCurrentMtmInTransaction(
           await tx.update(mtmValuationVersionTable)
             .set({ status: "superseded" })
             .where(eq(mtmValuationVersionTable.id, candidate.id));
+          await assertMtmLeaseStillOwned(tx, args.poolId, args.lease);
           return {
             versionId: existingCurrent.id,
             sourceSnapshotId: existingCurrent.sourceSnapshotId,
@@ -875,6 +964,10 @@ async function promoteCurrentMtmInTransaction(
     await tx.update(mtmValuationVersionTable)
       .set({ status: "current" })
       .where(eq(mtmValuationVersionTable.id, candidate.id));
+    if (args.markType === "official") {
+      await publishOfficialArtifacts(tx, args.poolId, sourceSnapshot, args.sourceSnapshotId);
+    }
+    await assertMtmLeaseStillOwned(tx, args.poolId, args.lease);
     return { versionId: candidate.id, sourceSnapshotId: args.sourceSnapshotId, status: "current" as const };
 }
 

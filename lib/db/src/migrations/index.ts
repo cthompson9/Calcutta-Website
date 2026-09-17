@@ -49,3 +49,4 @@ export { mtmPeriodSelectionAttemptDeletionMigration } from "./0053MtmPeriodSelec
 export { mtmPendingTriggerReconciliationMigration } from "./0054MtmPendingTriggerReconciliation";
 export { competitionScoringConstraintConvergenceMigration } from "./0055CompetitionScoringConstraintConvergence";
 export { mtmAttemptDeleteGameGuardMigration } from "./0056MtmAttemptDeleteGameGuard";
+export { mtmCanonicalPeriodSelectionIdentityMigration } from "./0057MtmCanonicalPeriodSelectionIdentity";

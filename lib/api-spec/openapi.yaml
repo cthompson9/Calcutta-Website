@@ -4424,7 +4424,7 @@ components:
           type: object
           nullable: true
           properties:
-            mtmSnapshotId: { type: number }
+            mtmSnapshotId: { type: number, nullable: true }
             status: { type: string, enum: [available, unavailable] }
             reason: { type: [string, "null"] }
           required: [mtmSnapshotId, status, reason]
