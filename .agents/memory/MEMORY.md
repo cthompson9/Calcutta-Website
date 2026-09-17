@@ -22,7 +22,8 @@
 - [OpenAPI numeric fields](openapi-numeric-fields.md) — this workspace’s generated Zod client requires `number`, not OpenAPI `integer`, for new response fields.
 - [Cross-sport Calcutta catalog](cross-sport-calcutta-catalog.md) — selector lists every sport; non-NFL selections deliberately show an NFL-only report state.
 - [NFL standings source adapter](nfl-standings-source-adapter.md) — nfl.com may embed playoff markers inside club-name markup; remove marker tags before name matching.
-- [External refresh scheduling](deployment-scheduling.md) — GitHub Actions triggers a guarded refresh endpoint so the Autoscale website stays as the only Replit deployment.
+- [Reserved VM refresh scheduling](deployment-scheduling.md) — the API owns five-minute game-window polling; GitHub Actions is manual recovery only.
+- [ESPN NFL scoreboard contract](espn-nfl-scoreboard-contract.md) — merge season plus Weeks 17–18 from the supported site API to cover January games.
 - [GitHub sync authorization](github-sync-authorization.md) — use Replit’s Git pane for normal pushes when the GitHub connector cannot update refs or merge branches.
 - [Sticky table scrolling](sticky-table-scrolling.md) — long, horizontally responsive reports use bounded native table scrollers so header rows stay locked across browsers.
 - [Legacy trade entry derivation](legacy-trade-entry-derivation.md) — pre-Phase-2 season/team trade writes resolve only through one canonical NFL Calcutta, never generic Calcutta membership.

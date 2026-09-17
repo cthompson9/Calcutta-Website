@@ -1,4 +1,4 @@
-import { and, eq, gte, inArray, lte, sql } from "drizzle-orm";
+import { and, eq, gte, inArray, lte, ne, sql } from "drizzle-orm";
 import {
   calcuttaEntriesTable,
   calcuttasTable,
@@ -19,9 +19,12 @@ import {
   normalizeNflGame,
 } from "./calcuttaReturns";
 import { NFL_REGULAR_SEASON } from "./eventIngestion";
-
-const ESPN_SCOREBOARD_URL =
-  "https://site.api.espn.com/apis/site/v2/sports/football/nfl/scoreboard";
+import {
+  fetchEspnNflScoreboard,
+  type EspnScoreboardEvent,
+  type EspnScoreboardPayload,
+} from "./nflEspnClient";
+export type { EspnScoreboardPayload } from "./nflEspnClient";
 const EXPECTED_REGULAR_SEASON_GAMES = 272;
 export const TEAM_ABBREVIATION_ALIASES: Record<string, string> = {
   ARI: "Arizona Cardinals", ATL: "Atlanta Falcons", BAL: "Baltimore Ravens",
@@ -43,26 +46,7 @@ type EspnCompetitor = {
   team?: { abbreviation?: string };
 };
 
-type EspnEvent = {
-  id?: string;
-  date?: string;
-  season?: { year?: number; type?: number };
-  week?: { number?: number };
-  status?: { type?: { state?: string; completed?: boolean; name?: string } };
-  competitions?: Array<{
-    date?: string;
-    timeValid?: boolean;
-    venue?: { fullName?: string };
-    broadcasts?: Array<{ names?: string[] }>;
-    competitors?: EspnCompetitor[];
-    status?: { type?: { state?: string; completed?: boolean; name?: string } };
-  }>;
-};
-
-export type EspnScoreboardPayload = {
-  events?: EspnEvent[];
-  provenance?: { sourceUrl: string; fetchedAt: string };
-};
+type EspnEvent = EspnScoreboardEvent;
 
 export type ParsedNflEvent = {
   sourceEventId: string;
@@ -144,8 +128,6 @@ export function parseEspnRegularSeasonEvents(
         provider: "espn",
         statusName: statusType?.name ?? null,
         kickoffTimeConfirmed: competition?.timeValid !== false,
-        sourceUrl: payload.provenance?.sourceUrl ?? null,
-        sourceFetchedAt: payload.provenance?.fetchedAt ?? null,
       },
       sourceUrl: payload.provenance?.sourceUrl ?? null,
       sourceFetchedAt: payload.provenance?.fetchedAt
@@ -186,23 +168,7 @@ export function validateEspnRegularSeasonEvents(
 }
 
 export async function fetchEspnNflEvents(seasonYear: number): Promise<EspnScoreboardPayload> {
-  const sourceUrl = `${ESPN_SCOREBOARD_URL}?dates=${seasonYear}0801-${seasonYear + 1}0228&limit=1000`;
-  const response = await fetch(
-    sourceUrl,
-    {
-      headers: {
-        Accept: "application/json",
-        "User-Agent": "NFL Auction Manager event importer/1.0",
-      },
-      signal: AbortSignal.timeout(10_000),
-    },
-  );
-  if (!response.ok) throw new Error(`ESPN NFL scoreboard returned HTTP ${response.status}.`);
-  const payload = await response.json() as EspnScoreboardPayload;
-  return {
-    ...payload,
-    provenance: { sourceUrl, fetchedAt: new Date().toISOString() },
-  };
+  return fetchEspnNflScoreboard(seasonYear);
 }
 
 const REALIZED_METRICS = [
@@ -394,6 +360,17 @@ export async function syncNflEventsAndRealizedMetricsTx(
           eventsTable.sourceEventId,
         ],
         set: row,
+        where: sql`
+          ${eventsTable.week} is distinct from excluded.week or
+          ${eventsTable.eventDate} is distinct from excluded.event_date or
+          ${eventsTable.kickoffAt} is distinct from excluded.kickoff_at or
+          ${eventsTable.awayTeamId} is distinct from excluded.away_team_id or
+          ${eventsTable.homeTeamId} is distinct from excluded.home_team_id or
+          ${eventsTable.status} is distinct from excluded.status or
+          ${eventsTable.awayScore} is distinct from excluded.away_score or
+          ${eventsTable.homeScore} is distinct from excluded.home_score or
+          ${eventsTable.sourceData} is distinct from excluded.source_data
+        `,
       });
       if (
         event.status === "final" &&
@@ -417,6 +394,18 @@ export async function syncNflEventsAndRealizedMetricsTx(
         await tx.insert(nflGamesTable).values(gameRow).onConflictDoUpdate({
           target: [nflGamesTable.seasonId, nflGamesTable.source, nflGamesTable.sourceGameId],
           set: gameRow,
+          where: sql`
+            ${nflGamesTable.periodSequence} is distinct from excluded.period_sequence or
+            ${nflGamesTable.homeTeamId} is distinct from excluded.home_team_id or
+            ${nflGamesTable.awayTeamId} is distinct from excluded.away_team_id or
+            ${nflGamesTable.homeScore} is distinct from excluded.home_score or
+            ${nflGamesTable.awayScore} is distinct from excluded.away_score or
+            ${nflGamesTable.actualKickoffAt} is distinct from excluded.actual_kickoff_at or
+            ${nflGamesTable.isMarquee} is distinct from excluded.is_marquee or
+            ${nflGamesTable.marqueeMultiplier} is distinct from excluded.marquee_multiplier or
+            ${nflGamesTable.status} is distinct from excluded.status or
+            ${nflGamesTable.sourceData} is distinct from excluded.source_data
+          `,
         });
         projected += 1;
       } else {
@@ -427,6 +416,7 @@ export async function syncNflEventsAndRealizedMetricsTx(
           eq(nflGamesTable.seasonId, seasonId),
           eq(nflGamesTable.source, "espn"),
           eq(nflGamesTable.sourceGameId, event.sourceEventId),
+          ne(nflGamesTable.status, "cancelled"),
         ));
       }
   }
@@ -448,11 +438,12 @@ export async function syncNflEventsAndRealizedMetricsTx(
       await tx.update(eventsTable).set({
         status: "cancelled",
         updatedAt: new Date(),
-      }).where(eq(eventsTable.id, row.id));
+      }).where(and(eq(eventsTable.id, row.id), ne(eventsTable.status, "cancelled")));
       await tx.update(nflGamesTable).set({ status: "cancelled", updatedAt: new Date() }).where(and(
         eq(nflGamesTable.seasonId, seasonId),
         eq(nflGamesTable.source, "espn"),
         eq(nflGamesTable.sourceGameId, row.sourceEventId),
+        ne(nflGamesTable.status, "cancelled"),
       ));
     }
   }

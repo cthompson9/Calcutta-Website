@@ -57,6 +57,33 @@ test("parses scheduled regular-season games and preserves TBD kickoff metadata",
   assert.equal(parsed[1].kickoffAt, null);
 });
 
+test("replays do not make provider fetch provenance part of event economics", () => {
+  const event = {
+    id: "401872954",
+    date: "2026-09-27T17:00Z",
+    season: { year: 2026, type: 2 },
+    week: { number: 3 },
+    competitions: [{
+      date: "2026-09-27T17:00Z",
+      timeValid: true,
+      competitors: [
+        { homeAway: "home", team: { abbreviation: "DET" } },
+        { homeAway: "away", team: { abbreviation: "NYJ" } },
+      ],
+      status: { type: { state: "pre", completed: false, name: "STATUS_SCHEDULED" } },
+    }],
+  };
+  const first = parseEspnRegularSeasonEvents({
+    events: [event],
+    provenance: { sourceUrl: "one", fetchedAt: "2026-01-01T00:00:00Z" },
+  }, 2026)[0];
+  const replay = parseEspnRegularSeasonEvents({
+    events: [event],
+    provenance: { sourceUrl: "two", fetchedAt: "2026-01-02T00:00:00Z" },
+  }, 2026)[0];
+  assert.deepEqual(replay.sourceData, first.sourceData);
+});
+
 test("carries the exact scoreboard request provenance into every parsed game", () => {
   const sourceUrl = "https://site.api.espn.com/apis/site/v2/sports/football/nfl/scoreboard?dates=20260801-20270228&limit=1000";
   const fetchedAt = "2026-09-20T14:04:12.345Z";

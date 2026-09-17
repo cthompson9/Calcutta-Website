@@ -1,5 +1,7 @@
-const ESPN_SCOREBOARD_URL =
-  "https://site.api.espn.com/apis/site/v2/sports/football/nfl/scoreboard";
+import {
+  fetchEspnNflScoreboard,
+  type EspnScoreboardPayload,
+} from "./nflEspnClient";
 export const NFL_SCHEDULE_CACHE_TTL_MS = 24 * 60 * 60 * 1000;
 export const NFL_RECENT_FINAL_WINDOW_MS = 15 * 60 * 1000;
 export const NFL_LIVE_STATUS_LOOKBACK_MS = 30 * 60 * 1000;
@@ -10,29 +12,6 @@ export type NflScheduledGame = {
   state: string;
   completed: boolean;
   statusUpdatedAt: string | null;
-};
-
-type EspnScoreboardPayload = {
-  events?: Array<{
-    status?: {
-      type?: {
-        state?: string;
-        completed?: boolean;
-      };
-    };
-    competitions?: Array<{
-      status?: {
-        type?: {
-          state?: string;
-          completed?: boolean;
-        };
-      };
-      endDate?: string;
-      date?: string;
-    }>;
-    date?: string;
-    lastModified?: string;
-  }>;
 };
 
 export function shouldRefreshNflScheduleCache(
@@ -158,22 +137,13 @@ export function parseCachedNflSchedule(value: unknown): NflScheduledGame[] | nul
 export async function fetchNflSchedule(
   seasonYear: number,
 ): Promise<NflScheduledGame[]> {
-  const response = await fetch(
-    `${ESPN_SCOREBOARD_URL}?dates=${encodeURIComponent(`${seasonYear}0801-${seasonYear + 1}0228`)}&limit=1000`,
-    {
-      headers: {
-        Accept: "application/json",
-        "User-Agent": "NFL Auction Manager refresh scheduler/1.0",
-      },
-      signal: AbortSignal.timeout(5_000),
-    },
-  );
-  if (!response.ok) {
-    throw new Error(`NFL schedule returned HTTP ${response.status}.`);
-  }
-
-  const games = parseEspnNflSchedule(
-    (await response.json()) as EspnScoreboardPayload,
-  );
+  const { games } = await fetchNflScheduleWithPayload(seasonYear);
   return games;
+}
+
+export async function fetchNflScheduleWithPayload(
+  seasonYear: number,
+): Promise<{ games: NflScheduledGame[]; payload: EspnScoreboardPayload }> {
+  const payload = await fetchEspnNflScoreboard(seasonYear);
+  return { games: parseEspnNflSchedule(payload), payload };
 }

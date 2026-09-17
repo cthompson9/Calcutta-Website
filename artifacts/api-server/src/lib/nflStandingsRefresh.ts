@@ -9,6 +9,7 @@ import { applyNflStandingsImport } from "./nflStandingsImport";
 import {
   fetchEspnNflEvents,
   validateEspnRegularSeasonEvents,
+  type EspnScoreboardPayload,
 } from "./nflEventSync";
 
 export async function resolveNflStandingsRefreshSeasonYear(): Promise<number> {
@@ -31,10 +32,20 @@ export async function resolveNflStandingsRefreshSeasonYear(): Promise<number> {
   );
 }
 
+export async function resolveNflEventPayload(
+  seasonYear: number,
+  provided?: EspnScoreboardPayload,
+): Promise<EspnScoreboardPayload> {
+  return provided ?? await fetchEspnNflEvents(seasonYear);
+}
+
 export async function runNflStandingsRefresh(input: {
   requestedBy: string;
   requestId?: string;
   seasonYear?: number;
+  eventPayload?: EspnScoreboardPayload;
+  reconcileMtm?: boolean;
+  runMtmInline?: boolean;
 }): Promise<Awaited<ReturnType<typeof applyNflStandingsImport>>> {
   const seasonYear = input.seasonYear ?? await resolveNflStandingsRefreshSeasonYear();
   const seasonId = await resolveSeasonIdForSport(db, { year: seasonYear, sport: "NFL" });
@@ -43,13 +54,15 @@ export async function runNflStandingsRefresh(input: {
   }
   // Fetch and validate the complete event ledger before committing standings.
   // Provider outages or partial payloads therefore leave the refresh untouched.
-  const eventPayload = await fetchEspnNflEvents(seasonYear);
+  const eventPayload = await resolveNflEventPayload(seasonYear, input.eventPayload);
   validateEspnRegularSeasonEvents(eventPayload, seasonYear);
   const standings = await applyNflStandingsImport({
     seasonYear,
     requestedBy: input.requestedBy,
     requestId: input.requestId ?? randomUUID(),
     eventPayload,
+    reconcileMtm: input.reconcileMtm,
+    runMtmInline: input.runMtmInline,
   });
   return standings;
 }

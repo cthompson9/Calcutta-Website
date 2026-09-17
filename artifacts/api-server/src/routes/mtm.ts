@@ -460,6 +460,7 @@ router.post("/mtm/pipeline/recalc", requireAdmin, async (req, res): Promise<void
           await runNflStandingsRefresh({
             seasonYear: parsed.data.season,
             requestedBy: "admin_mtm_recalculation",
+            reconcileMtm: false,
           });
           const result = await runMtmPipeline({
             seasonYear: parsed.data.season,

@@ -27,19 +27,17 @@ const ADMIN_KEY = process.env.ADMIN_API_KEY;
 const canRun = Boolean(DATABASE_URL && ADMIN_KEY);
 
 // Deferred imports — must not execute when DATABASE_URL is absent (lib/db throws)
-let db, eventsTable, mtmSnapshotsTable, mtmSnapshotTable, mtmEntryValuationTable, mtmValuationVersionTable, snapshotMetricsTable, sportPeriodsTable, seasonsTable, teamsTable, teamSeasonAuctionsTable, calcuttasTable, calcuttaEntriesTable, positionsTable, biddersTable;
+let db, eventsTable, mtmSnapshotsTable, mtmSnapshotTable, mtmEntryValuationTable, mtmValuationVersionTable, snapshotMetricsTable, seasonsTable, teamsTable, teamSeasonAuctionsTable, calcuttasTable, calcuttaEntriesTable, positionsTable, biddersTable;
 let app;
 let WEEK_ZERO_SNAPSHOT_KEY;
-let runCanonicalMtmRefresh;
 let getMtmPipelineStatus;
 let validateAndPromoteCurrentMtm;
 
 if (canRun) {
-  ({ db, eventsTable, mtmSnapshotsTable, mtmSnapshotTable, mtmEntryValuationTable, mtmValuationVersionTable, snapshotMetricsTable, sportPeriodsTable, seasonsTable, teamsTable, teamSeasonAuctionsTable, calcuttasTable, calcuttaEntriesTable, positionsTable, biddersTable } =
+  ({ db, eventsTable, mtmSnapshotsTable, mtmSnapshotTable, mtmEntryValuationTable, mtmValuationVersionTable, snapshotMetricsTable, seasonsTable, teamsTable, teamSeasonAuctionsTable, calcuttasTable, calcuttaEntriesTable, positionsTable, biddersTable } =
     await import("@workspace/db"));
   ({ default: app } = await import("../app.ts"));
   ({ WEEK_ZERO_SNAPSHOT_KEY } = await import("../lib/weekZeroValuation.ts"));
-  ({ runCanonicalMtmRefresh } = await import("../lib/jobMtmRefresh.ts"));
   ({ getMtmPipelineStatus } = await import("../lib/mtmPipeline.ts"));
   ({ validateAndPromoteCurrentMtm } = await import("../lib/currentMtm.ts"));
 }
@@ -831,84 +829,6 @@ describe(
     );
 
     test(
-      "canonical MTM job is duplicate-safe and repairs a partial prior mark",
-      async () => {
-        const now = new Date("9999-09-08T12:00:00.000Z");
-        const DATE = "9999-09-08";
-        globalThis.fetch = makeKalshiMock(realFetch);
-        try {
-          const first = await runCanonicalMtmRefresh({
-            seasonYear: 9999,
-            now,
-          });
-          assert.deepEqual(first, {
-            ran: true,
-            periodSeq: 0,
-            teamsUpdated: 32,
-          });
-          const firstMetrics = await mtmMetricRowsForEntries(
-            [...entryIdByTeam.values()],
-          );
-          assert.equal(firstMetrics.length, 32 * 8);
-          const firstMetricIds = firstMetrics.map((row) => row.id).sort((a, b) => a - b);
-
-          const duplicate = await runCanonicalMtmRefresh({
-            seasonYear: 9999,
-            now,
-          });
-          assert.deepEqual(duplicate, {
-            ran: false,
-            reason: "already-marked",
-            periodSeq: 0,
-            teamsUpdated: 0,
-          });
-
-          const firstRows = await snapshotsAtDate(DATE);
-          assert.equal(firstRows.length, 32);
-          const duplicateMetrics = await mtmMetricRowsForEntries(
-            [...entryIdByTeam.values()],
-          );
-          assert.deepEqual(
-            duplicateMetrics.map((row) => row.id).sort((a, b) => a - b),
-            firstMetricIds,
-            "an already-marked Tuesday retry must not rewrite derived metrics",
-          );
-          await deleteSnapshotsByIds([firstRows[0].id]);
-
-          const repaired = await runCanonicalMtmRefresh({
-            seasonYear: 9999,
-            now,
-          });
-          assert.deepEqual(repaired, {
-            ran: true,
-            periodSeq: 0,
-            teamsUpdated: 32,
-          });
-          const repairedRows = await snapshotsAtDate(DATE);
-          assert.equal(repairedRows.length, 32);
-          assert.ok(
-            repairedRows.every(
-              (row) => row.snapshotKey === WEEK_ZERO_SNAPSHOT_KEY,
-            ),
-          );
-          const repairedMetrics = await mtmMetricRowsForEntries(
-            [...entryIdByTeam.values()],
-          );
-          assert.equal(
-            repairedMetrics.length,
-            32 * 8,
-            "repairing a partial raw mark must leave complete derived coverage",
-          );
-          await deleteSnapshotsByIds(repairedRows.map((row) => row.id));
-        } finally {
-          globalThis.fetch = realFetch;
-          const leaked = await snapshotsAtDate(DATE);
-          await deleteSnapshotsByIds(leaked.map((row) => row.id));
-        }
-      },
-    );
-
-    test(
       "two Calcuttas in one season keep manual values and Week 0 captures entry-scoped",
       async () => {
         const MANUAL_DATE = "9999-09-06";
@@ -1008,67 +928,6 @@ describe(
             inArray(mtmSnapshotsTable.snapshotDate, [MANUAL_DATE, WEEK_ZERO_DATE]),
           ));
           await db.delete(calcuttasTable).where(eq(calcuttasTable.id, secondCalcutta.id));
-        }
-      },
-    );
-
-    test(
-      "canonical in-season capture refuses partial realized point-differential coverage",
-      async () => {
-        const [weekOne] = await db
-          .select({ id: sportPeriodsTable.id })
-          .from(sportPeriodsTable)
-          .where(
-            and(
-              eq(sportPeriodsTable.sport, "NFL"),
-              eq(sportPeriodsTable.sequence, 1),
-            ),
-          )
-          .limit(1);
-        assert.ok(weekOne, "NFL Week 1 period must be seeded");
-        const entryIds = [...entryIdByTeam.values()];
-        const snapshotAt = new Date("9999-09-10T12:00:00.000Z");
-        const realizedRows = [
-          ...entryIds.map((entryId) => ({
-            calcuttaId: testCalcuttaId,
-            entryId,
-            periodId: weekOne.id,
-            basis: "realized",
-            metric: "wins",
-            value: "1",
-            source: "test",
-            snapshotAt,
-          })),
-          ...entryIds.slice(1).map((entryId) => ({
-            calcuttaId: testCalcuttaId,
-            entryId,
-            periodId: weekOne.id,
-            basis: "realized",
-            metric: "pt_diff",
-            value: "3",
-            source: "test",
-            snapshotAt,
-          })),
-        ];
-        await db.insert(snapshotMetricsTable).values(realizedRows);
-
-        try {
-          await assert.rejects(
-            () => runCanonicalMtmRefresh({
-              seasonYear: 9999,
-              now: snapshotAt,
-            }),
-            /requires realized point-differential coverage for all 32 entries; found 31/,
-          );
-        } finally {
-          await db.delete(snapshotMetricsTable).where(
-            and(
-              inArray(snapshotMetricsTable.entryId, entryIds),
-              eq(snapshotMetricsTable.calcuttaId, testCalcuttaId),
-              eq(snapshotMetricsTable.periodId, weekOne.id),
-              eq(snapshotMetricsTable.basis, "realized"),
-            ),
-          );
         }
       },
     );

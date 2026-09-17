@@ -1,11 +1,11 @@
 ---
-name: External refresh scheduling
-description: The Reserved VM app uses an external GitHub Actions tick instead of a second Replit deployment.
+name: Reserved VM refresh scheduling
+description: The single Reserved VM API process owns game-window refresh polling and durable MTM recovery.
 ---
 
-The NFL standings refresh is request-driven: GitHub Actions calls the dedicated job endpoint every five minutes while the live NFL Auction app runs on a Reserved VM.
+The NFL standings refresh is driven by a five-minute in-process poller on the single Reserved VM API. GitHub Actions remains a manual recovery dispatch, not the production timer.
 
-**Why:** Full MTM recalculations must run on guaranteed CPU rather than a long-lived background promise inside an Autoscale request instance. A Reserved VM provides dedicated compute while preserving the website and its existing external scheduler.
+**Why:** GitHub's nominal five-minute cron actually ran only every two to five hours, while full MTM recalculations require the Reserved VM's guaranteed CPU and restart-safe database leases.
 
 Use the 4 dedicated vCPU / 16 GB RAM Reserved VM configuration for production.
 
@@ -15,4 +15,4 @@ Tuesday MTM ticks select the highest NFL `sport_periods` sequence with complete 
 
 **Why:** Regular-season and postseason intervals are not uniformly seven days, while completed realized coverage is the authoritative signal that a period is ready to mark. Stable period keys make duplicate external ticks and partial retries safe.
 
-**How to apply:** Keep scheduling outside Replit. Preserve the dedicated job authorization and overlap protection; never substitute the commissioner key or reintroduce a second Replit deployment. Resolve scheduled MTM periods from complete realized coverage and reject same-date noncanonical collisions rather than overwriting manual marks.
+**How to apply:** Keep one Reserved VM deployment. Start and stop the poller with the API lifecycle, persist refresh state, use database advisory/MTM lease locks, and keep the authorized job endpoint only for manual recovery.

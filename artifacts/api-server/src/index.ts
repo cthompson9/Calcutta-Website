@@ -5,6 +5,7 @@ import {
   ensureOwnerPositionRollout,
   runDatabaseMigrations,
 } from "@workspace/db";
+import { startNflRefreshPoller } from "./jobs/nflRefreshPoller";
 
 const rawPort = process.env["PORT"];
 
@@ -36,12 +37,17 @@ const server = await (async () => {
     logger.info({ port }, "Server listening");
   });
 })();
+const stopNflRefreshPoller =
+  process.env.NODE_ENV === "production" || process.env.NFL_REFRESH_POLLER_ENABLED === "true"
+    ? startNflRefreshPoller()
+    : () => undefined;
 
 let shuttingDown = false;
 async function shutdown(signal: string): Promise<void> {
   if (shuttingDown) return;
   shuttingDown = true;
   logger.info({ signal }, "Shutting down API server");
+  stopNflRefreshPoller();
   server.close(async (error) => {
     if (error) logger.error({ err: error }, "Error closing API server");
     try {

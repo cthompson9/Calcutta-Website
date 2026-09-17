@@ -14,6 +14,10 @@ import {
 import { resolveSeasonIdForSport } from "./calcuttaContext";
 import { OWNERSHIP_SEASON_LOCK_NAMESPACE } from "./ownershipShares";
 import { reconcileNflCurrentMtm } from "./currentMtm";
+import {
+  requiresFullMtmRecalculation,
+  runFullMtmRecalculation,
+} from "./mtmRecalculation";
 
 export const NFL_STANDINGS_PHASE = "REG" as const;
 export const NFL_STANDINGS_SOURCE = "nfl_standings_reg";
@@ -444,6 +448,8 @@ export async function applyNflStandingsImport(args: {
   requestId?: string;
   periodSequence?: number;
   eventPayload?: EspnScoreboardPayload;
+  reconcileMtm?: boolean;
+  runMtmInline?: boolean;
 }) {
   if (args.periodSequence !== undefined) {
     throw new NflStandingsImportError(
@@ -544,10 +550,24 @@ export async function applyNflStandingsImport(args: {
     };
   });
   let mtmReconciliation;
+  if (args.reconcileMtm === false) return { ...imported, mtmReconciliation: [] };
   try {
     // This runs strictly after the standings/event transaction commits. A
     // reconciliation failure must never roll back successful actuals import.
     mtmReconciliation = await reconcileNflCurrentMtm({ seasonId });
+    if (args.runMtmInline !== false && requiresFullMtmRecalculation(mtmReconciliation)) for (const result of mtmReconciliation) {
+      if (result.poolId === 0 || (result.markType !== "pending_recalculation" && result.status !== "warning")) continue;
+      try {
+        await runFullMtmRecalculation({
+          seasonYear: args.seasonYear,
+          calcuttaId: result.poolId,
+          trigger: "scheduled",
+        });
+      } catch (error) {
+        result.status = "warning";
+        result.warning = `${result.warning ? `${result.warning} ` : ""}Full recalculation required: ${error instanceof Error ? error.message : String(error)}`;
+      }
+    }
   } catch (error) {
     const warning = error instanceof Error ? error.message : String(error);
     console.warn("NFL MTM post-commit reconciliation warning", { seasonId, warning });

@@ -15,10 +15,6 @@ import {
   refreshJobLockKey,
   withRefreshJobLock,
 } from "./jobs.ts";
-import {
-  canonicalMtmSnapshotKey,
-  latestFullyCoveredNflPeriod,
-} from "../lib/jobMtmRefresh.ts";
 
 test("job runner authentication rejects missing and invalid bearer tokens", () => {
   const savedSecret = process.env.JOB_RUNNER_SECRET;
@@ -104,31 +100,6 @@ test("job endpoint rejects scheduled MTM work", async () => {
     if (savedSecret === undefined) delete process.env.JOB_RUNNER_SECRET;
     else process.env.JOB_RUNNER_SECRET = savedSecret;
   }
-});
-
-test("canonical marks use the latest fully covered realized NFL period", () => {
-  const rows = Array.from({ length: 32 }, (_, entryId) => ({
-    entryId,
-    sequence: 0,
-  }));
-  assert.equal(
-    latestFullyCoveredNflPeriod(rows, 32),
-    0,
-  );
-  rows.push(
-    ...Array.from({ length: 31 }, (_, entryId) => ({
-      entryId,
-      sequence: 1,
-    })),
-  );
-  assert.equal(
-    latestFullyCoveredNflPeriod(rows, 32),
-    0,
-  );
-  rows.push({ entryId: 31, sequence: 1 });
-  assert.equal(latestFullyCoveredNflPeriod(rows, 32), 1);
-  assert.equal(canonicalMtmSnapshotKey(0), "week-0");
-  assert.equal(canonicalMtmSnapshotKey(7), "canonical-mtm-period-7");
 });
 
 test(
