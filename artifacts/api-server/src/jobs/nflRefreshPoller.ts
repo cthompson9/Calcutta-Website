@@ -1,14 +1,14 @@
-import { randomUUID } from "node:crypto";
 import { db } from "@workspace/db";
 import { logger } from "../lib/logger";
-import { resolveNflStandingsRefreshSeasonYear, runNflStandingsRefresh } from "../lib/nflStandingsRefresh";
+import { resolveNflStandingsRefreshSeasonYear } from "../lib/nflStandingsRefresh";
 import {
-  fetchNflScheduleWithPayload,
-  isNflGameInLiveStatusWindow,
+  fetchTodayNflScheduleWithPayload,
+  hasNewlyCompletedNflGame,
+  isNflGameInPostKickoffPollingWindow,
   nflGameStatusSignature,
   type NflScheduledGame,
 } from "../lib/nflSchedule";
-import { recoverPendingMtmRecalculations } from "../lib/mtmRecalculation";
+import { runFullMtmRecalculation } from "../lib/mtmRecalculation";
 import {
   loadNflScheduleCache,
   persistNflScheduleCache,
@@ -19,9 +19,11 @@ import {
   recordRefreshResult,
 } from "../lib/nflRefreshState";
 import { resolveSeasonIdForSport } from "../lib/calcuttaContext";
+import { syncNflEventsAndRealizedMetrics } from "../lib/nflEventSync";
+import { reconcileNflCurrentMtm } from "../lib/currentMtm";
+import { todayInNewYork } from "../lib/newYorkTime";
 
 export const NFL_REFRESH_POLL_INTERVAL_MS = 5 * 60 * 1000;
-const NFL_SCHEDULE_RECHECK_MS = 6 * 60 * 60 * 1000;
 
 export function createNflRefreshPoller(
   runTick: () => Promise<void>,
@@ -62,53 +64,90 @@ export function startNflRefreshPoller(): () => void {
     if (seasonId == null) throw new Error(`Season ${seasonYear} has no canonical NFL Calcutta.`);
     activeScope = { seasonId, sport: "NFL", competition: "NFL_REGULAR_SEASON" };
     await recordRefreshAttempt(activeScope);
-    const recovery = await recoverPendingMtmRecalculations(seasonYear);
-    if (recovery.warnings.length > 0) {
-      logger.warn({ seasonYear, recovery }, "Pending MTM recovery remains incomplete");
-    }
     const now = Date.now();
-    let fetchedPayload: Awaited<ReturnType<typeof fetchNflScheduleWithPayload>>["payload"] | null = null;
     if (!scheduleLoaded) {
       const persisted = await loadNflScheduleCache(seasonId);
       if (persisted.games) cachedGames = persisted.games;
       scheduleLoaded = persisted.games !== null;
       scheduleFetchedAt = persisted.fetchedAt?.getTime() ?? 0;
     }
-    if (!scheduleLoaded || now - scheduleFetchedAt >= NFL_SCHEDULE_RECHECK_MS) {
-      const fetched = await fetchNflScheduleWithPayload(seasonYear);
+    const today = todayInNewYork(new Date(now));
+    let previousGames = cachedGames;
+    let fetchedToday: Awaited<ReturnType<typeof fetchTodayNflScheduleWithPayload>> | null = null;
+    if (
+      !scheduleLoaded ||
+      !scheduleFetchedAt ||
+      todayInNewYork(new Date(scheduleFetchedAt)) !== today
+    ) {
+      fetchedToday = await fetchTodayNflScheduleWithPayload(new Date(now));
+      const fetched = fetchedToday;
+      previousGames = cachedGames;
       cachedGames = fetched.games;
-      fetchedPayload = fetched.payload;
       scheduleLoaded = true;
       scheduleFetchedAt = now;
       await persistNflScheduleCache(seasonId, cachedGames);
     }
-    if (!cachedGames.some((game) => isNflGameInLiveStatusWindow(game, now))) {
+    const initialFetchFoundNewFinal = fetchedToday
+      ? hasNewlyCompletedNflGame(previousGames, fetchedToday.games)
+      : false;
+    if (
+      cachedGames.length === 0 ||
+      (cachedGames.every((game) => game.completed) && !initialFetchFoundNewFinal) ||
+      !cachedGames.some((game) => isNflGameInPostKickoffPollingWindow(game, now))
+    ) {
       await recordObservedGameStatus(activeScope, nflGameStatusSignature(cachedGames), false);
-      await recordRefreshResult(activeScope, { ran: false, reason: "no-games-live" });
+      await recordRefreshResult(activeScope, { ran: false, reason: "no-games-ready-for-results" });
       return;
     }
 
-    const fresh = fetchedPayload
-      ? { games: cachedGames, payload: fetchedPayload }
-      : await fetchNflScheduleWithPayload(seasonYear);
-    cachedGames = fresh.games;
-    scheduleLoaded = true;
-    scheduleFetchedAt = now;
-    await persistNflScheduleCache(seasonId, cachedGames);
+    const fresh = fetchedToday ?? await fetchTodayNflScheduleWithPayload(new Date(now));
+    if (!initialFetchFoundNewFinal && !hasNewlyCompletedNflGame(previousGames, fresh.games)) {
+      cachedGames = fresh.games;
+      scheduleFetchedAt = now;
+      await persistNflScheduleCache(seasonId, cachedGames);
+      await recordObservedGameStatus(activeScope, nflGameStatusSignature(fresh.games), false);
+      await recordRefreshResult(activeScope, { ran: false, reason: "no-new-final-game" });
+      return;
+    }
+
     const locked = await withRefreshJobLock(
-      () => runNflStandingsRefresh({
-        requestedBy: "in_process_refresh_poller",
-        requestId: randomUUID(),
-        seasonYear,
-        eventPayload: fresh.payload,
-        runMtmInline: true,
-      }),
+      async () => {
+        // Commit the newly final game and rebuilt actuals before reconciling or
+        // recalculating MTM. The daily payload is intentionally non-destructive.
+        const eventSync = await syncNflEventsAndRealizedMetrics(
+          seasonId,
+          seasonYear,
+          fresh.payload,
+          { completeSeasonPayload: false },
+        );
+        const mtmReconciliation = await reconcileNflCurrentMtm({ seasonId });
+        for (const result of mtmReconciliation) {
+          if (result.poolId === 0 || result.markType !== "pending_recalculation") continue;
+          try {
+            await runFullMtmRecalculation({
+              seasonYear,
+              calcuttaId: result.poolId,
+              trigger: "scheduled",
+            });
+          } catch (error) {
+            result.status = "warning";
+            result.warning = `${result.warning ? `${result.warning} ` : ""}Full recalculation required: ${
+              error instanceof Error ? error.message : String(error)
+            }`;
+          }
+        }
+        return { ran: true, eventSync, mtmReconciliation };
+      },
       { seasonId, sport: "NFL", competition: "NFL_REGULAR_SEASON" },
     );
     if (!locked.acquired) {
       await recordRefreshResult(activeScope, { ran: false, reason: "already-running" });
       return;
     }
+    cachedGames = fresh.games;
+    scheduleLoaded = true;
+    scheduleFetchedAt = now;
+    await persistNflScheduleCache(seasonId, cachedGames);
     await recordObservedGameStatus(activeScope, nflGameStatusSignature(fresh.games), true);
     await recordRefreshResult(activeScope, locked.value as Record<string, unknown>);
   };

@@ -250,7 +250,7 @@ test("canonical freshness rejects stale event and actual-results fetch timestamp
       source: "espn",
       sourceEventId: "401",
       status: "scheduled",
-      kickoffAt: new Date("2026-09-15T00:00:00.000Z"),
+      kickoffAt: new Date("2026-09-14T17:00:00.000Z"),
       updatedAt: new Date("2026-09-14T10:00:00.000Z"),
       sourceData: { sourceFetchedAt: "2026-09-14T10:00:00.000Z" },
     }],

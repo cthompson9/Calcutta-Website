@@ -1,13 +1,16 @@
 import {
   fetchEspnNflScoreboard,
+  fetchEspnNflScoreboardForDate,
   type EspnScoreboardPayload,
 } from "./nflEspnClient";
+import { todayInNewYork } from "./newYorkTime";
 export const NFL_SCHEDULE_CACHE_TTL_MS = 24 * 60 * 60 * 1000;
 export const NFL_RECENT_FINAL_WINDOW_MS = 15 * 60 * 1000;
-export const NFL_LIVE_STATUS_LOOKBACK_MS = 30 * 60 * 1000;
-export const NFL_LIVE_STATUS_LOOKAHEAD_MS = 6 * 60 * 60 * 1000;
+export const NFL_POST_KICKOFF_POLL_DELAY_MS = 2 * 60 * 60 * 1000;
+export const NFL_POST_KICKOFF_POLL_WINDOW_MS = 6 * 60 * 60 * 1000;
 
 export type NflScheduledGame = {
+  sourceEventId: string | null;
   kickoffAt: string | null;
   state: string;
   completed: boolean;
@@ -26,6 +29,7 @@ export function parseEspnNflSchedule(payload: EspnScoreboardPayload): NflSchedul
     const competition = event.competitions?.[0];
     const status = competition?.status ?? event.status;
     return {
+      sourceEventId: event.id ?? null,
       kickoffAt: competition?.date ?? event.date ?? null,
       state: status?.type?.state ?? "unknown",
       completed: status?.type?.completed === true,
@@ -41,7 +45,7 @@ export function parseEspnNflSchedule(payload: EspnScoreboardPayload): NflSchedul
  * Cached schedules provide only planned kickoff times. Dynamic game status is
  * fetched again while a game could be live or have just become final.
  */
-export function isNflGameInLiveStatusWindow(
+export function isNflGameInPostKickoffPollingWindow(
   game: NflScheduledGame,
   nowMs: number,
 ): boolean {
@@ -49,22 +53,25 @@ export function isNflGameInLiveStatusWindow(
   const kickoffMs = Date.parse(game.kickoffAt);
   return (
     Number.isFinite(kickoffMs) &&
-    nowMs >= kickoffMs - NFL_LIVE_STATUS_LOOKBACK_MS &&
-    nowMs <= kickoffMs + NFL_LIVE_STATUS_LOOKAHEAD_MS
+    nowMs >= kickoffMs + NFL_POST_KICKOFF_POLL_DELAY_MS &&
+    nowMs <= kickoffMs + NFL_POST_KICKOFF_POLL_WINDOW_MS
   );
 }
+
+export const isNflGameInLiveStatusWindow = isNflGameInPostKickoffPollingWindow;
 
 export function needsFreshNflGameStatus(
   games: NflScheduledGame[],
   nowMs: number,
 ): boolean {
-  return games.some((game) => isNflGameInLiveStatusWindow(game, nowMs));
+  return games.some((game) => isNflGameInPostKickoffPollingWindow(game, nowMs));
 }
 
 export function nflGameStatusSignature(games: NflScheduledGame[]): string {
   return JSON.stringify(
     games
       .map((game) => ({
+        sourceEventId: game.sourceEventId,
         kickoffAt: game.kickoffAt,
         state: game.state,
         completed: game.completed,
@@ -117,6 +124,8 @@ export function parseCachedNflSchedule(value: unknown): NflScheduledGame[] | nul
       typeof candidate !== "object" ||
       typeof (candidate as NflScheduledGame).state !== "string" ||
       typeof (candidate as NflScheduledGame).completed !== "boolean" ||
+      ((candidate as NflScheduledGame).sourceEventId !== null &&
+        typeof (candidate as NflScheduledGame).sourceEventId !== "string") ||
       ((candidate as NflScheduledGame).kickoffAt !== null &&
         typeof (candidate as NflScheduledGame).kickoffAt !== "string")
     ) {
@@ -125,6 +134,7 @@ export function parseCachedNflSchedule(value: unknown): NflScheduledGame[] | nul
     const statusUpdatedAt = (candidate as NflScheduledGame).statusUpdatedAt;
     if (statusUpdatedAt !== null && typeof statusUpdatedAt !== "string") return null;
     games.push({
+      sourceEventId: (candidate as NflScheduledGame).sourceEventId ?? null,
       kickoffAt: (candidate as NflScheduledGame).kickoffAt,
       state: (candidate as NflScheduledGame).state,
       completed: (candidate as NflScheduledGame).completed,
@@ -146,4 +156,28 @@ export async function fetchNflScheduleWithPayload(
 ): Promise<{ games: NflScheduledGame[]; payload: EspnScoreboardPayload }> {
   const payload = await fetchEspnNflScoreboard(seasonYear);
   return { games: parseEspnNflSchedule(payload), payload };
+}
+
+export async function fetchTodayNflScheduleWithPayload(
+  now = new Date(),
+): Promise<{ games: NflScheduledGame[]; payload: EspnScoreboardPayload; date: string }> {
+  const date = todayInNewYork(now);
+  const payload = await fetchEspnNflScoreboardForDate(date.replaceAll("-", ""));
+  return { games: parseEspnNflSchedule(payload), payload, date };
+}
+
+export function hasNewlyCompletedNflGame(
+  previous: NflScheduledGame[],
+  current: NflScheduledGame[],
+): boolean {
+  const priorById = new Map(
+    previous
+      .filter((game) => game.sourceEventId)
+      .map((game) => [game.sourceEventId, game.completed]),
+  );
+  return current.some((game) =>
+    game.completed &&
+    game.sourceEventId != null &&
+    priorById.get(game.sourceEventId) !== true
+  );
 }

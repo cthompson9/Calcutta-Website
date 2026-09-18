@@ -128,6 +128,7 @@ export function parseEspnRegularSeasonEvents(
         provider: "espn",
         statusName: statusType?.name ?? null,
         kickoffTimeConfirmed: competition?.timeValid !== false,
+        sourceFetchedAt: payload.provenance?.fetchedAt ?? null,
       },
       sourceUrl: payload.provenance?.sourceUrl ?? null,
       sourceFetchedAt: payload.provenance?.fetchedAt
@@ -325,8 +326,11 @@ export async function syncNflEventsAndRealizedMetricsTx(
   seasonId: number,
   seasonYear: number,
   payload: EspnScoreboardPayload,
+  options: { completeSeasonPayload?: boolean } = {},
 ): Promise<{ eventsUpserted: number; finalGamesProjected: number; metricsUpserted: number }> {
-  const parsed = validateEspnRegularSeasonEvents(payload, seasonYear);
+  const parsed = options.completeSeasonPayload === false
+    ? parseEspnRegularSeasonEvents(payload, seasonYear)
+    : validateEspnRegularSeasonEvents(payload, seasonYear);
   const teamRows = await tx.select().from(teamsTable);
   const teamIdByName = new Map(teamRows.map((team) => [team.name, team.id]));
   const resolveTeamId = (abbreviation: string): number => {
@@ -404,7 +408,9 @@ export async function syncNflEventsAndRealizedMetricsTx(
             ${nflGamesTable.isMarquee} is distinct from excluded.is_marquee or
             ${nflGamesTable.marqueeMultiplier} is distinct from excluded.marquee_multiplier or
             ${nflGamesTable.status} is distinct from excluded.status or
-            ${nflGamesTable.sourceData} is distinct from excluded.source_data
+            ${nflGamesTable.sourceData} is distinct from excluded.source_data or
+            ${nflGamesTable.sourceUrl} is distinct from excluded.source_url or
+            ${nflGamesTable.sourceFetchedAt} is distinct from excluded.source_fetched_at
           `,
         });
         projected += 1;
@@ -423,7 +429,7 @@ export async function syncNflEventsAndRealizedMetricsTx(
   // Provider event IDs are durable semantic identities in persisted MTM input
   // provenance even before a valuation-version FK exists. Never delete this
   // slice; a complete payload may only tombstone withdrawn rows.
-  const currentProviderRows = await tx.select({
+  const currentProviderRows = options.completeSeasonPayload === false ? [] : await tx.select({
     id: eventsTable.id,
     sourceEventId: eventsTable.sourceEventId,
   }).from(eventsTable).where(and(
@@ -459,8 +465,9 @@ export async function syncNflEventsAndRealizedMetrics(
   seasonId: number,
   seasonYear: number,
   payload: EspnScoreboardPayload,
+  options: { completeSeasonPayload?: boolean } = {},
 ): Promise<{ eventsUpserted: number; finalGamesProjected: number; metricsUpserted: number }> {
   return db.transaction((tx) =>
-    syncNflEventsAndRealizedMetricsTx(tx, seasonId, seasonYear, payload)
+    syncNflEventsAndRealizedMetricsTx(tx, seasonId, seasonYear, payload, options)
   );
 }

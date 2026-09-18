@@ -42,6 +42,17 @@ export function buildEspnNflScoreboardUrls(seasonYear: number): string[] {
   return [makeUrl(), makeUrl(17), makeUrl(18)];
 }
 
+export function buildEspnNflScoreboardDateUrl(date: string): string {
+  if (!/^\d{8}$/.test(date)) {
+    throw new Error("ESPN NFL scoreboard date must use YYYYMMDD.");
+  }
+  const params = new URLSearchParams({
+    dates: date,
+    limit: "100",
+  });
+  return `${ESPN_NFL_SCOREBOARD_URL}?${params.toString()}`;
+}
+
 async function fetchScoreboardPage(url: string): Promise<EspnScoreboardEvent[]> {
   const response = await fetch(url, {
     headers: {
@@ -73,6 +84,19 @@ export async function fetchEspnNflScoreboard(
     events: [...eventsById.values()],
     provenance: {
       sourceUrl: urls.join(","),
+      fetchedAt: new Date().toISOString(),
+    },
+  };
+}
+
+export async function fetchEspnNflScoreboardForDate(
+  date: string,
+): Promise<EspnScoreboardPayload> {
+  const url = buildEspnNflScoreboardDateUrl(date);
+  return {
+    events: await fetchScoreboardPage(url),
+    provenance: {
+      sourceUrl: url,
       fetchedAt: new Date().toISOString(),
     },
   };

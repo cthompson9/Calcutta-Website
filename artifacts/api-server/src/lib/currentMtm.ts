@@ -1742,12 +1742,12 @@ export function validateMtmCanonicalDataFreshness(args: {
       errors.push(`${label} has no valid fetched timestamp.`);
       return;
     }
-    const oldest = Math.min(...timestamps);
-    if (oldest > nowMs + 5 * 60 * 1_000) {
+    const newest = Math.max(...timestamps);
+    if (newest > nowMs + 5 * 60 * 1_000) {
       errors.push(`${label} fetched timestamp is in the future.`);
-    } else if (nowMs - oldest > MTM_CANONICAL_DATA_MAX_AGE_MS) {
+    } else if (nowMs - newest > MTM_CANONICAL_DATA_MAX_AGE_MS) {
       errors.push(
-        `${label} is stale; oldest fetched timestamp is ${new Date(oldest).toISOString()} ` +
+        `${label} is stale; newest fetched timestamp is ${new Date(newest).toISOString()} ` +
         `(maximum age ${MTM_CANONICAL_DATA_MAX_AGE_MS / 3_600_000} hours).`,
       );
     }
@@ -1762,15 +1762,21 @@ export function validateMtmCanonicalDataFreshness(args: {
     const sourceFetchedAt = parsedTimestamp(event.sourceData?.sourceFetchedAt);
     const updatedAt = parsedTimestamp(event.updatedAt);
     const fetchedAt = sourceFetchedAt ?? updatedAt;
-    if (fetchedAt == null) {
-      errors.push(`Canonical ${identity} has no valid fetched timestamp.`);
-    } else if (fetchedAt > nowMs + 5 * 60 * 1_000) {
-      errors.push(`Canonical ${identity} fetched timestamp is in the future.`);
-    } else if (nowMs - fetchedAt > MTM_CANONICAL_DATA_MAX_AGE_MS) {
-      errors.push(
-        `Canonical ${identity} is stale; fetched at ${new Date(fetchedAt).toISOString()} ` +
-        `(maximum age ${MTM_CANONICAL_DATA_MAX_AGE_MS / 3_600_000} hours).`,
-      );
+    const requiresFreshStatus =
+      kickoffMs != null &&
+      nowMs >= kickoffMs &&
+      nowMs - kickoffMs <= MTM_NON_FINAL_KICKOFF_GRACE_MS;
+    if (requiresFreshStatus) {
+      if (fetchedAt == null) {
+        errors.push(`Canonical ${identity} has no valid fetched timestamp.`);
+      } else if (fetchedAt > nowMs + 5 * 60 * 1_000) {
+        errors.push(`Canonical ${identity} fetched timestamp is in the future.`);
+      } else if (nowMs - fetchedAt > MTM_CANONICAL_DATA_MAX_AGE_MS) {
+        errors.push(
+          `Canonical ${identity} is stale; fetched at ${new Date(fetchedAt).toISOString()} ` +
+          `(maximum age ${MTM_CANONICAL_DATA_MAX_AGE_MS / 3_600_000} hours).`,
+        );
+      }
     }
     if (status === "final" && (event.homeScore == null || event.awayScore == null)) {
       errors.push(`Canonical ${identity} is final but does not have both scores.`);
