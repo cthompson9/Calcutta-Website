@@ -75,7 +75,7 @@ export function Shell({ children, isPreview }: ShellProps) {
   const mobileNavItems = [...navItems, ...utilityNavItems];
 
   return (
-    <div className="flex min-h-[100dvh] w-full max-w-full flex-col overflow-x-hidden bg-background md:h-[100dvh] md:flex-row md:overflow-hidden md:bg-muted/20">
+    <div className="flex min-h-[100svh] w-full max-w-full flex-col overflow-x-hidden bg-background md:h-[100dvh] md:min-h-0 md:flex-row md:overflow-hidden md:bg-muted/20">
       {/* Desktop Sidebar */}
       <aside
         className={cn(
@@ -229,7 +229,7 @@ export function Shell({ children, isPreview }: ShellProps) {
       </button>
 
       {/* Main Content */}
-      <main className="min-h-[100dvh] min-w-0 max-w-full flex-1 overflow-x-hidden pb-[calc(3.5rem+env(safe-area-inset-bottom))] md:h-[100dvh] md:min-h-0 md:overflow-y-auto md:pb-0">
+      <main className="min-h-0 min-w-0 max-w-full flex-1 overflow-x-hidden pb-[calc(3.5rem+env(safe-area-inset-bottom))] md:h-[100dvh] md:overflow-y-auto md:pb-0">
         <div className="md:hidden sticky top-0 z-40 flex items-center gap-2 border-b border-border/60 bg-background/95 px-4 py-2.5 backdrop-blur">
           {isPreview ? (
             <div className="flex min-w-0 items-center gap-2">

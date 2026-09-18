@@ -154,8 +154,16 @@
   * {
     @apply border-border;
   }
+  html,
+  body,
+  #root {
+    min-height: 100%;
+    background-color: hsl(var(--background));
+  }
   body {
     @apply font-sans antialiased bg-background text-foreground;
+    margin: 0;
+    overscroll-behavior-y: none;
   }
 }
 
