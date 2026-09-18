@@ -79,6 +79,20 @@ class JointSolverTests(unittest.TestCase):
         for p in [[0,1],[float('nan'),1],[-1,2]]:
             with self.assertRaises(ValueError):fit_intervals([[1,0]],p,[.2],[.8],[np.inf],self.policy)
 
+    def test_nested_fit_can_start_from_the_accepted_baseline_distribution(self):
+        baseline=fit_intervals([[1,1,0,0]],[.25]*4,[.6],[.6],[np.inf],self.policy)
+        self.assertEqual(baseline['status'],'converged')
+        final=fit_intervals(
+            [[1,1,0,0],[1,0,1,0]],
+            baseline['weights'],
+            [.6,.45],
+            [.6,.55],
+            [np.inf,np.inf],
+            self.policy,
+        )
+        self.assertEqual(final['status'],'converged')
+        self.assertLessEqual(final['max_hard_residual'],self.policy['numerical_tolerance'])
+
 class FinalConflictTests(unittest.TestCase):
     def resolve(self, *, mode='hard', residual=0, win_error=.02, converged=True, other_violation=0):
         d=select_playoff_constraint(quote(material_event_at=None),.1,STRONG,NOW,DEFAULTS)

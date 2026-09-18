@@ -272,7 +272,10 @@ def run_shadow(state, capture, inventory, config, policy=None, *, result_arrays=
         if decision.get('blocked'):blockers.append({'id':r['id'],'reason':decision['reason']})
         features.append(f);lower.append(r['bounds']['lower']);upper.append(r['bounds']['upper'])
         penalties.append(decision.get('penalty',math.inf));names.append(r['id'])
-    fit=fit_intervals(features,prior,lower,upper,penalties,policy)
+    # The final feasible set contains the already-fitted win constraints.
+    # Projecting from that accepted win distribution preserves the same nested
+    # KL objective while avoiding a second cold start from the raw path prior.
+    fit=fit_intervals(features,baseline['weights'],lower,upper,penalties,policy)
     report={'policy_version':VERSION,'review_only':True,'publishable':False,'evaluation_time':capture['evaluation_time'],
         'settings':policy,'win_quality':quality,'decisions':decisions,'blockers':blockers,
         'solver_status':fit['status'],'status':'blocked','pricing_basis':'wins_led' if any(d['mode']=='soft' for d in decisions) else 'joint_market_intervals',
@@ -296,6 +299,8 @@ def run_shadow(state, capture, inventory, config, policy=None, *, result_arrays=
     if result_arrays is not None:result_arrays.update(weights=w)
     report.update(numerical_checks_pass=numerical_pass,ess=ess,max_weight=maximum,max_mean_win_error=maxwin,
         max_hard_interval_violation=maxhard,max_any_interval_violation=float(residual.max()),
+        solver_message=fit.get('message'),solver_iterations=fit.get('iterations'),
+        solver_seconds=fit.get('seconds'),
         pool_conservation_error=float(abs((w@gross).sum()-100)),
         team_payout_per_100=dict(zip(teams,(w@gross).tolist())),
         status='shadow_candidate' if numerical_pass and not blockers else 'blocked',

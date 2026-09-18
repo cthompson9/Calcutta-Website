@@ -113,7 +113,12 @@ def build_interval_snapshot(config, state, runtime):
                      'importance_sampling_review.py','schedule_feasible_fit.py','valuation.py')}
     runtime.record_detail('market_policy',report)
     if report.get('status')!='shadow_candidate':
-        return {'status':'failed','error':'Market interval fit failed quality checks; see market_policy diagnostics.',
+        blockers=', '.join(
+            str(item.get('id') or item.get('team') or 'unknown')+':'+str(item.get('reason') or 'blocked')
+            for item in report.get('blockers',[])[:5])
+        detail='solver '+str(report.get('solver_status','unknown'))
+        if blockers:detail+='; blockers '+blockers
+        return {'status':'failed','error':'Market interval fit failed quality checks ('+detail+').',
             'as_of':datetime.now(timezone.utc).isoformat(),'path_count':runs,
             'model':{'name':POLICY,'pricing_policy':POLICY,'seed':seed},
             'diagnostics':{'market_policy':report,'generation':generation,'runtime':runtime.snapshot()}}
