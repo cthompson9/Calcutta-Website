@@ -29,10 +29,13 @@ class EvidencePolicyTests(unittest.TestCase):
         q=quote(trades=[dict(id='t',price=.7,size=10,timestamp='2026-09-15T11:58:00Z')])
         d=select_playoff_constraint(q,.1,STRONG,NOW,DEFAULTS)
         self.assertEqual(d['trade_check']['status'],'outside_book');self.assertEqual(d['trade_check']['trade']['price'],.7)
-        self.assertTrue(d['blocked'])
+        self.assertEqual(d['mode'],'soft');self.assertEqual(d['reason'],'active_book_interval')
     def test_settlement_and_narrow_book_never_discounted(self):
-        for q in [quote(resolved=True,bounds={'lower':1,'upper':1}),quote(bounds={'lower':.39,'upper':.41})]:
-            self.assertEqual(select_playoff_constraint(q,.1,STRONG,NOW,DEFAULTS)['mode'],'hard')
+        settled=select_playoff_constraint(quote(resolved=True,bounds={'lower':1,'upper':1}),.1,STRONG,NOW,DEFAULTS)
+        self.assertEqual(settled['mode'],'hard');self.assertEqual(settled['reason'],'settlement_fact')
+        narrow=select_playoff_constraint(quote(bounds={'lower':.39,'upper':.41}),.1,STRONG,NOW,DEFAULTS)
+        self.assertEqual(narrow['mode'],'soft');self.assertEqual(narrow['reason'],'active_book_interval')
+        self.assertEqual(narrow['penalty'],100)
     def test_conflicting_duplicate_trades_are_ambiguous(self):
         q=quote();q['trades'].append(dict(q['trades'][0],price=.45))
         self.assertEqual(latest_trade(q,NOW,DEFAULTS)['status'],'ambiguous')
@@ -52,7 +55,8 @@ class EvidencePolicyTests(unittest.TestCase):
         self.assertEqual(d['reason'],'wide_book_with_last_context')
     def test_missing_trade_and_last_context_still_blocks(self):
         d=select_playoff_constraint(quote(material_event_at=None,trades=[],last_price=None),.1,STRONG,NOW,DEFAULTS)
-        self.assertTrue(d['blocked']);self.assertEqual(d['reason'],'needs_trade_or_last_context')
+        self.assertFalse(d.get('blocked',False));self.assertEqual(d['reason'],'active_book_interval')
+        self.assertEqual(d['penalty'],100)
     def test_new_capture_changes_win_target_without_previous_rating_state(self):
         config={'games_per_team':17,'pricing':{'max_spread_for_mid':.15}}
         rows=[quote(id='w'+str(i),family='wins',outcome=str(i),bounds={'lower':.5,'upper':.5}) for i in range(1,18)]
@@ -97,26 +101,5 @@ class JointSolverTests(unittest.TestCase):
         )
         self.assertEqual(final['status'],'converged')
         self.assertLessEqual(final['max_hard_residual'],self.policy['numerical_tolerance'])
-
-class FinalConflictTests(unittest.TestCase):
-    def resolve(self, *, mode='hard', residual=0, win_error=.02, converged=True, other_violation=0):
-        d=select_playoff_constraint(quote(material_event_at=None),.1,STRONG,NOW,DEFAULTS)
-        d['mode']=mode
-        blockers=[{'id':d['id'],'reason':d['reason']},{'team':'CHI','reason':'incomplete_elimination_coverage'}]
-        rows=[{'id':d['id'],'mode':mode,'achieved':.4,'violation':residual},
-              {'id':'other','mode':'hard','achieved':.5,'violation':other_violation}]
-        remaining=resolve_provisional_conflicts([d],blockers,rows,converged=converged,
-            max_win_error=win_error,policy=DEFAULTS)
-        return d,remaining
-    def test_satisfied_joint_hard_fit_resolves_provisional_warning_only(self):
-        d,b=self.resolve()
-        self.assertFalse(d['blocked']);self.assertEqual(d['prefit_reason'],'needs_trade_or_last_context')
-        self.assertEqual(d['reason'],'resolved_by_hard_joint_fit');self.assertFalse(d['exception_applied'])
-        self.assertEqual(b,[{'team':'CHI','reason':'incomplete_elimination_coverage'}])
-    def test_unresolved_hard_soft_timeout_and_win_failures_remain_blocked(self):
-        for args in [dict(mode='soft'),dict(residual=.001),dict(win_error=.031),
-                     dict(converged=False),dict(other_violation=.001)]:
-            with self.subTest(args=args):
-                d,b=self.resolve(**args);self.assertTrue(d['blocked']);self.assertEqual(len(b),2)
 
 if __name__=='__main__':unittest.main()

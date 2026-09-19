@@ -1,8 +1,9 @@
 """Market interval fitter shared by the canonical adapter and offline shadow.
 
-Books define intervals. Qualified recent executions are corroboration only.
-Win evidence may take precedence over conflicting wide playoff evidence when
-its freshness and tighter spread are demonstrated. Every exception is retained.
+Settlements define hard facts. Active books define weighted intervals because
+individually plausible contracts can be jointly incompatible with league
+inventory. Qualified recent executions and bare Last provide confidence tiers.
+Every soft decision is retained for independent publication audit.
 """
 from __future__ import annotations
 import argparse
@@ -17,8 +18,10 @@ import numpy as np
 VERSION = 'market-interval-win-priority-shadow-v1'
 DEFAULTS = dict(max_age_seconds=900, wide_spread=.10, wide_relative_spread=.50,
     tight_win_spread=.05, min_win_rungs=2, material_gap=.03, min_trade_size=1,
-    weak_penalty=25.0, unverified_last_penalty=5.0, max_seconds=30, max_iterations=1000,
-    numerical_tolerance=1e-6, min_ess=2000, max_weight=.01, win_tolerance=.03)
+    active_book_penalty=100.0, weak_penalty=25.0, unverified_last_penalty=5.0,
+    max_seconds=30, max_iterations=1000,
+    numerical_tolerance=1e-6, max_active_book_violation=.10,
+    min_ess=2000, max_weight=.01, win_tolerance=.03)
 OUTCOMES = ['no_playoffs', 'wild_card', 'divisional', 'conference', 'sb_loss', 'sb_win']
 ALIASES = dict(zip(['REG','WC','DIV','CONF','FL','FW'],OUTCOMES))
 STAGES = ['berth','divisional','conference','sb_berth','sb_win']
@@ -91,12 +94,15 @@ def select_playoff_constraint(row, win_implied, quality, now, policy):
     wide=width>=policy['wide_spread'] or width/max(mid,.01)>=policy['wide_relative_spread']
     decision={'id':row['id'],'team':row['team'],'outcome':row['outcome'],'bounds':b,
         'win_implied_probability':win_implied,'interval_gap':gap,'wide':wide,
-        'mode':'hard','reason':'accepted_book','trade_check':latest_trade(row,now,policy) if wide else None}
+        'mode':'soft','reason':'active_book_interval','penalty':policy['active_book_penalty'],
+        'trade_check':latest_trade(row,now,policy) if wide else None}
     if row.get('resolved'):
-        decision['reason']='settlement_fact';return decision
+        decision.update(mode='hard',reason='settlement_fact')
+        decision.pop('penalty',None)
+        return decision
     if not wide or gap<=policy['material_gap']:return decision
     if not quality.get('qualified') or quality['median_spread']>=width:
-        decision['reason']='wins_not_demonstrably_stronger';return decision
+        decision['reason']='active_book_interval';return decision
     check=decision['trade_check']
     cutoff=timestamp(row.get('material_event_at'))
     if cutoff is not None and check['status']=='usable':
@@ -110,7 +116,6 @@ def select_playoff_constraint(row, win_implied, quality, now, policy):
         decision.update(mode='soft',reason='wide_book_with_last_context',
             penalty=policy['unverified_last_penalty'],last_price_context=last)
         return decision
-    decision.update(reason='needs_trade_or_last_context',blocked=True)
     return decision
 
 def captured_win_targets(rows, now, policy, config):
@@ -294,7 +299,11 @@ def run_shadow(state, capture, inventory, config, policy=None, *, result_arrays=
     residual=np.maximum.reduce([np.array(lower)-achieved,achieved-np.array(upper),np.zeros(len(features))])
     ess=float(1/(w@w));maximum=float(w.max());maxwin=float(max(abs(achieved[i]-mean_targets[t]) for i,t in enumerate(teams)))
     hard=np.isinf(penalties);maxhard=float(residual[hard].max())
-    numerical_pass=fit['status']=='converged' and maxhard<=policy['numerical_tolerance'] and ess>=policy['min_ess'] and maximum<=policy['max_weight'] and maxwin<=policy['win_tolerance']
+    active_ids={d['id'] for d in decisions if d['reason']=='active_book_interval'}
+    maxactive=max((float(residual[i]) for i,name in enumerate(names) if name in active_ids),default=0)
+    numerical_pass=(fit['status']=='converged' and maxhard<=policy['numerical_tolerance'] and
+        maxactive<=policy['max_active_book_violation'] and ess>=policy['min_ess'] and
+        maximum<=policy['max_weight'] and maxwin<=policy['win_tolerance'])
     residual_rows=[{'id':names[i],'achieved':float(achieved[i]),'violation':float(residual[i]),'mode':'hard' if hard[i] else 'soft'} for i in range(len(names))]
     blockers=resolve_provisional_conflicts(decisions,blockers,residual_rows,
         converged=fit['status']=='converged',max_win_error=maxwin,policy=policy)
@@ -306,6 +315,7 @@ def run_shadow(state, capture, inventory, config, policy=None, *, result_arrays=
     if result_arrays is not None:result_arrays.update(weights=w)
     report.update(numerical_checks_pass=numerical_pass,ess=ess,max_weight=maximum,max_mean_win_error=maxwin,
         max_hard_interval_violation=maxhard,max_any_interval_violation=float(residual.max()),
+        max_active_book_violation=maxactive,
         solver_message=fit.get('message'),solver_iterations=fit.get('iterations'),
         solver_seconds=fit.get('seconds'),
         pool_conservation_error=float(abs((w@gross).sum()-100)),

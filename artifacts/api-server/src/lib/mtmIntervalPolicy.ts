@@ -40,6 +40,7 @@ function eligible(r: Row, now: number): boolean {
 
 function validatedSoftException(r: Row, d: Row, rows: Row[], now: number): boolean {
   if (r.resolved === true || !probability(d.win_implied_probability)) return false;
+  if (d.reason === "active_book_interval") return d.penalty === 100;
   const { lower: lo, upper: hi } = r.bounds;
   const width = hi - lo, mid = (hi + lo) / 2, implied = d.win_implied_probability;
   if (!(width >= .10 || width / Math.max(mid, .01) >= .50) ||
@@ -107,7 +108,9 @@ export function validateFinalIntervalMarketQuality(engine: Row, state: Row, conf
           !["hard", "soft"].includes(d.mode)) { reasons.push(`invalid decision: ${r.id}`); return; }
       const violation = Math.max(0, r.bounds.lower - exclusive[i], exclusive[i] - r.bounds.upper);
       const soft = d.mode === "soft" && validatedSoftException(r, d, rows, now);
-      if ((d.mode === "soft" && !soft) || (d.mode === "hard" && violation > 1e-6)) reasons.push(`unmet interval: ${r.id}`);
+      const softViolationOk = d.reason !== "active_book_interval" || violation <= .10;
+      if ((d.mode === "soft" && (!soft || !softViolationOk)) ||
+          (d.mode === "hard" && violation > 1e-6)) reasons.push(`unmet interval: ${r.id}`);
       audit.push({ id: r.id, team, outcome, final_probability: exclusive[i], bounds: r.bounds,
         mode: d.mode, violation, validated_exception: soft });
     });

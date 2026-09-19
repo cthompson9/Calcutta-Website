@@ -41,7 +41,16 @@ test('missing duplicates stale and malformed probabilities fail',()=>{
   }
 });
 test('soft exception cannot be asserted without timestamped trade and stronger wins',()=>{
-  const f=intervalFixture();f.engine.diagnostics.market_policy.decisions[0].mode='soft';
+  const f=intervalFixture();Object.assign(f.engine.diagnostics.market_policy.decisions[0],
+    {mode:'soft',reason:'active_book_interval',penalty:99,win_implied_probability:.5});
+  assert.match(check(f).error,/unmet interval/);
+});
+test('active books are independently accepted as strong soft evidence',()=>{
+  const f=intervalFixture(),d=f.engine.diagnostics.market_policy.decisions[0];
+  Object.assign(d,{mode:'soft',reason:'active_book_interval',penalty:100,win_implied_probability:.5});
+  f.engine.model.pricing_basis=f.engine.diagnostics.market_policy.pricing_basis='wins_led';
+  assert.equal(check(f).error,null);
+  f.state.market_evidence_review.rows[0].bounds=d.bounds={lower:.8,upper:.9};
   assert.match(check(f).error,/unmet interval/);
 });
 test('qualified trade and tighter wins permit an audited soft exception',()=>{
