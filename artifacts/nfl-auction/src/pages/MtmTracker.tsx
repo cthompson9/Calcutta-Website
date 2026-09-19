@@ -235,12 +235,26 @@ type MtmPipelineEvidenceQuote = {
   fetchedAt: string;
 };
 
+type MtmPipelineEliminationEvidence = {
+  ticker: string;
+  team: string;
+  outcome: string;
+  bid: number | null;
+  ask: number | null;
+  last: number | null;
+  confidenceTier: "settled_fact" | "strong_active_book" | "verified_trade" | "last_context" | "active_book";
+  fittedProbability: number | null;
+  intervalMiss: number | null;
+  nearPublicationCeiling: boolean;
+};
+
 type MtmPipelineEvidenceResponse = {
   attempts: MtmPipelineAttempt[];
   selectedAttempt: (MtmPipelineAttempt & {
     diagnostics: Record<string, unknown> | null;
     receivedMarkets: MtmPipelineReceivedMarket[];
     failedSources: string[];
+    eliminationEvidence: MtmPipelineEliminationEvidence[];
     quotes: MtmPipelineEvidenceQuote[];
   }) | null;
 };
@@ -3067,6 +3081,18 @@ function formatEvidenceQuote(value: number | null) {
   return value == null ? "—" : value.toFixed(2);
 }
 
+function formatEvidencePercent(value: number | null) {
+  return value == null ? "—" : `${(value * 100).toFixed(1)}%`;
+}
+
+const EVIDENCE_TIER_LABELS: Record<MtmPipelineEliminationEvidence["confidenceTier"], string> = {
+  settled_fact: "Settled fact",
+  strong_active_book: "Strong active book",
+  verified_trade: "Verified trade",
+  last_context: "Last context",
+  active_book: "Active book",
+};
+
 export function MtmEvidenceInspector({
   year,
   calcuttaId,
@@ -3403,6 +3429,70 @@ export function MtmEvidenceInspector({
                     </div>
                   )}
                  </div>
+
+                 {attempt.eliminationEvidence && attempt.eliminationEvidence.length > 0 && (
+                   <div>
+                     <div className="mb-3">
+                       <h4 className="flex items-center gap-1.5 font-mono text-[10px] font-bold uppercase tracking-widest text-muted-foreground">
+                         <Activity className="h-3 w-3" /> Elimination contract influence
+                       </h4>
+                       <p className="mt-1 text-xs text-muted-foreground">
+                         Persisted publication diagnostics. Amber rows are strong active-book misses near the publication ceiling.
+                       </p>
+                     </div>
+                     <div className="overflow-hidden rounded-sm border border-border bg-card">
+                       <div className="max-h-[400px] overflow-auto">
+                         <table className="w-full whitespace-nowrap text-left text-xs">
+                           <thead className="sticky top-0 z-10 bg-muted/50 font-mono text-[10px] uppercase tracking-wider text-muted-foreground shadow-[0_1px_0_hsl(var(--border))]">
+                             <tr>
+                               <th className="px-3 py-2 font-semibold">Team</th>
+                               <th className="px-3 py-2 font-semibold">Outcome</th>
+                               <th className="px-3 py-2 font-semibold">Confidence</th>
+                               <th className="px-3 py-2 text-right font-semibold">Bid</th>
+                               <th className="px-3 py-2 text-right font-semibold">Ask</th>
+                               <th className="px-3 py-2 text-right font-semibold">Last</th>
+                               <th className="px-3 py-2 text-right font-semibold">Fitted</th>
+                               <th className="px-3 py-2 text-right font-semibold">Interval miss</th>
+                             </tr>
+                           </thead>
+                           <tbody className="divide-y divide-border/60 font-mono text-[11px]">
+                             {attempt.eliminationEvidence.map((row) => (
+                               <tr
+                                 key={row.ticker}
+                                 className={cn(
+                                   row.confidenceTier === "settled_fact" && "bg-emerald-500/10",
+                                   row.nearPublicationCeiling && "bg-amber-500/15",
+                                 )}
+                               >
+                                 <td className="px-3 py-2 font-semibold" title={row.ticker}>{row.team}</td>
+                                 <td className="px-3 py-2">{row.outcome.replaceAll("_", " ")}</td>
+                                 <td className="px-3 py-2">
+                                   <span className={cn(
+                                     "rounded-sm px-1.5 py-0.5 text-[9px] font-bold uppercase tracking-wider",
+                                     row.confidenceTier === "settled_fact"
+                                       ? "bg-emerald-500/20 text-emerald-800 dark:text-emerald-300"
+                                       : row.nearPublicationCeiling
+                                         ? "bg-amber-500/25 text-amber-900 dark:text-amber-200"
+                                         : "bg-indigo-500/10 text-indigo-700 dark:text-indigo-300",
+                                   )}>
+                                     {EVIDENCE_TIER_LABELS[row.confidenceTier]}
+                                   </span>
+                                 </td>
+                                 <td className="px-3 py-2 text-right">{formatEvidenceQuote(row.bid)}</td>
+                                 <td className="px-3 py-2 text-right">{formatEvidenceQuote(row.ask)}</td>
+                                 <td className="px-3 py-2 text-right">{formatEvidenceQuote(row.last)}</td>
+                                 <td className="px-3 py-2 text-right">{formatEvidencePercent(row.fittedProbability)}</td>
+                                 <td className={cn("px-3 py-2 text-right font-semibold", row.nearPublicationCeiling && "text-amber-800 dark:text-amber-300")}>
+                                   {formatEvidencePercent(row.intervalMiss)}
+                                 </td>
+                               </tr>
+                             ))}
+                           </tbody>
+                         </table>
+                       </div>
+                     </div>
+                   </div>
+                 )}
 
                 <div>
                     <h4 className="font-mono text-[10px] font-bold uppercase tracking-widest text-muted-foreground mb-3 flex items-center gap-1.5">

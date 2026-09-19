@@ -9,6 +9,14 @@ const time = (v: unknown) => typeof v === "string" && /(?:Z|[+-]\d\d:\d\d)$/.tes
 const probability = (v: unknown): v is number => finite(v) && v >= 0 && v <= 1;
 type Row = Record<string, any>;
 
+function evidenceTier(row: Row, decision: Row): "settled_fact" | "strong_active_book" | "verified_trade" | "last_context" | "active_book" {
+  if (row.resolved === true) return "settled_fact";
+  if (decision.reason === "active_book_interval") return "strong_active_book";
+  if (decision.reason === "fresh_tighter_wins_preferred_after_trade_check") return "verified_trade";
+  if (decision.reason === "wide_book_with_last_context") return "last_context";
+  return "active_book";
+}
+
 export function selectedMtmPolicy(config: Row): string {
   const selected = config.sim?.pricing_policy ?? LEGACY_POLICY;
   if (selected !== LEGACY_POLICY && selected !== INTERVAL_POLICY) throw new Error(`Unknown MTM pricing_policy: ${selected}`);
@@ -111,8 +119,21 @@ export function validateFinalIntervalMarketQuality(engine: Row, state: Row, conf
       const softViolationOk = d.reason !== "active_book_interval" || violation <= .10;
       if ((d.mode === "soft" && (!soft || !softViolationOk)) ||
           (d.mode === "hard" && violation > 1e-6)) reasons.push(`unmet interval: ${r.id}`);
-      audit.push({ id: r.id, team, outcome, final_probability: exclusive[i], bounds: r.bounds,
-        mode: d.mode, violation, validated_exception: soft });
+      audit.push({
+        id: r.id,
+        team,
+        outcome,
+        final_probability: exclusive[i],
+        bounds: r.bounds,
+        mode: d.mode,
+        reason: d.reason ?? null,
+        evidence_tier: evidenceTier(r, d),
+        last_price: probability(r.last_price) ? r.last_price : null,
+        violation,
+        near_publication_ceiling:
+          d.reason === "active_book_interval" && violation >= 0.08,
+        validated_exception: soft,
+      });
     });
   }
   if (stageTotals.some((v, i) => Math.abs(v - [14, 8, 4, 2, 1][i]!) > 1e-6)) reasons.push("final playoff inventory does not conserve");

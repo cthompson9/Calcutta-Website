@@ -6,6 +6,7 @@
  * OpenAPI spec version: 0.1.0
  */
 import type { MtmPipelineAttempt } from './mtmPipelineAttempt';
+import type { MtmPipelineEliminationEvidence } from './mtmPipelineEliminationEvidence';
 import type { MtmPipelineEvidenceDetailDiagnostics } from './mtmPipelineEvidenceDetailDiagnostics';
 import type { MtmPipelineEvidenceQuote } from './mtmPipelineEvidenceQuote';
 import type { MtmPipelineReceivedMarket } from './mtmPipelineReceivedMarket';
@@ -15,5 +16,6 @@ export type MtmPipelineEvidenceDetail = MtmPipelineAttempt & {
   diagnostics: MtmPipelineEvidenceDetailDiagnostics;
   receivedMarkets: MtmPipelineReceivedMarket[];
   failedSources: string[];
+  eliminationEvidence: MtmPipelineEliminationEvidence[];
   quotes: MtmPipelineEvidenceQuote[];
 };

@@ -159,6 +159,8 @@ export * from './mtmPipelineAttemptDeletion';
 export * from './mtmPipelineAttemptDeletionResult';
 export * from './mtmPipelineAttemptStatus';
 export * from './mtmPipelineAttemptTrigger';
+export * from './mtmPipelineEliminationEvidence';
+export * from './mtmPipelineEliminationEvidenceConfidenceTier';
 export * from './mtmPipelineEvidenceDetail';
 export * from './mtmPipelineEvidenceDetailDiagnostics';
 export * from './mtmPipelineEvidenceQuote';

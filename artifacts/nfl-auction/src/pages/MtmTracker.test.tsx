@@ -75,6 +75,19 @@ function evidenceResponse(attempts: EvidenceAttempt[], selectedId: number) {
       ...selected,
       diagnostics: null,
       receivedMarkets: [],
+      failedSources: [],
+      eliminationEvidence: [] as Array<{
+        ticker: string;
+        team: string;
+        outcome: string;
+        bid: number | null;
+        ask: number | null;
+        last: number | null;
+        confidenceTier: "settled_fact" | "strong_active_book" | "verified_trade" | "last_context" | "active_book";
+        fittedProbability: number | null;
+        intervalMiss: number | null;
+        nearPublicationCeiling: boolean;
+      }>,
       quotes: [],
     } : null,
   };
@@ -110,6 +123,34 @@ async function selectPriorAttempt(user: ReturnType<typeof userEvent.setup>) {
 }
 
 describe("MtmEvidenceInspector deletion", () => {
+  it("renders persisted elimination confidence and highlights a near-ceiling active-book miss", async () => {
+    const attempt = evidenceAttempt(12);
+    const payload = evidenceResponse([attempt], attempt.id);
+    payload.selectedAttempt!.eliminationEvidence = [{
+      ticker: "KXNFLSTAGEOFELIM-27BUF-DIV",
+      team: "BUF",
+      outcome: "divisional",
+      bid: 0.25,
+      ask: 0.3,
+      last: 0.28,
+      confidenceTier: "strong_active_book",
+      fittedProbability: 0.38,
+      intervalMiss: 0.08,
+      nearPublicationCeiling: true,
+    }];
+    vi.spyOn(globalThis, "fetch").mockResolvedValue(
+      new Response(JSON.stringify(payload), { status: 200 }),
+    );
+
+    renderEvidenceInspector();
+
+    expect(await screen.findByText("Strong active book")).toBeInTheDocument();
+    const row = screen.getByText("Strong active book").closest("tr");
+    expect(row).toHaveClass("bg-amber-500/15");
+    expect(within(row!).getByText("38.0%")).toBeInTheDocument();
+    expect(within(row!).getByText("8.0%")).toBeInTheDocument();
+  });
+
   it("shows a timestamped pending audit entry while recalculation is running", async () => {
     const existing = evidenceAttempt(12);
     vi.spyOn(globalThis, "fetch").mockResolvedValue(

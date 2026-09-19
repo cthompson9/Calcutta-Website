@@ -175,6 +175,25 @@ describe("MTM pipeline evidence", { skip: !canRun }, () => {
           trigger: "manual",
           status: "ok",
           methodVersion: "test",
+          diagnostics: {
+            publication_audit: {
+              calibration: {
+                playoff_market: {
+                  rows: [{
+                    id: "KXNFLSTAGEOFELIM-27BUF-DIV",
+                    team: "BUF",
+                    outcome: "divisional",
+                    bounds: { lower: 0.25, upper: 0.3 },
+                    evidence_tier: "strong_active_book",
+                    last_price: 0.28,
+                    final_probability: 0.38,
+                    violation: 0.08,
+                    near_publication_ceiling: true,
+                  }],
+                },
+              },
+            },
+          },
           createdAt: new Date("2026-09-20T14:10:00.000Z"),
         },
         {
@@ -346,6 +365,27 @@ describe("MTM pipeline evidence", { skip: !canRun }, () => {
       volume: 123,
       fetchedAt: "2026-09-20T14:04:00.000Z",
     });
+  });
+
+  test("returns persisted elimination influence diagnostics without client policy reconstruction", async () => {
+    const response = await fetch(
+      `${baseUrl}/api/mtm/pipeline/evidence?season=9877&attemptId=${successfulAttemptId}`,
+      { headers: { Authorization: `Bearer ${ADMIN_KEY}` } },
+    );
+    assert.equal(response.status, 200);
+    const payload = await response.json();
+    assert.deepEqual(payload.selectedAttempt.eliminationEvidence, [{
+      ticker: "KXNFLSTAGEOFELIM-27BUF-DIV",
+      team: "BUF",
+      outcome: "divisional",
+      bid: 0.25,
+      ask: 0.3,
+      last: 0.28,
+      confidenceTier: "strong_active_book",
+      fittedProbability: 0.38,
+      intervalMiss: 0.08,
+      nearPublicationCeiling: true,
+    }]);
   });
 
   test("rejects an attempt that belongs to another pool", async () => {

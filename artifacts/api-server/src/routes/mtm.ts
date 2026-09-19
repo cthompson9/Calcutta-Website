@@ -158,6 +158,48 @@ function pipelineQuoteTeam(team: string | null, ticker: string): string | null {
   return /-\d{2}([A-Z]{2,3})-/.exec(ticker)?.[1] ?? null;
 }
 
+function pipelineDiagnosticNumber(value: unknown): number | null {
+  if (typeof value === "number") return Number.isFinite(value) ? value : null;
+  return typeof value === "string" ? parseOptionalNumber(value) : null;
+}
+
+function pipelineEliminationEvidence(diagnostics: Record<string, unknown> | null) {
+  const publicationAudit = diagnostics?.publication_audit;
+  const calibration = publicationAudit && typeof publicationAudit === "object"
+    ? (publicationAudit as Record<string, unknown>).calibration
+    : null;
+  const playoffMarket = calibration && typeof calibration === "object"
+    ? (calibration as Record<string, unknown>).playoff_market
+    : null;
+  const rows = playoffMarket && typeof playoffMarket === "object"
+    ? (playoffMarket as Record<string, unknown>).rows
+    : null;
+  if (!Array.isArray(rows)) return [];
+  return rows.flatMap((raw) => {
+    if (!raw || typeof raw !== "object") return [];
+    const row = raw as Record<string, unknown>;
+    const bounds = row.bounds && typeof row.bounds === "object"
+      ? row.bounds as Record<string, unknown>
+      : {};
+    const tier = row.evidence_tier;
+    if (!["settled_fact", "strong_active_book", "verified_trade", "last_context", "active_book"].includes(String(tier))) {
+      return [];
+    }
+    return [{
+      ticker: String(row.id ?? ""),
+      team: String(row.team ?? ""),
+      outcome: String(row.outcome ?? ""),
+      bid: pipelineDiagnosticNumber(bounds.lower),
+      ask: pipelineDiagnosticNumber(bounds.upper),
+      last: pipelineDiagnosticNumber(row.last_price),
+      confidenceTier: tier as "settled_fact" | "strong_active_book" | "verified_trade" | "last_context" | "active_book",
+      fittedProbability: pipelineDiagnosticNumber(row.final_probability),
+      intervalMiss: pipelineDiagnosticNumber(row.violation),
+      nearPublicationCeiling: row.near_publication_ceiling === true,
+    }];
+  });
+}
+
 router.get("/mtm/pipeline/status", async (req, res): Promise<void> => {
   const parsed = MtmPipelineQuery.safeParse(req.query);
   if (!parsed.success) {
@@ -280,6 +322,7 @@ router.get("/mtm/pipeline/evidence", requireAdmin, async (req, res): Promise<voi
       teams: [...received.teams].sort(),
     })),
     failedSources: pipelineQuoteErrors(selectedRow.diagnostics, selectedRow.error),
+    eliminationEvidence: pipelineEliminationEvidence(selectedRow.diagnostics),
     quotes: quoteRows.map((quote) => ({
       source: quote.source,
       series: quote.series,

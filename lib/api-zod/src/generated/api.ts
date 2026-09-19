@@ -1807,6 +1807,18 @@ export const GetMtmPipelineEvidenceResponse = zod.object({
   "teams": zod.array(zod.string())
 })),
   "failedSources": zod.array(zod.string()),
+  "eliminationEvidence": zod.array(zod.object({
+  "ticker": zod.string(),
+  "team": zod.string(),
+  "outcome": zod.string(),
+  "bid": zod.number().nullable(),
+  "ask": zod.number().nullable(),
+  "last": zod.number().nullable(),
+  "confidenceTier": zod.enum(['settled_fact', 'strong_active_book', 'verified_trade', 'last_context', 'active_book']),
+  "fittedProbability": zod.number().nullable(),
+  "intervalMiss": zod.number().nullable(),
+  "nearPublicationCeiling": zod.boolean()
+})),
   "quotes": zod.array(zod.object({
   "source": zod.string(),
   "series": zod.string(),

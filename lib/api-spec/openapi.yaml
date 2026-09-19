@@ -3660,6 +3660,32 @@ components:
           format: date-time
       required: [source, series, ticker, team, bid, ask, strike, volume, fetchedAt]
 
+    MtmPipelineEliminationEvidence:
+      type: object
+      properties:
+        ticker:
+          type: string
+        team:
+          type: string
+        outcome:
+          type: string
+        bid:
+          type: ["number", "null"]
+        ask:
+          type: ["number", "null"]
+        last:
+          type: ["number", "null"]
+        confidenceTier:
+          type: string
+          enum: [settled_fact, strong_active_book, verified_trade, last_context, active_book]
+        fittedProbability:
+          type: ["number", "null"]
+        intervalMiss:
+          type: ["number", "null"]
+        nearPublicationCeiling:
+          type: boolean
+      required: [ticker, team, outcome, bid, ask, last, confidenceTier, fittedProbability, intervalMiss, nearPublicationCeiling]
+
     MtmPipelineEvidenceDetail:
       allOf:
         - $ref: "#/components/schemas/MtmPipelineAttempt"
@@ -3676,11 +3702,15 @@ components:
               type: array
               items:
                 type: string
+            eliminationEvidence:
+              type: array
+              items:
+                $ref: "#/components/schemas/MtmPipelineEliminationEvidence"
             quotes:
               type: array
               items:
                 $ref: "#/components/schemas/MtmPipelineEvidenceQuote"
-          required: [diagnostics, receivedMarkets, failedSources, quotes]
+          required: [diagnostics, receivedMarkets, failedSources, eliminationEvidence, quotes]
 
     MtmPipelineEvidenceResponse:
       type: object

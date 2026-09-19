@@ -1664,6 +1664,35 @@ export interface MtmPipelineEvidenceQuote {
   fetchedAt: string;
 }
 
+export type MtmPipelineEliminationEvidenceConfidenceTier = typeof MtmPipelineEliminationEvidenceConfidenceTier[keyof typeof MtmPipelineEliminationEvidenceConfidenceTier];
+
+
+export const MtmPipelineEliminationEvidenceConfidenceTier = {
+  settled_fact: 'settled_fact',
+  strong_active_book: 'strong_active_book',
+  verified_trade: 'verified_trade',
+  last_context: 'last_context',
+  active_book: 'active_book',
+} as const;
+
+export interface MtmPipelineEliminationEvidence {
+  ticker: string;
+  team: string;
+  outcome: string;
+  /** @nullable */
+  bid: number | null;
+  /** @nullable */
+  ask: number | null;
+  /** @nullable */
+  last: number | null;
+  confidenceTier: MtmPipelineEliminationEvidenceConfidenceTier;
+  /** @nullable */
+  fittedProbability: number | null;
+  /** @nullable */
+  intervalMiss: number | null;
+  nearPublicationCeiling: boolean;
+}
+
 /**
  * @nullable
  */
@@ -1674,6 +1703,7 @@ export type MtmPipelineEvidenceDetail = MtmPipelineAttempt & {
   diagnostics: MtmPipelineEvidenceDetailDiagnostics;
   receivedMarkets: MtmPipelineReceivedMarket[];
   failedSources: string[];
+  eliminationEvidence: MtmPipelineEliminationEvidence[];
   quotes: MtmPipelineEvidenceQuote[];
 };
 
