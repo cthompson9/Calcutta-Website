@@ -55,3 +55,14 @@ test('qualified trade and tighter wins permit an audited soft exception',()=>{
   assert.equal(check(f).error,null);
   r.trades[0].timestamp='2026-09-15T11:49:00Z';assert.match(check(f).error,/unmet interval/);
 });
+test('wide conflicting book can use Last as independently audited low-weight context',()=>{
+  const f=intervalFixture(),r=f.state.market_evidence_review.rows[0],d=f.engine.diagnostics.market_policy.decisions[0];
+  r.bounds={lower:.7,upper:.9};r.last_price=.8;
+  Object.assign(d,{bounds:r.bounds,mode:'soft',reason:'wide_book_with_last_context',penalty:5,
+    last_price_context:.8,win_implied_probability:.3});
+  f.state.market_evidence_review.rows.push(...[8,9].map(n=>({id:'w'+n,team:'T0',family:'wins',outcome:String(n),
+    eligible:true,bounds:{lower:.49,upper:.51},captured_at:'2026-09-15T11:59:00Z'})));
+  f.engine.model.pricing_basis=f.engine.diagnostics.market_policy.pricing_basis='wins_led';
+  assert.equal(check(f).error,null);
+  d.last_price_context=.7;assert.match(check(f).error,/unmet interval/);
+});

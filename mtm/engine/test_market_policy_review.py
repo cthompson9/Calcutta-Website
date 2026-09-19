@@ -15,12 +15,13 @@ class EvidencePolicyTests(unittest.TestCase):
         d=select_playoff_constraint(quote(),.1,STRONG,NOW,DEFAULTS)
         self.assertEqual(d['mode'],'soft');self.assertEqual(d['penalty'],25)
         self.assertEqual(d['bounds'],{'lower':.3,'upper':.5})
-    def test_no_assumed_trade_time_or_size(self):
+    def test_bare_last_is_low_weight_context_not_a_verified_trade(self):
         for trades in [[],[dict(id='t',price=.4,size=10)],
                        [dict(id='t',price=.4,timestamp='2026-09-15T11:58:00Z')],
                        [dict(id='t',price=.4,size=.1,timestamp='2026-09-15T11:58:00Z')]]:
             d=select_playoff_constraint(quote(trades=trades,last_price=.4),.1,STRONG,NOW,DEFAULTS)
-            self.assertEqual(d['mode'],'hard');self.assertEqual(d['reason'],'needs_trade_evidence')
+            self.assertEqual(d['mode'],'soft');self.assertEqual(d['reason'],'wide_book_with_last_context')
+            self.assertEqual(d['penalty'],5);self.assertEqual(d['last_price_context'],.4)
     def test_pre_event_stale_and_future_trades_do_not_qualify(self):
         for at in ['2026-09-15T11:49:00Z','2026-09-15T11:00:00Z','2026-09-15T12:01:00Z']:
             self.assertEqual(latest_trade(quote(trades=[dict(id='t',price=.4,size=10,timestamp=at)]),NOW,DEFAULTS)['status'],'unavailable')
@@ -45,9 +46,13 @@ class EvidencePolicyTests(unittest.TestCase):
     def test_ineligible_future_and_pre_event_books_rejected(self):
         for q in [quote(eligible=False),quote(captured_at='2026-09-15T12:01:00Z'),quote(captured_at='2026-09-15T11:49:00Z')]:
             self.assertFalse(eligible_book(q,NOW,DEFAULTS))
-    def test_missing_event_cutoff_cannot_establish_postgame_trade(self):
-        d=select_playoff_constraint(quote(material_event_at=None),.1,STRONG,NOW,DEFAULTS)
-        self.assertTrue(d['blocked']);self.assertEqual(d['reason'],'needs_information_cutoff')
+    def test_missing_event_cutoff_uses_last_only_as_weak_context(self):
+        d=select_playoff_constraint(quote(material_event_at=None,last_price=.4),.1,STRONG,NOW,DEFAULTS)
+        self.assertFalse(d.get('blocked',False));self.assertEqual(d['mode'],'soft')
+        self.assertEqual(d['reason'],'wide_book_with_last_context')
+    def test_missing_trade_and_last_context_still_blocks(self):
+        d=select_playoff_constraint(quote(material_event_at=None,trades=[],last_price=None),.1,STRONG,NOW,DEFAULTS)
+        self.assertTrue(d['blocked']);self.assertEqual(d['reason'],'needs_trade_or_last_context')
     def test_new_capture_changes_win_target_without_previous_rating_state(self):
         config={'games_per_team':17,'pricing':{'max_spread_for_mid':.15}}
         rows=[quote(id='w'+str(i),family='wins',outcome=str(i),bounds={'lower':.5,'upper':.5}) for i in range(1,18)]
@@ -105,7 +110,7 @@ class FinalConflictTests(unittest.TestCase):
         return d,remaining
     def test_satisfied_joint_hard_fit_resolves_provisional_warning_only(self):
         d,b=self.resolve()
-        self.assertFalse(d['blocked']);self.assertEqual(d['prefit_reason'],'needs_information_cutoff')
+        self.assertFalse(d['blocked']);self.assertEqual(d['prefit_reason'],'needs_trade_or_last_context')
         self.assertEqual(d['reason'],'resolved_by_hard_joint_fit');self.assertFalse(d['exception_applied'])
         self.assertEqual(b,[{'team':'CHI','reason':'incomplete_elimination_coverage'}])
     def test_unresolved_hard_soft_timeout_and_win_failures_remain_blocked(self):

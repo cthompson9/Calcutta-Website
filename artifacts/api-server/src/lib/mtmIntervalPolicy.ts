@@ -39,8 +39,7 @@ function eligible(r: Row, now: number): boolean {
 }
 
 function validatedSoftException(r: Row, d: Row, rows: Row[], now: number): boolean {
-  if (r.resolved === true || d.reason !== "fresh_tighter_wins_preferred_after_trade_check" ||
-      d.penalty !== 25 || !probability(d.win_implied_probability)) return false;
+  if (r.resolved === true || !probability(d.win_implied_probability)) return false;
   const { lower: lo, upper: hi } = r.bounds;
   const width = hi - lo, mid = (hi + lo) / 2, implied = d.win_implied_probability;
   if (!(width >= .10 || width / Math.max(mid, .01) >= .50) ||
@@ -55,6 +54,11 @@ function validatedSoftException(r: Row, d: Row, rows: Row[], now: number): boole
   if (n < 2) return false;
   const median = (spreads[Math.floor((n - 1) / 2)]! + spreads[Math.floor(n / 2)]!) / 2;
   if (median > .05 || median >= width) return false;
+  if (d.reason === "wide_book_with_last_context") {
+    return d.penalty === 5 && probability(r.last_price) &&
+      d.last_price_context === r.last_price;
+  }
+  if (d.reason !== "fresh_tighter_wins_preferred_after_trade_check" || d.penalty !== 25) return false;
   const cutoff = time(r.material_event_at);
   if (!Number.isFinite(cutoff)) return false;
   const trades = (Array.isArray(r.trades) ? r.trades : []).filter((t: Row) => {

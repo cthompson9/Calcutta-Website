@@ -17,7 +17,7 @@ import numpy as np
 VERSION = 'market-interval-win-priority-shadow-v1'
 DEFAULTS = dict(max_age_seconds=900, wide_spread=.10, wide_relative_spread=.50,
     tight_win_spread=.05, min_win_rungs=2, material_gap=.03, min_trade_size=1,
-    weak_penalty=25.0, max_seconds=30, max_iterations=1000,
+    weak_penalty=25.0, unverified_last_penalty=5.0, max_seconds=30, max_iterations=1000,
     numerical_tolerance=1e-6, min_ess=2000, max_weight=.01, win_tolerance=.03)
 OUTCOMES = ['no_playoffs', 'wild_card', 'divisional', 'conference', 'sb_loss', 'sb_win']
 ALIASES = dict(zip(['REG','WC','DIV','CONF','FL','FW'],OUTCOMES))
@@ -97,14 +97,20 @@ def select_playoff_constraint(row, win_implied, quality, now, policy):
     if not wide or gap<=policy['material_gap']:return decision
     if not quality.get('qualified') or quality['median_spread']>=width:
         decision['reason']='wins_not_demonstrably_stronger';return decision
-    if timestamp(row.get('material_event_at')) is None:
-        decision.update(reason='needs_information_cutoff',blocked=True);return decision
     check=decision['trade_check']
-    if check['status']!='usable':
-        decision.update(reason='needs_trade_evidence',blocked=True);return decision
-    if abs(check['trade']['price']-win_implied)<=policy['material_gap']:
-        decision.update(reason='book_trade_disagreement',blocked=True);return decision
-    decision.update(mode='soft',reason='fresh_tighter_wins_preferred_after_trade_check',penalty=policy['weak_penalty'])
+    cutoff=timestamp(row.get('material_event_at'))
+    if cutoff is not None and check['status']=='usable':
+        if abs(check['trade']['price']-win_implied)<=policy['material_gap']:
+            decision.update(reason='book_trade_disagreement',blocked=True);return decision
+        decision.update(mode='soft',reason='fresh_tighter_wins_preferred_after_trade_check',
+            penalty=policy['weak_penalty'])
+        return decision
+    last=row.get('last_price')
+    if finite(last) and 0<=last<=1:
+        decision.update(mode='soft',reason='wide_book_with_last_context',
+            penalty=policy['unverified_last_penalty'],last_price_context=last)
+        return decision
+    decision.update(reason='needs_trade_or_last_context',blocked=True)
     return decision
 
 def captured_win_targets(rows, now, policy, config):
@@ -217,7 +223,8 @@ def resolve_provisional_conflicts(decisions, blockers, residuals, *, converged,
     for d in decisions:
         r=by_id.get(d['id'])
         if (joint_ok and d.get('blocked') and d['mode']=='hard' and
-            d['reason'] in {'needs_information_cutoff','needs_trade_evidence','book_trade_disagreement'} and
+            d['reason'] in {'needs_information_cutoff','needs_trade_evidence',
+                            'needs_trade_or_last_context','book_trade_disagreement'} and
             r and r['mode']=='hard' and r['violation']<=policy['numerical_tolerance']):
             d.update(prefit_reason=d['reason'],reason='resolved_by_hard_joint_fit',
                      blocked=False,final_probability=r['achieved'],exception_applied=False)
