@@ -58,3 +58,4 @@
 - [Polymorphic delete triggers](polymorphic-delete-triggers.md) — generic PostgreSQL trigger functions must branch by table before reading table-specific OLD/NEW fields.
 - [Actuals-driven MTM requests](actuals-driven-mtm-requests.md) — canonical Actuals revisions queue durable coalesced recalculations; provider fetch metadata never changes revision identity.
 - [Reference-market read contract](reference-market-read-contract.md) — REST and MCP expose the same pinned official-source projection without live fetches, writes, or recalculation.
+- [Historical reference bootstrap](historical-reference-bootstrap.md) — seed raw marks only from official saved books or identifiable pre-de-vig inputs; unsupported win gaps remain model-derived.

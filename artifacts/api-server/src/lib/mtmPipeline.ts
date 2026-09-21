@@ -44,6 +44,7 @@ import {
 import { validateMtmCanonicalDataFreshness } from "./currentMtm";
 import { selectReferenceMark, MTM_REFERENCE_MARK_POLICY_VERSION } from "./mtmReferenceMarks";
 import {
+  referenceContractKey,
   resolveReferenceCandidates,
   type PersistedReference,
   type ReferenceCandidate,
@@ -635,7 +636,50 @@ type PriorReferenceRow = {
   series: string;
   strike: string | null;
   outcome: string | null;
+  rawQuote: Record<string, unknown> | null;
+  snapshotId: number;
+  snapshotAsOf: Date;
+  methodVersion: string;
+  stateJson: Record<string, unknown> | null;
+  selectionReason: Record<string, unknown> | null;
 };
+
+function historicalEliminationMark(
+  stateJson: Record<string, unknown> | null,
+  team: string | null,
+  outcome: string | null,
+): number | null {
+  if (!stateJson || !team || !outcome) return null;
+  const byTeam = stateJson.elimination_quotes;
+  if (!byTeam || typeof byTeam !== "object" || Array.isArray(byTeam)) return null;
+  const outcomes = (byTeam as Record<string, unknown>)[team];
+  if (!outcomes || typeof outcomes !== "object" || Array.isArray(outcomes)) return null;
+  const value = Number((outcomes as Record<string, unknown>)[outcome]);
+  return Number.isFinite(value) && value >= 0 && value <= 1 ? value : null;
+}
+
+function referenceEventIdentity(ticker: string): string | null {
+  const separator = ticker.lastIndexOf("-");
+  return separator > 0 ? ticker.slice(0, separator) : null;
+}
+
+function originatingSelectionMethod(
+  selectionMethod: string | null,
+  selectionReason: Record<string, unknown> | null,
+): string | null {
+  if (selectionMethod !== "carried_forward") return selectionMethod;
+  const wrapped = selectionReason?.reasons;
+  const reasons = Array.isArray(wrapped)
+    ? wrapped
+    : Array.isArray(selectionReason) ? selectionReason : [];
+  const carried = reasons.find((value: unknown) =>
+    Boolean(value && typeof value === "object" &&
+      (value as Record<string, unknown>).code === "carried_forward_prior_mark"));
+  const sourceMethod = carried && typeof carried === "object"
+    ? (carried as Record<string, unknown>).sourceSelectionMethod
+    : null;
+  return typeof sourceMethod === "string" ? sourceMethod : selectionMethod;
+}
 
 async function loadPriorReferenceRows(poolId: number, seasonId: number): Promise<PriorReferenceRow[]> {
   const rows = await db.select({
@@ -655,9 +699,13 @@ async function loadPriorReferenceRows(poolId: number, seasonId: number): Promise
     sourceObservedAt: mtmMarketQuoteTable.sourceObservedAt,
     referencePrice: mtmMarketQuoteTable.referencePrice,
     selectionMethod: mtmMarketQuoteTable.selectionMethod,
+    selectionReason: mtmMarketQuoteTable.selectionReason,
     referenceAcceptedAt: mtmMarketQuoteTable.referenceAcceptedAt,
     referenceSourceSnapshotId: mtmMarketQuoteTable.referenceSourceSnapshotId,
     referenceSourceTicker: mtmMarketQuoteTable.referenceSourceTicker,
+    rawQuote: mtmMarketQuoteTable.rawQuote,
+    stateJson: mtmSnapshotTable.stateJson,
+    methodVersion: mtmSnapshotTable.methodVersion,
   }).from(mtmMarketQuoteTable)
     .innerJoin(mtmSnapshotTable, eq(mtmSnapshotTable.id, mtmMarketQuoteTable.snapshotId))
     .innerJoin(mtmValuationVersionTable, eq(mtmValuationVersionTable.sourceSnapshotId, mtmSnapshotTable.id))
@@ -677,23 +725,43 @@ async function loadPriorReferenceRows(poolId: number, seasonId: number): Promise
       poolId,
       seasonId,
       provider: row.provider ?? row.source ?? "kalshi",
-      eventId: row.eventId,
+      eventId: referenceEventIdentity(row.marketTicker),
       ticker: row.marketTicker,
       outcome: row.series.includes("STAGE") ? classifyEliminationMarket({ ticker: row.marketTicker }) : null,
       strike: row.series.includes("WIN") ? row.strike : null,
     };
     const identity = referenceContractKeyForPipeline(key);
-    if (seen.has(identity) || row.referencePrice == null) return [];
+    if (seen.has(identity)) return [];
+    const selectedHistorical = row.referencePrice == null && row.rawQuote
+      ? selectReferenceMark(row.rawQuote)
+      : null;
+    const eliminationMark = row.referencePrice == null &&
+        selectedHistorical?.referencePrice == null &&
+        row.series.includes("STAGE")
+      ? historicalEliminationMark(row.stateJson, row.team, key.outcome)
+      : null;
+    const historicalPrice = row.referencePrice ??
+      selectedHistorical?.referencePrice ??
+      eliminationMark;
+    if (historicalPrice == null) return [];
     seen.add(identity);
-    return [{ ...row, key, referencePrice: row.referencePrice == null ? null : String(row.referencePrice) }];
+    return [{
+      ...row,
+      key,
+      referencePrice: String(historicalPrice),
+      selectionMethod: originatingSelectionMethod(row.selectionMethod, row.selectionReason) ??
+        (selectedHistorical?.referencePrice != null
+          ? `historical_${selectedHistorical.selectionMethod}`
+          : "legacy_pre_devig"),
+      referenceAcceptedAt: row.referenceAcceptedAt ?? row.fetchedAt ?? row.snapshotAsOf,
+      referenceSourceSnapshotId: row.referenceSourceSnapshotId ?? row.snapshotId,
+      referenceSourceTicker: row.referenceSourceTicker ?? row.marketTicker,
+    }];
   });
 }
 
 function referenceContractKeyForPipeline(key: ReferenceContractKey): string {
-  return [
-    key.poolId, key.seasonId, key.provider, key.eventId ?? "",
-    key.ticker, key.outcome ?? "", key.strike ?? "",
-  ].join("|");
+  return referenceContractKey(key);
 }
 
 function quoteReferenceCandidate(
@@ -706,8 +774,7 @@ function quoteReferenceCandidate(
   const ticker = String(quote.market.ticker ?? "");
   const key: ReferenceContractKey = {
     poolId, seasonId, provider: "kalshi",
-    eventId: quote.market.event_id == null && quote.market.eventId == null
-      ? null : String(quote.market.event_id ?? quote.market.eventId),
+    eventId: referenceEventIdentity(ticker),
     ticker,
     outcome: isWin ? null : classifyEliminationMarket(quote.market),
     strike: isWin ? strike : null,
@@ -763,7 +830,7 @@ async function resolvePipelineQuotes(
       provider: "kalshi",
       contractId: prior.marketTicker,
       ticker: prior.marketTicker,
-      eventId: prior.eventId,
+      eventId: prior.key.eventId,
       missingContract: true,
       providerFailure: quoteErrors.some((error) => error.includes(prior.team!)),
       key: prior.key,
@@ -788,7 +855,7 @@ async function resolvePipelineQuotes(
   ]);
   for (const expectedQuote of expected) {
     const key: ReferenceContractKey = {
-      poolId, seasonId, provider: "kalshi", eventId: null,
+      poolId, seasonId, provider: "kalshi", eventId: referenceEventIdentity(expectedQuote.ticker),
       ticker: expectedQuote.ticker, outcome: expectedQuote.outcome, strike: expectedQuote.strike,
     };
     const identity = referenceContractKeyForPipeline(key);
@@ -821,14 +888,7 @@ async function resolvePipelineQuotes(
   const quotes = [...currentByKey.entries()].map(([identity, quote]) => {
     const reference = referenceByKey.get(identity);
     if (!reference) return quote;
-    const market = { ...quote.market };
-    if (reference.referencePrice != null && reference.selectionMethod === "carried_forward") {
-      market.yes_bid_dollars = String(reference.referencePrice);
-      market.yes_ask_dollars = String(reference.referencePrice);
-      market.status = "active";
-      delete market.result;
-    }
-    return { ...quote, market, resolvedReference: reference };
+    return { ...quote, resolvedReference: reference };
   });
   return {
     quotes,
@@ -855,23 +915,44 @@ function deriveQuoteState(
     let ladders = winQuotes
       .map((quote) => {
         const market = quote.market;
+        const resolvedPrice = quote.resolvedReference?.referencePrice ?? null;
+        if (resolvedPrice != null) {
+          return {
+            quote,
+            market,
+            strike: Number(market.floor_strike ?? market.floor_strike_fp),
+            decision: {
+              usedInFitting: true,
+              transformation: { kind: "bounds" as const, lower: resolvedPrice, upper: resolvedPrice },
+            },
+          };
+        }
         const validationError = validateActiveQuote(market);
         if (validationError) {
           throw new Error(`Invalid win-total quote for ${team.code}: ${validationError}.`);
         }
-        const pricingMarket = quote.resolvedReference?.referencePrice == null
-          ? market
-          : {
-              ...market,
-              yes_bid_dollars: String(quote.resolvedReference.referencePrice),
-              yes_ask_dollars: String(quote.resolvedReference.referencePrice),
-            };
+        const bid = quoteValue(market, "yes_bid");
+        const ask = quoteValue(market, "yes_ask");
+        const status = String(market.status ?? "").trim().toLowerCase();
+        const maxSpread = asNumber(config.pricing?.max_spread_for_mid, 0.15);
+        if ((status === "" || status === "active" || status === "open" || status === "initialized") &&
+            bid != null && ask != null && bid <= ask && ask - bid <= maxSpread) {
+          return {
+            quote,
+            market,
+            strike: Number(market.floor_strike ?? market.floor_strike_fp),
+            decision: {
+              usedInFitting: true,
+              transformation: { kind: "bounds" as const, lower: bid, upper: ask },
+            },
+          };
+        }
         return {
           quote,
-          market: pricingMarket,
+          market,
           strike: Number(market.floor_strike ?? market.floor_strike_fp),
           decision: quoteDecisionForPipeline(
-            { ...quote, market: pricingMarket },
+            quote,
             evaluationTime,
             "bounds",
             asNumber(config.pricing?.max_spread_for_mid, 0.15),
@@ -923,22 +1004,17 @@ function deriveQuoteState(
     const classified: Record<string, number> = {};
     for (const quote of stageQuotes) {
       const market = quote.market;
+      const outcome = classifyEliminationMarket(market);
+      const resolvedPrice = quote.resolvedReference?.referencePrice ?? null;
+      if (outcome && resolvedPrice != null) {
+        classified[outcome] = resolvedPrice;
+        continue;
+      }
       const validationError = validateActiveQuote(market);
       if (validationError) {
         throw new Error(`Invalid stage-of-elimination quote for ${team.code}: ${validationError}.`);
       }
-      const outcome = classifyEliminationMarket(market);
-      const pricingQuote = quote.resolvedReference?.referencePrice == null
-        ? quote
-        : {
-            ...quote,
-            market: {
-              ...quote.market,
-              yes_bid_dollars: String(quote.resolvedReference.referencePrice),
-              yes_ask_dollars: String(quote.resolvedReference.referencePrice),
-            },
-          };
-      const decision = quoteDecisionForPipeline(pricingQuote, evaluationTime, "bid_plus_cent");
+      const decision = quoteDecisionForPipeline(quote, evaluationTime, "bid_plus_cent");
       const transformed = decision.transformation;
       if (outcome && decision.usedInFitting &&
           (transformed.kind === "bid_plus_cent" || transformed.kind === "settlement")) {
@@ -1554,11 +1630,12 @@ export async function runMtmV3Review(input: {
       buildMarketQuoteRows(snapshotId, resolvedQuotes, evidencePreflightAt),
     );
   }
-  if (resolvedQuoteSet.unavailable.length) {
-    const error = `MTM reference coverage is incomplete for ${resolvedQuoteSet.unavailable.length} contract(s).`;
+  const mandatoryUnavailable = resolvedQuoteSet.unavailable.filter((reference) => reference.key.outcome != null);
+  if (mandatoryUnavailable.length) {
+    const error = `MTM reference coverage is incomplete for ${mandatoryUnavailable.length} elimination contract(s).`;
     const diagnostics = {
       ...baseDiagnostics, quoteErrors,
-      referenceResolution: { status: "incomplete", unavailable: resolvedQuoteSet.unavailable },
+      referenceResolution: { status: "incomplete", unavailable: mandatoryUnavailable },
       reviewStatus: "failed",
     };
     await db.update(mtmSnapshotTable).set({ error, diagnostics }).where(eq(mtmSnapshotTable.id, snapshotId));
@@ -2861,13 +2938,14 @@ export async function runMtmPipeline(input: { seasonYear: number; calcuttaId?: n
       buildMarketQuoteRows(snapshotId, resolvedQuotes, evidencePreflightAt),
     );
   }
-  if (resolvedQuoteSet.unavailable.length > 0) {
-    const message = `MTM reference coverage is incomplete for ${resolvedQuoteSet.unavailable.length} contract(s).`;
+  const mandatoryUnavailable = resolvedQuoteSet.unavailable.filter((reference) => reference.key.outcome != null);
+  if (mandatoryUnavailable.length > 0) {
+    const message = `MTM reference coverage is incomplete for ${mandatoryUnavailable.length} elimination contract(s).`;
     const diagnostics = {
       quoteErrors,
       referenceResolution: {
         status: "incomplete",
-        unavailable: resolvedQuoteSet.unavailable,
+        unavailable: mandatoryUnavailable,
       },
     };
     await db.update(mtmSnapshotTable).set({ error: message, diagnostics }).where(eq(mtmSnapshotTable.id, snapshotId));

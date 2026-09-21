@@ -1,6 +1,6 @@
 import assert from "node:assert/strict";
 import test from "node:test";
-import { resolveReferenceCandidates } from "./mtmReferencePersistence.ts";
+import { referenceContractKey, resolveReferenceCandidates } from "./mtmReferencePersistence.ts";
 
 const key = (overrides = {}) => ({
   poolId: 7, seasonId: 2026, provider: "kalshi", eventId: "evt-1",
@@ -64,4 +64,68 @@ test("does not cross pool or ticker boundaries during fallback", () => {
     new Date("2026-09-03T12:00:00.000Z"), 6,
   );
   assert.equal(row.referencePrice, null);
+});
+
+test("canonicalizes numeric strikes across database round-trips", () => {
+  assert.equal(
+    referenceContractKey(key({ ticker: "WIN-IND-4", outcome: null, strike: 4 })),
+    referenceContractKey(key({ ticker: "WIN-IND-4", outcome: null, strike: "4.00" })),
+  );
+});
+
+test("does not carry a prior mark across event identity boundaries", () => {
+  const [row] = resolveReferenceCandidates(
+    [{
+      key: key({ eventId: "EVENT-NEW" }),
+      ticker: "STAGE-ARI-REG",
+      eventId: "EVENT-NEW",
+      fetched: false,
+      missingContract: true,
+    }],
+    [{
+      key: key({ eventId: "EVENT-OLD" }),
+      referencePrice: "0.31",
+      referenceSourceSnapshotId: 4,
+      referenceSourceTicker: "STAGE-ARI-REG",
+      provider: "kalshi",
+      contract: "STAGE-ARI-REG",
+      marketTicker: "STAGE-ARI-REG",
+      eventId: "EVENT-OLD",
+    }],
+    new Date("2026-09-02T12:00:00.000Z"),
+    5,
+  );
+  assert.equal(row.referencePrice, null);
+  assert.equal(row.referenceSourceSnapshotId, null);
+});
+
+test("preserves the original prior source identity and selection method", () => {
+  const [row] = resolveReferenceCandidates(
+    [{
+      key: key(),
+      ticker: "STAGE-ARI-REG",
+      eventId: "evt-1",
+      fetched: false,
+      missingContract: true,
+    }],
+    [{
+      key: key(),
+      referencePrice: "1",
+      selectionMethod: "settlement",
+      referenceAcceptedAt: "2026-09-01T12:00:00.000Z",
+      referenceSourceSnapshotId: 4,
+      referenceSourceTicker: "STAGE-ARI-REG",
+      provider: "kalshi",
+      contract: "STAGE-ARI-REG",
+      marketTicker: "STAGE-ARI-REG",
+      eventId: "evt-1",
+    }],
+    new Date("2026-09-02T12:00:00.000Z"),
+    5,
+  );
+  assert.equal(row.source.eventId, "evt-1");
+  assert.equal(
+    row.selectionReason.find(({ code }) => code === "carried_forward_prior_mark")?.sourceSelectionMethod,
+    "settlement",
+  );
 });

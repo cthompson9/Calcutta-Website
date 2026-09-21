@@ -213,11 +213,23 @@ export async function readMtmReferenceMarkets(
       bid: numberOrNull(quote.yesBid), ask: numberOrNull(quote.yesAsk), last: numberOrNull(quote.lastPrice),
       lastTradeAt: null, quoteCapturedAt: isoOrNull(quote.capturedAt),
       referencePrice: numberOrNull(quote.referencePrice), selectionMethod: quote.selectionMethod,
-      reasonCodes: quote.selectionReason ? Object.values(quote.selectionReason).filter((v): v is string => typeof v === "string") : [],
+      reasonCodes: Array.isArray(quote.selectionReason)
+        ? quote.selectionReason.flatMap((value: unknown) =>
+            value && typeof value === "object" && "code" in value && typeof value.code === "string"
+              ? [value.code]
+              : [])
+        : Array.isArray(quote.selectionReason?.reasons)
+          ? quote.selectionReason.reasons.flatMap((value: unknown) =>
+              value && typeof value === "object" && "code" in value && typeof value.code === "string"
+                ? [value.code]
+                : [])
+        : quote.selectionReason
+          ? Object.values(quote.selectionReason).filter((v): v is string => typeof v === "string")
+          : [],
       referenceAcceptedAt: acceptedAt.toISOString(), referenceSourceSnapshotId: quote.referenceSourceSnapshotId,
       referenceSourceTicker: quote.referenceSourceTicker, carriedForward: quote.selectionMethod === "carried_forward",
-      referenceAgeSeconds: age, fairProbability: numberOrNull(quote.referencePrice),
-      probabilityBasis: quote.referencePrice == null ? "unavailable_reference_mark" : "exact_contract_reference_mark",
+      referenceAgeSeconds: age, fairProbability: null,
+      probabilityBasis: "unavailable_model_probability",
     };
   }).filter((row) =>
     (!normalized.team || row.team === normalized.team) &&

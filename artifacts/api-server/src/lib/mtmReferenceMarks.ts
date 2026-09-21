@@ -42,6 +42,7 @@ export type ReferenceReason = {
   code: ReferenceReasonCode;
   message: string;
   field?: "bid" | "ask" | "last" | "result" | "status" | "contract";
+  sourceSelectionMethod?: ReferenceSelectionMethod | string | null;
 };
 
 export type ReferenceSourceIdentity = {
@@ -146,6 +147,26 @@ function parsePrice(value: unknown): ParsedPrice {
   return { value: parsed, state: "valid" };
 }
 
+function parseLegacyCents(value: unknown): ParsedPrice {
+  if (value === undefined || value === null) return { value: null, state: "missing" };
+  if (typeof value === "string" && value.trim() === "") {
+    return { value: null, state: "malformed" };
+  }
+  if (typeof value !== "number" && typeof value !== "string") {
+    return { value: null, state: "malformed" };
+  }
+  const parsed = typeof value === "number" ? value : Number(value);
+  if (!Number.isFinite(parsed)) {
+    return {
+      value: null,
+      state: Number.isNaN(parsed) ? "malformed" : "nonfinite",
+    };
+  }
+  const dollars = parsed / 100;
+  if (dollars < 0 || dollars > 1) return { value: null, state: "out_of_range" };
+  return { value: dollars, state: "valid" };
+}
+
 /**
  * Prefer fixed-point dollar fields when supplied. A null dollar field is an
  * absent field and may use the legacy cents field; malformed dollar data must
@@ -162,7 +183,8 @@ function normalizedField(
   if (Object.prototype.hasOwnProperty.call(quote, dollarKey) && dollar !== null) {
     return parsePrice(dollar);
   }
-  for (const key of [legacyKey, ...aliases]) {
+  if (present(quote[legacyKey])) return parseLegacyCents(quote[legacyKey]);
+  for (const key of aliases) {
     if (present(quote[key])) return parsePrice(quote[key]);
   }
   return { value: null, state: "missing" };
@@ -191,6 +213,14 @@ function reason(
   field?: ReferenceReason["field"],
 ): ReferenceReason {
   return field ? { code, message, field } : { code, message };
+}
+
+function carriedReason(prior: PriorAcceptedReferenceMark): ReferenceReason {
+  return {
+    code: "carried_forward_prior_mark",
+    message: "Carried forward the prior accepted raw contract mark.",
+    sourceSelectionMethod: prior.selectionMethod ?? null,
+  };
 }
 
 function result(
@@ -249,7 +279,7 @@ function unavailable(
         quote,
         priorResult.value,
         "carried_forward",
-        [...reasons, reason("carried_forward_prior_mark", "Carried forward the prior accepted raw contract mark.")],
+        [...reasons, carriedReason(prior)],
         normalized,
         source,
         prior.timestamps ?? {
@@ -352,7 +382,8 @@ export function selectReferenceMark(
     const spread = ask.value! - bid.value!;
     const midpoint = (ask.value! + bid.value!) / 2;
     const relative = midpoint > 0 ? spread / midpoint : Number.POSITIVE_INFINITY;
-    if (spread <= 0.02 || relative <= 0.10) {
+    const comparisonTolerance = 1e-12;
+    if (spread <= 0.02 + comparisonTolerance || relative <= 0.10 + comparisonTolerance) {
       const selected = Math.min(bid.value! + 0.01, ask.value!, 1);
       // Avoid binary floating-point artifacts without rounding the supplied
       // input used by the eligibility comparisons.

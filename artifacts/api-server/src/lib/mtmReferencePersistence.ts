@@ -61,6 +61,12 @@ function normalized(value: string | number | null | undefined): string {
   return value == null ? "" : String(value);
 }
 
+function normalizedStrike(value: string | number | null | undefined): string {
+  if (value == null || value === "") return "";
+  const numeric = Number(value);
+  return Number.isFinite(numeric) ? String(numeric) : String(value).trim();
+}
+
 export function referenceContractKey(value: ReferenceContractKey): string {
   return [
     value.poolId,
@@ -69,7 +75,7 @@ export function referenceContractKey(value: ReferenceContractKey): string {
     normalized(value.eventId),
     value.ticker,
     normalized(value.outcome),
-    normalized(value.strike),
+    normalizedStrike(value.strike),
   ].join("|");
 }
 
@@ -79,20 +85,20 @@ function priorForCandidate(candidate: ReferenceCandidate, row: PriorRow | undefi
     referencePrice: row.referencePrice,
     selectionMethod: row.selectionMethod as PriorAcceptedReferenceMark["selectionMethod"],
     source: {
-      provider: candidate.provider ?? candidate.key.provider ?? row.provider ?? row.source ?? null,
-      contractId: String(candidate.contractId ?? candidate.ticker ?? candidate.key.ticker ?? row.contract ?? row.marketTicker ?? "") || null,
-      ticker: candidate.ticker ?? candidate.key.ticker ?? row.referenceSourceTicker ?? row.marketTicker ?? null,
-      eventId: candidate.eventId == null && candidate.key.eventId == null && row.eventId == null
+      provider: row.provider ?? row.source ?? row.key.provider ?? null,
+      contractId: String(row.contract ?? row.marketTicker ?? row.key.ticker ?? "") || null,
+      ticker: row.referenceSourceTicker ?? row.marketTicker ?? row.key.ticker ?? null,
+      eventId: row.key.eventId == null && row.eventId == null
         ? null
-        : String(candidate.eventId ?? candidate.key.eventId ?? row.eventId),
+        : String(row.key.eventId ?? row.eventId),
     },
     sourceIdentity: {
-      provider: candidate.provider ?? candidate.key.provider ?? row.provider ?? row.source ?? null,
-      contractId: String(candidate.contractId ?? candidate.ticker ?? candidate.key.ticker ?? row.contract ?? row.marketTicker ?? "") || null,
-      ticker: candidate.ticker ?? candidate.key.ticker ?? row.referenceSourceTicker ?? row.marketTicker ?? null,
-      eventId: candidate.eventId == null && candidate.key.eventId == null && row.eventId == null
+      provider: row.provider ?? row.source ?? row.key.provider ?? null,
+      contractId: String(row.contract ?? row.marketTicker ?? row.key.ticker ?? "") || null,
+      ticker: row.referenceSourceTicker ?? row.marketTicker ?? row.key.ticker ?? null,
+      eventId: row.key.eventId == null && row.eventId == null
         ? null
-        : String(candidate.eventId ?? candidate.key.eventId ?? row.eventId),
+        : String(row.key.eventId ?? row.eventId),
     },
     timestamps: {
       fetchedAt: row.fetchedAt ? new Date(row.fetchedAt).toISOString() : null,

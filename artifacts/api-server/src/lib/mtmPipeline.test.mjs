@@ -109,6 +109,75 @@ test("preserves settled win contracts and fixed-point volume for the engine", ()
   assert.equal(mtmPipelineTestUtils.quoteVolume({ volume_fp: "81.75", volume: 2 }), 81);
 });
 
+test("passes resolved stage marks unchanged and keeps unresolved supported win bounds model-derived", () => {
+  const fetchedAt = new Date("2026-09-20T14:04:00.000Z");
+  const config = {
+    kalshi: { series: {
+      win_totals: "KXNFLWINS",
+      stage_of_elimination: "KXNFLSTAGEOFELIM",
+    } },
+    pricing: { max_spread_for_mid: 0.15 },
+  };
+  const winMarket = {
+    ticker: "KXNFLWINS-27IND-4",
+    floor_strike: 4,
+    yes_bid_dollars: "0.9000",
+    yes_ask_dollars: "1.0000",
+    status: "active",
+  };
+  const stageMarket = {
+    ticker: "KXNFLSTAGEOFELIM-27IND-REG",
+    yes_bid_dollars: "0.2000",
+    yes_ask_dollars: "0.2600",
+    status: "active",
+  };
+  const outcomes = [
+    ["REG", "no_playoffs", 0.21],
+    ["WC", "wild_card", 0.22],
+    ["DIV", "divisional", 0.23],
+    ["CONF", "conference", 0.24],
+    ["FL", "sb_loss", 0.25],
+    ["FW", "sb_win", 0.26],
+  ];
+  const raw = [
+    {
+      series: "KXNFLWINS",
+      team: "IND",
+      market: winMarket,
+      fetchedAt,
+      resolvedReference: { referencePrice: null },
+    },
+    ...outcomes.map(([suffix, _outcome, referencePrice], index) => ({
+      series: "KXNFLSTAGEOFELIM",
+      team: "IND",
+      market: index === 0
+        ? stageMarket
+        : { ...stageMarket, ticker: `KXNFLSTAGEOFELIM-27IND-${suffix}` },
+      fetchedAt,
+      resolvedReference: { referencePrice },
+    })),
+  ];
+  const derived = mtmPipelineTestUtils.deriveQuoteState(
+    config,
+    [{ code: "IND", name: "Indianapolis Colts" }],
+    raw,
+    fetchedAt,
+  );
+  assert.deepEqual(derived.winLadders.IND[0], {
+    strike: 4,
+    yes_bid: 0.9,
+    yes_ask: 1,
+    volume: 0,
+    status: "active",
+    result: null,
+  });
+  assert.deepEqual(derived.elimination.IND, Object.fromEntries(
+    outcomes.map(([_suffix, outcome, referencePrice]) => [outcome, referencePrice]),
+  ));
+  assert.equal(stageMarket.yes_bid_dollars, "0.2000");
+  assert.equal(stageMarket.yes_ask_dollars, "0.2600");
+});
+
 test("persists the exact Kalshi event request URL with every nested market", () => {
   const originalUrl = mtmPipelineTestUtils.kalshiEventUrl(
     "https://historical.example.test/trade-api/v2/",
