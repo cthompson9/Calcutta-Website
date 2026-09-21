@@ -680,6 +680,34 @@ test("blocks a win-calibrated run when any playoff family misses market expectat
   assert.ok(rejected.diagnostics.families.sb_win.rows[0].residual > 0.16);
 });
 
+test("accepts playoff residuals through the configured five-percent boundary", () => {
+  const { state, engine } = completeEngineFixture();
+  const teams = Object.keys(state.realized);
+  engine.calibration = teams.flatMap((team) =>
+    ["berth", "divisional", "conference", "sb_berth", "sb_win"].map((metric) => ({
+      metric,
+      team,
+      target_probability: 0.2,
+      simulated_probability: metric === "berth" && team === "T0" ? 0.24 : 0.2,
+      tolerance: 0.05,
+    })));
+
+  const accepted = mtmPipelineTestUtils.validateFinalPlayoffMarketQuality(
+    engine, state, { sim: { calibration_tolerance: 0.05 } },
+  );
+  assert.equal(accepted.error, null);
+  assert.equal(accepted.diagnostics.families.berth.rows[0].tolerance, 0.05);
+  assert.equal(accepted.diagnostics.families.berth.rows[0].gate_result, "passed");
+
+  engine.calibration.find((row) => row.metric === "berth" && row.team === "T0")
+    .simulated_probability = 0.251;
+  const rejected = mtmPipelineTestUtils.validateFinalPlayoffMarketQuality(
+    engine, state, { sim: { calibration_tolerance: 0.05 } },
+  );
+  assert.match(rejected.error, /exceeds tolerance for berth/);
+  assert.equal(rejected.diagnostics.families.berth.rows[0].gate_result, "failed");
+});
+
 test("fails closed when a payout-driving playoff calibration family is missing", () => {
   const { state, engine } = completeEngineFixture();
   const teams = Object.keys(state.realized);

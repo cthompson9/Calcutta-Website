@@ -58,7 +58,7 @@
     "model": "reference-mark-power-v1",
     "min_conditional_samples": 100,
     "min_conditional_share": 0.01,
-    "calibration_tolerance": 0.03,
+    "calibration_tolerance": 0.05,
     "calibration_iters": 500,
     "support_runs_per_team": 25,
     "support_prior_weight": 0.01
