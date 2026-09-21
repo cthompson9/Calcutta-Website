@@ -1,0 +1,115 @@
+# Follow-up review: incomplete reference coverage
+
+## Verified failing run
+
+Replit's read-only production inspection located snapshot **98**, pool **67 / Calcutta XII**, season **2026**, at **2026-09-21 01:43:11 UTC**. Its 118 unavailable contracts are **81 win contracts and 37 elimination contracts**. Every one records the same sequence: Last outside book, spread too wide, no prior mark. This count is not evidence of 118 failed provider requests.
+
+Three eligible successful official snapshots exist: 91, 29 and 11. Each has 736 saved raw quotes. None has a populated new reference-price field.
+
+The reviewed GitHub implementation is `090447eb3ca1764fa5e7b26ad3c85e3d3431c750`. Replit reports a later clean HEAD `1630f3cdbe115288e46e90481cc5d1840cace2b7` with subject “Published your App”; its exact deployed revision was not exposed, and GitHub could not compare that revision. Code findings below are verified in the available GitHub implementation; runtime counts come from the stored production failure.
+
+## Immediate cause: historical initialization is missing
+
+The loader reads only the new reference-price column and drops every historical row where that field is null. The migration adds nullable columns but does not seed them, and the loader does not read historical raw quote JSON or saved pre-de-vig inputs. Thus existing successful history is invisible to fallback on the first new-policy run. [Prior loader](https://github.com/cthompson9/Calcutta-Website/blob/090447eb3ca1764fa5e7b26ad3c85e3d3431c750/artifacts/api-server/src/lib/mtmPipeline.ts#L640), [migration](https://github.com/cthompson9/Calcutta-Website/blob/090447eb3ca1764fa5e7b26ad3c85e3d3431c750/lib/db/src/migrations/0058MtmReferenceMarks.ts).
+
+This was explicitly required in Phase B of the implementation plan. New quote selection was added, but the transition from old successful snapshots to new reference marks was not completed.
+
+A bounded read-only replay of the exact 118 tickers' saved books, applying the new rules newest-first, recovered:
+
+| Source | Wins | Elimination | Total |
+|---|---:|---:|---:|
+| Snapshot 91 | 70 | 9 | 79 |
+| Snapshot 29 | 7 | 9 | 16 |
+| Snapshot 11 | 3 | 3 | 6 |
+| Recoverable | 80 | 21 | **101** |
+| Not recoverable by book replay | 1 | 16 | **17** |
+
+Therefore backfilling only by applying the new rules to historical books is insufficient by itself. The other permitted migration source is an identifiable pre-de-vig mark actually used by a successful historical method. That must be distinguished from a newly calculated midpoint or a final fitted probability.
+
+## Additional defects that must be fixed together
+
+1. **Win strike identities do not survive database round-trip.** Current strike `1` and PostgreSQL numeric string `"1.00"` form different keys. The same exact contract loses fallback eligibility; prior rows can also be re-added as duplicate ticker candidates. Canonicalize the numeric strike in one shared identity function. Preserve pool, season and exact contract isolation. [Key builder](https://github.com/cthompson9/Calcutta-Website/blob/090447eb3ca1764fa5e7b26ad3c85e3d3431c750/artifacts/api-server/src/lib/mtmReferencePersistence.ts#L64).
+
+2. **Legacy cents are parsed as dollars.** The selector handles fixed-point dollar fields correctly, but passes legacy `yes_bid`, `yes_ask`, and `last_price` directly to the 0–1 parser. A valid 30/32/31-cent book becomes three out-of-range prices. Its tests mostly supply fractional dollar values in those legacy fields, masking the error. Convert legacy fields by 100; keep normalized aliases in dollars. This is a real latent bug, not the recorded reason sequence for snapshot 98. [Parser](https://github.com/cthompson9/Calcutta-Website/blob/090447eb3ca1764fa5e7b26ad3c85e3d3431c750/artifacts/api-server/src/lib/mtmReferenceMarks.ts#L154).
+
+3. **An exact 2-cent boundary can be rejected.** Bid 0.03 and Ask 0.05 produce a floating-point difference slightly above 0.02. With no valid Last or prior, the selector incorrectly reports a wide book. Use decimal-safe comparisons or a narrowly bounded comparison tolerance. [Threshold](https://github.com/cthompson9/Calcutta-Website/blob/090447eb3ca1764fa5e7b26ad3c85e3d3431c750/artifacts/api-server/src/lib/mtmReferenceMarks.ts#L351).
+
+4. **Stage prices are transformed twice.** The pipeline substitutes the selected mark into Bid and Ask, then calls the old `bid_plus_cent` transformation. A selected 32-cent mark becomes 33 cents before de-vig. The persisted API reference mark consequently differs from the input actually used for pricing. Consume the selected scalar directly. [Stage conversion](https://github.com/cthompson9/Calcutta-Website/blob/090447eb3ca1764fa5e7b26ad3c85e3d3431c750/artifacts/api-server/src/lib/mtmPipeline.ts#L931).
+
+5. **Retained marks still encounter legacy gates.** The old decision helper remains in the official path. Missing current capture timestamps and other old evidence checks can reject a valid retained scalar. Some carry-forward paths overwrite observed Bid/Ask with the retained mark, erase the result and force active status; this also contaminates persisted raw evidence and may lose settlement semantics. Keep observations immutable, preserve original provenance and settlement facts, and validate resolved marks separately from the eligibility of the latest observation. [Carry-forward rewriting](https://github.com/cthompson9/Calcutta-Website/blob/090447eb3ca1764fa5e7b26ad3c85e3d3431c750/artifacts/api-server/src/lib/mtmPipeline.ts#L822), [legacy decision helper](https://github.com/cthompson9/Calcutta-Website/blob/090447eb3ca1764fa5e7b26ad3c85e3d3431c750/artifacts/api-server/src/lib/mtmPipeline.ts#L2408).
+
+6. **Coverage is stricter than ladder input sufficiency.** The implementation synthesizes all 17 win strikes for every team and aborts if any reference remains unavailable, before the ladder can handle an admissible missing rung. That is separate from requiring sufficient inputs for the valuation. Do not fabricate reference prices; represent supported ladder interpolation as model-derived with a null observed reference. This is not the immediate explanation of snapshot 98: its 118 diagnostics all describe returned wide books, not missing synthetic contracts. [Expected-contract construction](https://github.com/cthompson9/Calcutta-Website/blob/090447eb3ca1764fa5e7b26ad3c85e3d3431c750/artifacts/api-server/src/lib/mtmPipeline.ts#L775).
+
+7. **The API labels raw reference price as fair probability.** Both fields currently receive the same saved raw value. Fair probability must come from the matching contract's de-vig/model result, or be unavailable; it is not the raw mark under a second label. [Read projection](https://github.com/cthompson9/Calcutta-Website/blob/090447eb3ca1764fa5e7b26ad3c85e3d3431c750/artifacts/api-server/src/lib/mtmReferenceMarketRead.ts#L215).
+
+## Required correction and acceptance evidence
+
+1. Normalize provider units and exact-contract keys, and fix decimal boundaries first.
+2. Seed reference history from successful official snapshots using genuine historical raw selection or identifiable historical accepted pre-de-vig marks. Persist source method and original timestamps. Do not write invented prices or bless failed candidate rows.
+3. Separate mandatory elimination coverage from supported win-ladder gaps; use explicit unavailable/model-derived states instead of fake observations.
+4. Pass each resolved scalar unchanged into the intended pricing input. Do not reapply Bid + 1 cent, reject a retained mark for missing current book timestamps, or mutate saved observed books.
+5. Expose actual fair probabilities and raw reference marks separately through REST/MCP.
+6. Replay snapshot 98's full input set against its eligible history in an isolated fixture. Report fresh, historical-seeded, retained, unavailable and interpolated counts, and verify the actual values reaching de-vig match selected reference marks exactly.
+7. Test database round-trips, legacy cents, exact boundaries, first post-migration refresh, provider outage, repeated retention, settlement semantics, and API/pricing parity. Check final pool conservation and current Actuals before promoting any result.
+
+## Verification performed
+
+Eight existing selector tests passed. Five additional code-level reproductions confirmed the legacy-cent error, 2-cent boundary error, numeric strike-key mismatch, repeated one-cent transformation, and missing-capture rejection. These reproductions executed the repository's actual selector, persistence/key helper, and evidence decision code; no application source was changed. No full Python valuation or database-backed replacement calculation was run, and nothing was deployed.
+../../outputs/MTM-coverage-follow-up-review.md
+# Follow-up review: incomplete reference coverage
+
+## Verified failing run
+
+Replit's read-only production inspection located snapshot **98**, pool **67 / Calcutta XII**, season **2026**, at **2026-09-21 01:43:11 UTC**. Its 118 unavailable contracts are **81 win contracts and 37 elimination contracts**. Every one records the same sequence: Last outside book, spread too wide, no prior mark. This count is not evidence of 118 failed provider requests.
+
+Three eligible successful official snapshots exist: 91, 29 and 11. Each has 736 saved raw quotes. None has a populated new reference-price field.
+
+The reviewed GitHub implementation is `090447eb3ca1764fa5e7b26ad3c85e3d3431c750`. Replit reports a later clean HEAD `1630f3cdbe115288e46e90481cc5d1840cace2b7` with subject “Published your App”; its exact deployed revision was not exposed, and GitHub could not compare that revision. Code findings below are verified in the available GitHub implementation; runtime counts come from the stored production failure.
+
+## Immediate cause: historical initialization is missing
+
+The loader reads only the new reference-price column and drops every historical row where that field is null. The migration adds nullable columns but does not seed them, and the loader does not read historical raw quote JSON or saved pre-de-vig inputs. Thus existing successful history is invisible to fallback on the first new-policy run. [Prior loader](https://github.com/cthompson9/Calcutta-Website/blob/090447eb3ca1764fa5e7b26ad3c85e3d3431c750/artifacts/api-server/src/lib/mtmPipeline.ts#L640), [migration](https://github.com/cthompson9/Calcutta-Website/blob/090447eb3ca1764fa5e7b26ad3c85e3d3431c750/lib/db/src/migrations/0058MtmReferenceMarks.ts).
+
+This was explicitly required in Phase B of the implementation plan. New quote selection was added, but the transition from old successful snapshots to new reference marks was not completed.
+
+A bounded read-only replay of the exact 118 tickers' saved books, applying the new rules newest-first, recovered:
+
+| Source | Wins | Elimination | Total |
+|---|---:|---:|---:|
+| Snapshot 91 | 70 | 9 | 79 |
+| Snapshot 29 | 7 | 9 | 16 |
+| Snapshot 11 | 3 | 3 | 6 |
+| Recoverable | 80 | 21 | **101** |
+| Not recoverable by book replay | 1 | 16 | **17** |
+
+Therefore backfilling only by applying the new rules to historical books is insufficient by itself. The other permitted migration source is an identifiable pre-de-vig mark actually used by a successful historical method. That must be distinguished from a newly calculated midpoint or a final fitted probability.
+
+## Additional defects that must be fixed together
+
+1. **Win strike identities do not survive database round-trip.** Current strike `1` and PostgreSQL numeric string `"1.00"` form different keys. The same exact contract loses fallback eligibility; prior rows can also be re-added as duplicate ticker candidates. Canonicalize the numeric strike in one shared identity function. Preserve pool, season and exact contract isolation. [Key builder](https://github.com/cthompson9/Calcutta-Website/blob/090447eb3ca1764fa5e7b26ad3c85e3d3431c750/artifacts/api-server/src/lib/mtmReferencePersistence.ts#L64).
+
+2. **Legacy cents are parsed as dollars.** The selector handles fixed-point dollar fields correctly, but passes legacy `yes_bid`, `yes_ask`, and `last_price` directly to the 0–1 parser. A valid 30/32/31-cent book becomes three out-of-range prices. Its tests mostly supply fractional dollar values in those legacy fields, masking the error. Convert legacy fields by 100; keep normalized aliases in dollars. This is a real latent bug, not the recorded reason sequence for snapshot 98. [Parser](https://github.com/cthompson9/Calcutta-Website/blob/090447eb3ca1764fa5e7b26ad3c85e3d3431c750/artifacts/api-server/src/lib/mtmReferenceMarks.ts#L154).
+
+3. **An exact 2-cent boundary can be rejected.** Bid 0.03 and Ask 0.05 produce a floating-point difference slightly above 0.02. With no valid Last or prior, the selector incorrectly reports a wide book. Use decimal-safe comparisons or a narrowly bounded comparison tolerance. [Threshold](https://github.com/cthompson9/Calcutta-Website/blob/090447eb3ca1764fa5e7b26ad3c85e3d3431c750/artifacts/api-server/src/lib/mtmReferenceMarks.ts#L351).
+
+4. **Stage prices are transformed twice.** The pipeline substitutes the selected mark into Bid and Ask, then calls the old `bid_plus_cent` transformation. A selected 32-cent mark becomes 33 cents before de-vig. The persisted API reference mark consequently differs from the input actually used for pricing. Consume the selected scalar directly. [Stage conversion](https://github.com/cthompson9/Calcutta-Website/blob/090447eb3ca1764fa5e7b26ad3c85e3d3431c750/artifacts/api-server/src/lib/mtmPipeline.ts#L931).
+
+5. **Retained marks still encounter legacy gates.** The old decision helper remains in the official path. Missing current capture timestamps and other old evidence checks can reject a valid retained scalar. Some carry-forward paths overwrite observed Bid/Ask with the retained mark, erase the result and force active status; this also contaminates persisted raw evidence and may lose settlement semantics. Keep observations immutable, preserve original provenance and settlement facts, and validate resolved marks separately from the eligibility of the latest observation. [Carry-forward rewriting](https://github.com/cthompson9/Calcutta-Website/blob/090447eb3ca1764fa5e7b26ad3c85e3d3431c750/artifacts/api-server/src/lib/mtmPipeline.ts#L822), [legacy decision helper](https://github.com/cthompson9/Calcutta-Website/blob/090447eb3ca1764fa5e7b26ad3c85e3d3431c750/artifacts/api-server/src/lib/mtmPipeline.ts#L2408).
+
+6. **Coverage is stricter than ladder input sufficiency.** The implementation synthesizes all 17 win strikes for every team and aborts if any reference remains unavailable, before the ladder can handle an admissible missing rung. That is separate from requiring sufficient inputs for the valuation. Do not fabricate reference prices; represent supported ladder interpolation as model-derived with a null observed reference. This is not the immediate explanation of snapshot 98: its 118 diagnostics all describe returned wide books, not missing synthetic contracts. [Expected-contract construction](https://github.com/cthompson9/Calcutta-Website/blob/090447eb3ca1764fa5e7b26ad3c85e3d3431c750/artifacts/api-server/src/lib/mtmPipeline.ts#L775).
+
+7. **The API labels raw reference price as fair probability.** Both fields currently receive the same saved raw value. Fair probability must come from the matching contract's de-vig/model result, or be unavailable; it is not the raw mark under a second label. [Read projection](https://github.com/cthompson9/Calcutta-Website/blob/090447eb3ca1764fa5e7b26ad3c85e3d3431c750/artifacts/api-server/src/lib/mtmReferenceMarketRead.ts#L215).
+
+## Required correction and acceptance evidence
+
+1. Normalize provider units and exact-contract keys, and fix decimal boundaries first.
+2. Seed reference history from successful official snapshots using genuine historical raw selection or identifiable historical accepted pre-de-vig marks. Persist source method and original timestamps. Do not write invented prices or bless failed candidate rows.
+3. Separate mandatory elimination coverage from supported win-ladder gaps; use explicit unavailable/model-derived states instead of fake observations.
+4. Pass each resolved scalar unchanged into the intended pricing input. Do not reapply Bid + 1 cent, reject a retained mark for missing current book timestamps, or mutate saved observed books.
+5. Expose actual fair probabilities and raw reference marks separately through REST/MCP.
+6. Replay snapshot 98's full input set against its eligible history in an isolated fixture. Report fresh, historical-seeded, retained, unavailable and interpolated counts, and verify the actual values reaching de-vig match selected reference marks exactly.
+7. Test database round-trips, legacy cents, exact boundaries, first post-migration refresh, provider outage, repeated retention, settlement semantics, and API/pricing parity. Check final pool conservation and current Actuals before promoting any result.
+
+## Verification performed
+
+Eight existing selector tests passed. Five additional code-level reproductions confirmed the legacy-cent error, 2-cent boundary error, numeric strike-key mismatch, repeated one-cent transformation, and missing-capture rejection. These reproductions executed the repository's actual selector, persistence/key helper, and evidence decision code; no application source was changed. No full Python valuation or database-backed replacement calculation was run, and nothing was deployed.
