@@ -14,11 +14,12 @@ import valuation
 
 POLICY = 'market-interval-win-priority-v1'
 LEGACY_POLICY = 'normalized-point-v2'
+REFERENCE_MARK_POWER_POLICY = 'reference-mark-power-v1'
 
 
 def selected_policy(config):
     selected = config.get('sim', {}).get('pricing_policy', LEGACY_POLICY)
-    if selected not in (LEGACY_POLICY, POLICY):
+    if selected not in (LEGACY_POLICY, POLICY, REFERENCE_MARK_POWER_POLICY):
         raise ValueError('unknown MTM pricing_policy: '+str(selected))
     return selected
 

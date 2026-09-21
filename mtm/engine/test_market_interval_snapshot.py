@@ -59,6 +59,14 @@ class SnapshotBridgeTests(unittest.TestCase):
         config['sim']['pricing_policy']='typo'
         with self.assertRaisesRegex(ValueError,'unknown MTM'):run_mtm.build_snapshot(config,state)
 
+    def test_actual_runner_routes_reference_mark_power_policy(self):
+        config,state,*_=self.fixture()
+        config['sim']['pricing_policy']=adapter.REFERENCE_MARK_POWER_POLICY
+        with patch.object(run_mtm,'_build_snapshot',return_value={'status':'ok'}) as reference:
+            self.assertEqual(run_mtm.build_snapshot(config,state)['status'],'ok')
+            reference.assert_called_once_with(
+                config, state, runtime=None, enforce_gate=True, reference_policy=True)
+
     def test_legacy_is_explicit_and_review_cannot_override_interval_selection(self):
         config,state,*_=self.fixture()
         with self.assertRaisesRegex(ValueError,'review-only'):run_mtm.build_snapshot(config,state,review_joint_fit=True)
