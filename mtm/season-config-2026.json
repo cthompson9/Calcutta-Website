@@ -32,11 +32,12 @@
     "base_url": "https://api.elections.kalshi.com/trade-api/v2",
     "series": {
       "win_totals": "KXNFLWINS",
+      "playoff_qualifier": "KXNFLPLAYOFF",
       "game_winner": "KXNFLGAME",
       "game_spread": "CONFIRM_AT_SEASON_START",
       "stage_of_elimination": "KXNFLSTAGEOFELIM"
     },
-    "series_note": "Win totals ladder = 'N or more wins' contracts per team. Confirm elimination + spread series tickers each season via GET /series?category=... or /events search; tickers change (e.g. KXSB-27 vs KXSB-26).",
+    "series_note": "Win totals ladder = 'N or more wins' contracts per team. Playoff qualification supplies P(no playoffs) as one minus the selected qualification probability; stage-of-elimination supplies the five playoff-round outcomes. Confirm series tickers each season via GET /series?category=... or /events search; tickers change (e.g. KXSB-27 vs KXSB-26).",
     "event_pattern_note": "Event ticker = SERIES-{seasonCode}{TEAM}, e.g. KXNFLSTAGEOFELIM-27BUF (27 = 2026 season, matching KXSB-27). Team code is the event ticker suffix. Season code increments each year - update on rollover."
   },
   "pricing": {

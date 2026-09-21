@@ -286,6 +286,34 @@ export function buildCanonicalRemainingSchedule(
   };
 }
 
+function captureRequestAudit(
+  teamCode: string,
+  seriesName: string,
+  ticker: string,
+  result: PromiseSettledResult<any[] | FetchedMarkets>,
+): CaptureRequestAudit {
+  if (result.status === "rejected") {
+    return {
+      identity: `${teamCode}:${seriesName}:${ticker}`,
+      team: teamCode, series: seriesName, ticker, status: "failed",
+      market_count: 0, source_url: null, fetched_at: null,
+      provider_manifest: null, error: String(result.reason),
+    };
+  }
+  const fetched = Array.isArray(result.value)
+    ? { markets: result.value, sourceUrl: null, fetchedAt: null, completenessManifest: null }
+    : result.value;
+  return {
+    identity: `${teamCode}:${seriesName}:${ticker}`,
+    team: teamCode, series: seriesName, ticker, status: "fulfilled",
+    market_count: fetched.markets.length,
+    source_url: fetched.sourceUrl ?? null,
+    fetched_at: fetched.fetchedAt?.toISOString() ?? null,
+    provider_manifest: fetched.completenessManifest ?? null,
+    error: null,
+  };
+}
+
 function mergeTeamQuoteResults(
   teamCode: string,
   series: { win_totals: string; stage_of_elimination: string },
@@ -304,34 +332,8 @@ function mergeTeamQuoteResults(
   const raw: RawMarketQuote[] = [];
   const errors: string[] = [];
   const requests: CaptureRequestAudit[] = [];
-  const requestAudit = (
-    seriesName: string,
-    ticker: string,
-    result: PromiseSettledResult<any[] | FetchedMarkets>,
-  ): CaptureRequestAudit => {
-    if (result.status === "rejected") {
-      return {
-        identity: `${teamCode}:${seriesName}:${ticker}`,
-        team: teamCode, series: seriesName, ticker, status: "failed",
-        market_count: 0, source_url: null, fetched_at: null,
-        provider_manifest: null, error: String(result.reason),
-      };
-    }
-    const fetched = Array.isArray(result.value)
-      ? { markets: result.value, sourceUrl: null, fetchedAt: null, completenessManifest: null }
-      : result.value;
-    return {
-      identity: `${teamCode}:${seriesName}:${ticker}`,
-      team: teamCode, series: seriesName, ticker, status: "fulfilled",
-      market_count: fetched.markets.length,
-      source_url: fetched.sourceUrl ?? null,
-      fetched_at: fetched.fetchedAt?.toISOString() ?? null,
-      provider_manifest: fetched.completenessManifest ?? null,
-      error: null,
-    };
-  };
-  requests.push(requestAudit(series.win_totals, tickers.win, winResult));
-  requests.push(requestAudit(series.stage_of_elimination, tickers.stage, stageResult));
+  requests.push(captureRequestAudit(teamCode, series.win_totals, tickers.win, winResult));
+  requests.push(captureRequestAudit(teamCode, series.stage_of_elimination, tickers.stage, stageResult));
   if (winResult.status === "fulfilled") {
     const fetched = Array.isArray(winResult.value)
       ? { markets: winResult.value, sourceUrl: undefined, fetchedAt: undefined, completenessManifest: null, captureMetadata: null }
@@ -591,6 +593,16 @@ function classifyEliminationMarket(market: any): string | null {
   return null;
 }
 
+function isPlayoffQualifierQuote(
+  quote: Pick<RawMarketQuote, "series" | "market">,
+  playoffQualifierSeries?: string,
+): boolean {
+  if (playoffQualifierSeries) return quote.series === playoffQualifierSeries;
+  const ticker = String(quote.market?.ticker ?? "");
+  return quote.series.includes("PLAYOFF") && !quote.series.includes("STAGE") &&
+    ticker.startsWith(`${quote.series}-`);
+}
+
 async function collectQuotes(
   config: Record<string, any>,
   teams: Array<{ code: string; name: string }>,
@@ -598,6 +610,12 @@ async function collectQuotes(
   const baseUrl = config.kalshi.base_url as string;
   const series = config.kalshi.series as Record<string, string>;
   const code = seasonCode(config.season as number);
+  const playoffEventTicker = series.playoff_qualifier
+    ? `${series.playoff_qualifier}-${code}`
+    : null;
+  const playoffResultPromise = playoffEventTicker
+    ? Promise.allSettled([fetchKalshiEvent(baseUrl, playoffEventTicker)]).then(([result]) => result!)
+    : null;
   const results = await Promise.all(teams.map(async (team) => {
     const winTicker = `${series.win_totals}-${code}${team.code}`;
     const stageTicker = `${series.stage_of_elimination}-${code}${team.code}`;
@@ -611,10 +629,49 @@ async function collectQuotes(
     }, { win: winTicker, stage: stageTicker }, winResult, stageResult);
   }));
   const requests = results.flatMap((result) => result.requests);
+  const raw = results.flatMap((result) => result.raw);
+  const errors = results.flatMap((result) => result.errors);
+  if (playoffResultPromise && playoffEventTicker) {
+    const playoffResult = await playoffResultPromise;
+    requests.push(captureRequestAudit(
+      "NFL",
+      series.playoff_qualifier,
+      playoffEventTicker,
+      playoffResult,
+    ));
+    if (playoffResult.status === "rejected") {
+      errors.push(`playoff qualifiers: ${String(playoffResult.reason)}`);
+    } else {
+      const fetched = Array.isArray(playoffResult.value)
+        ? { markets: playoffResult.value, sourceUrl: undefined, fetchedAt: undefined, completenessManifest: null, captureMetadata: null }
+        : playoffResult.value;
+      const marketByTicker = new Map(fetched.markets.map((market) => [String(market.ticker), market]));
+      for (const team of teams) {
+        const ticker = `${series.playoff_qualifier}-${code}-${team.code}`;
+        const market = marketByTicker.get(ticker);
+        if (!market) {
+          errors.push(`${team.code} playoff qualifier: market ${ticker} not received`);
+          continue;
+        }
+        raw.push({
+          series: series.playoff_qualifier,
+          team: team.code,
+          market,
+          sourceUrl: fetched.sourceUrl,
+          fetchedAt: fetched.fetchedAt,
+          completenessManifest: fetched.completenessManifest ?? null,
+          captureMetadata: fetched.captureMetadata ?? null,
+        });
+      }
+    }
+  }
   return {
-    raw: results.flatMap((result) => result.raw),
-    errors: results.flatMap((result) => result.errors),
-    captureManifest: buildInternalCaptureManifest(teams.length * 2, requests),
+    raw,
+    errors,
+    captureManifest: buildInternalCaptureManifest(
+      teams.length * 2 + (series.playoff_qualifier ? 1 : 0),
+      requests,
+    ),
   };
 }
 
@@ -745,7 +802,9 @@ async function loadPriorReferenceRows(poolId: number, seasonId: number): Promise
       provider: row.provider ?? row.source ?? "kalshi",
       eventId: referenceEventIdentity(row.marketTicker),
       ticker: row.marketTicker,
-      outcome: row.series.includes("STAGE") ? classifyEliminationMarket({ ticker: row.marketTicker }) : null,
+      outcome: row.series.includes("STAGE")
+        ? classifyEliminationMarket({ ticker: row.marketTicker })
+        : row.series.includes("PLAYOFF") ? "playoff_qualifier" : null,
       strike: row.series.includes("WIN") ? row.strike : null,
     };
     const identity = referenceContractKeyForPipeline(key);
@@ -786,6 +845,7 @@ function quoteReferenceCandidate(
   quote: RawMarketQuote,
   poolId: number,
   seasonId: number,
+  playoffQualifierSeries?: string,
 ): ReferenceCandidate {
   const strike = Number(quote.market.floor_strike ?? quote.market.floor_strike_fp);
   const isWin = Number.isInteger(strike) && strike >= 1 && strike <= 17;
@@ -794,7 +854,11 @@ function quoteReferenceCandidate(
     poolId, seasonId, provider: "kalshi",
     eventId: referenceEventIdentity(ticker),
     ticker,
-    outcome: isWin ? null : classifyEliminationMarket(quote.market),
+    outcome: isWin
+      ? null
+      : isPlayoffQualifierQuote(quote, playoffQualifierSeries)
+        ? "playoff_qualifier"
+        : classifyEliminationMarket(quote.market),
     strike: isWin ? strike : null,
   };
   return {
@@ -820,7 +884,9 @@ async function resolvePipelineQuotes(
   acceptedAt: Date,
 ): Promise<{ quotes: RawMarketQuote[]; references: PersistedReference[]; unavailable: PersistedReference[] }> {
   const previous = await loadPriorReferenceRows(poolId, seasonId);
-  const candidates = rawQuotes.map((quote) => quoteReferenceCandidate(quote, poolId, seasonId));
+  const series = config.kalshi.series as Record<string, string>;
+  const candidates = rawQuotes.map((quote) =>
+    quoteReferenceCandidate(quote, poolId, seasonId, series.playoff_qualifier));
   const currentByKey = new Map(candidates.map((candidate, index) => [
     referenceContractKeyForPipeline(candidate.key), rawQuotes[index]!,
   ]));
@@ -855,8 +921,10 @@ async function resolvePipelineQuotes(
       fetched: false,
     });
   }
-  const series = config.kalshi.series as Record<string, string>;
   const code = seasonCode(Number(config.season));
+  const stageSuffixes = series.playoff_qualifier
+    ? ["WC", "DIV", "CONF", "FL", "FW"]
+    : ["REG", "WC", "DIV", "CONF", "FL", "FW"];
   const expected = quoteTeams.flatMap((team) => [
     ...Array.from({ length: 17 }, (_, index) => ({
       series: series.win_totals,
@@ -864,12 +932,18 @@ async function resolvePipelineQuotes(
       strike: index + 1,
       outcome: null,
     })),
-    ...["REG", "WC", "DIV", "CONF", "FL", "FW"].map((suffix) => ({
+    ...stageSuffixes.map((suffix) => ({
       series: series.stage_of_elimination,
       ticker: `${series.stage_of_elimination}-${code}${team.code}-${suffix}`,
       strike: null,
       outcome: classifyEliminationMarket({ ticker: suffix }),
     })),
+    ...(series.playoff_qualifier ? [{
+      series: series.playoff_qualifier,
+      ticker: `${series.playoff_qualifier}-${code}-${team.code}`,
+      strike: null,
+      outcome: "playoff_qualifier",
+    }] : []),
   ]);
   for (const expectedQuote of expected) {
     const key: ReferenceContractKey = {
@@ -930,6 +1004,10 @@ function deriveQuoteState(
       .filter((quote) => quote.team === team.code && quote.series === series.win_totals);
     const stageQuotes = raw
       .filter((quote) => quote.team === team.code && quote.series === series.stage_of_elimination);
+    const playoffQuotes = series.playoff_qualifier
+      ? raw.filter((quote) =>
+          quote.team === team.code && quote.series === series.playoff_qualifier)
+      : [];
     let ladders = winQuotes
       .map((quote) => {
         const market = quote.market;
@@ -1023,6 +1101,7 @@ function deriveQuoteState(
     for (const quote of stageQuotes) {
       const market = quote.market;
       const outcome = classifyEliminationMarket(market);
+      if (series.playoff_qualifier && outcome === "no_playoffs") continue;
       const resolvedPrice = quote.resolvedReference?.referencePrice ?? null;
       if (outcome && resolvedPrice != null) {
         classified[outcome] = resolvedPrice;
@@ -1037,6 +1116,24 @@ function deriveQuoteState(
       if (outcome && decision.usedInFitting &&
           (transformed.kind === "bid_plus_cent" || transformed.kind === "settlement")) {
         classified[outcome] = transformed.value;
+      }
+    }
+    for (const quote of playoffQuotes) {
+      const market = quote.market;
+      const resolvedPrice = quote.resolvedReference?.referencePrice ?? null;
+      if (resolvedPrice != null) {
+        classified.no_playoffs = 1 - resolvedPrice;
+        continue;
+      }
+      const validationError = validateActiveQuote(market);
+      if (validationError) {
+        throw new Error(`Invalid playoff-qualifier quote for ${team.code}: ${validationError}.`);
+      }
+      const decision = quoteDecisionForPipeline(quote, evaluationTime, "bid_plus_cent");
+      const transformed = decision.transformation;
+      if (decision.usedInFitting &&
+          (transformed.kind === "bid_plus_cent" || transformed.kind === "settlement")) {
+        classified.no_playoffs = 1 - transformed.value;
       }
     }
     const required = ["no_playoffs", "wild_card", "divisional", "conference", "sb_loss", "sb_win"];

@@ -178,6 +178,109 @@ test("passes resolved stage marks unchanged and keeps unresolved supported win b
   assert.equal(stageMarket.yes_ask_dollars, "0.2600");
 });
 
+test("sources no-playoffs from the complement of the playoff qualifier reference", () => {
+  const fetchedAt = new Date("2026-09-20T14:04:00.000Z");
+  const config = {
+    kalshi: { series: {
+      win_totals: "KXNFLWINS",
+      playoff_qualifier: "KXNFLPLAYOFF",
+      stage_of_elimination: "KXNFLSTAGEOFELIM",
+    } },
+    pricing: { max_spread_for_mid: 0.15 },
+  };
+  const raw = [{
+    series: "KXNFLWINS",
+    team: "MIA",
+    market: {
+      ticker: "KXNFLWINS-27MIA-1",
+      floor_strike: 1,
+      status: "finalized",
+      result: "yes",
+    },
+    fetchedAt,
+  }, {
+    series: "KXNFLPLAYOFF",
+    team: "MIA",
+    market: {
+      ticker: "KXNFLPLAYOFF-27-MIA",
+      status: "active",
+      yes_bid_dollars: "0.6200",
+      yes_ask_dollars: "0.6400",
+    },
+    fetchedAt,
+    resolvedReference: { referencePrice: 0.63 },
+  }, ...[
+    ["REG", 0.99],
+    ["WC", 0.22],
+    ["DIV", 0.23],
+    ["CONF", 0.24],
+    ["FL", 0.25],
+    ["FW", 0.26],
+  ].map(([suffix, referencePrice]) => ({
+    series: "KXNFLSTAGEOFELIM",
+    team: "MIA",
+    market: {
+      ticker: `KXNFLSTAGEOFELIM-27MIA-${suffix}`,
+      status: "active",
+      yes_bid_dollars: "0.1000",
+    },
+    fetchedAt,
+    resolvedReference: { referencePrice },
+  }))];
+
+  const derived = mtmPipelineTestUtils.deriveQuoteState(
+    config,
+    [{ code: "MIA", name: "Miami Dolphins" }],
+    raw,
+    fetchedAt,
+  );
+
+  assert.equal(derived.elimination.MIA.no_playoffs, 0.37);
+  assert.equal(derived.elimination.MIA.wild_card, 0.22);
+  assert.notEqual(derived.elimination.MIA.no_playoffs, 0.99);
+});
+
+test("fails closed when the configured playoff qualifier is unavailable", () => {
+  const fetchedAt = new Date("2026-09-20T14:04:00.000Z");
+  const config = {
+    kalshi: { series: {
+      win_totals: "KXNFLWINS",
+      playoff_qualifier: "KXNFLPLAYOFF",
+      stage_of_elimination: "KXNFLSTAGEOFELIM",
+    } },
+  };
+  const raw = [{
+    series: "KXNFLWINS",
+    team: "MIA",
+    market: {
+      ticker: "KXNFLWINS-27MIA-1",
+      floor_strike: 1,
+      status: "finalized",
+      result: "yes",
+    },
+    fetchedAt,
+  }, ...["REG", "WC", "DIV", "CONF", "FL", "FW"].map((suffix) => ({
+    series: "KXNFLSTAGEOFELIM",
+    team: "MIA",
+    market: {
+      ticker: `KXNFLSTAGEOFELIM-27MIA-${suffix}`,
+      status: "active",
+      yes_bid_dollars: "0.1000",
+    },
+    fetchedAt,
+  }))];
+
+  assert.throws(
+    () => mtmPipelineTestUtils.deriveQuoteState(
+      config,
+      [{ code: "MIA", name: "Miami Dolphins" }],
+      raw,
+      fetchedAt,
+    ),
+    /Incomplete stage-of-elimination quotes for MIA/,
+  );
+});
+
 test("persists the exact Kalshi event request URL with every nested market", () => {
   const originalUrl = mtmPipelineTestUtils.kalshiEventUrl(
     "https://historical.example.test/trade-api/v2/",
