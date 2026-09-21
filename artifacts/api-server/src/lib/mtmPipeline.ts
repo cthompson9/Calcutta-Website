@@ -640,7 +640,6 @@ type PriorReferenceRow = {
   snapshotId: number;
   snapshotAsOf: Date;
   methodVersion: string;
-  stateJson: Record<string, unknown> | null;
   selectionReason: Record<string, unknown> | null;
 };
 
@@ -704,7 +703,6 @@ async function loadPriorReferenceRows(poolId: number, seasonId: number): Promise
     referenceSourceSnapshotId: mtmMarketQuoteTable.referenceSourceSnapshotId,
     referenceSourceTicker: mtmMarketQuoteTable.referenceSourceTicker,
     rawQuote: mtmMarketQuoteTable.rawQuote,
-    stateJson: mtmSnapshotTable.stateJson,
     methodVersion: mtmSnapshotTable.methodVersion,
   }).from(mtmMarketQuoteTable)
     .innerJoin(mtmSnapshotTable, eq(mtmSnapshotTable.id, mtmMarketQuoteTable.snapshotId))
@@ -718,6 +716,26 @@ async function loadPriorReferenceRows(poolId: number, seasonId: number): Promise
       ne(mtmSnapshotTable.methodVersion, "mtm-v3-review"),
     ))
     .orderBy(sql`${mtmValuationVersionTable.mtmAsOf} desc`, sql`${mtmMarketQuoteTable.marketTicker} asc`);
+  // A snapshot's state can be large. Selecting it through the quote join
+  // duplicates the same JSON once per contract and once per historical
+  // snapshot, which can exhaust the API heap before reference resolution.
+  // Load each state at most once, and only for legacy elimination rows that
+  // cannot be reconstructed from their persisted raw book.
+  const stateSnapshotIds = new Set<number>();
+  for (const row of rows) {
+    if (row.referencePrice != null || !row.series.includes("STAGE") || !row.rawQuote) continue;
+    if (selectReferenceMark(row.rawQuote).referencePrice == null) {
+      stateSnapshotIds.add(row.snapshotId);
+    }
+  }
+  const stateRows = stateSnapshotIds.size === 0
+    ? []
+    : await db.select({
+        snapshotId: mtmSnapshotTable.id,
+        stateJson: mtmSnapshotTable.stateJson,
+      }).from(mtmSnapshotTable)
+        .where(inArray(mtmSnapshotTable.id, [...stateSnapshotIds]));
+  const stateBySnapshot = new Map(stateRows.map((row) => [row.snapshotId, row.stateJson]));
   const seen = new Set<string>();
   return rows.flatMap((row) => {
     if (row.team == null || row.series == null) return [];
@@ -738,7 +756,7 @@ async function loadPriorReferenceRows(poolId: number, seasonId: number): Promise
     const eliminationMark = row.referencePrice == null &&
         selectedHistorical?.referencePrice == null &&
         row.series.includes("STAGE")
-      ? historicalEliminationMark(row.stateJson, row.team, key.outcome)
+      ? historicalEliminationMark(stateBySnapshot.get(row.snapshotId) ?? null, row.team, key.outcome)
       : null;
     const historicalPrice = row.referencePrice ??
       selectedHistorical?.referencePrice ??
