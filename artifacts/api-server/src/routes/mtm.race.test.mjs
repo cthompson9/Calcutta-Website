@@ -555,37 +555,18 @@ describe(
     }
 
     test(
-      "official promotion rejects stale canonical event and result provenance",
+      "official promotion permits old canonical provenance before the next kickoff",
       async () => {
         await resetCurrentVersionLedger();
         await resetPipelineLedger();
         const staleAt = new Date(Date.now() - 7 * 60 * 60 * 1_000);
-        await assert.rejects(
-          seedCoherentOfficialVersion(777, { asOf: staleAt, fetchedAt: staleAt }),
-          /Canonical event ledger is stale.*Actual-results ledger is stale/,
+        const promoted = await seedCoherentOfficialVersion(
+          777,
+          { asOf: staleAt, fetchedAt: staleAt },
         );
-        const rejected = await db.select({ id: mtmSnapshotTable.id })
-          .from(mtmSnapshotTable)
-          .where(and(
-            eq(mtmSnapshotTable.methodVersion, "coherent-test"),
-            eq(mtmSnapshotTable.asOf, staleAt),
-          ));
-        assert.ok(rejected.length > 0);
-        const rejectedIds = rejected.map((row) => row.id);
-        assert.equal(
-          (await db.select({ id: mtmCanonicalPeriodSelectionTable.id })
-            .from(mtmCanonicalPeriodSelectionTable)
-            .where(inArray(mtmCanonicalPeriodSelectionTable.snapshotId, rejectedIds))).length,
-          0,
-          "rejected official attempts must not select a canonical period",
-        );
-        assert.equal(
-          (await db.select({ id: calendarProjectionSnapshotsTable.id })
-            .from(calendarProjectionSnapshotsTable)
-            .where(inArray(calendarProjectionSnapshotsTable.mtmSnapshotId, rejectedIds))).length,
-          0,
-          "rejected official attempts must not publish calendar projections",
-        );
+        assert.ok(promoted.snapshotId > 0);
+        assert.ok(promoted.versionId > 0);
+        await resetCurrentVersionLedger();
         await resetPipelineLedger();
       },
     );

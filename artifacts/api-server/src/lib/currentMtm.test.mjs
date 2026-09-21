@@ -242,7 +242,7 @@ test("missing canonical source final is explicit incomplete evidence", () => {
   assert.deepEqual(classified.incompleteSourceEventIds, ["77"]);
 });
 
-test("canonical freshness rejects stale event and actual-results fetch timestamps", () => {
+test("canonical freshness ignores old ledgers off-window but rejects a stale active event", () => {
   const errors = validateMtmCanonicalDataFreshness({
     now: new Date("2026-09-14T18:00:00.000Z"),
     events: [{
@@ -263,9 +263,33 @@ test("canonical freshness rejects stale event and actual-results fetch timestamp
       }],
     },
   });
-  assert.match(errors.join("; "), /Canonical event ledger is stale/);
-  assert.match(errors.join("; "), /Actual-results ledger is stale/);
-  assert.match(errors.join("; "), /event 77 \(espn:401\) is stale/);
+  assert.deepEqual(errors, [
+    "Canonical event 77 (espn:401) is stale; fetched at 2026-09-14T10:00:00.000Z (maximum age 6 hours).",
+  ]);
+});
+
+test("canonical freshness permits an unchanged old ledger before the next kickoff", () => {
+  const errors = validateMtmCanonicalDataFreshness({
+    now: new Date("2026-09-14T18:00:00.000Z"),
+    events: [{
+      id: 77,
+      source: "espn",
+      sourceEventId: "401",
+      status: "scheduled",
+      kickoffAt: new Date("2026-09-15T17:00:00.000Z"),
+      updatedAt: new Date("2026-09-14T10:00:00.000Z"),
+      sourceData: { sourceFetchedAt: "2026-09-14T10:00:00.000Z" },
+    }],
+    inputProvenance: {
+      schedule: [{ fetched_at: "2026-09-14T10:00:00.000Z" }],
+      realized_results: [{
+        provider: "espn",
+        source_id: "399",
+        fetched_at: "2026-09-14T09:00:00.000Z",
+      }],
+    },
+  });
+  assert.deepEqual(errors, []);
 });
 
 test("canonical freshness rejects games still non-final after the kickoff grace period", () => {

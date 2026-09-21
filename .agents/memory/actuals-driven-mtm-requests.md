@@ -7,4 +7,4 @@ Hash canonical valuation-relevant Actuals content, not provider fetch timestamps
 
 **Why:** Provider re-fetches can change metadata without changing economics, while corrections can arrive during a long calculation. Treating either incorrectly can create needless runs or promote stale work.
 
-**How to apply:** All automatic Actuals paths enqueue through the shared request service after committing Actuals. A running job must leave a newer revision pending, lock contention remains queued, and manual recalculation stays forced through the same orchestration.
+**How to apply:** All automatic Actuals paths enqueue through the shared request service after committing Actuals. A running job must leave a newer revision pending, lock contention remains queued, and manual recalculation stays forced through the same orchestration. Freshness is game-window aware: old unchanged ledger fetches are valid between games, while events near or after kickoff require recent status, overdue non-final games are blocked, and finals require complete scores.

@@ -1745,11 +1745,6 @@ export function validateMtmCanonicalDataFreshness(args: {
     const newest = Math.max(...timestamps);
     if (newest > nowMs + 5 * 60 * 1_000) {
       errors.push(`${label} fetched timestamp is in the future.`);
-    } else if (nowMs - newest > MTM_CANONICAL_DATA_MAX_AGE_MS) {
-      errors.push(
-        `${label} is stale; newest fetched timestamp is ${new Date(newest).toISOString()} ` +
-        `(maximum age ${MTM_CANONICAL_DATA_MAX_AGE_MS / 3_600_000} hours).`,
-      );
     }
   };
   checkLedger("Canonical event ledger", scheduleFetchedTimes);
