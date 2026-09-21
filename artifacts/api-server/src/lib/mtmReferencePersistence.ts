@@ -134,6 +134,7 @@ export function resolveReferenceCandidates(
       contractId: candidate.contractId ?? candidate.key.ticker,
       ticker: candidate.ticker ?? candidate.key.ticker,
       eventId: candidate.eventId ?? candidate.key.eventId,
+      allowWideBookBidPlusCent: candidate.key.outcome === "playoff_qualifier",
     }, priorForCandidate(candidate, previous.get(key)));
     const carried = current.selectionMethod === "carried_forward";
     const acceptedAtValue = carried

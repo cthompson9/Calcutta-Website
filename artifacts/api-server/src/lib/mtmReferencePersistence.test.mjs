@@ -37,6 +37,48 @@ test("makes no-prior unavailable instead of fabricating a mark", () => {
   assert.equal(row.fetchOutcome, "failed");
 });
 
+test("applies bid plus one cent to wide playoff-qualifier books only", () => {
+  const acceptedAt = new Date("2026-09-02T12:00:00.000Z");
+  const [qualifier] = resolveReferenceCandidates(
+    [{
+      key: key({
+        eventId: "KXNFLPLAYOFF-27",
+        ticker: "KXNFLPLAYOFF-27-CAR",
+        outcome: "playoff_qualifier",
+      }),
+      ticker: "KXNFLPLAYOFF-27-CAR",
+      eventId: "KXNFLPLAYOFF-27",
+      status: "active",
+      yes_bid_dollars: "0.3500",
+      yes_ask_dollars: "0.4000",
+      last_price_dollars: "0.4200",
+      fetched: true,
+    }],
+    [],
+    acceptedAt,
+    5,
+  );
+  const [stage] = resolveReferenceCandidates(
+    [{
+      key: key(),
+      ticker: "STAGE-ARI-REG",
+      status: "active",
+      yes_bid_dollars: "0.3500",
+      yes_ask_dollars: "0.4000",
+      last_price_dollars: "0.4200",
+      fetched: true,
+    }],
+    [],
+    acceptedAt,
+    5,
+  );
+
+  assert.equal(qualifier.referencePrice, 0.36);
+  assert.equal(qualifier.selectionMethod, "bid_plus_cent");
+  assert.equal(stage.referencePrice, null);
+  assert.equal(stage.selectionMethod, "unavailable");
+});
+
 test("preserves original provenance across repeated carry-forward", () => {
   const [row] = resolveReferenceCandidates(
     [{ key: key(), fetched: false, missingContract: true }],

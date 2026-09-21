@@ -6,7 +6,7 @@
  * required by the pricing policy.
  */
 
-export const MTM_REFERENCE_MARK_POLICY_VERSION = "reference-mark-selector-v1";
+export const MTM_REFERENCE_MARK_POLICY_VERSION = "reference-mark-selector-v2";
 
 export type ReferenceSelectionMethod =
   | "last_in_book"
@@ -98,6 +98,7 @@ export type ReferenceMarkInput = {
   yes_bid_dollars?: unknown;
   yes_ask_dollars?: unknown;
   last_price_dollars?: unknown;
+  allowWideBookBidPlusCent?: boolean;
   [key: string]: unknown;
 };
 
@@ -383,13 +384,20 @@ export function selectReferenceMark(
     const midpoint = (ask.value! + bid.value!) / 2;
     const relative = midpoint > 0 ? spread / midpoint : Number.POSITIVE_INFINITY;
     const comparisonTolerance = 1e-12;
-    if (spread <= 0.02 + comparisonTolerance || relative <= 0.10 + comparisonTolerance) {
+    const tightBook = spread <= 0.02 + comparisonTolerance ||
+      relative <= 0.10 + comparisonTolerance;
+    if (tightBook || input.allowWideBookBidPlusCent === true) {
       const selected = Math.min(bid.value! + 0.01, ask.value!, 1);
       // Avoid binary floating-point artifacts without rounding the supplied
       // input used by the eligibility comparisons.
       return result(input, Number(selected.toFixed(12)), "bid_plus_cent", [
         ...reasons,
-        reason("selected_bid_plus_cent", "Selected capped bid plus one cent from a tight ordered book."),
+        reason(
+          "selected_bid_plus_cent",
+          tightBook
+            ? "Selected capped bid plus one cent from a tight ordered book."
+            : "Selected capped bid plus one cent from a valid ordered book under the contract pricing policy.",
+        ),
       ], normalized);
     }
     reasons.push(reason("book_too_wide", "The ordered book exceeds both tight-book thresholds."));

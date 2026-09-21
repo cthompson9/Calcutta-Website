@@ -66,6 +66,19 @@ test("uses inclusive tight-book boundaries and caps at ask and one", () => {
   }).selectionMethod, "bid_plus_cent");
 });
 
+test("allows explicit bid-plus-cent pricing on a valid wide book", () => {
+  const result = selectReferenceMark({
+    ...base,
+    yesBid: 0.35,
+    yesAsk: 0.40,
+    lastPrice: 0.42,
+    allowWideBookBidPlusCent: true,
+  });
+  assert.equal(result.referencePrice, 0.36);
+  assert.equal(result.selectionMethod, "bid_plus_cent");
+  assert.ok(result.reasons.some(({ code }) => code === "last_outside_book"));
+});
+
 test("invalid fields and crossed books cannot be repaired into an eligible book", () => {
   const malformedAsk = selectReferenceMark({ ...base, yesBid: 0.4, yesAsk: "not-a-number" });
   assert.equal(malformedAsk.selectionMethod, "unavailable");
