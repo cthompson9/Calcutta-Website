@@ -7,6 +7,7 @@ import {
   mtmSnapshotsTable,
   mtmSnapshotTable,
   mtmMarketQuoteTable,
+  mtmJobRunsTable,
   mtmValuationVersionTable,
   mtmCanonicalPeriodSelectionTable,
   calendarProjectionSnapshotsTable,
@@ -291,6 +292,25 @@ router.get("/mtm/pipeline/evidence", requireAdmin, async (req, res): Promise<voi
   const quoteCountByAttempt = new Map(
     quoteCountRows.map((row) => [row.snapshotId, Number(row.quoteCount)]),
   );
+  const jobRows = attemptIds.length === 0
+    ? []
+    : await db
+      .select({
+        snapshotId: mtmJobRunsTable.snapshotId,
+        status: mtmJobRunsTable.status,
+        error: mtmJobRunsTable.error,
+        leaseUntil: mtmJobRunsTable.leaseUntil,
+        startedAt: mtmJobRunsTable.startedAt,
+      })
+      .from(mtmJobRunsTable)
+      .where(inArray(mtmJobRunsTable.snapshotId, attemptIds))
+      .orderBy(desc(mtmJobRunsTable.startedAt));
+  const jobByAttempt = new Map<number, (typeof jobRows)[number]>();
+  for (const job of jobRows) {
+    if (job.snapshotId != null && !jobByAttempt.has(job.snapshotId)) {
+      jobByAttempt.set(job.snapshotId, job);
+    }
+  }
   const currentVersionRows = await db
     .select({ sourceSnapshotId: mtmValuationVersionTable.sourceSnapshotId })
     .from(mtmValuationVersionTable)
@@ -299,20 +319,29 @@ router.get("/mtm/pipeline/evidence", requireAdmin, async (req, res): Promise<voi
       eq(mtmValuationVersionTable.status, "current"),
     ));
   const currentSourceIds = new Set(currentVersionRows.map((row) => row.sourceSnapshotId));
-  const attempts = attemptRows.map((attempt) => ({
-    id: attempt.id,
-    status: attempt.status as "ok" | "failed",
-    trigger: attempt.trigger as "scheduled" | "manual",
-    asOf: attempt.asOf.toISOString(),
-    createdAt: attempt.createdAt.toISOString(),
-    methodVersion: attempt.methodVersion,
-    error: attempt.error,
-    quoteCount: quoteCountByAttempt.get(attempt.id) ?? 0,
-    deletable: !currentSourceIds.has(attempt.id),
-    deleteBlockedReason: currentSourceIds.has(attempt.id)
-      ? "This update is the current published MTM mark. Recalculate and promote a replacement before deleting it."
-      : null,
-  }));
+  const attempts = attemptRows.map((attempt) => {
+    const job = jobByAttempt.get(attempt.id);
+    const running = job?.status === "running" && job.leaseUntil.getTime() > Date.now();
+    const current = currentSourceIds.has(attempt.id);
+    return {
+      id: attempt.id,
+      status: running ? "running" as const : attempt.status as "ok" | "failed",
+      trigger: attempt.trigger as "scheduled" | "manual",
+      asOf: attempt.asOf.toISOString(),
+      createdAt: attempt.createdAt.toISOString(),
+      methodVersion: attempt.methodVersion,
+      error: attempt.error ?? (
+        job && ["failed", "abandoned"].includes(job.status)
+          ? job.error ?? `MTM recalculation ${job.status}.`
+          : null
+      ),
+      quoteCount: quoteCountByAttempt.get(attempt.id) ?? 0,
+      deletable: !current && !running,
+      deleteBlockedReason: current
+        ? "This update is the current published MTM mark. Recalculate and promote a replacement before deleting it."
+        : running ? "This MTM update is still running." : null,
+    };
+  });
 
   if (attempts.length === 0) {
     sendParsedJson(res, GetMtmPipelineEvidenceResponse, {

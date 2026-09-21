@@ -7,4 +7,4 @@ Do not hold a PostgreSQL session-level advisory-lock connection across the full 
 
 **Why:** In production, the managed database terminated the long-held lock connection with an administrator command while the engine was running. The unhandled client error crashed the API process, leaving an append-only attempt incomplete and unpromoted even though the same calculation worked in development.
 
-**How to apply:** Any production-capable MTM recalculation or review path that can run for minutes must avoid depending on one continuously open database session for mutual exclusion. Recovery must leave the prior official mark active and clearly classify abandoned attempts.
+**How to apply:** Any production-capable MTM recalculation or review path that can run for minutes must avoid depending on one continuously open database session for mutual exclusion. Recovery must leave the prior official mark active and clearly classify abandoned attempts. Audit views must derive an attached attempt’s running state from its durable unexpired job lease; a snapshot’s provisional fail-closed status is not a terminal failure.

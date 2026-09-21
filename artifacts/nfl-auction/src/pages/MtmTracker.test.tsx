@@ -37,7 +37,7 @@ afterEach(() => {
 
 type EvidenceAttempt = {
   id: number;
-  status: "ok" | "failed";
+  status: "ok" | "failed" | "running";
   trigger: "scheduled" | "manual";
   asOf: string;
   createdAt: string;
@@ -171,6 +171,27 @@ describe("MtmEvidenceInspector deletion", () => {
     expect(await screen.findByText("Pending")).toBeInTheDocument();
     expect(screen.getByText("In progress")).toBeInTheDocument();
     expect(screen.getByText(/Sep 14/i)).toBeInTheDocument();
+  });
+
+  it("renders a durable running attempt without presenting it as a failure", async () => {
+    const running = evidenceAttempt(101, {
+      status: "running",
+      error: null,
+      deletable: false,
+      deleteBlockedReason: "This MTM update is still running.",
+    });
+    vi.spyOn(globalThis, "fetch").mockResolvedValue(
+      new Response(JSON.stringify(evidenceResponse([running], running.id)), { status: 200 }),
+    );
+
+    renderEvidenceInspector();
+
+    expect(await screen.findByRole("heading", { name: /^Attempt #101/ })).toBeInTheDocument();
+    expect(screen.getByText("Running")).toBeInTheDocument();
+    expect(screen.queryByText("Failed")).not.toBeInTheDocument();
+    expect(screen.queryByText("Exception")).not.toBeInTheDocument();
+    expect(screen.getByRole("button", { name: "Delete update" })).toBeDisabled();
+    expect(screen.getByText("This MTM update is still running.")).toBeInTheDocument();
   });
 
   it("shows the current published update as disabled with its explanation", async () => {

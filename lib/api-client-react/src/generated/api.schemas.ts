@@ -1642,6 +1642,7 @@ export type MtmPipelineAttemptStatus = typeof MtmPipelineAttemptStatus[keyof typ
 export const MtmPipelineAttemptStatus = {
   ok: 'ok',
   failed: 'failed',
+  running: 'running',
 } as const;
 
 export type MtmPipelineAttemptTrigger = typeof MtmPipelineAttemptTrigger[keyof typeof MtmPipelineAttemptTrigger];

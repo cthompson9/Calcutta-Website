@@ -1820,7 +1820,7 @@ export const GetMtmPipelineEvidenceQueryParams = zod.object({
 export const GetMtmPipelineEvidenceResponse = zod.object({
   "attempts": zod.array(zod.object({
   "id": zod.number(),
-  "status": zod.enum(['ok', 'failed']),
+  "status": zod.enum(['ok', 'failed', 'running']),
   "trigger": zod.enum(['scheduled', 'manual']),
   "asOf": zod.coerce.date(),
   "createdAt": zod.coerce.date(),
@@ -1832,7 +1832,7 @@ export const GetMtmPipelineEvidenceResponse = zod.object({
 })),
   "selectedAttempt": zod.union([zod.object({
   "id": zod.number(),
-  "status": zod.enum(['ok', 'failed']),
+  "status": zod.enum(['ok', 'failed', 'running']),
   "trigger": zod.enum(['scheduled', 'manual']),
   "asOf": zod.coerce.date(),
   "createdAt": zod.coerce.date(),

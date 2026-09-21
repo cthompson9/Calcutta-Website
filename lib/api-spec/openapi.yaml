@@ -3651,7 +3651,7 @@ components:
           type: number
         status:
           type: string
-          enum: [ok, failed]
+          enum: [ok, failed, running]
         trigger:
           type: string
           enum: [scheduled, manual]

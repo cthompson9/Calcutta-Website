@@ -199,7 +199,7 @@ export function visiblePipelineHistory(
 
 type MtmPipelineAttempt = {
   id: number;
-  status: "ok" | "failed";
+  status: "ok" | "failed" | "running";
   trigger: "scheduled" | "manual";
   asOf: string;
   createdAt: string;
@@ -3275,7 +3275,14 @@ export function MtmEvidenceInspector({
                      <span className="font-mono font-semibold text-xs tracking-tight">
                        {new Date(a.createdAt).toLocaleString("en-US", { month: "short", day: "numeric", hour: "numeric", minute: "2-digit" })}
                      </span>
-                     <span className={cn("px-1.5 py-0.5 text-[9px] font-mono font-bold uppercase tracking-wider rounded-sm", a.status === "ok" ? "bg-emerald-500/15 text-emerald-700 dark:text-emerald-400" : "bg-red-500/15 text-red-700 dark:text-red-400")}>
+                      <span className={cn(
+                        "px-1.5 py-0.5 text-[9px] font-mono font-bold uppercase tracking-wider rounded-sm",
+                        a.status === "ok"
+                          ? "bg-emerald-500/15 text-emerald-700 dark:text-emerald-400"
+                          : a.status === "running"
+                            ? "bg-amber-500/15 text-amber-700 dark:text-amber-400"
+                            : "bg-red-500/15 text-red-700 dark:text-red-400",
+                      )}>
                        {a.status}
                      </span>
                    </div>
@@ -3316,8 +3323,15 @@ export function MtmEvidenceInspector({
                      </p>
                    </div>
                     <div className="flex flex-col items-end gap-2">
-                      <div className={cn("px-3 py-1 font-mono text-xs font-bold uppercase tracking-widest border rounded-sm", attempt.status === "ok" ? "border-emerald-500/30 bg-emerald-500/10 text-emerald-700 dark:text-emerald-400" : "border-red-500/30 bg-red-500/10 text-red-700 dark:text-red-400")}>
-                        {attempt.status === "ok" ? "Success" : "Failed"}
+                       <div className={cn(
+                         "px-3 py-1 font-mono text-xs font-bold uppercase tracking-widest border rounded-sm",
+                         attempt.status === "ok"
+                           ? "border-emerald-500/30 bg-emerald-500/10 text-emerald-700 dark:text-emerald-400"
+                           : attempt.status === "running"
+                             ? "border-amber-500/30 bg-amber-500/10 text-amber-700 dark:text-amber-400"
+                             : "border-red-500/30 bg-red-500/10 text-red-700 dark:text-red-400",
+                       )}>
+                         {attempt.status === "ok" ? "Success" : attempt.status === "running" ? "Running" : "Failed"}
                       </div>
                       <button
                         type="button"
