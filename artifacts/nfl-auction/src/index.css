@@ -167,6 +167,15 @@
   }
 }
 
+@media (min-width: 768px) {
+  html,
+  body,
+  #root {
+    height: 100%;
+    overflow: hidden;
+  }
+}
+
 @layer utilities {
   /*
    * Keep column labels visible while long reports scroll. The mobile shell is
