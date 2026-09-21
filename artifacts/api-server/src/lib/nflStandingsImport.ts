@@ -14,10 +14,12 @@ import {
 import { resolveSeasonIdForSport } from "./calcuttaContext";
 import { OWNERSHIP_SEASON_LOCK_NAMESPACE } from "./ownershipShares";
 import { reconcileNflCurrentMtm } from "./currentMtm";
+import { runFullMtmRecalculation } from "./mtmRecalculation";
 import {
-  requiresFullMtmRecalculation,
-  runFullMtmRecalculation,
-} from "./mtmRecalculation";
+  currentNflActualsRevision,
+  processPendingMtmActualsRecalculations,
+  requestMtmRecalculationAfterActualsCommit,
+} from "./mtmActualsRecalculation";
 
 export const NFL_STANDINGS_PHASE = "REG" as const;
 export const NFL_STANDINGS_SOURCE = "nfl_standings_reg";
@@ -555,18 +557,25 @@ export async function applyNflStandingsImport(args: {
     // This runs strictly after the standings/event transaction commits. A
     // reconciliation failure must never roll back successful actuals import.
     mtmReconciliation = await reconcileNflCurrentMtm({ seasonId });
-    if (args.runMtmInline !== false && requiresFullMtmRecalculation(mtmReconciliation)) for (const result of mtmReconciliation) {
-      if (result.poolId === 0 || (result.markType !== "pending_recalculation" && result.status !== "warning")) continue;
-      try {
-        await runFullMtmRecalculation({
+    const revision = await currentNflActualsRevision(seasonId);
+    const queued = await requestMtmRecalculationAfterActualsCommit({
+      seasonId,
+      revision,
+    });
+    if (args.runMtmInline !== false) {
+      const processed = await processPendingMtmActualsRecalculations({
+        poolIds: queued.poolIds,
+        currentRevision: async () => currentNflActualsRevision(seasonId),
+        run: async (poolId) => { await runFullMtmRecalculation({
           seasonYear: args.seasonYear,
-          calcuttaId: result.poolId,
+          calcuttaId: poolId,
           trigger: "scheduled",
-        });
-      } catch (error) {
-        result.status = "warning";
-        result.warning = `${result.warning ? `${result.warning} ` : ""}Full recalculation required: ${error instanceof Error ? error.message : String(error)}`;
-      }
+        }); },
+      });
+      mtmReconciliation = mtmReconciliation.map((result) => ({
+        ...result,
+        ...(result.poolId === 0 ? {} : { mtmRequest: processed }),
+      }));
     }
   } catch (error) {
     const warning = error instanceof Error ? error.message : String(error);

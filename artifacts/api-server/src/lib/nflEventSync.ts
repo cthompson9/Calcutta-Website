@@ -128,7 +128,6 @@ export function parseEspnRegularSeasonEvents(
         provider: "espn",
         statusName: statusType?.name ?? null,
         kickoffTimeConfirmed: competition?.timeValid !== false,
-        sourceFetchedAt: payload.provenance?.fetchedAt ?? null,
       },
       sourceUrl: payload.provenance?.sourceUrl ?? null,
       sourceFetchedAt: payload.provenance?.fetchedAt
@@ -372,8 +371,7 @@ export async function syncNflEventsAndRealizedMetricsTx(
           ${eventsTable.homeTeamId} is distinct from excluded.home_team_id or
           ${eventsTable.status} is distinct from excluded.status or
           ${eventsTable.awayScore} is distinct from excluded.away_score or
-          ${eventsTable.homeScore} is distinct from excluded.home_score or
-          ${eventsTable.sourceData} is distinct from excluded.source_data
+          ${eventsTable.homeScore} is distinct from excluded.home_score
         `,
       });
       if (

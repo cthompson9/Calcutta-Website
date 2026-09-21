@@ -403,6 +403,45 @@ export interface ErrorResponse {
   error: string;
 }
 
+export type MtmReferenceMarketsResponseSchemaVersion = typeof MtmReferenceMarketsResponseSchemaVersion[keyof typeof MtmReferenceMarketsResponseSchemaVersion];
+
+
+export const MtmReferenceMarketsResponseSchemaVersion = {
+  '10': '1.0',
+} as const;
+
+/**
+ * @nullable
+ */
+export type MtmReferenceMarketsResponseSnapshot = { [key: string]: unknown } | null;
+
+export type MtmReferenceMarketsResponseCurrentState = { [key: string]: unknown };
+
+export type MtmReferenceMarketsResponseUnits = { [key: string]: unknown };
+
+export type MtmReferenceMarketsResponseSummary = { [key: string]: unknown };
+
+export type MtmReferenceMarketsResponseMarketsItem = { [key: string]: unknown };
+
+export type MtmReferenceMarketsResponseTeamValuesItem = { [key: string]: unknown };
+
+export type MtmReferenceMarketsResponsePagination = { [key: string]: unknown };
+
+export interface MtmReferenceMarketsResponse {
+  schemaVersion: MtmReferenceMarketsResponseSchemaVersion;
+  available: boolean;
+  season: number;
+  calcuttaId: number;
+  /** @nullable */
+  snapshot: MtmReferenceMarketsResponseSnapshot;
+  currentState: MtmReferenceMarketsResponseCurrentState;
+  units: MtmReferenceMarketsResponseUnits;
+  summary: MtmReferenceMarketsResponseSummary;
+  markets: MtmReferenceMarketsResponseMarketsItem[];
+  teamValues: MtmReferenceMarketsResponseTeamValuesItem[];
+  pagination: MtmReferenceMarketsResponsePagination;
+}
+
 export type NflStandingsRefreshJobInputJob = typeof NflStandingsRefreshJobInputJob[keyof typeof NflStandingsRefreshJobInputJob];
 
 
@@ -2825,6 +2864,35 @@ export const GetMtmValuationMarkType = {
   latest: 'latest',
   canonical: 'canonical',
   provisional: 'provisional',
+} as const;
+
+export type GetMtmReferenceMarketsParams = {
+season: number;
+/**
+ * @minimum 1
+ */
+calcuttaId?: number;
+/**
+ * @minimum 1
+ */
+snapshotId?: number;
+team?: string;
+family?: GetMtmReferenceMarketsFamily;
+ticker?: string;
+/**
+ * @minimum 1
+ * @maximum 200
+ */
+limit?: number;
+cursor?: string;
+};
+
+export type GetMtmReferenceMarketsFamily = typeof GetMtmReferenceMarketsFamily[keyof typeof GetMtmReferenceMarketsFamily];
+
+
+export const GetMtmReferenceMarketsFamily = {
+  wins: 'wins',
+  elimination: 'elimination',
 } as const;
 
 export type GetMtmPipelineEvidenceParams = {

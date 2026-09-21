@@ -232,7 +232,8 @@ def build_joint_review_snapshot(config: dict, state: dict) -> dict:
 
 def _build_snapshot(config: dict, state: dict,
                     runtime: simulate.RuntimeDiagnostics | None = None,
-                    *, enforce_gate: bool = True) -> dict:
+                    *, enforce_gate: bool = True,
+                    reference_policy: bool = False) -> dict:
     runtime = runtime or simulate.RuntimeDiagnostics()
     rubric = config["rubric"]
     games = config["games_per_team"]
@@ -244,7 +245,9 @@ def _build_snapshot(config: dict, state: dict,
     with runtime.stage("wins"):
         for t in teams:
             rungs = [wins.Rung(r["strike"], r.get("yes_bid"), r.get("yes_ask"),
-                               r.get("volume", 0), r.get("status"), r.get("result"))
+                               r.get("volume", 0), r.get("status"), r.get("result"),
+                               r.get("reference_price") if reference_policy else None,
+                               r.get("selection_method") if reference_policy else None)
                      for r in state["win_ladders"][t]]
             res = wins.expected_wins_from_ladder(rungs, games,
                                                  config["pricing"]["max_spread_for_mid"])
@@ -255,9 +258,34 @@ def _build_snapshot(config: dict, state: dict,
 
     # ---- playoffs: elimination -> reach -> power-normalized ----
     with runtime.stage("playoff_normalization"):
-        reach_raw = {t: playoffs.reach_from_elimination(state["elimination_quotes"][t])
+        exclusive = {}
+        exclusive_alphas = {}
+        reach_fixed = {}
+        for t in teams:
+            raw = state["elimination_quotes"][t]
+            if reference_policy:
+                facts = state.get("elimination_fixed_facts", {}).get(t, {})
+                normalized_exclusive = playoffs.normalize_exclusive(raw, facts)
+                exclusive[t] = normalized_exclusive["probabilities"]
+                exclusive_alphas[t] = normalized_exclusive["alpha"]
+                # A cumulative reach fact is fixed when every exclusive
+                # outcome contributing to that partition is a verified fact.
+                reach_fixed[t] = {
+                    "berth": all(facts.get(k, False) for k in playoffs.ELIM_ORDER[1:]),
+                    "divisional": all(facts.get(k, False) for k in playoffs.ELIM_ORDER[2:]),
+                    "conference": all(facts.get(k, False) for k in playoffs.ELIM_ORDER[3:]),
+                    "sb_berth": all(facts.get(k, False) for k in playoffs.ELIM_ORDER[4:]),
+                    "sb_win": bool(facts.get("sb_win", False)),
+                }
+            else:
+                exclusive[t] = raw
+        reach_raw = {t: playoffs.reach_from_elimination(exclusive[t])
                      for t in teams}
-        norm = playoffs.normalize_all(reach_raw, config["stage_targets"])
+        norm = playoffs.normalize_all(
+            reach_raw, config["stage_targets"],
+            fixed=reach_fixed if reference_policy else None,
+            method_version="reference-mark-power-v1" if reference_policy else "normalized-point-v2",
+        )
 
     # ---- point differential: market-calibrated ratings -> analytic E[diff] ----
     target_remaining = {t: max(e_wins[t] - state["realized"][t]["wins"], 0.0)
@@ -409,8 +437,18 @@ def _build_snapshot(config: dict, state: dict,
         "diagnostics": {
             "runtime": runtime.snapshot(),
             "wins": win_diags,
+            "policy_version": "reference-mark-power-v1" if reference_policy else "normalized-point-v2",
             "playoff_alphas": norm["alphas"],
             "playoff_residuals": norm["residuals"],
+            "playoff_normalization": {
+                "method_version": norm.get("method_version"),
+                "exclusive_alphas": exclusive_alphas,
+                "exclusive_probabilities": exclusive,
+                "iterations": norm.get("iterations"),
+                "converged": norm.get("converged"),
+                "monotonicity_residual": norm.get("monotonicity_residual"),
+                "final_exclusive_probabilities": norm.get("exclusive"),
+            },
             "rating_fit_max_win_error": fit["max_abs_win_error"],
             "rating_fit": fit.get("fit_diagnostics", {}),
             **valued["diagnostics"],
@@ -446,6 +484,10 @@ def build_snapshot(config: dict, state: dict,
         if selected == POLICY:
             raise ValueError('interval pricing cannot be combined with a review-only runner')
         return build_joint_review_snapshot(config, state)
+    if selected == "reference-mark-power-v1":
+        return _build_snapshot(
+            config, state, runtime=runtime, enforce_gate=True, reference_policy=True
+        )
     if selected == POLICY:
         return build_interval_snapshot(config, state, runtime or simulate.RuntimeDiagnostics())
     return _build_snapshot(config, state, runtime=runtime, enforce_gate=True)

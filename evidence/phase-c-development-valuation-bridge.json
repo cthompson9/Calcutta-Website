@@ -1,0 +1,71 @@
+{
+  "artifact": "phase-c-development-valuation-bridge",
+  "status": "offline_candidate_comparison",
+  "write_safety": {
+    "database_reads": false,
+    "database_writes": false,
+    "source": "recorded read-only export .local/exports/snapshot-25-inputs"
+  },
+  "fixture": {
+    "snapshot_id": 25,
+    "as_of": "2026-08-29T00:00:00Z",
+    "actuals_revision": null,
+    "actuals_revision_note": "The export contains realized standings but no Actuals revision identifier."
+  },
+  "policies": {
+    "prior": "market-interval-win-priority-v1",
+    "new": "reference-mark-power-v1",
+    "prior_run_status": "candidate",
+    "new_run_status": "candidate",
+    "path_count": 40000
+  },
+  "teams": [
+    {"team":"GB","prior_gross":3.46,"new_gross":3.42,"difference":-0.04,"fresh_count":null,"retained_count":null},
+    {"team":"KC","prior_gross":4.63,"new_gross":4.91,"difference":0.28,"fresh_count":null,"retained_count":null},
+    {"team":"LV","prior_gross":1.92,"new_gross":1.74,"difference":-0.18,"fresh_count":null,"retained_count":null},
+    {"team":"NE","prior_gross":3.51,"new_gross":3.57,"difference":0.06,"fresh_count":null,"retained_count":null},
+    {"team":"NO","prior_gross":2.37,"new_gross":2.19,"difference":-0.18,"fresh_count":null,"retained_count":null},
+    {"team":"SF","prior_gross":4.72,"new_gross":5.55,"difference":0.83,"fresh_count":null,"retained_count":null},
+    {"team":"TB","prior_gross":2.65,"new_gross":2.46,"difference":-0.19,"fresh_count":null,"retained_count":null},
+    {"team":"ARI","prior_gross":1.12,"new_gross":0.99,"difference":-0.13,"fresh_count":null,"retained_count":null},
+    {"team":"ATL","prior_gross":1.64,"new_gross":1.38,"difference":-0.26,"fresh_count":null,"retained_count":null},
+    {"team":"BAL","prior_gross":5.39,"new_gross":5.61,"difference":0.22,"fresh_count":null,"retained_count":null},
+    {"team":"BUF","prior_gross":5.76,"new_gross":5.78,"difference":0.02,"fresh_count":null,"retained_count":null},
+    {"team":"CAR","prior_gross":1.55,"new_gross":1.45,"difference":-0.10,"fresh_count":null,"retained_count":null},
+    {"team":"CHI","prior_gross":3.77,"new_gross":4.59,"difference":0.82,"fresh_count":null,"retained_count":null},
+    {"team":"CIN","prior_gross":4.26,"new_gross":4.37,"difference":0.11,"fresh_count":null,"retained_count":null},
+    {"team":"CLE","prior_gross":0.86,"new_gross":0.61,"difference":-0.25,"fresh_count":null,"retained_count":null},
+    {"team":"DAL","prior_gross":3.53,"new_gross":3.05,"difference":-0.48,"fresh_count":null,"retained_count":null},
+    {"team":"DEN","prior_gross":3.08,"new_gross":3.30,"difference":0.22,"fresh_count":null,"retained_count":null},
+    {"team":"DET","prior_gross":3.92,"new_gross":3.98,"difference":0.06,"fresh_count":null,"retained_count":null},
+    {"team":"HOU","prior_gross":4.23,"new_gross":4.30,"difference":0.07,"fresh_count":null,"retained_count":null},
+    {"team":"IND","prior_gross":2.15,"new_gross":2.06,"difference":-0.09,"fresh_count":null,"retained_count":null},
+    {"team":"JAC","prior_gross":3.88,"new_gross":4.14,"difference":0.26,"fresh_count":null,"retained_count":null},
+    {"team":"LAC","prior_gross":2.71,"new_gross":2.88,"difference":0.17,"fresh_count":null,"retained_count":null},
+    {"team":"LAR","prior_gross":5.95,"new_gross":5.82,"difference":-0.13,"fresh_count":null,"retained_count":null},
+    {"team":"MIA","prior_gross":0.74,"new_gross":0.26,"difference":-0.48,"fresh_count":null,"retained_count":null},
+    {"team":"MIN","prior_gross":2.93,"new_gross":2.83,"difference":-0.10,"fresh_count":null,"retained_count":null},
+    {"team":"NYG","prior_gross":2.85,"new_gross":2.65,"difference":-0.20,"fresh_count":null,"retained_count":null},
+    {"team":"NYJ","prior_gross":1.57,"new_gross":1.55,"difference":-0.02,"fresh_count":null,"retained_count":null},
+    {"team":"PHI","prior_gross":3.98,"new_gross":4.12,"difference":0.14,"fresh_count":null,"retained_count":null},
+    {"team":"PIT","prior_gross":2.92,"new_gross":3.03,"difference":0.11,"fresh_count":null,"retained_count":null},
+    {"team":"SEA","prior_gross":4.66,"new_gross":4.68,"difference":0.02,"fresh_count":null,"retained_count":null},
+    {"team":"TEN","prior_gross":1.20,"new_gross":0.76,"difference":-0.44,"fresh_count":null,"retained_count":null},
+    {"team":"WAS","prior_gross":2.09,"new_gross":1.97,"difference":-0.12,"fresh_count":null,"retained_count":null}
+  ],
+  "pool_total_check": {
+    "prior_total": 100.0,
+    "new_total": 100.0,
+    "prior_pass": true,
+    "new_pass": true,
+    "tolerance": 1e-8,
+    "unit": "synthetic 100-unit pool"
+  },
+  "limitations": [
+    "This is a recorded-input offline candidate comparison, not a production or DB snapshot publication.",
+    "The export excludes entries, owners, holdings, auction prices, and actual pot; values are synthetic 100-unit pool gross payouts.",
+    "Fresh/retained reference provenance counts were not recorded in the fixture and are therefore null, not inferred.",
+    "Actuals revision was not present in the export.",
+    "Both runs were candidate calculations; neither changed the official pointer."
+  ]
+}

@@ -46,6 +46,7 @@ import type {
   GetConsortiumLeaderboardV2Params,
   GetGameV2Params,
   GetMtmPipelineEvidenceParams,
+  GetMtmReferenceMarketsParams,
   GetMtmSnapshotsParams,
   GetMtmValuationParams,
   GetOwnerPortfolioPerformanceV2Params,
@@ -73,6 +74,7 @@ import type {
   MtmPipelineAttemptDeletion,
   MtmPipelineAttemptDeletionResult,
   MtmPipelineEvidenceResponse,
+  MtmReferenceMarketsResponse,
   MtmSnapshot,
   MtmSnapshotInput,
   MtmValuation,
@@ -3332,6 +3334,90 @@ export function useGetMtmValuation<TData = Awaited<ReturnType<typeof getMtmValua
  ):  UseQueryResult<TData, TError> & { queryKey: QueryKey } {
 
   const queryOptions = getGetMtmValuationQueryOptions(params,options)
+
+  const query = useQuery(queryOptions) as  UseQueryResult<TData, TError> & { queryKey: QueryKey };
+
+  return withQueryKey(query, queryOptions.queryKey);
+}
+
+
+
+
+
+
+
+export const getGetMtmReferenceMarketsUrl = (params: GetMtmReferenceMarketsParams,) => {
+  const normalizedParams = new URLSearchParams();
+
+  Object.entries(params || {}).forEach(([key, value]) => {
+
+    if (value !== undefined) {
+      normalizedParams.append(key, value === null ? 'null' : String(value))
+    }
+  });
+
+  const stringifiedParams = normalizedParams.toString();
+
+  return stringifiedParams.length > 0 ? `/api/mtm/reference-markets?${stringifiedParams}` : `/api/mtm/reference-markets`
+}
+
+/**
+ * @summary Read stored MTM reference-market marks
+ */
+export const getMtmReferenceMarkets = async (params: GetMtmReferenceMarketsParams, options?: Parameters<typeof customFetch>[1]): Promise<MtmReferenceMarketsResponse> => {
+
+  return customFetch<MtmReferenceMarketsResponse>(getGetMtmReferenceMarketsUrl(params),
+  {
+    ...options,
+    method: 'GET'
+
+
+  }
+);}
+
+
+
+
+
+export const getGetMtmReferenceMarketsQueryKey = (params?: GetMtmReferenceMarketsParams,) => {
+    return [
+    `/api/mtm/reference-markets`, ...(params ? [params] : [])
+    ] as const;
+    }
+
+
+export const getGetMtmReferenceMarketsQueryOptions = <TData = Awaited<ReturnType<typeof getMtmReferenceMarkets>>, TError = ErrorType<ErrorResponse>>(params: GetMtmReferenceMarketsParams, options?: { query?:UseQueryOptions<Awaited<ReturnType<typeof getMtmReferenceMarkets>>, TError, TData>, request?: SecondParameter<typeof customFetch>}
+) => {
+
+const {query: queryOptions, request: requestOptions} = options ?? {};
+
+  const queryKey =  queryOptions?.queryKey ?? getGetMtmReferenceMarketsQueryKey(params);
+
+
+
+    const queryFn: QueryFunction<Awaited<ReturnType<typeof getMtmReferenceMarkets>>> = ({ signal }) => getMtmReferenceMarkets(params, { signal, ...requestOptions });
+
+
+
+
+
+   return  { queryKey, queryFn, ...queryOptions} as UseQueryOptions<Awaited<ReturnType<typeof getMtmReferenceMarkets>>, TError, TData> & { queryKey: QueryKey }
+}
+
+export type GetMtmReferenceMarketsQueryResult = NonNullable<Awaited<ReturnType<typeof getMtmReferenceMarkets>>>
+export type GetMtmReferenceMarketsQueryError = ErrorType<ErrorResponse>
+
+
+/**
+ * @summary Read stored MTM reference-market marks
+ */
+
+export function useGetMtmReferenceMarkets<TData = Awaited<ReturnType<typeof getMtmReferenceMarkets>>, TError = ErrorType<ErrorResponse>>(
+ params: GetMtmReferenceMarketsParams, options?: { query?:UseQueryOptions<Awaited<ReturnType<typeof getMtmReferenceMarkets>>, TError, TData>, request?: SecondParameter<typeof customFetch>}
+
+ ):  UseQueryResult<TData, TError> & { queryKey: QueryKey } {
+
+  const queryOptions = getGetMtmReferenceMarketsQueryOptions(params,options)
 
   const query = useQuery(queryOptions) as  UseQueryResult<TData, TError> & { queryKey: QueryKey };
 

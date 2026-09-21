@@ -1,0 +1,100 @@
+| Parameter | Definition |
+|---|---|
+| `season` | Required integer season year |
+| `calcuttaId` | Optional positive integer; use existing unambiguous canonical-pool resolution |
+| `snapshotId` | Optional positive integer for an immutable successful official-source snapshot; must belong to the resolved pool/season |
+| `team` | Optional canonical team code, e.g. ARI; validate rather than silently treating no match as all teams |
+| `family` | Optional enum `wins` or `elimination` |
+| `ticker` | Optional exact ticker |
+| `limit` | Integer 1–200, default 100 |
+| `cursor` | Opaque pagination cursor bound to snapshot, filters and last stable `(family, team, ticker)` key |
+
+Default reads resolve the current official source snapshot once. If current display is provisional/pending, expose that state and pending Actuals revision alongside the prior official source; do not label the prior source as current with respect to Actuals. A cursor pins the snapshot so a concurrent promotion cannot mix pages.
+
+Response envelope:
+
+```text
+schemaVersion: "1.0"
+available: boolean
+season, calcuttaId
+snapshot: { id, valuationVersionId, asOf, actualsRevision,
+            pricingMethodVersion, referencePolicyVersion } | null
+currentState: { markType, pendingActualsRevision, usesArchivedOfficial,
+                stale, staleReasons[] }
+units: { quotePrice: "USD_per_1_USD_payout", probability: "0_to_1",
+         valuation: "USD" }
+summary: { totalMarkets, freshCount, carriedForwardCount,
+           settledCount, unavailableCount }
+markets: ReferenceMarket[]
+teamValues: TeamValue[]
+pagination: { limit, returned, nextCursor }
+```
+
+`ReferenceMarket` contains stable `ticker`, `eventTicker`, `provider`, safe `sourceUrl`, `team`, `family`, `outcome` or `strike`, `marketStatus`, observed `bid/ask/last` (each nullable), nullable verified `lastTradeAt`, nullable `quoteCapturedAt`, `referencePrice`, `selectionMethod`, `reasonCodes`, `referenceAcceptedAt`, `referenceSourceSnapshotId`, `referenceSourceTicker`, `carriedForward`, and computed nonnegative `referenceAgeSeconds`. Include `fairProbability` and `probabilityBasis` for that exact contract where the model computes it; otherwise return null with an explicit unavailable reason. A playoff reach probability must not be mislabeled as the probability of elimination in that round.
+
+`TeamValue` contains `team`, `grossTeamValue`, `valuePerOnePercentOwnership`, `fairReachProbabilities`, and the same source snapshot identity. Return values only for teams represented on the page. Full-team gross value is distinct from owner net MTM, cost basis, and Kalshi contract prices. The 1% ownership value is grossTeamValue / 100; it is not a bid/ask execution quote. Historical missing fields stay null; do not reconstruct fake provenance or probabilities.
+
+Use 200 with `available:false`, empty arrays, and a reason when a valid pool has no official reference set. Use 400 for invalid inputs/cursor, 404 for an unknown pool/team or an out-of-scope snapshot, and normal 401/403 for authorization. Valid filters with no matching market return an empty page. Reject conflicting scope rather than falling back to another pool. Sanitize URLs, return an allowlisted projection, and never expose raw provider JSON, credentials or full diagnostics blobs. Use private/no-store caching initially so auth-sensitive data and dynamic age are not cached incorrectly.
+
+REST authentication: reuse existing static MCP/admin token matching helpers for a read-only middleware; accept configured `MCP_API_KEY` or distinct `ADMIN_API_KEY` via Bearer, without granting write authority. Keep existing MCP OAuth audience/scope behavior unchanged; OAuth clients can access the new tool through `/api/mcp`. Do not extend an OAuth token intended for `/api/mcp` to unrelated REST resources without an explicit audience design.
+
+Add the route/schema to OpenAPI, regenerate Zod/client artifacts with `pnpm --filter @workspace/api-spec run codegen`, and validate responses with the generated schema. Do not hand-edit generated files.
+
+### MCP contract
+
+Register `get_mtm_reference_markets` in the existing server at `POST /api/mcp`, using the same input fields and response schema. Read-only MCP and OAuth users can call it; no admin privilege is needed. Add read-only/idempotent/non-destructive annotations using the installed SDK's supported registration API. Return machine-readable structured content where supported, plus JSON text compatible with existing clients.
+
+Tool description must state: returns stored prices and market identities used by an official MTM source snapshot; includes Bid, Ask, Last, selected raw mark, carry-forward provenance, fair probabilities and related gross team valuation; does not fetch live quotes, recalculate or trade. Tell clients to label carried-forward marks and distinguish reference price from fair probability and dollar valuation.
+
+Update `get_mtm_snapshot_evidence` additively to use the shared reference projection where appropriate, preserve existing fields, and expose explicit pagination/truncation information. Its existing fixed formula description is misleading for path-normalized payouts: return the persisted method-specific explanation instead of claiming all gross values are simply expected points / denominator. Existing portfolio tools and their response formats remain compatible.
+
+Stop condition: REST and MCP return equivalent reference data for the same snapshot and filters, with no writes, provider requests, or recalculation on reads.
+
+## Phase F — Acceptance tests and bounded verification
+
+### Selector fixtures (prices below in cents)
+
+| Bid | Ask | Last | Prior | Expected |
+|---:|---:|---:|---:|---|
+| 30 | 32 | 32 | any | 32, Last inside inclusive bounds |
+| 30 | absent | 50 | any | 30, Bid without Ask |
+| 30 | 32 | 50 | any | 31, 2¢ absolute spread |
+| 60 | 65 | 50 | any | 61, relative spread 8% |
+| 30 | 50 | 20 | 35 | 35, carried forward |
+| 30 | 90 | 50 | any | 50, Last takes precedence even in wide book |
+| 30 | 30 | absent | any | 30, cap at Ask |
+| 30 | 30.5 | absent | any | 30.5, sub-cent cap |
+| 0 | absent | absent | any | 0, valid Bid |
+| absent | 32 | 31 | 29 | 29, carry-forward without Bid |
+| 60 | 50 | 55 | 40 | 40, crossed book rejected locally |
+| absent | absent | absent | none | unavailable, never fabricated zero |
+
+Also test malformed fixed-point strings, nonfinite/out-of-range values, decimal threshold boundaries, settled yes/no precedence, suspended and void outcomes, repeated carry-forward age, cross-season/ticker rejection, and the previously fragile one-second quality-score case.
+
+### Integration and financial consistency
+
+- Missing ARI and BAL quotes independently, both missing together, one failed event request, and full provider outage with a seeded reference set: retain only affected marks, report source ages, and continue when model inputs are complete.
+- No usable prior reference for one mandatory contract: preserve official output and expose the exact missing identity.
+- Failed candidate cannot become fallback; historical bootstrap does not invent data.
+- Power de-vig: overround/underround inputs, active 0/1, fixed settlements, all-settled vector, infeasible fixed facts, bounded nonconvergence, stage sums and nested order, and no double de-vig of retained marks.
+- Seeded runs are reproducible. All team/entry gross payouts sum to the pool within one cent, existing owner net/sign conventions hold, and completed-season cases avoid division by zero.
+- Actuals replay does not run; meaningful update/correction runs; provisional result still queues; manual runs; newer revision/expired lease cannot publish stale work.
+- REST/MCP authentication, invalid input, scope mismatch, missing history, correct outcome probabilities, pagination across a concurrent promotion, and transport parity. Assert zero provider calls, writes and recalculations on reads.
+
+Run focused TypeScript tests first with the existing `tsx --test` harness. Then `pnpm --filter @workspace/api-spec run codegen`, `pnpm run typecheck`, relevant API/database/MCP integration tests against an isolated development database, and Python tests for wins/playoffs/simulation/valuation/new policy. Finally run `pnpm run build`. Inspect the existing Python test invocation/dependencies rather than assuming all files use the same runner. Do not run production import/write scripts as tests.
+
+Existing Codex verification: 9 standalone evidence tests passed; 5 reproductions established old-selector behavior. These are baseline evidence, not validation of the new implementation. The historical ARI/BAL payloads were unavailable. Use deterministic fixtures to reproduce the mechanism; obtain at most one bounded live read-only capture only if needed to validate actual provider field formats.
+
+## Migration, delivery and rollback
+
+Use a versioned additive migration following the repository's existing migration runner; do not use destructive schema push or force flags. Test fresh-schema and upgrade paths. Nullable new columns preserve old snapshots. Backfill only demonstrable provenance; record counts of seeded/unavailable markets. Old snapshots remain readable under their original method version.
+
+Run the new policy in development with recorded fixtures and produce a before/after valuation bridge by team: prior gross value, new gross value, difference, fresh/retained quote counts, Actuals revision and policy version. Differences are expected from changing pricing methodology; explain material differences using source marks and model diagnostics, not invented causal narratives.
+
+Deliver: commit/diff; migration and dry-run results; test command/result summary; one sanitized REST example and equivalent MCP tool result showing a retained ARI or BAL market; evidence that Actuals and manual triggers work; pool-total check; remaining limitations; exact rollback procedure. Rollback restores the old pricing-policy selection and a compatible official pointer while preserving new immutable evidence and queued Actuals requests. Never drop ledger columns/data to roll back application behavior.
+
+Finish with a single concise report. Do not publish. The owner can authorize publication after reviewing the tested implementation and valuation bridge.
+
+## Handoff note
+
+This file is intended to be pasted or attached to Replit as the implementation specification. It has not been sent to Replit Agent. A Replit connector cannot be assumed to read a local Codex path. If execution is later requested through Codex, use a verified attachment or Git-based transfer, send one phase per bounded Agent request, and reuse completed evidence instead of asking Replit to rediscover this design.

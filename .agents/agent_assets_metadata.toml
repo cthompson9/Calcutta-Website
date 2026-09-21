@@ -266,3 +266,17 @@ mtime_ms = 1789478489586
 storage_uri = "gcs://replit-rams-assets-picard/rams/assets/repl:20ced4e6-12f6-4285-a30b-9d56cdf8826c/07d560e1-9240-444d-9039-9b9a1f1f8e96/cb22f588-f9d6-4f5d-bf3c-3b74b25bce1e"
 storage_version_token = "1789478504328211"
 content_type = "application/octet-stream"
+
+[[outputs]]
+id = "VObjZR0ZFIE3IXT_XzuxI"
+uri = "file://evidence/phase-c-development-valuation-bridge.json"
+type = "unspecified"
+title = "MTM development valuation bridge"
+description = "Sanitized offline 32-team comparison of the prior interval policy and reference-mark-power-v1, including pool conservation checks and explicit limitations."
+logical_id = "6a56d14f-0ed2-43d0-b583-79d2be518ea5"
+content_hash = "sha256:ae04bd03c9dff5c511fe568bf62127806e25119776bf20c28b2946ccda041b74"
+size = 5098
+mtime_ms = 1789954454325
+storage_uri = "gcs://replit-rams-assets-picard/rams/assets/repl:20ced4e6-12f6-4285-a30b-9d56cdf8826c/6a56d14f-0ed2-43d0-b583-79d2be518ea5/993707d4-1e9d-403e-a84e-d6187cc1e6f8"
+storage_version_token = "1789954689802510"
+content_type = "application/octet-stream"

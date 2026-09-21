@@ -42,7 +42,14 @@ import {
   type MtmEvidenceInput,
 } from "./mtmEvidence";
 import { validateMtmCanonicalDataFreshness } from "./currentMtm";
-import { INTERVAL_POLICY, selectedMtmPolicy, validateMtmPolicyIdentity, validateFinalIntervalMarketQuality } from "./mtmIntervalPolicy";
+import { selectReferenceMark, MTM_REFERENCE_MARK_POLICY_VERSION } from "./mtmReferenceMarks";
+import {
+  resolveReferenceCandidates,
+  type PersistedReference,
+  type ReferenceCandidate,
+  type ReferenceContractKey,
+} from "./mtmReferencePersistence";
+import { INTERVAL_POLICY, REFERENCE_MARK_POWER_POLICY, selectedMtmPolicy, validateMtmPolicyIdentity, validateFinalIntervalMarketQuality } from "./mtmIntervalPolicy";
 import { nflDisplayWeek } from "./nflDisplayWeek";
 
 const execFileAsync = promisify(execFile);
@@ -123,6 +130,7 @@ type RawMarketQuote = {
   fetchedAt?: Date;
   completenessManifest?: Record<string, unknown> | null;
   captureMetadata?: Record<string, unknown> | null;
+  resolvedReference?: PersistedReference;
 };
 
 type WinMarketQuality = {
@@ -609,11 +617,232 @@ async function collectQuotes(
   };
 }
 
+type PriorReferenceRow = {
+  key: ReferenceContractKey;
+  referencePrice: string | null;
+  selectionMethod: string | null;
+  referenceAcceptedAt: Date | null;
+  referenceSourceSnapshotId: number | null;
+  referenceSourceTicker: string | null;
+  provider: string | null;
+  contract: string | null;
+  marketTicker: string;
+  eventId: number | null;
+  fetchedAt: Date | null;
+  sourceObservedAt: Date | null;
+  source: string | null;
+  team: string | null;
+  series: string;
+  strike: string | null;
+  outcome: string | null;
+};
+
+async function loadPriorReferenceRows(poolId: number, seasonId: number): Promise<PriorReferenceRow[]> {
+  const rows = await db.select({
+    snapshotId: mtmSnapshotTable.id,
+    snapshotAsOf: mtmSnapshotTable.asOf,
+    versionAsOf: mtmValuationVersionTable.mtmAsOf,
+    marketTicker: mtmMarketQuoteTable.marketTicker,
+    source: mtmMarketQuoteTable.source,
+    provider: mtmMarketQuoteTable.provider,
+    contract: mtmMarketQuoteTable.contract,
+    team: mtmMarketQuoteTable.team,
+    series: mtmMarketQuoteTable.series,
+    strike: mtmMarketQuoteTable.strike,
+    outcome: mtmMarketQuoteTable.outcome,
+    eventId: mtmMarketQuoteTable.eventId,
+    fetchedAt: mtmMarketQuoteTable.fetchedAt,
+    sourceObservedAt: mtmMarketQuoteTable.sourceObservedAt,
+    referencePrice: mtmMarketQuoteTable.referencePrice,
+    selectionMethod: mtmMarketQuoteTable.selectionMethod,
+    referenceAcceptedAt: mtmMarketQuoteTable.referenceAcceptedAt,
+    referenceSourceSnapshotId: mtmMarketQuoteTable.referenceSourceSnapshotId,
+    referenceSourceTicker: mtmMarketQuoteTable.referenceSourceTicker,
+  }).from(mtmMarketQuoteTable)
+    .innerJoin(mtmSnapshotTable, eq(mtmSnapshotTable.id, mtmMarketQuoteTable.snapshotId))
+    .innerJoin(mtmValuationVersionTable, eq(mtmValuationVersionTable.sourceSnapshotId, mtmSnapshotTable.id))
+    .where(and(
+      eq(mtmSnapshotTable.poolId, poolId),
+      eq(mtmSnapshotTable.status, "ok"),
+      eq(mtmValuationVersionTable.poolId, poolId),
+      eq(mtmValuationVersionTable.markType, "official"),
+      inArray(mtmValuationVersionTable.status, ["current", "superseded"]),
+      ne(mtmSnapshotTable.methodVersion, "mtm-v3-review"),
+    ))
+    .orderBy(sql`${mtmValuationVersionTable.mtmAsOf} desc`, sql`${mtmMarketQuoteTable.marketTicker} asc`);
+  const seen = new Set<string>();
+  return rows.flatMap((row) => {
+    if (row.team == null || row.series == null) return [];
+    const key: ReferenceContractKey = {
+      poolId,
+      seasonId,
+      provider: row.provider ?? row.source ?? "kalshi",
+      eventId: row.eventId,
+      ticker: row.marketTicker,
+      outcome: row.series.includes("STAGE") ? classifyEliminationMarket({ ticker: row.marketTicker }) : null,
+      strike: row.series.includes("WIN") ? row.strike : null,
+    };
+    const identity = referenceContractKeyForPipeline(key);
+    if (seen.has(identity) || row.referencePrice == null) return [];
+    seen.add(identity);
+    return [{ ...row, key, referencePrice: row.referencePrice == null ? null : String(row.referencePrice) }];
+  });
+}
+
+function referenceContractKeyForPipeline(key: ReferenceContractKey): string {
+  return [
+    key.poolId, key.seasonId, key.provider, key.eventId ?? "",
+    key.ticker, key.outcome ?? "", key.strike ?? "",
+  ].join("|");
+}
+
+function quoteReferenceCandidate(
+  quote: RawMarketQuote,
+  poolId: number,
+  seasonId: number,
+): ReferenceCandidate {
+  const strike = Number(quote.market.floor_strike ?? quote.market.floor_strike_fp);
+  const isWin = Number.isInteger(strike) && strike >= 1 && strike <= 17;
+  const ticker = String(quote.market.ticker ?? "");
+  const key: ReferenceContractKey = {
+    poolId, seasonId, provider: "kalshi",
+    eventId: quote.market.event_id == null && quote.market.eventId == null
+      ? null : String(quote.market.event_id ?? quote.market.eventId),
+    ticker,
+    outcome: isWin ? null : classifyEliminationMarket(quote.market),
+    strike: isWin ? strike : null,
+  };
+  return {
+    ...quote.market,
+    provider: "kalshi",
+    contractId: ticker,
+    ticker,
+    eventId: key.eventId,
+    fetchedAt: quote.fetchedAt?.toISOString() ?? null,
+    key,
+    fetched: Boolean(quote.fetchedAt),
+  };
+}
+
+async function resolvePipelineQuotes(
+  snapshotId: number,
+  poolId: number,
+  seasonId: number,
+  config: Record<string, any>,
+  rawQuotes: RawMarketQuote[],
+  quoteTeams: Array<{ code: string; name: string }>,
+  quoteErrors: string[],
+  acceptedAt: Date,
+): Promise<{ quotes: RawMarketQuote[]; references: PersistedReference[]; unavailable: PersistedReference[] }> {
+  const previous = await loadPriorReferenceRows(poolId, seasonId);
+  const candidates = rawQuotes.map((quote) => quoteReferenceCandidate(quote, poolId, seasonId));
+  const currentByKey = new Map(candidates.map((candidate, index) => [
+    referenceContractKeyForPipeline(candidate.key), rawQuotes[index]!,
+  ]));
+  // Prior successful rows are also expected identities. This ensures a
+  // missing ARI/BAL response still gets a candidate and a structured result.
+  for (const prior of previous) {
+    const identity = referenceContractKeyForPipeline(prior.key);
+    if (currentByKey.has(identity)) continue;
+    const market: Record<string, unknown> = {
+      ticker: prior.marketTicker,
+      status: "active",
+      ...(prior.strike != null ? { floor_strike: Number(prior.strike) } : {}),
+      ...(prior.eventId != null ? { event_id: prior.eventId } : {}),
+    };
+    const quote: RawMarketQuote = {
+      series: prior.series,
+      team: prior.team!,
+      market,
+      fetchedAt: undefined,
+      sourceUrl: undefined,
+    };
+    currentByKey.set(identity, quote);
+    candidates.push({
+      ...market,
+      provider: "kalshi",
+      contractId: prior.marketTicker,
+      ticker: prior.marketTicker,
+      eventId: prior.eventId,
+      missingContract: true,
+      providerFailure: quoteErrors.some((error) => error.includes(prior.team!)),
+      key: prior.key,
+      fetched: false,
+    });
+  }
+  const series = config.kalshi.series as Record<string, string>;
+  const code = seasonCode(Number(config.season));
+  const expected = quoteTeams.flatMap((team) => [
+    ...Array.from({ length: 17 }, (_, index) => ({
+      series: series.win_totals,
+      ticker: `${series.win_totals}-${code}${team.code}-${index + 1}`,
+      strike: index + 1,
+      outcome: null,
+    })),
+    ...["REG", "WC", "DIV", "CONF", "FL", "FW"].map((suffix) => ({
+      series: series.stage_of_elimination,
+      ticker: `${series.stage_of_elimination}-${code}${team.code}-${suffix}`,
+      strike: null,
+      outcome: classifyEliminationMarket({ ticker: suffix }),
+    })),
+  ]);
+  for (const expectedQuote of expected) {
+    const key: ReferenceContractKey = {
+      poolId, seasonId, provider: "kalshi", eventId: null,
+      ticker: expectedQuote.ticker, outcome: expectedQuote.outcome, strike: expectedQuote.strike,
+    };
+    const identity = referenceContractKeyForPipeline(key);
+    if (currentByKey.has(identity)) continue;
+    const market = {
+      ticker: expectedQuote.ticker,
+      status: "active",
+      ...(expectedQuote.strike == null ? {} : { floor_strike: expectedQuote.strike }),
+    };
+    const quote: RawMarketQuote = {
+      series: expectedQuote.series,
+      team: quoteTeams.find((team) => expectedQuote.ticker.includes(team.code))?.code ?? "",
+      market,
+    };
+    currentByKey.set(identity, quote);
+    candidates.push({
+      ...market,
+      provider: "kalshi",
+      contractId: expectedQuote.ticker,
+      ticker: expectedQuote.ticker,
+      key,
+      missingContract: true,
+      fetched: false,
+    });
+  }
+  const resolved = resolveReferenceCandidates(candidates, previous, acceptedAt, snapshotId);
+  const referenceByKey = new Map(resolved.map((reference) => [
+    referenceContractKeyForPipeline(reference.key), reference,
+  ]));
+  const quotes = [...currentByKey.entries()].map(([identity, quote]) => {
+    const reference = referenceByKey.get(identity);
+    if (!reference) return quote;
+    const market = { ...quote.market };
+    if (reference.referencePrice != null && reference.selectionMethod === "carried_forward") {
+      market.yes_bid_dollars = String(reference.referencePrice);
+      market.yes_ask_dollars = String(reference.referencePrice);
+      market.status = "active";
+      delete market.result;
+    }
+    return { ...quote, market, resolvedReference: reference };
+  });
+  return {
+    quotes,
+    references: resolved,
+    unavailable: resolved.filter((reference) => reference.referencePrice == null),
+  };
+}
+
 function deriveQuoteState(
   config: Record<string, any>,
   teams: Array<{ code: string; name: string }>,
   raw: RawMarketQuote[],
   evaluationTime: Date = latestQuoteCapture(raw),
+  requireCompleteElimination = true,
 ): { winLadders: MtmState["win_ladders"]; elimination: MtmState["elimination_quotes"] } {
   const series = config.kalshi.series as Record<string, string>;
   const winLadders: MtmState["win_ladders"] = {};
@@ -623,19 +852,26 @@ function deriveQuoteState(
       .filter((quote) => quote.team === team.code && quote.series === series.win_totals);
     const stageQuotes = raw
       .filter((quote) => quote.team === team.code && quote.series === series.stage_of_elimination);
-    const ladders = winQuotes
+    let ladders = winQuotes
       .map((quote) => {
         const market = quote.market;
         const validationError = validateActiveQuote(market);
         if (validationError) {
           throw new Error(`Invalid win-total quote for ${team.code}: ${validationError}.`);
         }
+        const pricingMarket = quote.resolvedReference?.referencePrice == null
+          ? market
+          : {
+              ...market,
+              yes_bid_dollars: String(quote.resolvedReference.referencePrice),
+              yes_ask_dollars: String(quote.resolvedReference.referencePrice),
+            };
         return {
           quote,
-          market,
+          market: pricingMarket,
           strike: Number(market.floor_strike ?? market.floor_strike_fp),
           decision: quoteDecisionForPipeline(
-            quote,
+            { ...quote, market: pricingMarket },
             evaluationTime,
             "bounds",
             asNumber(config.pricing?.max_spread_for_mid, 0.15),
@@ -666,6 +902,22 @@ function deriveQuoteState(
           ...(interpolated ? { weak: true, interpolated: true } : {}),
         }];
       });
+    if (ladders.length === 0 && !requireCompleteElimination) {
+      const maxSpread = asNumber(config.pricing?.max_spread_for_mid, 0.15);
+      ladders = winQuotes.flatMap((quote) => {
+        const strike = Number(quote.market.floor_strike ?? quote.market.floor_strike_fp);
+        const bid = quoteValue(quote.market, "yes_bid");
+        const ask = quoteValue(quote.market, "yes_ask");
+        if (!Number.isInteger(strike) || strike < 1 || strike > 17 ||
+            bid == null || ask == null || bid > ask) return [];
+        return [{
+          strike, yes_bid: bid, yes_ask: ask, volume: quoteVolume(quote.market),
+          status: quote.market.status == null ? null : String(quote.market.status),
+          result: quote.market.result == null ? null : String(quote.market.result),
+          ...(ask - bid > maxSpread ? { weak: true } : {}),
+        }];
+      });
+    }
     if (ladders.length === 0) throw new Error(`No win-total ladder was discovered for ${team.code}.`);
     winLadders[team.code] = ladders;
     const classified: Record<string, number> = {};
@@ -676,7 +928,17 @@ function deriveQuoteState(
         throw new Error(`Invalid stage-of-elimination quote for ${team.code}: ${validationError}.`);
       }
       const outcome = classifyEliminationMarket(market);
-      const decision = quoteDecisionForPipeline(quote, evaluationTime, "bid_plus_cent");
+      const pricingQuote = quote.resolvedReference?.referencePrice == null
+        ? quote
+        : {
+            ...quote,
+            market: {
+              ...quote.market,
+              yes_bid_dollars: String(quote.resolvedReference.referencePrice),
+              yes_ask_dollars: String(quote.resolvedReference.referencePrice),
+            },
+          };
+      const decision = quoteDecisionForPipeline(pricingQuote, evaluationTime, "bid_plus_cent");
       const transformed = decision.transformation;
       if (outcome && decision.usedInFitting &&
           (transformed.kind === "bid_plus_cent" || transformed.kind === "settlement")) {
@@ -685,6 +947,7 @@ function deriveQuoteState(
     }
     const required = ["no_playoffs", "wild_card", "divisional", "conference", "sb_loss", "sb_win"];
     if (required.some((key) => classified[key] == null)) {
+      if (!requireCompleteElimination) continue;
       throw new Error(`Incomplete stage-of-elimination quotes for ${team.code}.`);
     }
     elimination[team.code] = classified;
@@ -925,6 +1188,7 @@ function buildJointFitConstraints(
 
 async function exportState(seasonYear: number, calcuttaId?: number): Promise<{
   poolId: number;
+  seasonId: number;
   state: MtmState;
   rawQuotes: RawMarketQuote[];
   quoteErrors: string[];
@@ -1115,6 +1379,7 @@ async function exportState(seasonYear: number, calcuttaId?: number): Promise<{
   }
   return {
     poolId: poolRow.poolId,
+    seasonId: poolRow.seasonId,
     state,
     rawQuotes: quotes.raw,
     quoteErrors: quotes.errors,
@@ -1265,7 +1530,7 @@ export async function runMtmV3Review(input: {
     }).returning({ id: mtmSnapshotTable.id });
     return { id: row!.id, poolId, status: "review", error: message, diagnostics: { ...baseDiagnostics, pipelineError: message } };
   }
-  const { state, rawQuotes, quoteErrors, quoteTeams, inputProvenance, captureManifest } = exported;
+  const { seasonId, state, rawQuotes, quoteErrors, quoteTeams, inputProvenance, captureManifest } = exported;
   const evidencePreflightAt = new Date();
   state.completed_results = inputProvenance.realized_results.map((game) => ({
     week: game.week,
@@ -1280,28 +1545,36 @@ export async function runMtmV3Review(input: {
     diagnostics: { ...baseDiagnostics, quoteErrors },
   }).returning({ id: mtmSnapshotTable.id });
   const snapshotId = row!.id;
-  if (rawQuotes.length) {
+  const resolvedQuoteSet = await resolvePipelineQuotes(
+    snapshotId, poolId, seasonId, config, rawQuotes, quoteTeams, quoteErrors, evidencePreflightAt,
+  );
+  const resolvedQuotes = resolvedQuoteSet.quotes;
+  if (resolvedQuotes.length) {
     await db.insert(mtmMarketQuoteTable).values(
-      buildMarketQuoteRows(snapshotId, rawQuotes, evidencePreflightAt),
+      buildMarketQuoteRows(snapshotId, resolvedQuotes, evidencePreflightAt),
     );
   }
-  if (quoteErrors.length) {
-    const error = `Kalshi quote collection was incomplete: ${quoteErrors.join("; ")}`;
-    const diagnostics = { ...baseDiagnostics, quoteErrors, reviewStatus: "failed" };
+  if (resolvedQuoteSet.unavailable.length) {
+    const error = `MTM reference coverage is incomplete for ${resolvedQuoteSet.unavailable.length} contract(s).`;
+    const diagnostics = {
+      ...baseDiagnostics, quoteErrors,
+      referenceResolution: { status: "incomplete", unavailable: resolvedQuoteSet.unavailable },
+      reviewStatus: "failed",
+    };
     await db.update(mtmSnapshotTable).set({ error, diagnostics }).where(eq(mtmSnapshotTable.id, snapshotId));
     return { id: snapshotId, poolId, status: "review", error, diagnostics };
   }
   let diagnostics: Record<string, unknown> = { ...baseDiagnostics };
   try {
-    const derived = deriveQuoteState(config, quoteTeams, rawQuotes, evidencePreflightAt);
-    state.market_evidence_review = buildMarketEvidenceReview(rawQuotes, evidencePreflightAt);
+    const derived = deriveQuoteState(config, quoteTeams, resolvedQuotes, evidencePreflightAt);
+    state.market_evidence_review = buildMarketEvidenceReview(resolvedQuotes, evidencePreflightAt);
     state.win_ladders = derived.winLadders;
     state.elimination_quotes = derived.elimination;
     // The supported review endpoint supplies the same validated evidence
     // contract as the canonical exporter, plus deterministic group caps.
     // run_mtm_v3 consumes these only in its explicitly noncanonical path.
     const jointFitConstraints = buildJointFitConstraints(
-      rawQuotes,
+      resolvedQuotes,
       (config.joint_fit_group_caps ?? config.prototype_review?.joint_fit_group_caps ?? {}) as Record<string, number>,
       evidencePreflightAt,
     );
@@ -2158,7 +2431,14 @@ function buildMarketQuoteRows(
   evaluationTime?: Date,
 ) {
   return rawQuotes.map((quote) => {
-    const { series, team, market, sourceUrl, fetchedAt } = quote;
+    const { series, team, market } = quote;
+    const resolvedReference = quote.resolvedReference;
+    const sourceUrl = quote.sourceUrl ??
+      (resolvedReference?.selectionMethod === "carried_forward"
+        ? `retained://mtm/${resolvedReference.referenceSourceSnapshotId ?? "unknown"}`
+        : resolvedReference?.selectionMethod === "unavailable" ? "unavailable://mtm" : null);
+    const fetchedAt = quote.fetchedAt ??
+      (resolvedReference?.timestamps.fetchedAt ? new Date(resolvedReference.timestamps.fetchedAt) : evaluationTime ?? null);
     if (!sourceUrl || !fetchedAt) {
       throw new Error(`Missing capture-time provenance for Kalshi market ${String(market.ticker)}.`);
     }
@@ -2183,6 +2463,30 @@ function buildMarketQuoteRows(
         : market.completenessManifest && typeof market.completenessManifest === "object"
           ? market.completenessManifest as Record<string, unknown>
           : null);
+    const reference = selectReferenceMark({
+      ...market,
+      provider: "kalshi",
+      ticker: String(market.ticker),
+      eventId: market.event_id == null && market.eventId == null
+        ? null
+        : String(market.event_id ?? market.eventId),
+      fetchedAt: fetchedAt.toISOString(),
+      observedAt: sourceObservedAt?.toISOString() ?? null,
+    });
+    const resolved = quote.resolvedReference ?? {
+      referencePrice: reference.referencePrice,
+      selectionMethod: reference.selectionMethod,
+      selectionReason: reference.reasons,
+      referenceAcceptedAt: reference.referencePrice == null ? null : fetchedAt.toISOString(),
+      referenceSourceSnapshotId: snapshotId,
+      referenceSourceTicker: String(market.ticker),
+      referencePolicyVersion: reference.policyVersion,
+      fetchOutcome: "fulfilled" as const,
+      lastPrice: reference.normalized.last,
+      key: {} as ReferenceContractKey,
+      source: reference.source,
+      timestamps: reference.timestamps,
+    };
     return {
       snapshotId,
       source: "kalshi",
@@ -2193,6 +2497,15 @@ function buildMarketQuoteRows(
       strike: quoteStrike(market),
       yesBid: quoteValue(market, "yes_bid") == null ? null : String(quoteValue(market, "yes_bid")),
       yesAsk: quoteValue(market, "yes_ask") == null ? null : String(quoteValue(market, "yes_ask")),
+      lastPrice: resolved.lastPrice == null ? null : String(resolved.lastPrice),
+      referencePrice: resolved.referencePrice == null ? null : String(resolved.referencePrice),
+      selectionMethod: resolved.selectionMethod,
+      selectionReason: { reasons: resolved.selectionReason },
+      referenceAcceptedAt: resolved.referenceAcceptedAt == null ? null : new Date(resolved.referenceAcceptedAt),
+      referenceSourceSnapshotId: resolved.referenceSourceSnapshotId,
+      referenceSourceTicker: resolved.referenceSourceTicker,
+      referencePolicyVersion: resolved.referencePolicyVersion ?? MTM_REFERENCE_MARK_POLICY_VERSION,
+      fetchOutcome: resolved.fetchOutcome,
       volume: market.volume_fp == null && market.volume == null ? null : quoteVolume(market),
       fetchedAt,
       rawQuote: market,
@@ -2207,7 +2520,7 @@ function buildMarketQuoteRows(
       eventId: Number.isInteger(Number(market.event_id ?? market.eventId))
         ? Number(market.event_id ?? market.eventId) : null,
       sourceObservedAt,
-      capturedAt: fetchedAt,
+      capturedAt: quote.fetchedAt ? fetchedAt : null,
       normalizedYesBid: evidence.yesBid == null ? null : String(evidence.yesBid),
       normalizedYesAsk: evidence.yesAsk == null ? null : String(evidence.yesAsk),
       depth: evidence.depth == null ? null : evidence.depth as Record<string, unknown>,
@@ -2502,7 +2815,10 @@ export async function runMtmPipeline(input: { seasonYear: number; calcuttaId?: n
   }
   const pricingPolicy = selectedMtmPolicy(config);
   const methodVersion = pricingPolicy === INTERVAL_POLICY
-    ? `${INTERVAL_POLICY}-${config.season}` : `frozen-mtm-${config.season}`;
+    ? `${INTERVAL_POLICY}-${config.season}`
+    : pricingPolicy === REFERENCE_MARK_POWER_POLICY
+      ? `${REFERENCE_MARK_POWER_POLICY}-${config.season}`
+      : `frozen-mtm-${config.season}`;
   const selected = await db.select({ poolId: calcuttasTable.id }).from(calcuttasTable)
     .innerJoin(seasonsTable, eq(seasonsTable.id, calcuttasTable.seasonId))
     .where(and(eq(seasonsTable.year, input.seasonYear), eq(calcuttasTable.sport, "NFL"), input.calcuttaId == null ? eq(calcuttasTable.isCanonical, true) : eq(calcuttasTable.id, input.calcuttaId)))
@@ -2526,7 +2842,7 @@ export async function runMtmPipeline(input: { seasonYear: number; calcuttaId?: n
       stale: true, staleReasons: [message], diagnostics, valuations: [], projections: {},
     };
   }
-  const { poolId, state, rawQuotes, quoteErrors, quoteTeams, inputProvenance, captureManifest } = exported;
+  const { poolId, seasonId, state, rawQuotes, quoteErrors, quoteTeams, inputProvenance, captureManifest } = exported;
   const evidencePreflightAt = new Date();
   state.market_evidence_review = buildMarketEvidenceReview(rawQuotes, evidencePreflightAt);
   const snapshot = await db.insert(mtmSnapshotTable).values({
@@ -2536,28 +2852,36 @@ export async function runMtmPipeline(input: { seasonYear: number; calcuttaId?: n
   }).returning({ id: mtmSnapshotTable.id });
   const snapshotId = snapshot[0]!.id;
   if (input.lease) await input.lease.attachSnapshot(snapshotId);
-  if (rawQuotes.length) {
+  const resolvedQuoteSet = await resolvePipelineQuotes(
+    snapshotId, poolId, seasonId, config, rawQuotes, quoteTeams, quoteErrors, evidencePreflightAt,
+  );
+  const resolvedQuotes = resolvedQuoteSet.quotes;
+  if (resolvedQuotes.length) {
     await db.insert(mtmMarketQuoteTable).values(
-      buildMarketQuoteRows(snapshotId, rawQuotes, evidencePreflightAt),
+      buildMarketQuoteRows(snapshotId, resolvedQuotes, evidencePreflightAt),
     );
   }
-  if (quoteErrors.length > 0) {
-    const message = `Kalshi quote collection was incomplete: ${quoteErrors.join("; ")}`;
-    await db.update(mtmSnapshotTable).set({
-      error: message,
-      diagnostics: { quoteErrors },
-    }).where(eq(mtmSnapshotTable.id, snapshotId));
+  if (resolvedQuoteSet.unavailable.length > 0) {
+    const message = `MTM reference coverage is incomplete for ${resolvedQuoteSet.unavailable.length} contract(s).`;
+    const diagnostics = {
+      quoteErrors,
+      referenceResolution: {
+        status: "incomplete",
+        unavailable: resolvedQuoteSet.unavailable,
+      },
+    };
+    await db.update(mtmSnapshotTable).set({ error: message, diagnostics }).where(eq(mtmSnapshotTable.id, snapshotId));
     return {
       id: snapshotId, currentSnapshotId: null, poolId, asOf: now.toISOString(),
       currentAsOf: null, status: "failed", error: message, stale: true,
-      staleReasons: [message], diagnostics: { quoteErrors }, valuations: [], projections: {},
+      staleReasons: [message], diagnostics, valuations: [], projections: {},
     };
   }
   try {
-    const derivedQuotes = deriveQuoteState(config, quoteTeams, rawQuotes, evidencePreflightAt);
+    const derivedQuotes = deriveQuoteState(config, quoteTeams, resolvedQuotes, evidencePreflightAt);
     state.win_ladders = derivedQuotes.winLadders;
     state.elimination_quotes = derivedQuotes.elimination;
-    state.joint_fit_constraints = buildJointFitConstraints(rawQuotes, {}, evidencePreflightAt);
+    state.joint_fit_constraints = buildJointFitConstraints(resolvedQuotes, {}, evidencePreflightAt);
     state.joint_fit_group_caps = Object.fromEntries(
       [...new Set(state.joint_fit_constraints.map((row) => String(row.group)))]
         .sort()
@@ -2566,7 +2890,7 @@ export async function runMtmPipeline(input: { seasonYear: number; calcuttaId?: n
     const inputHash = createHash("sha256").update(canonicalJson({
       state,
       inputProvenance,
-      quotes: rawQuotes.map((quote) => ({
+      quotes: resolvedQuotes.map((quote) => ({
         series: quote.series,
         team: quote.team,
         ticker: quote.market.ticker,
@@ -2580,7 +2904,7 @@ export async function runMtmPipeline(input: { seasonYear: number; calcuttaId?: n
     ));
     await db.update(mtmSnapshotTable).set({ stateJson: state })
       .where(eq(mtmSnapshotTable.id, snapshotId));
-    const latestQuoteAt = rawQuotes.reduce<Date | null>((latest, quote) =>
+    const latestQuoteAt = resolvedQuotes.reduce<Date | null>((latest, quote) =>
       quote.fetchedAt && (!latest || quote.fetchedAt > latest) ? quote.fetchedAt : latest, null);
     await db.update(mtmSnapshotTable).set({
       inputHash,

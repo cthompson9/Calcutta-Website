@@ -53,6 +53,8 @@ test("legacy 1/97 PHI rung is retained as weak diagnostics, not a midpoint", () 
     quoteConfig(),
     fixture.teams,
     fixture.rawQuotes,
+    undefined,
+    false,
   );
   assert.deepEqual(derived.winLadders.PHI[0], {
     strike: 1,
@@ -62,6 +64,7 @@ test("legacy 1/97 PHI rung is retained as weak diagnostics, not a midpoint", () 
     status: "active",
     result: null,
     weak: true,
+    interpolated: true,
   });
   assert.deepEqual(derived.winLadders.HOU[0], {
     strike: 1,

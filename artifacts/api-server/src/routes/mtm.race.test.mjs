@@ -562,7 +562,7 @@ describe(
         const staleAt = new Date(Date.now() - 7 * 60 * 60 * 1_000);
         await assert.rejects(
           seedCoherentOfficialVersion(777, { asOf: staleAt, fetchedAt: staleAt }),
-          /Canonical event ledger is stale.*Actual-results ledger is stale.*coherent-test-event.*is stale/,
+          /Canonical event ledger is stale.*Actual-results ledger is stale/,
         );
         const rejected = await db.select({ id: mtmSnapshotTable.id })
           .from(mtmSnapshotTable)

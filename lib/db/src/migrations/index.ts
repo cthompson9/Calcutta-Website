@@ -50,3 +50,5 @@ export { mtmPendingTriggerReconciliationMigration } from "./0054MtmPendingTrigge
 export { competitionScoringConstraintConvergenceMigration } from "./0055CompetitionScoringConstraintConvergence";
 export { mtmAttemptDeleteGameGuardMigration } from "./0056MtmAttemptDeleteGameGuard";
 export { mtmCanonicalPeriodSelectionIdentityMigration } from "./0057MtmCanonicalPeriodSelectionIdentity";
+export { mtmReferenceMarksMigration } from "./0058MtmReferenceMarks";
+export { mtmActualsRequestsMigration } from "./0059MtmActualsRequests";

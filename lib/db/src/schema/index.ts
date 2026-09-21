@@ -33,4 +33,5 @@ export * from "./mtmPipeline";
 export * from "./mtmCurrentVersion";
 export * from "./mtmCanonical";
 export * from "./mtmJobLeases";
+export * from "./mtmActualsRequests";
 export * from "./calcuttaCalendar";

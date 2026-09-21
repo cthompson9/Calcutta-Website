@@ -1,6 +1,7 @@
 /** Publication checks independent of the Python solver's residual/status claims. */
 export const INTERVAL_POLICY = "market-interval-win-priority-v1";
 export const LEGACY_POLICY = "normalized-point-v2";
+export const REFERENCE_MARK_POWER_POLICY = "reference-mark-power-v1";
 const STAGES = ["berth", "divisional", "conference", "sb_berth", "sb_win"];
 const OUTCOMES = ["no_playoffs", "wild_card", "divisional", "conference", "sb_loss", "sb_win"];
 const ALIASES: Record<string, string> = Object.fromEntries(["REG", "WC", "DIV", "CONF", "FL", "FW"].map((s, i) => [s, OUTCOMES[i]!]));
@@ -19,7 +20,7 @@ function evidenceTier(row: Row, decision: Row): "settled_fact" | "strong_active_
 
 export function selectedMtmPolicy(config: Row): string {
   const selected = config.sim?.pricing_policy ?? LEGACY_POLICY;
-  if (selected !== LEGACY_POLICY && selected !== INTERVAL_POLICY) throw new Error(`Unknown MTM pricing_policy: ${selected}`);
+  if (![LEGACY_POLICY, INTERVAL_POLICY, REFERENCE_MARK_POWER_POLICY].includes(selected)) throw new Error(`Unknown MTM pricing_policy: ${selected}`);
   return selected;
 }
 
@@ -27,7 +28,8 @@ export function validateMtmPolicyIdentity(engine: Row, config: Row): string | nu
   let selected: string;
   try { selected = selectedMtmPolicy(config); } catch (e) { return String(e); }
   const actual = engine.model?.pricing_policy ??
-    (engine.model?.name === INTERVAL_POLICY ? INTERVAL_POLICY : LEGACY_POLICY);
+    (engine.model?.name === INTERVAL_POLICY ? INTERVAL_POLICY :
+      engine.model?.name === REFERENCE_MARK_POWER_POLICY ? REFERENCE_MARK_POWER_POLICY : LEGACY_POLICY);
   if (actual !== selected || (selected === INTERVAL_POLICY &&
       (engine.model?.name !== INTERVAL_POLICY || engine.review_only === true ||
        engine.diagnostics?.market_policy?.policy_version !== INTERVAL_POLICY ||

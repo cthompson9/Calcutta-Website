@@ -56,3 +56,5 @@
 - [Kalshi MTM timestamps](kalshi-mtm-timestamps.md) — market updated_time is metadata-only; active-price freshness uses the response capture time.
 - [Nonnegative path payouts](nonnegative-path-payouts.md) — floor signed team points before each simulation path is normalized to the pool, never after aggregation.
 - [Polymorphic delete triggers](polymorphic-delete-triggers.md) — generic PostgreSQL trigger functions must branch by table before reading table-specific OLD/NEW fields.
+- [Actuals-driven MTM requests](actuals-driven-mtm-requests.md) — canonical Actuals revisions queue durable coalesced recalculations; provider fetch metadata never changes revision identity.
+- [Reference-market read contract](reference-market-read-contract.md) — REST and MCP expose the same pinned official-source projection without live fetches, writes, or recalculation.

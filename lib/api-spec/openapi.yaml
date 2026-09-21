@@ -1230,6 +1230,62 @@ paths:
               schema:
                 $ref: "#/components/schemas/ErrorResponse"
 
+  /mtm/reference-markets:
+    get:
+      operationId: getMtmReferenceMarkets
+      tags: [mtm]
+      summary: Read stored MTM reference-market marks
+      security:
+        - MtmReferenceBearerAuth: []
+      parameters:
+        - name: season
+          in: query
+          required: true
+          schema: { type: integer }
+        - name: calcuttaId
+          in: query
+          schema: { type: integer, minimum: 1 }
+        - name: snapshotId
+          in: query
+          schema: { type: integer, minimum: 1 }
+        - name: team
+          in: query
+          schema: { type: string }
+        - name: family
+          in: query
+          schema: { type: string, enum: [wins, elimination] }
+        - name: ticker
+          in: query
+          schema: { type: string }
+        - name: limit
+          in: query
+          schema: { type: integer, minimum: 1, maximum: 200, default: 100 }
+        - name: cursor
+          in: query
+          schema: { type: string }
+      responses:
+        "200":
+          description: Stored reference-market marks
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/MtmReferenceMarketsResponse"
+        "400":
+          description: Invalid query or cursor
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/ErrorResponse" }
+        "401":
+          description: MCP or admin bearer token required
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/ErrorResponse" }
+        "404":
+          description: Pool or snapshot not found
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/ErrorResponse" }
+
   /mtm/pipeline/evidence:
     get:
       operationId: getMtmPipelineEvidence
@@ -1716,6 +1772,10 @@ components:
       type: http
       scheme: bearer
       description: Administrative bearer token supplied through ADMIN_API_KEY.
+    MtmReferenceBearerAuth:
+      type: http
+      scheme: bearer
+      description: Read-only bearer token supplied through MCP_API_KEY or ADMIN_API_KEY.
     JobRunnerBearerAuth:
       type: http
       scheme: bearer
@@ -2042,6 +2102,22 @@ components:
         error:
           type: string
       required: [error]
+
+    MtmReferenceMarketsResponse:
+      type: object
+      required: [schemaVersion, available, season, calcuttaId, snapshot, currentState, units, summary, markets, teamValues, pagination]
+      properties:
+        schemaVersion: { type: string, enum: ["1.0"] }
+        available: { type: boolean }
+        season: { type: number, multipleOf: 1 }
+        calcuttaId: { type: number, multipleOf: 1 }
+        snapshot: { type: ["object", "null"], additionalProperties: true }
+        currentState: { type: object, additionalProperties: true }
+        units: { type: object, additionalProperties: true }
+        summary: { type: object, additionalProperties: true }
+        markets: { type: array, items: { type: object, additionalProperties: true } }
+        teamValues: { type: array, items: { type: object, additionalProperties: true } }
+        pagination: { type: object, additionalProperties: true }
 
     NflStandingsRefreshJobInput:
       type: object

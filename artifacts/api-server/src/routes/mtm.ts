@@ -30,6 +30,8 @@ import {
   DeleteMtmPipelineAttemptResponse,
   GetMtmValuationQueryParams,
   GetMtmValuationResponse,
+  GetMtmReferenceMarketsQueryParams,
+  GetMtmReferenceMarketsResponse,
 } from "@workspace/api-zod";
 import { loadSeasonOwnership } from "../lib/seasonOwnership";
 import { captureKalshiWeekZero } from "../lib/kalshiWeekZero";
@@ -62,8 +64,45 @@ import { z } from "zod/v4";
 import { getNormalizedMtmValuation } from "../lib/mtmValuation";
 import { validateAndPromoteCurrentMtm } from "../lib/currentMtm";
 import { runNflStandingsRefresh } from "../lib/nflStandingsRefresh";
+import { readMtmReferenceMarkets, ReferenceMarketReadError } from "../lib/mtmReferenceMarketRead";
+import { matchesAdminApiKey, matchesMcpApiKey } from "../mcpOAuth";
 
 const router: IRouter = Router();
+
+export function hasReferenceReadAuthorization(authorization: string | undefined): boolean {
+  const token = authorization?.startsWith("Bearer ")
+    ? authorization.slice("Bearer ".length)
+    : "";
+  return matchesMcpApiKey(token) || matchesAdminApiKey(token);
+}
+
+async function requireReferenceRead(req: Request, res: any): Promise<boolean> {
+  const authorization = req.header("authorization");
+  if (hasReferenceReadAuthorization(authorization)) return true;
+  res.set("WWW-Authenticate", "Bearer");
+  sendParsedJson(res, ErrorResponse, { error: "A read-only MCP or admin bearer token is required." }, 401);
+  return false;
+}
+
+router.get("/mtm/reference-markets", async (req, res): Promise<void> => {
+  if (!(await requireReferenceRead(req, res))) return;
+  const parsed = GetMtmReferenceMarketsQueryParams.safeParse(req.query);
+  if (!parsed.success) {
+    sendParsedJson(res, ErrorResponse, { error: parsed.error.message }, 400);
+    return;
+  }
+  try {
+    const result = await readMtmReferenceMarkets(parsed.data);
+    res.set("Cache-Control", "private, no-store");
+    sendParsedJson(res, GetMtmReferenceMarketsResponse, result);
+  } catch (error) {
+    if (error instanceof ReferenceMarketReadError) {
+      sendParsedJson(res, ErrorResponse, { error: error.message }, error.status);
+      return;
+    }
+    throw error;
+  }
+});
 
 router.get("/mtm/valuation", async (req, res): Promise<void> => {
   const parsed = GetMtmValuationQueryParams.safeParse(req.query);

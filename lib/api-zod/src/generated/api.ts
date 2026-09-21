@@ -1767,6 +1767,48 @@ export const GetMtmValuationResponse = zod.object({
 
 
 /**
+ * @summary Read stored MTM reference-market marks
+ */
+
+
+export const getMtmReferenceMarketsQueryLimitDefault = 100;
+export const getMtmReferenceMarketsQueryLimitMax = 200;
+
+
+
+export const GetMtmReferenceMarketsQueryParams = zod.object({
+  "season": zod.coerce.number().int(),
+  "calcuttaId": zod.coerce.number().int().min(1).optional(),
+  "snapshotId": zod.coerce.number().int().min(1).optional(),
+  "team": zod.coerce.string().optional(),
+  "family": zod.enum(['wins', 'elimination']).optional(),
+  "ticker": zod.coerce.string().optional(),
+  "limit": zod.coerce.number().int().min(1).max(getMtmReferenceMarketsQueryLimitMax).default(getMtmReferenceMarketsQueryLimitDefault),
+  "cursor": zod.coerce.string().optional()
+})
+
+export const getMtmReferenceMarketsResponseSeasonMultipleOf = 1;
+
+export const getMtmReferenceMarketsResponseCalcuttaIdMultipleOf = 1;
+
+
+
+export const GetMtmReferenceMarketsResponse = zod.object({
+  "schemaVersion": zod.enum(['1.0']),
+  "available": zod.boolean(),
+  "season": zod.number().multipleOf(getMtmReferenceMarketsResponseSeasonMultipleOf),
+  "calcuttaId": zod.number().multipleOf(getMtmReferenceMarketsResponseCalcuttaIdMultipleOf),
+  "snapshot": zod.record(zod.string(), zod.unknown()).nullable(),
+  "currentState": zod.record(zod.string(), zod.unknown()),
+  "units": zod.record(zod.string(), zod.unknown()),
+  "summary": zod.record(zod.string(), zod.unknown()),
+  "markets": zod.array(zod.record(zod.string(), zod.unknown())),
+  "teamValues": zod.array(zod.record(zod.string(), zod.unknown())),
+  "pagination": zod.record(zod.string(), zod.unknown())
+})
+
+
+/**
  * @summary Inspect immutable Kalshi evidence for frozen-engine MTM attempts
  */
 export const GetMtmPipelineEvidenceQueryParams = zod.object({

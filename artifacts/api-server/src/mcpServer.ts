@@ -64,6 +64,7 @@ import { loadCurrentBidderConsortiums } from "./lib/consortiumMemberships";
 import { NflStandingsImportError } from "./lib/nflStandingsImport";
 import { runNflStandingsRefresh } from "./lib/nflStandingsRefresh";
 import { getMtmPipelineStatus } from "./lib/mtmPipeline";
+import { readMtmReferenceMarkets } from "./lib/mtmReferenceMarketRead";
 import { getNormalizedMtmValuation } from "./lib/mtmValuation";
 import { createPendingTrade, validateTradeOwnership } from "./lib/tradeService";
 import {
@@ -744,6 +745,39 @@ function buildMcpServer(isAdmin: boolean) {
   );
 
   server.tool(
+    "get_mtm_reference_markets",
+    "Read-only stored prices and market identities used by an official MTM source snapshot. Includes Bid, Ask, Last, selected raw mark, carry-forward provenance, fair probabilities, and related gross team valuation. It does not fetch live quotes, recalculate, or trade. Label carried-forward marks and distinguish reference price from fair probability and dollar valuation.",
+    {
+      ...requiredSeason,
+      ...calcuttaInput,
+      snapshotId: z.number().int().positive().optional(),
+      team: z.string().optional(),
+      family: z.enum(["wins", "elimination"]).optional(),
+      ticker: z.string().optional(),
+      limit: z.number().int().min(1).max(200).optional(),
+      cursor: z.string().optional(),
+    },
+    { readOnlyHint: true, idempotentHint: true, destructiveHint: false },
+    async ({ season, calcuttaId, snapshotId, team, family, ticker, limit, cursor }) => {
+      try {
+        const result = await readMtmReferenceMarkets({
+          season, calcuttaId, snapshotId, team, family, ticker, limit, cursor,
+        });
+        return {
+          content: [{ type: "text" as const, text: JSON.stringify(result, null, 2) }],
+          structuredContent: result,
+        } as any;
+      } catch (error) {
+        const message = error instanceof Error ? error.message : "Reference-market read failed.";
+        return {
+          content: [{ type: "text" as const, text: JSON.stringify({ error: message }) }],
+          isError: true,
+        };
+      }
+    },
+  );
+
+  server.tool(
     "get_mtm_snapshot_evidence",
     "Returns bounded, normalized evidence behind a Live Tracker MTM snapshot: formula, pipeline inputs, team projections including Super Bowl probabilities, and market quotes. Every market input includes provider, source URL, ticker, and fetch timestamp. Raw provider payloads and credentials are never returned.",
     {
@@ -804,6 +838,12 @@ function buildMcpServer(isAdmin: boolean) {
       const normalizedStandings = Array.isArray(normalizedProvenance?.standings)
         ? normalizedProvenance.standings
         : [];
+      const referenceMarkets = await readMtmReferenceMarkets({
+        season,
+        calcuttaId,
+        snapshotId: snapshot.id,
+        limit: quoteLimit ?? 100,
+      }).catch(() => null);
       const normalizedSources = [
         ...normalizedSchedule,
         ...normalizedResults,
@@ -850,6 +890,8 @@ function buildMcpServer(isAdmin: boolean) {
           net_mtm: "gross_mtm - signed_cost_basis",
           rubric: state?.rubric ?? null,
           auction_pool: state?.pot ?? null,
+           method_explanation: (snapshot.diagnostics as any)?.pricing_method_explanation ??
+             "Gross values use the persisted method-specific normalized payout path for this snapshot.",
         },
         input_provenance: {
           market_quotes: {
@@ -912,6 +954,10 @@ function buildMcpServer(isAdmin: boolean) {
           volume: quote.volume,
           fetched_at: quote.fetchedAt.toISOString(),
           })),
+         reference_markets: referenceMarkets?.markets ?? [],
+         reference_markets_pagination: referenceMarkets?.pagination ?? {
+           limit: quoteLimit ?? 100, returned: 0, nextCursor: null,
+         },
         diagnostics: snapshot.diagnostics,
         redaction: "Normalized evidence only; raw provider payloads and credentials are omitted.",
       }, null, 2));

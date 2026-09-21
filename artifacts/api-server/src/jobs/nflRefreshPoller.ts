@@ -22,6 +22,11 @@ import { resolveSeasonIdForSport } from "../lib/calcuttaContext";
 import { syncNflEventsAndRealizedMetrics } from "../lib/nflEventSync";
 import { reconcileNflCurrentMtm } from "../lib/currentMtm";
 import { todayInNewYork } from "../lib/newYorkTime";
+import {
+  currentNflActualsRevision,
+  processPendingMtmActualsRecalculations,
+  requestMtmRecalculationAfterActualsCommit,
+} from "../lib/mtmActualsRecalculation";
 
 export const NFL_REFRESH_POLL_INTERVAL_MS = 5 * 60 * 1000;
 
@@ -101,7 +106,9 @@ export function startNflRefreshPoller(): () => void {
     }
 
     const fresh = fetchedToday ?? await fetchTodayNflScheduleWithPayload(new Date(now));
-    if (!initialFetchFoundNewFinal && !hasNewlyCompletedNflGame(previousGames, fresh.games)) {
+    const statusChanged = nflGameStatusSignature(previousGames) !==
+      nflGameStatusSignature(fresh.games);
+    if (!initialFetchFoundNewFinal && !hasNewlyCompletedNflGame(previousGames, fresh.games) && !statusChanged) {
       cachedGames = fresh.games;
       scheduleFetchedAt = now;
       await persistNflScheduleCache(seasonId, cachedGames);
@@ -121,22 +128,21 @@ export function startNflRefreshPoller(): () => void {
           { completeSeasonPayload: false },
         );
         const mtmReconciliation = await reconcileNflCurrentMtm({ seasonId });
-        for (const result of mtmReconciliation) {
-          if (result.poolId === 0 || result.markType !== "pending_recalculation") continue;
-          try {
-            await runFullMtmRecalculation({
-              seasonYear,
-              calcuttaId: result.poolId,
-              trigger: "scheduled",
-            });
-          } catch (error) {
-            result.status = "warning";
-            result.warning = `${result.warning ? `${result.warning} ` : ""}Full recalculation required: ${
-              error instanceof Error ? error.message : String(error)
-            }`;
-          }
-        }
-        return { ran: true, eventSync, mtmReconciliation };
+         const revision = await currentNflActualsRevision(seasonId);
+         const queued = await requestMtmRecalculationAfterActualsCommit({
+           seasonId,
+           revision,
+         });
+         const processed = await processPendingMtmActualsRecalculations({
+           poolIds: queued.poolIds,
+           currentRevision: async () => currentNflActualsRevision(seasonId),
+           run: async (poolId) => { await runFullMtmRecalculation({
+             seasonYear,
+             calcuttaId: poolId,
+             trigger: "scheduled",
+           }); },
+         });
+         return { ran: true, eventSync, mtmReconciliation, mtmRequest: { queued, processed } };
       },
       { seasonId, sport: "NFL", competition: "NFL_REGULAR_SEASON" },
     );

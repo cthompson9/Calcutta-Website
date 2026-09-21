@@ -24,6 +24,10 @@ class Rung:
     volume: int = 0
     status: Optional[str] = None
     result: Optional[str] = None
+    # Appended after the historical positional fields so interval/review
+    # callers retain their original constructor contract.
+    reference_price: Optional[float] = None
+    selection_method: Optional[str] = None
 
     def observation(self) -> tuple[Optional[float], Optional[float], bool]:
         """Return probability, isotonic weight, and whether it is fixed."""
@@ -31,6 +35,10 @@ class Rung:
         result = (self.result or "").strip().lower()
         if status in {"finalized", "settled"} and result in {"yes", "no"}:
             return (1.0 if result == "yes" else 0.0), None, True
+        if self.reference_price is not None:
+            value = float(self.reference_price)
+            if 0.0 <= value <= 1.0:
+                return value, 1.0, False
         if self.yes_bid is None or self.yes_ask is None:
             return None, None, False
         bid, ask = float(self.yes_bid), float(self.yes_ask)
@@ -121,6 +129,7 @@ def expected_wins_from_ladder(rungs: list[Rung], games: int = 17,
     diagnostics = {
         "rungs_priced": priced, "rungs_wide_spread": wide,
         "rungs_missing": games - priced, "settled_contracts_used": settled,
+        "interpolation_label": "model_interpolated_missing_rungs" if priced < games else None,
     }
 
     if priced:

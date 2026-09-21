@@ -1,0 +1,96 @@
+# Replit implementation plan: MTM marks, Actuals triggers, and reference-price API
+
+## Execution brief
+
+Implement this specification in `cthompson9/Calcutta-Website`. Reviewed baseline: `709641bfac69599a491d078c88322f1061c89dec`, matching Replit main during inspection. Work in the root PNPM workspace, not the tracked nested `Calcutta-Website/` copy. If HEAD has advanced, inspect only changes affecting the files below and preserve unrelated work. This document is a plan, not an applied patch.
+
+Deliver a tested development implementation. Do not publish or deploy to production. Do not delete historical snapshots, change pool economics, or rewrite the working Actuals polling cadence. Production publication remains a separate user decision.
+
+Execute the bounded phases below in order. Do not repeat the completed broad audit or redesign the requirements. Report a concise evidence bundle at completion; if a phase encounters a material incompatibility, report the exact blocker and finish independent work. Do not send repeated completion questions while a phase is running.
+
+## 1. Decisions and intended behavior
+
+After a material Actuals update commits, request a full MTM recalculation. Preserve manual recalculation. Quote selection uses Last, Bid, Ask, then prior accepted raw mark in the order below. Apply nonlinear de-vig to resolved reference marks and preserve the existing payout rubric and pool conservation. Make those same reference marks available through REST and the existing MCP server.
+
+Implementation decisions resolving unspecified details:
+
+- “Within 10%” means spread divided by midpoint, inclusive. The 2¢ and 10% conditions are OR conditions.
+- Carry forward the prior accepted **raw contract mark**, not the final dollar valuation or a previously de-vigged probability. The resulting dollar value may change with Actuals or other marks.
+- Cap Bid + 1¢ at Ask and $1 to handle locked/sub-cent books.
+- “Reference market” means the identifiable Kalshi contract and book used as input. “Reference price” means its selected raw mark. Also expose associated full-team gross valuation and model probabilities, labeled separately.
+- Default API reads return the exact source snapshot of the current official valuation, including an archived official snapshot while a replacement is pending. They never assemble a synthetic mixture from the latest quote rows across runs.
+
+These decisions are explicit defaults from the review; document them in the implementation rather than silently choosing different meanings.
+
+## 2. Relevant existing code and confirmed problems
+
+| Area | Root-relative files | Required change |
+|---|---|---|
+| Collection, transformation, persistence, publication | `artifacts/api-server/src/lib/mtmPipeline.ts` | Replace whole-run quote rejection with resolved marks and local carry-forward; use one resolved input set throughout |
+| Evidence selector | `artifacts/api-server/src/lib/mtmEvidence.ts` | Separate diagnostic quality scoring from the explicit pricing selector |
+| Official/provisional pointers | `artifacts/api-server/src/lib/currentMtm.ts` | Preserve consistency with Actuals and official source snapshot |
+| Recalculation and recovery | `artifacts/api-server/src/lib/mtmRecalculation.ts` | Durable pending work and idempotency around existing lease |
+| Actuals update paths | `jobs/nflRefreshPoller.ts`, `lib/nflStandingsImport.ts`, `lib/nflEventSync.ts` under API `src/` | Shared post-commit request for material changes |
+| HTTP route | `artifacts/api-server/src/routes/mtm.ts` | Read-only reference-market endpoint; preserve manual route |
+| MCP | `artifacts/api-server/src/mcpServer.ts`, `mcpOAuth.ts` | New read tool using shared service and existing authorization |
+| Pricing dispatch | `mtm/engine/run_mtm.py`, `market_interval_snapshot.py`, `market_policy_review.py` | Official route must consume selected marks and nonlinear de-vig, not silently retain interval pricing |
+| Probability and payout code | `mtm/engine/playoffs.py`, `wins.py`, `simulate.py`, `valuation.py` | Explicit nonlinear normalization and compatible payout path |
+| Configuration | `mtm/season-config-2026.json` | Explicit versioned pricing method |
+| Schema | `lib/db/src/schema/mtmPipeline.ts`, `mtmJobLeases.ts`, `mtmCurrentVersion.ts` | Additive provenance and durable request state |
+| Contract | `lib/api-spec/openapi.yaml` and generated clients/Zod | Document and generate REST input/output schemas |
+
+Confirmed: all six stage quotes are mandatory before Python; the selected Python interval fitter repeats completeness checks; production currently bypasses the legacy power-normalization route. A wide book can fall from quality score 0.4 to 0.399778 after one second. Last is not the selected stage mark. Provisional reconciliation can skip full recalculation. The selected interval route also fails when a team has no remaining regular-season games. The existing MCP evidence tool returns Bid/Ask but lacks a canonical selected-mark contract.
+
+## Phase A — Pure reference-mark selector
+
+Create `artifacts/api-server/src/lib/mtmReferenceMarks.ts` and focused tests. Normalize Kalshi fixed-point dollars and legacy cents once. Do not confuse missing, zero, malformed, or nonfinite values. Do not round valid sub-cent input before selection.
+
+For a known settled contract with a valid final result, use 0 or 1 as a settlement fact. For an active contract:
+
+1. If Bid and Ask are finite in [0,1], Bid <= Ask, and Last is finite with Bid <= Last <= Ask, select Last.
+2. Otherwise, if Ask is genuinely absent and Bid is valid, select Bid.
+3. Otherwise, if Bid/Ask are valid and ordered, select `min(Bid + 0.01, Ask, 1)` when `Ask - Bid <= 0.02` OR `Ask - Bid <= 0.10 * ((Ask + Bid) / 2)`. Use deterministic decimal comparison or a narrowly defined numeric tolerance so exact boundaries pass.
+4. Otherwise retain the previous accepted mark for the exact same contract, with its original provenance. Missing Last follows the fallback branches. An invalid supplied price or crossed book cannot become an eligible book by treating the invalid field as absent.
+
+Return a typed result with `referencePrice`, `selectionMethod` (`last_in_book`, `bid_without_ask`, `bid_plus_cent`, `settlement`, `carried_forward`, `unavailable`), structured reason codes, and source timestamps/identity. Missing contract, provider fetch failure, suspended market, unusable quote and no prior mark must have distinguishable reasons. Settled/void/cancelled contract semantics must not silently reuse an obsolete active mark; void/cancelled outcomes require an explicitly valid replacement mapping or unavailable status.
+
+Existing weighted evidence scores may remain diagnostic. They must not veto a mark accepted by these rules. A wide book with in-range Last is accepted even if the old composite score is low. Do not introduce trade-volume, depth or Last-age gates absent from this specification. Preserve an execution timestamp only if actually supplied; a fetch timestamp is not a Last execution timestamp.
+
+Stop condition: deterministic selector tests pass, with no database/network dependency.
+
+## Phase B — Snapshot persistence and carry-forward
+
+Extend snapshot quote evidence additively, reusing the existing `mtm_market_quote` table where practical. Persist normalized Last and the selected raw mark explicitly, not only inside raw JSON. Add fields equivalent to:
+
+- `lastPrice`, `referencePrice`, `selectionMethod`, `selectionReason`;
+- `referenceAcceptedAt`, `referenceSourceSnapshotId`, `referenceSourceTicker`, `referencePolicyVersion`;
+- explicit latest-fetch outcome and nullable actual quote capture timestamp when a market was not fetched;
+- family/outcome/strike and provider contract identity using existing columns where possible.
+
+Prices should preserve provider precision; choose a decimal type sufficient for fixed-point/sub-cent input. Do not conflate raw Last with `tradeEstimate`, or overload `acceptedLower/Upper` to pretend a selected mark was the observed book. A carried-forward row may have current observed Bid/Ask/Last that were rejected, but its selected price and provenance point to the earlier accepted source. Follow the original acceptance source through repeated carry-forward so age does not reset.
+
+Fallback lookup is bounded to the same pool, season, provider, event, exact ticker and outcome/strike. Use the latest successful official source snapshot containing a valid accepted mark; a rejected candidate must not poison fallback. Resolve the previous reference set once per run, not one database query per market. Store a row for every expected contract, including retained or unavailable ones. Determine expected identities from configured market families plus known contract mappings; do not rely solely on whatever the latest incomplete response happened to include.
+
+Bootstrap older successful snapshots only from genuine saved raw quotes or explicitly saved pre-de-vig marks with identifiable provenance. Reapply the new selector to saved raw Bid/Ask/Last when those fields exist. Record historical capture time and migration origin. Never derive raw reference prices from final valuations or invent a prior value. Unseedable markets remain unavailable; preserve the prior official valuation and report their exact identities.
+
+Replace early `quoteErrors.length > 0` aborts and generic six-outcome exceptions with resolution of fresh/retained/unavailable marks. An incomplete fetch is a warning when all required inputs are resolved from valid prior marks. If inputs truly remain unavailable, preserve the previous official valuation and report a structured incomplete candidate, not a fabricated successful refresh. Do not change legacy snapshot status enums casually; candidate detail can use a separate reason/status object.
+
+Adapt publication checks to validate resolved reference coverage and provenance. Keep actual fetch completeness as diagnostic information. Do not reapply fresh-quote age/score gates to retained marks. Preserve original source age and expose retained data honestly; no new hard carry-forward expiry is introduced here.
+
+Stop condition: a missing ARI or BAL stage quote with a valid prior source no longer aborts solely for that quote; no-prior behavior is explicit; failed candidates leave the official pointer intact.
+
+## Phase C — One official nonlinear pricing path
+
+Introduce a clearly versioned policy, for example `reference-mark-power-v1`, in both TypeScript and Python dispatch/configuration. Remove unconditional legacy/joint-review input preparation from this selected path. Keep existing interval/review engines isolated for historical replay; do not broadly delete them in this change.
+
+The new official path must use the resolved raw reference marks for both win contracts and stage contracts. It must not fit the original book intervals after selecting a reference price. For win-total ladders, adapt the existing ladder routine to selected point marks, preserve strike semantics, enforce monotone tail probabilities and Actuals-feasible totals, and label any missing-rung interpolation distinctly. Do not claim a model-derived/interpolated rung is an observed reference mark.
+
+For playoff probabilities, implement and document this nonlinear method:
+
+1. Within each team's mutually exclusive six-outcome vector, apply power normalization to sum to one, respecting verified settlement/impossibility facts.
+2. Convert the normalized exclusive outcomes to cumulative reach probabilities.
+3. Apply power normalization across teams for each reach stage to meet inventories 14/8/4/2/1, subtracting fixed facts from each target. Enforce per-team nested reach order. Iterate normalization and constrained monotonic projection until both stage-total and monotonicity residuals meet the declared tolerance (target 1e-8); use a bounded iteration budget and report nonconvergence.
+4. Distinguish fixed facts from active marks numerically equal to 0 or 1. Where the solver needs strictly interior active values, use an explicit numerical epsilon only in solver inputs, never alter persisted reference marks or true settlement facts. Detect mathematically infeasible fixed facts instead of moving them.
+5. Derive fair exclusive outcome probabilities from the final cumulative differences. Save method version, exponents/adjustments, residuals and final probabilities. This makes the unused `no_playoffs` input participate in normalization rather than requiring it and ignoring it.
+
+Do not blindly restore the legacy two-pass implementation: it can treat out-of-range suffix sums as fixed, confuse numeric endpoints with settlement, and leave residuals after clamping. Add regression fixtures before wiring it into official output. If the specified iteration cannot satisfy feasible fixtures reliably, report the exact fixture and residuals; do not substitute linear normalization or silently relax the tolerance.
