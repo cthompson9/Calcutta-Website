@@ -104,14 +104,14 @@ function AdminPanel({
       <button
         onClick={() => setExpanded((v) => !v)}
         className="flex items-center gap-1.5 px-3 py-1.5 border border-border text-muted-foreground text-xs font-mono font-bold uppercase tracking-widest hover:bg-muted transition-colors"
-        title="Enter admin key to pull draft results"
+        title="Enter admin key to manage auction controls"
       >
         <Lock className="w-3 h-3" /> Admin
       </button>
       {expanded && (
         <div className="absolute right-0 top-full mt-1 z-50 bg-background border border-border p-3 w-64 space-y-2 shadow-lg">
           <p className="text-xs font-mono text-muted-foreground">
-            Enter your admin key to enable draft-result imports.
+            Enter your admin key to manage auction controls.
           </p>
           <input
             type="password"
@@ -336,7 +336,7 @@ export default function Dashboard() {
         </div>
       )}
 
-      {!isPreview && calcuttaId && (
+      {calcuttaId && (
         <AuctionRoom
           calcuttaId={calcuttaId}
           year={year}

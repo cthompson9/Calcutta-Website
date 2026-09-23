@@ -87,7 +87,14 @@ export function AuctionRoom({ calcuttaId, year, adminKey, historicalSummaryRefet
         </div>
       );
     }
-    return null;
+    return (
+      <section className="border border-border bg-card p-6 rounded-md" aria-label="Live auction status">
+        <h2 className="text-lg font-bold uppercase tracking-tight">No Active Auction</h2>
+        <p className="mt-2 text-sm text-muted-foreground">
+          No live auction is configured. Admins can set up an auction for an empty Calcutta. Existing results are preserved.
+        </p>
+      </section>
+    );
   }
 
   const { id: auctionId, status, metrics, lots, consortia, sales } = activeAuction;
