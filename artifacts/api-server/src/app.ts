@@ -100,7 +100,9 @@ app.use((req, res, next) => {
   }
   apiCors(req, res, next);
 });
-app.use(express.json());
+// Listener batches enforce their own 256 KiB limit; keep the parser just large
+// enough to receive that bounded request before route-level validation.
+app.use(express.json({ limit: "256kb" }));
 app.use(express.urlencoded({ extended: true }));
 
 // OAuth discovery and authorization must be reachable before an MCP client can

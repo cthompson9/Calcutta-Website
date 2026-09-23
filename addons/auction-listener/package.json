@@ -1,0 +1,14 @@
+{
+  "name": "calcutta-auction-listener",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "description": "Local Recall-powered auction rehearsal; no production writes",
+  "scripts": {
+    "start": "node launch.mjs",
+    "server": "node server/main.mjs",
+    "test": "node --test test/*.test.mjs",
+    "smoke": "node test/smoke.mjs"
+  },
+  "engines": { "node": ">=22" }
+}

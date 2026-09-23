@@ -1543,6 +1543,111 @@ paths:
             application/json:
               schema:
                 $ref: "#/components/schemas/ErrorResponse"
+  /calcuttas/{calcuttaId}/auctions:
+    post:
+      operationId: createAuctionSession
+      tags: [auction]
+      parameters:
+        - {name: calcuttaId, in: path, required: true, schema: {type: number}}
+      requestBody:
+        required: false
+        content:
+          application/json: {schema: {$ref: "#/components/schemas/AuctionCreateInput"}}
+      responses:
+        "201": {description: Created, content: {application/json: {schema: {$ref: "#/components/schemas/AuctionSnapshot"}}}}
+        "409": {description: Conflict, content: {application/json: {schema: {$ref: "#/components/schemas/ErrorResponse"}}}}
+    get:
+      operationId: getActiveAuctionSnapshot
+      tags: [auction]
+      parameters:
+        - {name: calcuttaId, in: path, required: true, schema: {type: number}}
+      responses:
+        "200": {description: Snapshot, content: {application/json: {schema: {$ref: "#/components/schemas/AuctionSnapshot"}}}}
+        "404": {description: No session for this Calcutta, content: {application/json: {schema: {$ref: "#/components/schemas/ErrorResponse"}}}}
+  /calcuttas/{calcuttaId}/auctions/{auctionId}:
+    get:
+      operationId: getAuction
+      tags: [auction]
+      parameters:
+        - {name: calcuttaId, in: path, required: true, schema: {type: number}}
+        - {name: auctionId, in: path, required: true, schema: {type: number}}
+      responses:
+        "200": {description: Snapshot, content: {application/json: {schema: {$ref: "#/components/schemas/AuctionSnapshot"}}}}
+  /calcuttas/{calcuttaId}/auctions/{auctionId}/entries:
+    get:
+      operationId: getAuctionEligibleEntries
+      tags: [auction]
+      parameters:
+        - {name: calcuttaId, in: path, required: true, schema: {type: number}}
+        - {name: auctionId, in: path, required: true, schema: {type: number}}
+      responses:
+        "200":
+          description: Team-backed entries eligible for this auction's inventory
+          content:
+            application/json:
+              schema:
+                type: array
+                items: {$ref: "#/components/schemas/AuctionEligibleEntry"}
+  /calcuttas/{calcuttaId}/auctions/{auctionId}/lots/bulk:
+    post:
+      operationId: bulkUpsertAuctionLots
+      tags: [auction]
+      parameters:
+        - {name: calcuttaId, in: path, required: true, schema: {type: integer}}
+        - {name: auctionId, in: path, required: true, schema: {type: integer}}
+      requestBody:
+        required: true
+        content:
+          application/json: {schema: {$ref: "#/components/schemas/AuctionLotsBulkInput"}}
+      responses:
+        "201": {description: Imported, content: {application/json: {schema: {$ref: "#/components/schemas/AuctionBulkResult"}}}}
+        "400": {description: Invalid, content: {application/json: {schema: {$ref: "#/components/schemas/ErrorResponse"}}}}
+  /calcuttas/{calcuttaId}/auctions/{auctionId}/nominate-next:
+    post:
+      operationId: nominateAuctionLot
+      tags: [auction]
+      parameters:
+        - {name: calcuttaId, in: path, required: true, schema: {type: integer}}
+        - {name: auctionId, in: path, required: true, schema: {type: integer}}
+      requestBody:
+        required: true
+        content:
+          application/json: {schema: {$ref: "#/components/schemas/AuctionNominationInput"}}
+      responses:
+        "200": {description: Snapshot, content: {application/json: {schema: {$ref: "#/components/schemas/AuctionSnapshot"}}}}
+  /calcuttas/{calcuttaId}/auctions/{auctionId}/lots/{lotId}/sale:
+    post:
+      operationId: finalizeAuctionSale
+      tags: [auction]
+      parameters:
+        - {name: calcuttaId, in: path, required: true, schema: {type: integer}}
+        - {name: auctionId, in: path, required: true, schema: {type: integer}}
+        - {name: lotId, in: path, required: true, schema: {type: integer}}
+      requestBody:
+        required: true
+        content:
+          application/json: {schema: {$ref: "#/components/schemas/AuctionSaleInput"}}
+      responses:
+        "200": {description: Snapshot, content: {application/json: {schema: {$ref: "#/components/schemas/AuctionSnapshot"}}}}
+  /calcuttas/{calcuttaId}/auctions/{auctionId}/complete:
+    post:
+      operationId: completeAuction
+      tags: [auction]
+      parameters:
+        - {name: calcuttaId, in: path, required: true, schema: {type: integer}}
+        - {name: auctionId, in: path, required: true, schema: {type: integer}}
+      responses:
+        "200": {description: Snapshot, content: {application/json: {schema: {$ref: "#/components/schemas/AuctionSnapshot"}}}}
+  /calcuttas/{calcuttaId}/auctions/{auctionId}/events:
+    get:
+      operationId: getAuctionEvents
+      tags: [auction]
+      parameters:
+        - {name: calcuttaId, in: path, required: true, schema: {type: integer}}
+        - {name: auctionId, in: path, required: true, schema: {type: integer}}
+        - {name: after, in: query, schema: {type: integer, default: 0}}
+      responses:
+        "200": {description: Events, content: {application/json: {schema: {type: array, items: {$ref: "#/components/schemas/AuctionEvent"}}}}}
         "404":
           description: Season not found
           content:
@@ -1852,6 +1957,185 @@ components:
       in: query
       schema: { type: boolean, default: false }
   schemas:
+    AuctionCreateInput:
+      type: object
+      additionalProperties: false
+    AuctionNominationInput:
+      type: object
+      required: [expectedRevision, idempotencyKey]
+      properties:
+        expectedRevision: {type: number}
+        idempotencyKey: {type: string}
+    AuctionSnapshot:
+      type: object
+      additionalProperties: false
+      required: [id, calcuttaId, status, revision, lots, consortia, sales, metrics]
+      properties:
+        id: {type: number}
+        calcuttaId: {type: number}
+        status: {type: string, enum: [setup, live, complete]}
+        revision: {type: number}
+        lots: {type: array, items: {$ref: "#/components/schemas/AuctionLot"}}
+        consortia: {type: array, items: {$ref: "#/components/schemas/AuctionConsortium"}}
+        sales: {type: array, items: {$ref: "#/components/schemas/AuctionSale"}}
+        metrics: {$ref: "#/components/schemas/AuctionMetrics"}
+    AuctionLot:
+      type: object
+      additionalProperties: false
+      required: [id, auctionId, externalId, displayName, entryId, status]
+      properties:
+        id: {type: number}
+        auctionId: {type: number}
+        externalId: {type: string}
+        displayName: {type: string}
+        aliases: {type: array, items: {type: string}}
+        metadata: {$ref: "#/components/schemas/AuctionMetadata"}
+        entryId: {type: number}
+        status: {type: string, enum: [available, bidding, sold]}
+        nominationId: {type: ["string", "null"]}
+        nominationSequence: {type: ["number", "null"]}
+        currentBidCents: {type: ["number", "null"]}
+        nominatedAt: {type: ["string", "null"], format: date-time}
+        updatedAt: {type: string, format: date-time}
+    AuctionMetadata:
+      type: object
+      additionalProperties: true
+      properties:
+        note: {type: ["string", "null"]}
+        source: {type: ["string", "null"]}
+        lotId: {type: ["number", "null"]}
+        saleId: {type: ["number", "null"]}
+        totalCents: {type: ["number", "null"]}
+        reason: {type: ["string", "null"]}
+        cents: {type: ["number", "null"]}
+        count: {type: ["number", "null"]}
+        consortiumId: {type: ["number", "null"]}
+        before: {type: ["array", "null"], items: {$ref: "#/components/schemas/AuctionAuditOwner"}}
+        after: {type: ["array", "null"], items: {$ref: "#/components/schemas/AuctionAuditOwner"}}
+    AuctionAuditOwner:
+      type: object
+      additionalProperties: false
+      required: [bidderId, share]
+      properties:
+        bidderId: {type: number}
+        share: {type: number}
+        costBasis: {type: ["number", "null"]}
+        cents: {type: ["number", "null"]}
+    AuctionConsortium:
+      type: object
+      additionalProperties: false
+      required: [id, auctionId, displayName, active]
+      properties:
+        id: {type: number}
+        auctionId: {type: number}
+        displayName: {type: string}
+        aliases: {type: array, items: {type: string}}
+        bidderId: {type: ["number", "null"]}
+        active: {type: number}
+    AuctionSale:
+      type: object
+      additionalProperties: false
+      required: [id, auctionId, lotId, totalCents, source, allocations]
+      properties:
+        id: {type: number}
+        auctionId: {type: number}
+        lotId: {type: number}
+        totalCents: {type: number}
+        source: {type: string}
+        reason: {type: ["string", "null"]}
+        createdAt: {type: string, format: date-time}
+        correctedAt: {type: ["string", "null"], format: date-time}
+        allocations:
+          type: array
+          items: {$ref: "#/components/schemas/AuctionSaleAllocation"}
+    AuctionSaleAllocation:
+      type: object
+      additionalProperties: false
+      required: [saleId, bidderId, share, cents, bidderName]
+      properties:
+        saleId: {type: number}
+        bidderId: {type: number}
+        share: {type: string}
+        cents: {type: number}
+        bidderName: {type: string}
+        consortiumName: {type: ["string", "null"]}
+    AuctionMetrics:
+      type: object
+      additionalProperties: false
+      required: [poolSizeCents, lotsSold, totalLots, averageSaleCents]
+      properties:
+        poolSizeCents: {type: number}
+        lotsSold: {type: number}
+        totalLots: {type: number}
+        averageSaleCents: {type: ["number", "null"]}
+    AuctionLotsBulkInput:
+      type: object
+      required: [lots, expectedRevision, idempotencyKey]
+      properties:
+        expectedRevision: {type: number}
+        idempotencyKey: {type: string}
+        dryRun: {type: boolean}
+        lots:
+          type: array
+          items: {$ref: "#/components/schemas/AuctionLotInput"}
+    AuctionLotInput:
+      type: object
+      additionalProperties: false
+      required: [externalId, name, entryId]
+      properties:
+        externalId: {type: string}
+        name: {type: string}
+        entryId: {type: number}
+        aliases: {type: array, items: {type: string}}
+        metadata: {$ref: "#/components/schemas/AuctionMetadata"}
+    AuctionEligibleEntry:
+      type: object
+      additionalProperties: false
+      required: [id, teamName]
+      properties:
+        id: {type: number}
+        teamName: {type: string}
+    AuctionSaleInput:
+      type: object
+      required: [allocations, expectedRevision]
+      properties:
+        totalCents: {type: number, minimum: 1}
+        price: {type: number, exclusiveMinimum: 0}
+        expectedRevision: {type: number}
+        idempotencyKey: {type: string}
+        reason: {type: string}
+        allocations:
+          type: array
+          items: {$ref: "#/components/schemas/AuctionAllocationInput"}
+    AuctionAllocationInput:
+      type: object
+      additionalProperties: false
+      required: [bidderId, share]
+      properties:
+        bidderId: {type: number}
+        share: {type: number, exclusiveMinimum: 0, maximum: 1}
+    AuctionBulkResult:
+      type: object
+      additionalProperties: false
+      required: [inserted, revision]
+      properties:
+        inserted: {type: number}
+        revision: {type: number}
+        changed: {type: boolean}
+        dryRun: {type: boolean}
+    AuctionEvent:
+      type: object
+      additionalProperties: false
+      required: [id, auctionId, sequence, eventType, payload, createdAt]
+      properties:
+        id: {type: number}
+        auctionId: {type: number}
+        sequence: {type: number}
+        eventType: {type: string}
+        idempotencyKey: {type: ["string", "null"]}
+        nominationId: {type: ["string", "null"]}
+        payload: {$ref: "#/components/schemas/AuctionMetadata"}
+        createdAt: {type: string, format: date-time}
     AgentPortfolioTeam:
       type: object
       required: [team_id, team, abbreviation, ownership_percentage, original_ownership_percentage, cost_basis, trade_paid, trade_received, current_mtm, realized_return, net_mtm, net_return, value_source, wins, losses, ties, point_differential, playoff_status, playoff_seed, market_status, market_status_reasons]

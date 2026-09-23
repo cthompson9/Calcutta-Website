@@ -66,7 +66,7 @@ export function Shell({ children, isPreview }: ShellProps) {
     { href: "/results", label: "Results", mobileLabel: "Results", icon: Trophy },
     { href: "/analysis", label: "Analysis", mobileLabel: "Analysis", icon: TrendingUp },
     { href: "/trades", label: "Trades", mobileLabel: "Trades", icon: ArrowLeftRight },
-    { href: "/dashboard", label: "Auction Results", mobileLabel: "Auction", icon: LayoutDashboard },
+    { href: "/dashboard", label: "Auction", mobileLabel: "Auction", icon: LayoutDashboard },
   ];
   const utilityNavItems = [
     { href: "/whats-new", label: "What's New", mobileLabel: "New", icon: Sparkles },
@@ -347,7 +347,7 @@ function UnsupportedSportState({
         <p className="mt-3 text-sm leading-6 text-muted-foreground">
           This catalog includes Calcuttas from multiple sports, but the current
           reports are still NFL-only. Choose an NFL Calcutta above to view
-          Results, Analysis, Trades, or Auction Results.
+          Results, Analysis, Trades, or Auction.
         </p>
       </div>
     </section>

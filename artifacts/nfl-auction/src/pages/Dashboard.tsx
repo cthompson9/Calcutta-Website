@@ -13,6 +13,9 @@ import { useBacklinkBackShortcut } from "@/hooks/useBacklinkBackShortcut";
 import { useQueryClient } from "@tanstack/react-query";
 import { useLocation } from "wouter";
 import { parseResultSourceTarget } from "@/lib/resultSourceLinks";
+import { AuctionRoom } from "@/components/auction/AuctionRoom";
+import { LotInventory } from "@/components/auction/LotInventory";
+import { useActiveAuction } from "@/hooks/useActiveAuction";
 import {
   AlertDialog,
   AlertDialogAction,
@@ -158,6 +161,9 @@ export default function Dashboard() {
       },
     },
   );
+
+  const { data: activeAuction, isLoading: loadingActiveAuction, error: activeAuctionError } = useActiveAuction(calcuttaId);
+
   const sourceTarget = parseResultSourceTarget(
     typeof window === "undefined" ? location : window.location.href,
   );
@@ -282,7 +288,7 @@ export default function Dashboard() {
             )}
             data-testid="text-auction-title"
           >
-            {isPreview ? "Auction results" : "Auction Results"}
+            Auction
           </h1>
           {isPreview ? (
             <p className="font-sans text-xs font-semibold uppercase tracking-[0.08em] text-muted-foreground md:text-sm">
@@ -290,7 +296,7 @@ export default function Dashboard() {
             </p>
           ) : (
             <p className="text-muted-foreground font-mono text-xs md:text-sm uppercase tracking-widest">
-              {year} auction results
+              {year} auction
             </p>
           )}
         </div>
@@ -298,7 +304,7 @@ export default function Dashboard() {
         {/* Admin controls */}
         <div className={cn("flex items-center gap-3 flex-wrap", isPreview && "justify-center")}>
           <AdminPanel adminKey={adminKey} onSetKey={saveAdminKey} onClearKey={clearAdminKey} />
-          {adminKey && (
+          {adminKey && !activeAuction && (
             <button
               onClick={() => { setImportResult(null); setConfirmOpen(true); }}
               disabled={importing}
@@ -328,6 +334,19 @@ export default function Dashboard() {
         }`}>
           {importResult.ok ? "✓ " : "✗ "}{importResult.msg}
         </div>
+      )}
+
+      {!isPreview && calcuttaId && (
+        <AuctionRoom
+          calcuttaId={calcuttaId}
+          year={year}
+          adminKey={adminKey}
+          historicalSummaryRefetch={refetch}
+          activeAuction={activeAuction}
+          hasHistoricalResults={summary.auctionResults.length > 0}
+          isLoading={loadingActiveAuction}
+          error={activeAuctionError}
+        />
       )}
 
       {/* Headline Stats */}
@@ -497,6 +516,12 @@ export default function Dashboard() {
           </div>
         )}
       </div>
+
+      {activeAuction && isPreview && (
+        <div className="mt-8">
+          <LotInventory lots={activeAuction.lots} sales={activeAuction.sales} />
+        </div>
+      )}
 
       {/* Confirmation dialog */}
       <AlertDialog open={confirmOpen} onOpenChange={setConfirmOpen}>

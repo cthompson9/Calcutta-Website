@@ -60,3 +60,5 @@
 - [Reference-market read contract](reference-market-read-contract.md) — REST and MCP expose the same pinned official-source projection without live fetches, writes, or recalculation.
 - [Historical reference bootstrap](historical-reference-bootstrap.md) — seed raw marks only from official saved books or identifiable pre-de-vig inputs; unsupported win gaps remain model-derived.
 - [MTM policy dispatch](mtm-policy-dispatch.md) — every official policy must be accepted consistently by TypeScript validation, Python pre-dispatch, and engine routing.
+- [Auction mutation parity](auction-mutation-parity.md) — HTTP and MCP inventory writes must share identity, revision, and completion rules.
+- [Hosted listener runtime](hosted-listener-runtime.md) — bundled API routes cannot require an addon source file via a source-relative path; preserve its ticket policy in the bundle.

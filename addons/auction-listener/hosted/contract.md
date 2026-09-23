@@ -1,0 +1,39 @@
+# One-click listener adapter contract
+
+Codex has implemented and tested the local protocol handler, local backend, durable outbound bridge and ticket security policy. Integrate these exact interfaces into the in-progress Auction feature; do not rebuild the Windows recorder. No publishing.
+
+## Website routes
+
+Use explicit admin middleware on POST /api/listener/tickets with {auctionId}. Resolve an existing open session using the current Auction service; reject historical/completed/missing sessions. Generate origin from server configuration, never an unvalidated Host/X-Forwarded-Host/request body. ListenerTickets.issue returns {launchUrl,expiresAt}. Cache-Control: no-store. Ticket TTL 90 seconds. Server signing secret >=32 chars (server secret, never shipped to frontend); production startup must fail closed for listener routes if unset, while manual auctions still work.
+
+Admin-only Auction button: Open Calcutta Listener. POST ticket, then show/click a normal anchor with launchUrl (the browser may require a second explicit user click after asynchronous request). Do not automatically retry protocol navigation. Show clear If nothing opened / install instructions. Never start recording from a link. Pairing state poll below confirms actual connection; a button click alone does not mean connected. No ticket in query strings, analytics, logs, rendered transcript or persisted browser storage. The link contains a fragment ticket only, not ADMIN_API_KEY or Recall key.
+
+POST /api/listener/pair is public but tightly rate-limited and validates body with only origin,ticket,redemptionId. Call ListenerTickets.redeem. Returns {id,token,expiresAt,auction:{id,name,...}}. Invalid/expired/consumed tickets return 401/410. Same ticket + redemption ID retry returns same credential within its original 90-second deadline. Another redemption ID must fail. Token is scoped to one auction, expires after 12 hours, stored hashed. No access to generic admin mutation routes.
+
+POST /api/listener/sessions/:id/events authenticates the session bearer. Accept {events:[{id,sessionId,websiteSessionId,uploadId,receivedAt,event}]} with max 100 events and 256KB. websiteSessionId must equal route session ID. `sessionId` inside each event is a LOCAL rehearsal identifier, NOT the hosted auction ID: do not use it for authorization. event is Recall {event:'transcript.data'|'transcript.partial_data',data:{data:{words,participant,...}}}. Authoritative scope comes exclusively from the authenticated session. Validate all shapes and size limits. Persist transactionally, unique (listener_session_id,event_id), and return {acceptedIds:[...]} only after durable acceptance; duplicates are acknowledged. Errors never drop the local outbox. Do not log bearer/raw ticket. Do not allow events after completion/revocation. Server-received timestamps are authoritative for delivery, provider word relative timestamps for audio context.
+
+POST /api/listener/sessions/:id/heartbeat authenticates bearer, accepts {recording:boolean,pending?:number}, updates lastSeen/recording state; returns {ok:true}. Reject completed/revoked sessions. Add scoped admin/viewer read-only status to the auction snapshot: connected based on lastSeen within 30 sec; recording; pending count; latest transcript. Polling isn't appropriate for subsecond transcript updates: use the existing persistent event cursor/stream, or explicitly report fallback latency.
+
+Admin revoke endpoint disables a listener session; completion revokes it automatically. Database sessions must survive restarts/multiple replicas. Paired listener only has transcript/status rights; never global commissioner rights.
+
+The supplied ListenerConnect.tsx component uses GET /api/listener/status?auctionId=... (admin bearer) returning {connected,recording,pending}. Copy it into the current Auction feature and mount only for an open auction in admin view, keyed by auctionId. Keep the existing transcript display for viewers. Include `pending` in heartbeat input so session replacement can reject unsent events. Adapt styling/contracts to the current feature without rebuilding the component behavior.
+
+## Durable repository for tickets.mjs
+
+Implement createTicket, getSession, withTicket(hash,callback) against the existing database. withTicket starts one transaction and locks the ticket row; its tx methods: getTicket(), getOpenAuction(auctionId), getSession(id), activateSession(session), markRedeemed({redemptionId,sessionId}). Lock the relevant auction session consistently to serialize concurrent redemptions, nomination/completion and active listener replacement. activateSession must reject replacing a listener with a fresh recording heartbeat or pending deliveries; old idle sessions are revoked atomically. Avoid locking inversion with existing auction/ownership locks. Validate the auction still exists and is open inside this transaction. createTicket validates it as well.
+
+Ticket fields: hash(unique),auctionId,origin,expiresAt,redemptionId(nullable),sessionId(nullable). Session fields: id(UUID),auctionId,tokenHash,expiresAt,revokedAt,lastSeenAt,recording,pending. Event dedup storage with session ID+event ID uniqueness and bounded transcript data. Use additive Drizzle schema + registered migration and convergence tests; adapt auction foreign keys to the actual newly implemented schema. No destructive push. Clean expired tickets with bounded cleanup after their replay deadline.
+
+## Hosted interpretation
+
+The local bridge deliberately bypasses its REHEARSAL sale interpreter when paired. Hosted code must display transcripts and interpret only the current button-nominated lot. Reuse live auction mutation services and the full plan's buyer/unequal-split validation, idempotency, manual revision and ledger protections. Never call generic admin HTTP endpoints with a shared admin key to relay a sale.
+
+Late event safety: bind an upload timeline and audio timestamps to the nomination intervals; do not stamp the current lot based only on callback arrival. If reliable boundary mapping is unavailable, queue a review rather than auto-finalizing. Partial transcript never finalizes; explicit unambiguous sold statement can. Price-only bids must not inherit an unknown buyer. Voice never nominates. If interpreter integration isn't completed, state that clearly and keep manual finalization; do not claim automatic sales are working.
+
+## Windows delivery / test scope
+
+`node addons/auction-listener/launch.mjs --register-protocol` registers calcutta-listener for this Windows user and opens the app. A packaged app runs with --register-protocol and includes server/web resources; packaged private config lives in Electron userData/private. Never bundle .local, Recall key, recordings, node_modules from the source zip or system desktop.ini. Native SDK dependencies are installed by normal package tooling. Windows installer/code signing for distribution to other commissioners is separate from registering Craig's already configured local installation.
+
+Production allowlist is https://thecalcutta.app and https://www.thecalcutta.app. A development preview is allowed only by adding its EXACT HTTPS origin to local private backend-config.json CALCUTTA_WEBSITE_ORIGINS (retain production origins); no wildcard *.replit.dev trust. Do not send that config to Replit. HTTPS requests disallow redirects.
+
+Tests required: admin-only issue, expired/wrong-origin/replayed tickets, same redemption retry, concurrent ticket redemption/session replacement, revoked/expired token, wrong-auction event, dedup/restart/reconnect, invalid oversized event, completion reject, live transcript and actual protocol launch from website. Unit tests for tickets and bridge are already supplied; run only new adapter/database/browser checks plus normal type/build/contracts tests. Report exact runtime evidence and remaining gaps. Do not publish.

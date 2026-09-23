@@ -9,6 +9,10 @@ import {
   calcuttaEntriesTable,
   teamResultsTable,
   seasonsTable,
+  auctionSessionsTable,
+  auctionLotsTable,
+  auctionSalesTable,
+  auctionSaleAllocationsTable,
 } from "@workspace/db";
 import { GetAuctionSummaryQueryParams, GetAuctionSummaryResponse } from "@workspace/api-zod";
 import { loadSeasonOwnership } from "../lib/seasonOwnership";
@@ -59,6 +63,8 @@ router.get("/summary", async (req, res): Promise<void> => {
 
   // The selected Calcutta's primary positions are its immutable auction ledger.
   // Do not read season-wide legacy auction rows: a season can have multiple pools.
+  const [liveSession] = await db.select({ id: auctionSessionsTable.id }).from(auctionSessionsTable)
+    .where(eq(auctionSessionsTable.calcuttaId, calcuttaId));
   const primaryRows = await db
     .select({
       teamId: calcuttaEntriesTable.teamId,
@@ -73,7 +79,7 @@ router.get("/summary", async (req, res): Promise<void> => {
       eq(positionsTable.source, "primary"),
     ))
     .where(eq(calcuttaEntriesTable.calcuttaId, calcuttaId));
-  const auctionRows = [...primaryRows.reduce((byTeam, row) => {
+  let auctionRows = [...primaryRows.reduce((byTeam, row) => {
     const existing = byTeam.get(row.teamId) ?? {
       teamId: row.teamId,
       teamName: row.teamName,
@@ -85,6 +91,18 @@ router.get("/summary", async (req, res): Promise<void> => {
     return byTeam;
   }, new Map<number, { teamId: number; teamName: string; conference: string; bidAmount: number }>())
     .values()];
+  if (liveSession) {
+    const sessionRows = await db.select({
+      teamId: teamsTable.id, teamName: teamsTable.name, conference: teamsTable.conference,
+      bidAmount: auctionSalesTable.totalCents,
+    }).from(auctionSalesTable)
+      .innerJoin(auctionLotsTable, eq(auctionLotsTable.id, auctionSalesTable.lotId))
+      .innerJoin(calcuttaEntriesTable, eq(calcuttaEntriesTable.id, auctionLotsTable.entryId))
+      .innerJoin(teamsTable, eq(teamsTable.id, calcuttaEntriesTable.teamId))
+      .where(eq(auctionSalesTable.auctionId, liveSession.id))
+      .orderBy(auctionLotsTable.nominationSequence);
+    auctionRows = sessionRows.map((row) => ({ ...row, bidAmount: Number(row.bidAmount) / 100 }));
+  }
 
   const teamsAuctioned = auctionRows.length;
   const potSize = auctionRows.reduce((sum, a) => sum + a.bidAmount, 0);
@@ -131,9 +149,23 @@ router.get("/summary", async (req, res): Promise<void> => {
     )
     .where(eq(calcuttaEntriesTable.calcuttaId, calcuttaId));
 
-  const auctionResults = buildAuctionResults(resultRows.map((row) => ({
+  const liveResultRows = liveSession ? await db.select({
+    teamId: teamsTable.id, teamName: teamsTable.name,
+    costBasis: auctionSalesTable.totalCents, winnerName: biddersTable.name,
+    draftOrder: auctionLotsTable.nominationSequence,
+  }).from(auctionSalesTable)
+    .innerJoin(auctionLotsTable, eq(auctionLotsTable.id, auctionSalesTable.lotId))
+    .innerJoin(calcuttaEntriesTable, eq(calcuttaEntriesTable.id, auctionLotsTable.entryId))
+    .innerJoin(teamsTable, eq(teamsTable.id, calcuttaEntriesTable.teamId))
+    .innerJoin(auctionSaleAllocationsTable, eq(auctionSaleAllocationsTable.saleId, auctionSalesTable.id))
+    .innerJoin(biddersTable, eq(biddersTable.id, auctionSaleAllocationsTable.bidderId))
+    .where(eq(auctionSalesTable.auctionId, liveSession.id))
+    .orderBy(auctionLotsTable.nominationSequence) : null;
+  const auctionResults = buildAuctionResults((liveResultRows ?? resultRows).map((row) => ({
     ...row,
-    bidAmount: String(auctionRows.find((auction) => auction.teamId === row.teamId)?.bidAmount ?? 0),
+    bidAmount: liveSession
+      ? (Number(row.costBasis) / 100).toFixed(2)
+      : String(auctionRows.find((auction) => auction.teamId === row.teamId)?.bidAmount ?? 0),
   })));
 
   const mostExpensive = auctionRows.reduce<typeof auctionRows[number] | null>(

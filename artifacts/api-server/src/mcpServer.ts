@@ -9,7 +9,7 @@
 import { McpServer } from "@modelcontextprotocol/sdk/server/mcp.js";
 import { StreamableHTTPServerTransport } from "@modelcontextprotocol/sdk/server/streamableHttp.js";
 import { z } from "zod";
-import { ilike, eq, and, asc, desc, isNull, sql } from "drizzle-orm";
+import { ilike, eq, and, asc, desc, isNull, sql, inArray } from "drizzle-orm";
 import {
   db,
   teamsTable,
@@ -31,6 +31,9 @@ import {
   mtmMarketQuoteTable,
   mtmSnapshotTable,
   mtmTeamProjectionTable,
+  auctionSessionsTable,
+  auctionLotsTable,
+  auctionEventsTable,
 } from "@workspace/db";
 import type { Router, IRouter, Request, Response } from "express";
 import { Router as ExpressRouter } from "express";
@@ -403,6 +406,252 @@ function buildMcpServer(isAdmin: boolean) {
         };
       }
       return text(JSON.stringify({ calendarId, currentProjection: calendar.currentProjection, rounds: calendar.rounds }, null, 2));
+    },
+  );
+
+  // ── Auction inventory tools ───────────────────────────────────────────────
+  // These intentionally use the same tables, revision checks, ownership scope,
+  // and audit events as routes/auctions.ts. Nomination and sale are not MCP
+  // operations: they remain commissioner UI workflows.
+  const auctionIds = {
+    calcuttaId: z.number().int().positive().describe("Explicit Calcutta ID."),
+    auctionId: z.number().int().positive().describe("Explicit auction session ID belonging to the Calcutta."),
+  };
+  const auctionLotInput = z.object({
+    externalId: z.string().trim().min(1).max(200),
+    name: z.string().trim().min(1).max(300),
+    aliases: z.array(z.string().trim().min(1)).max(20).optional(),
+    entryId: z.number().int().positive(),
+    metadata: z.record(z.string(), z.unknown()).optional(),
+  });
+  const auctionRevision = z.number().int().nonnegative().optional();
+
+  const auctionSession = async (calcuttaId: number, auctionId: number) => {
+    const [session] = await db.select().from(auctionSessionsTable).where(and(
+      eq(auctionSessionsTable.id, auctionId),
+      eq(auctionSessionsTable.calcuttaId, calcuttaId),
+    ));
+    return session ?? null;
+  };
+  const auctionEvent = async (
+    tx: any,
+    auctionId: number,
+    eventType: string,
+    payload: Record<string, unknown>,
+    idempotencyKey?: string,
+  ) => {
+    const [{ max }] = await tx.select({
+      max: sql<number>`coalesce(max(${auctionEventsTable.sequence}),0)`,
+    }).from(auctionEventsTable).where(eq(auctionEventsTable.auctionId, auctionId));
+    await tx.insert(auctionEventsTable).values({
+      auctionId,
+      sequence: Number(max) + 1,
+      eventType,
+      payload,
+      idempotencyKey,
+    });
+  };
+
+  server.tool(
+    "list_auction_lots",
+    "Read the authoritative inventory for one explicitly selected Calcutta auction. This is read-only and available to ordinary MCP connections.",
+    auctionIds,
+    async ({ calcuttaId, auctionId }) => {
+      const session = await auctionSession(calcuttaId, auctionId);
+      if (!session) return jsonText({ status: 404, body: { error: "Auction not found for this Calcutta." } });
+      const lots = await db.select().from(auctionLotsTable)
+        .where(eq(auctionLotsTable.auctionId, auctionId))
+        .orderBy(asc(auctionLotsTable.nominationSequence), asc(auctionLotsTable.id));
+      return jsonText({
+        status: 200,
+        body: { calcuttaId, auctionId, revision: session.revision, status: session.status, lots },
+      });
+    },
+  );
+
+  server.tool(
+    "upsert_auction_lots",
+    "Commissioner-only inventory upsert for one explicitly selected auction. Existing available lots are updated by externalId; nominated or sold lots cannot be replaced. dryRun validates without writing.",
+    {
+      ...auctionIds,
+      expectedRevision: z.number().int().nonnegative().describe("Required optimistic-concurrency revision."),
+      idempotencyKey: z.string().trim().min(8).max(200).describe("Required idempotency key for safe retries."),
+      dryRun: z.boolean().optional().default(false),
+      lots: z.array(auctionLotInput).min(1).max(500),
+    },
+    async ({ calcuttaId, auctionId, expectedRevision, idempotencyKey, dryRun, lots }) => {
+      if (!isAdmin) return commissionerAuthorizationRequired();
+      const session = await auctionSession(calcuttaId, auctionId);
+      if (!session) return jsonText({ status: 404, body: { error: "Auction not found for this Calcutta." } });
+      const [alreadyApplied] = await db.select({ id: auctionEventsTable.id }).from(auctionEventsTable).where(and(
+        eq(auctionEventsTable.auctionId, auctionId),
+        eq(auctionEventsTable.idempotencyKey, idempotencyKey),
+      ));
+      if (alreadyApplied) {
+        return jsonText({ status: 200, body: { calcuttaId, auctionId, replayed: true, revision: session.revision } });
+      }
+      const normalized = lots.map((lot) => ({ ...lot, externalId: lot.externalId.toLocaleLowerCase() }));
+      if (new Set(normalized.map((lot) => lot.externalId)).size !== normalized.length) {
+        return jsonText({ status: 422, body: { error: "Duplicate external ID in batch." } });
+      }
+      if (expectedRevision !== session.revision) {
+        return jsonText({ status: 409, body: { error: "Stale auction revision." } });
+      }
+      const aliases = normalized.flatMap((lot) => lot.aliases ?? []).map((alias) => alias.trim().toLocaleLowerCase());
+      if (new Set(aliases).size !== aliases.length) {
+        return jsonText({ status: 422, body: { error: "Duplicate alias in batch." } });
+      }
+      const entryIds = normalized.map((lot) => lot.entryId);
+      const entries = await db.select({ id: calcuttaEntriesTable.id }).from(calcuttaEntriesTable).where(and(
+        eq(calcuttaEntriesTable.calcuttaId, calcuttaId),
+        inArray(calcuttaEntriesTable.id, entryIds),
+      ));
+      if (entries.length !== new Set(entryIds).size) {
+        return jsonText({ status: 422, body: { error: "Every lot must reference an existing team-backed Calcutta entry." } });
+      }
+      const auctionLots = await db.select().from(auctionLotsTable)
+        .where(eq(auctionLotsTable.auctionId, auctionId));
+      const existing = auctionLots.filter((row) => normalized.some((lot) => lot.externalId === row.externalId));
+      const entryConflict = normalized.find((lot) => {
+        const prior = auctionLots.find((row) => row.entryId === lot.entryId && row.externalId !== lot.externalId);
+        return prior != null;
+      });
+      if (entryConflict) {
+        return jsonText({ status: 422, body: { error: `Entry ${entryConflict.entryId} is already assigned to another lot in this auction.` } });
+      }
+      const aliasConflict = normalized.flatMap((lot) => (lot.aliases ?? []).map((alias) => ({
+        alias: alias.trim().toLocaleLowerCase(), externalId: lot.externalId,
+      }))).find(({ alias, externalId }) => auctionLots.some((row) =>
+        row.externalId !== externalId &&
+        (Array.isArray(row.aliases) ? row.aliases : []).some((prior) => String(prior).trim().toLocaleLowerCase() === alias),
+      ));
+      if (aliasConflict) {
+        return jsonText({ status: 422, body: { error: `Alias "${aliasConflict.alias}" is already assigned to another lot.` } });
+      }
+      const unavailable = existing.find((row) => row.status !== "available");
+      if (unavailable) {
+        return jsonText({ status: 409, body: { error: `Lot ${unavailable.externalId} is nominated or sold and cannot be replaced.` } });
+      }
+      if (dryRun) {
+        return jsonText({
+          status: 200,
+          body: { calcuttaId, auctionId, dryRun: true, valid: true, inserts: normalized.filter((lot) => !existing.some((row) => row.externalId === lot.externalId)).length, updates: existing.length },
+        });
+      }
+      try {
+        const result = await db.transaction(async (tx) => {
+          const [locked] = await tx.select().from(auctionSessionsTable)
+            .where(eq(auctionSessionsTable.id, auctionId)).for("update");
+          if (!locked || locked.calcuttaId !== calcuttaId) throw new Error("Auction not found for this Calcutta.");
+          if (locked.status === "complete") throw new Error("Auction is complete.");
+          if (expectedRevision !== locked.revision) throw new Error("Stale auction revision.");
+          const [replayed] = await tx.select({ id: auctionEventsTable.id }).from(auctionEventsTable).where(and(
+            eq(auctionEventsTable.auctionId, auctionId),
+            eq(auctionEventsTable.idempotencyKey, idempotencyKey),
+          ));
+          if (replayed) return { inserted: 0, updated: 0, revision: locked.revision };
+          let inserted = 0; let updated = 0;
+          for (const lot of normalized) {
+            const [prior] = await tx.select().from(auctionLotsTable).where(and(
+              eq(auctionLotsTable.auctionId, auctionId),
+              eq(auctionLotsTable.externalId, lot.externalId),
+            ));
+            if (prior) {
+              if (prior.status !== "available") throw new Error(`Lot ${prior.externalId} is nominated or sold and cannot be replaced.`);
+              if (prior.entryId !== lot.entryId) throw new Error(`Lot ${prior.externalId} cannot change its entry.`);
+              await tx.update(auctionLotsTable).set({
+                displayName: lot.name, aliases: lot.aliases ?? [], metadata: lot.metadata ?? {},
+                entryId: lot.entryId, updatedAt: new Date(),
+              }).where(eq(auctionLotsTable.id, prior.id));
+              updated++;
+            } else {
+              await tx.insert(auctionLotsTable).values({
+                auctionId, externalId: lot.externalId, displayName: lot.name,
+                aliases: lot.aliases ?? [], metadata: lot.metadata ?? {}, entryId: lot.entryId,
+              });
+              inserted++;
+            }
+          }
+          await tx.update(auctionSessionsTable).set({ revision: locked.revision + 1 }).where(eq(auctionSessionsTable.id, auctionId));
+          await auctionEvent(tx, auctionId, "inventory_updated", { count: normalized.length, inserted, updated }, idempotencyKey);
+          return { inserted, updated, revision: locked.revision + 1 };
+        });
+        return jsonText({ status: 200, body: { calcuttaId, auctionId, ...result } });
+      } catch (error) {
+        return jsonText({ status: 409, body: { error: error instanceof Error ? error.message : "Inventory update rejected." } });
+      }
+    },
+  );
+
+  server.tool(
+    "update_auction_lot",
+    "Commissioner-only update of the descriptive fields for an available lot. The entry identity cannot be changed.",
+    {
+      ...auctionIds,
+      lotId: z.number().int().positive(),
+      name: z.string().trim().min(1).max(300).optional(),
+      aliases: z.array(z.string().trim().min(1)).max(20).optional(),
+      metadata: z.record(z.string(), z.unknown()).optional(),
+      expectedRevision: z.number().int().nonnegative().describe("Required optimistic-concurrency revision."),
+    },
+    async ({ calcuttaId, auctionId, lotId, name, aliases, metadata, expectedRevision }) => {
+      if (!isAdmin) return commissionerAuthorizationRequired();
+      if (name == null && aliases == null && metadata == null) return jsonText({ status: 400, body: { error: "At least one lot field is required." } });
+      try {
+        const revision = await db.transaction(async (tx) => {
+          const [session] = await tx.select().from(auctionSessionsTable).where(eq(auctionSessionsTable.id, auctionId)).for("update");
+          const [lot] = await tx.select().from(auctionLotsTable).where(and(eq(auctionLotsTable.id, lotId), eq(auctionLotsTable.auctionId, auctionId)));
+          if (!session || session.calcuttaId !== calcuttaId || !lot) throw new Error("Lot not found for this Calcutta auction.");
+          if (session.status === "complete" || lot.status !== "available") throw new Error("Only available lots can be edited.");
+          if (expectedRevision !== session.revision) throw new Error("Stale auction revision.");
+          if (aliases) {
+            const normalizedAliases = aliases.map((alias) => alias.trim().toLocaleLowerCase());
+            if (new Set(normalizedAliases).size !== normalizedAliases.length) throw new Error("Duplicate alias in lot.");
+            const otherLots = await tx.select().from(auctionLotsTable).where(eq(auctionLotsTable.auctionId, auctionId));
+            const conflict = otherLots.find((other) => other.id !== lotId &&
+              (Array.isArray(other.aliases) ? other.aliases : []).some((prior) =>
+                normalizedAliases.includes(String(prior).trim().toLocaleLowerCase())));
+            if (conflict) throw new Error("Alias is already assigned to another lot.");
+          }
+          await tx.update(auctionLotsTable).set({ displayName: name, aliases, metadata, updatedAt: new Date() }).where(eq(auctionLotsTable.id, lotId));
+          await tx.update(auctionSessionsTable).set({ revision: session.revision + 1 }).where(eq(auctionSessionsTable.id, auctionId));
+          await auctionEvent(tx, auctionId, "lot_updated", { lotId });
+          return session.revision + 1;
+        });
+        return jsonText({ status: 200, body: { calcuttaId, auctionId, lotId, revision } });
+      } catch (error) {
+        return jsonText({ status: 409, body: { error: error instanceof Error ? error.message : "Lot update rejected." } });
+      }
+    },
+  );
+
+  server.tool(
+    "remove_unstarted_auction_lot",
+    "Commissioner-only removal of an available, never-nominated lot. Nominated and sold lots are protected.",
+    {
+      ...auctionIds,
+      lotId: z.number().int().positive(),
+      expectedRevision: z.number().int().nonnegative().describe("Required optimistic-concurrency revision."),
+    },
+    async ({ calcuttaId, auctionId, lotId, expectedRevision }) => {
+      if (!isAdmin) return commissionerAuthorizationRequired();
+      try {
+        const revision = await db.transaction(async (tx) => {
+          const [session] = await tx.select().from(auctionSessionsTable).where(eq(auctionSessionsTable.id, auctionId)).for("update");
+          const [lot] = await tx.select().from(auctionLotsTable).where(and(eq(auctionLotsTable.id, lotId), eq(auctionLotsTable.auctionId, auctionId)));
+          if (!session || session.calcuttaId !== calcuttaId || !lot) throw new Error("Lot not found for this Calcutta auction.");
+          if (session.status === "complete") throw new Error("Auction is complete.");
+          if (lot.status !== "available") throw new Error("Nominated or sold lots cannot be removed.");
+          if (expectedRevision !== session.revision) throw new Error("Stale auction revision.");
+          await tx.delete(auctionLotsTable).where(eq(auctionLotsTable.id, lotId));
+          await tx.update(auctionSessionsTable).set({ revision: session.revision + 1 }).where(eq(auctionSessionsTable.id, auctionId));
+          await auctionEvent(tx, auctionId, "lot_deleted", { lotId });
+          return session.revision + 1;
+        });
+        return jsonText({ status: 200, body: { calcuttaId, auctionId, lotId, removed: true, revision } });
+      } catch (error) {
+        return jsonText({ status: 409, body: { error: error instanceof Error ? error.message : "Lot deletion rejected." } });
+      }
     },
   );
 

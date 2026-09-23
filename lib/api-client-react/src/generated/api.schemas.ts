@@ -5,6 +5,199 @@
  * NFL Auction Manager API
  * OpenAPI spec version: 0.1.0
  */
+export interface AuctionCreateInput { [key: string]: unknown }
+
+export interface AuctionNominationInput {
+  expectedRevision: number;
+  idempotencyKey: string;
+}
+
+export type AuctionSnapshotStatus = typeof AuctionSnapshotStatus[keyof typeof AuctionSnapshotStatus];
+
+
+export const AuctionSnapshotStatus = {
+  setup: 'setup',
+  live: 'live',
+  complete: 'complete',
+} as const;
+
+export interface AuctionAuditOwner {
+  bidderId: number;
+  share: number;
+  /** @nullable */
+  costBasis?: number | null;
+  /** @nullable */
+  cents?: number | null;
+}
+
+export interface AuctionMetadata {
+  /** @nullable */
+  note?: string | null;
+  /** @nullable */
+  source?: string | null;
+  /** @nullable */
+  lotId?: number | null;
+  /** @nullable */
+  saleId?: number | null;
+  /** @nullable */
+  totalCents?: number | null;
+  /** @nullable */
+  reason?: string | null;
+  /** @nullable */
+  cents?: number | null;
+  /** @nullable */
+  count?: number | null;
+  /** @nullable */
+  consortiumId?: number | null;
+  /** @nullable */
+  before?: AuctionAuditOwner[] | null;
+  /** @nullable */
+  after?: AuctionAuditOwner[] | null;
+  [key: string]: unknown;
+ }
+
+export type AuctionLotStatus = typeof AuctionLotStatus[keyof typeof AuctionLotStatus];
+
+
+export const AuctionLotStatus = {
+  available: 'available',
+  bidding: 'bidding',
+  sold: 'sold',
+} as const;
+
+export interface AuctionLot {
+  id: number;
+  auctionId: number;
+  externalId: string;
+  displayName: string;
+  aliases?: string[];
+  metadata?: AuctionMetadata;
+  entryId: number;
+  status: AuctionLotStatus;
+  /** @nullable */
+  nominationId?: string | null;
+  /** @nullable */
+  nominationSequence?: number | null;
+  /** @nullable */
+  currentBidCents?: number | null;
+  /** @nullable */
+  nominatedAt?: string | null;
+  updatedAt?: string;
+}
+
+export interface AuctionConsortium {
+  id: number;
+  auctionId: number;
+  displayName: string;
+  aliases?: string[];
+  /** @nullable */
+  bidderId?: number | null;
+  active: number;
+}
+
+export interface AuctionSaleAllocation {
+  saleId: number;
+  bidderId: number;
+  share: string;
+  cents: number;
+  bidderName: string;
+  /** @nullable */
+  consortiumName?: string | null;
+}
+
+export interface AuctionSale {
+  id: number;
+  auctionId: number;
+  lotId: number;
+  totalCents: number;
+  source: string;
+  /** @nullable */
+  reason?: string | null;
+  createdAt?: string;
+  /** @nullable */
+  correctedAt?: string | null;
+  allocations: AuctionSaleAllocation[];
+}
+
+export interface AuctionMetrics {
+  poolSizeCents: number;
+  lotsSold: number;
+  totalLots: number;
+  /** @nullable */
+  averageSaleCents: number | null;
+}
+
+export interface AuctionSnapshot {
+  id: number;
+  calcuttaId: number;
+  status: AuctionSnapshotStatus;
+  revision: number;
+  lots: AuctionLot[];
+  consortia: AuctionConsortium[];
+  sales: AuctionSale[];
+  metrics: AuctionMetrics;
+}
+
+export interface AuctionLotInput {
+  externalId: string;
+  name: string;
+  entryId: number;
+  aliases?: string[];
+  metadata?: AuctionMetadata;
+}
+
+export interface AuctionLotsBulkInput {
+  expectedRevision: number;
+  idempotencyKey: string;
+  dryRun?: boolean;
+  lots: AuctionLotInput[];
+}
+
+export interface AuctionEligibleEntry {
+  id: number;
+  teamName: string;
+}
+
+export interface AuctionAllocationInput {
+  bidderId: number;
+  /**
+     * @maximum 1
+     * @exclusiveMinimum 0
+     */
+  share: number;
+}
+
+export interface AuctionSaleInput {
+  /** @minimum 1 */
+  totalCents?: number;
+  /** @exclusiveMinimum 0 */
+  price?: number;
+  expectedRevision: number;
+  idempotencyKey?: string;
+  reason?: string;
+  allocations: AuctionAllocationInput[];
+}
+
+export interface AuctionBulkResult {
+  inserted: number;
+  revision: number;
+  changed?: boolean;
+  dryRun?: boolean;
+}
+
+export interface AuctionEvent {
+  id: number;
+  auctionId: number;
+  sequence: number;
+  eventType: string;
+  /** @nullable */
+  idempotencyKey?: string | null;
+  /** @nullable */
+  nominationId?: string | null;
+  payload: AuctionMetadata;
+  createdAt: string;
+}
+
 export type AgentPortfolioTeamValueSource = typeof AgentPortfolioTeamValueSource[keyof typeof AgentPortfolioTeamValueSource];
 
 
@@ -2914,6 +3107,10 @@ season: number;
  * @nullable
  */
 calcuttaId?: number | null;
+};
+
+export type GetAuctionEventsParams = {
+after?: number;
 };
 
 export type GetOwnerPortfolioV2Params = {

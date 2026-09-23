@@ -55,6 +55,9 @@ import {
   mtmCanonicalPeriodSelectionIdentityMigration,
   mtmReferenceMarksMigration,
   mtmActualsRequestsMigration,
+  auctionMigration,
+  auctionConsortiumBidderMigration,
+  listenerMigration,
 } from "./migrations";
 
 const migrations = [
@@ -112,6 +115,9 @@ const migrations = [
   mtmCanonicalPeriodSelectionIdentityMigration,
   mtmReferenceMarksMigration,
   mtmActualsRequestsMigration,
+  auctionMigration,
+  auctionConsortiumBidderMigration,
+  listenerMigration,
 ] as const;
 
 /**

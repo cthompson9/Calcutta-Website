@@ -1990,6 +1990,632 @@ export const ImportDraftOrderResponse = zod.object({
 })
 
 
+export const CreateAuctionSessionParams = zod.object({
+  "calcuttaId": zod.coerce.number()
+})
+
+export const CreateAuctionSessionBody = zod.object({
+
+})
+
+export const CreateAuctionSessionResponse = zod.object({
+  "id": zod.number(),
+  "calcuttaId": zod.number(),
+  "status": zod.enum(['setup', 'live', 'complete']),
+  "revision": zod.number(),
+  "lots": zod.array(zod.object({
+  "id": zod.number(),
+  "auctionId": zod.number(),
+  "externalId": zod.string(),
+  "displayName": zod.string(),
+  "aliases": zod.array(zod.string()).optional(),
+  "metadata": zod.object({
+  "note": zod.string().nullish(),
+  "source": zod.string().nullish(),
+  "lotId": zod.number().nullish(),
+  "saleId": zod.number().nullish(),
+  "totalCents": zod.number().nullish(),
+  "reason": zod.string().nullish(),
+  "cents": zod.number().nullish(),
+  "count": zod.number().nullish(),
+  "consortiumId": zod.number().nullish(),
+  "before": zod.array(zod.object({
+  "bidderId": zod.number(),
+  "share": zod.number(),
+  "costBasis": zod.number().nullish(),
+  "cents": zod.number().nullish()
+})).nullish(),
+  "after": zod.array(zod.object({
+  "bidderId": zod.number(),
+  "share": zod.number(),
+  "costBasis": zod.number().nullish(),
+  "cents": zod.number().nullish()
+})).nullish()
+}).optional(),
+  "entryId": zod.number(),
+  "status": zod.enum(['available', 'bidding', 'sold']),
+  "nominationId": zod.string().nullish(),
+  "nominationSequence": zod.number().nullish(),
+  "currentBidCents": zod.number().nullish(),
+  "nominatedAt": zod.coerce.date().nullish(),
+  "updatedAt": zod.coerce.date().optional()
+})),
+  "consortia": zod.array(zod.object({
+  "id": zod.number(),
+  "auctionId": zod.number(),
+  "displayName": zod.string(),
+  "aliases": zod.array(zod.string()).optional(),
+  "bidderId": zod.number().nullish(),
+  "active": zod.number()
+})),
+  "sales": zod.array(zod.object({
+  "id": zod.number(),
+  "auctionId": zod.number(),
+  "lotId": zod.number(),
+  "totalCents": zod.number(),
+  "source": zod.string(),
+  "reason": zod.string().nullish(),
+  "createdAt": zod.coerce.date().optional(),
+  "correctedAt": zod.coerce.date().nullish(),
+  "allocations": zod.array(zod.object({
+  "saleId": zod.number(),
+  "bidderId": zod.number(),
+  "share": zod.string(),
+  "cents": zod.number(),
+  "bidderName": zod.string(),
+  "consortiumName": zod.string().nullish()
+}))
+})),
+  "metrics": zod.object({
+  "poolSizeCents": zod.number(),
+  "lotsSold": zod.number(),
+  "totalLots": zod.number(),
+  "averageSaleCents": zod.number().nullable()
+})
+})
+
+
+export const GetActiveAuctionSnapshotParams = zod.object({
+  "calcuttaId": zod.coerce.number()
+})
+
+export const GetActiveAuctionSnapshotResponse = zod.object({
+  "id": zod.number(),
+  "calcuttaId": zod.number(),
+  "status": zod.enum(['setup', 'live', 'complete']),
+  "revision": zod.number(),
+  "lots": zod.array(zod.object({
+  "id": zod.number(),
+  "auctionId": zod.number(),
+  "externalId": zod.string(),
+  "displayName": zod.string(),
+  "aliases": zod.array(zod.string()).optional(),
+  "metadata": zod.object({
+  "note": zod.string().nullish(),
+  "source": zod.string().nullish(),
+  "lotId": zod.number().nullish(),
+  "saleId": zod.number().nullish(),
+  "totalCents": zod.number().nullish(),
+  "reason": zod.string().nullish(),
+  "cents": zod.number().nullish(),
+  "count": zod.number().nullish(),
+  "consortiumId": zod.number().nullish(),
+  "before": zod.array(zod.object({
+  "bidderId": zod.number(),
+  "share": zod.number(),
+  "costBasis": zod.number().nullish(),
+  "cents": zod.number().nullish()
+})).nullish(),
+  "after": zod.array(zod.object({
+  "bidderId": zod.number(),
+  "share": zod.number(),
+  "costBasis": zod.number().nullish(),
+  "cents": zod.number().nullish()
+})).nullish()
+}).optional(),
+  "entryId": zod.number(),
+  "status": zod.enum(['available', 'bidding', 'sold']),
+  "nominationId": zod.string().nullish(),
+  "nominationSequence": zod.number().nullish(),
+  "currentBidCents": zod.number().nullish(),
+  "nominatedAt": zod.coerce.date().nullish(),
+  "updatedAt": zod.coerce.date().optional()
+})),
+  "consortia": zod.array(zod.object({
+  "id": zod.number(),
+  "auctionId": zod.number(),
+  "displayName": zod.string(),
+  "aliases": zod.array(zod.string()).optional(),
+  "bidderId": zod.number().nullish(),
+  "active": zod.number()
+})),
+  "sales": zod.array(zod.object({
+  "id": zod.number(),
+  "auctionId": zod.number(),
+  "lotId": zod.number(),
+  "totalCents": zod.number(),
+  "source": zod.string(),
+  "reason": zod.string().nullish(),
+  "createdAt": zod.coerce.date().optional(),
+  "correctedAt": zod.coerce.date().nullish(),
+  "allocations": zod.array(zod.object({
+  "saleId": zod.number(),
+  "bidderId": zod.number(),
+  "share": zod.string(),
+  "cents": zod.number(),
+  "bidderName": zod.string(),
+  "consortiumName": zod.string().nullish()
+}))
+})),
+  "metrics": zod.object({
+  "poolSizeCents": zod.number(),
+  "lotsSold": zod.number(),
+  "totalLots": zod.number(),
+  "averageSaleCents": zod.number().nullable()
+})
+})
+
+
+export const GetAuctionParams = zod.object({
+  "calcuttaId": zod.coerce.number(),
+  "auctionId": zod.coerce.number()
+})
+
+export const GetAuctionResponse = zod.object({
+  "id": zod.number(),
+  "calcuttaId": zod.number(),
+  "status": zod.enum(['setup', 'live', 'complete']),
+  "revision": zod.number(),
+  "lots": zod.array(zod.object({
+  "id": zod.number(),
+  "auctionId": zod.number(),
+  "externalId": zod.string(),
+  "displayName": zod.string(),
+  "aliases": zod.array(zod.string()).optional(),
+  "metadata": zod.object({
+  "note": zod.string().nullish(),
+  "source": zod.string().nullish(),
+  "lotId": zod.number().nullish(),
+  "saleId": zod.number().nullish(),
+  "totalCents": zod.number().nullish(),
+  "reason": zod.string().nullish(),
+  "cents": zod.number().nullish(),
+  "count": zod.number().nullish(),
+  "consortiumId": zod.number().nullish(),
+  "before": zod.array(zod.object({
+  "bidderId": zod.number(),
+  "share": zod.number(),
+  "costBasis": zod.number().nullish(),
+  "cents": zod.number().nullish()
+})).nullish(),
+  "after": zod.array(zod.object({
+  "bidderId": zod.number(),
+  "share": zod.number(),
+  "costBasis": zod.number().nullish(),
+  "cents": zod.number().nullish()
+})).nullish()
+}).optional(),
+  "entryId": zod.number(),
+  "status": zod.enum(['available', 'bidding', 'sold']),
+  "nominationId": zod.string().nullish(),
+  "nominationSequence": zod.number().nullish(),
+  "currentBidCents": zod.number().nullish(),
+  "nominatedAt": zod.coerce.date().nullish(),
+  "updatedAt": zod.coerce.date().optional()
+})),
+  "consortia": zod.array(zod.object({
+  "id": zod.number(),
+  "auctionId": zod.number(),
+  "displayName": zod.string(),
+  "aliases": zod.array(zod.string()).optional(),
+  "bidderId": zod.number().nullish(),
+  "active": zod.number()
+})),
+  "sales": zod.array(zod.object({
+  "id": zod.number(),
+  "auctionId": zod.number(),
+  "lotId": zod.number(),
+  "totalCents": zod.number(),
+  "source": zod.string(),
+  "reason": zod.string().nullish(),
+  "createdAt": zod.coerce.date().optional(),
+  "correctedAt": zod.coerce.date().nullish(),
+  "allocations": zod.array(zod.object({
+  "saleId": zod.number(),
+  "bidderId": zod.number(),
+  "share": zod.string(),
+  "cents": zod.number(),
+  "bidderName": zod.string(),
+  "consortiumName": zod.string().nullish()
+}))
+})),
+  "metrics": zod.object({
+  "poolSizeCents": zod.number(),
+  "lotsSold": zod.number(),
+  "totalLots": zod.number(),
+  "averageSaleCents": zod.number().nullable()
+})
+})
+
+
+export const GetAuctionEligibleEntriesParams = zod.object({
+  "calcuttaId": zod.coerce.number(),
+  "auctionId": zod.coerce.number()
+})
+
+export const GetAuctionEligibleEntriesResponseItem = zod.object({
+  "id": zod.number(),
+  "teamName": zod.string()
+})
+export const GetAuctionEligibleEntriesResponse = zod.array(GetAuctionEligibleEntriesResponseItem)
+
+
+export const BulkUpsertAuctionLotsParams = zod.object({
+  "calcuttaId": zod.coerce.number().int(),
+  "auctionId": zod.coerce.number().int()
+})
+
+export const BulkUpsertAuctionLotsBody = zod.object({
+  "expectedRevision": zod.number(),
+  "idempotencyKey": zod.string(),
+  "dryRun": zod.boolean().optional(),
+  "lots": zod.array(zod.object({
+  "externalId": zod.string(),
+  "name": zod.string(),
+  "entryId": zod.number(),
+  "aliases": zod.array(zod.string()).optional(),
+  "metadata": zod.object({
+  "note": zod.string().nullish(),
+  "source": zod.string().nullish(),
+  "lotId": zod.number().nullish(),
+  "saleId": zod.number().nullish(),
+  "totalCents": zod.number().nullish(),
+  "reason": zod.string().nullish(),
+  "cents": zod.number().nullish(),
+  "count": zod.number().nullish(),
+  "consortiumId": zod.number().nullish(),
+  "before": zod.array(zod.object({
+  "bidderId": zod.number(),
+  "share": zod.number(),
+  "costBasis": zod.number().nullish(),
+  "cents": zod.number().nullish()
+})).nullish(),
+  "after": zod.array(zod.object({
+  "bidderId": zod.number(),
+  "share": zod.number(),
+  "costBasis": zod.number().nullish(),
+  "cents": zod.number().nullish()
+})).nullish()
+}).optional()
+}))
+})
+
+export const BulkUpsertAuctionLotsResponse = zod.object({
+  "inserted": zod.number(),
+  "revision": zod.number(),
+  "changed": zod.boolean().optional(),
+  "dryRun": zod.boolean().optional()
+})
+
+
+export const NominateAuctionLotParams = zod.object({
+  "calcuttaId": zod.coerce.number().int(),
+  "auctionId": zod.coerce.number().int()
+})
+
+export const NominateAuctionLotBody = zod.object({
+  "expectedRevision": zod.number(),
+  "idempotencyKey": zod.string()
+})
+
+export const NominateAuctionLotResponse = zod.object({
+  "id": zod.number(),
+  "calcuttaId": zod.number(),
+  "status": zod.enum(['setup', 'live', 'complete']),
+  "revision": zod.number(),
+  "lots": zod.array(zod.object({
+  "id": zod.number(),
+  "auctionId": zod.number(),
+  "externalId": zod.string(),
+  "displayName": zod.string(),
+  "aliases": zod.array(zod.string()).optional(),
+  "metadata": zod.object({
+  "note": zod.string().nullish(),
+  "source": zod.string().nullish(),
+  "lotId": zod.number().nullish(),
+  "saleId": zod.number().nullish(),
+  "totalCents": zod.number().nullish(),
+  "reason": zod.string().nullish(),
+  "cents": zod.number().nullish(),
+  "count": zod.number().nullish(),
+  "consortiumId": zod.number().nullish(),
+  "before": zod.array(zod.object({
+  "bidderId": zod.number(),
+  "share": zod.number(),
+  "costBasis": zod.number().nullish(),
+  "cents": zod.number().nullish()
+})).nullish(),
+  "after": zod.array(zod.object({
+  "bidderId": zod.number(),
+  "share": zod.number(),
+  "costBasis": zod.number().nullish(),
+  "cents": zod.number().nullish()
+})).nullish()
+}).optional(),
+  "entryId": zod.number(),
+  "status": zod.enum(['available', 'bidding', 'sold']),
+  "nominationId": zod.string().nullish(),
+  "nominationSequence": zod.number().nullish(),
+  "currentBidCents": zod.number().nullish(),
+  "nominatedAt": zod.coerce.date().nullish(),
+  "updatedAt": zod.coerce.date().optional()
+})),
+  "consortia": zod.array(zod.object({
+  "id": zod.number(),
+  "auctionId": zod.number(),
+  "displayName": zod.string(),
+  "aliases": zod.array(zod.string()).optional(),
+  "bidderId": zod.number().nullish(),
+  "active": zod.number()
+})),
+  "sales": zod.array(zod.object({
+  "id": zod.number(),
+  "auctionId": zod.number(),
+  "lotId": zod.number(),
+  "totalCents": zod.number(),
+  "source": zod.string(),
+  "reason": zod.string().nullish(),
+  "createdAt": zod.coerce.date().optional(),
+  "correctedAt": zod.coerce.date().nullish(),
+  "allocations": zod.array(zod.object({
+  "saleId": zod.number(),
+  "bidderId": zod.number(),
+  "share": zod.string(),
+  "cents": zod.number(),
+  "bidderName": zod.string(),
+  "consortiumName": zod.string().nullish()
+}))
+})),
+  "metrics": zod.object({
+  "poolSizeCents": zod.number(),
+  "lotsSold": zod.number(),
+  "totalLots": zod.number(),
+  "averageSaleCents": zod.number().nullable()
+})
+})
+
+
+export const FinalizeAuctionSaleParams = zod.object({
+  "calcuttaId": zod.coerce.number().int(),
+  "auctionId": zod.coerce.number().int(),
+  "lotId": zod.coerce.number().int()
+})
+
+
+export const finalizeAuctionSaleBodyPriceExclusiveMin = 0;
+
+export const finalizeAuctionSaleBodyAllocationsItemShareExclusiveMin = 0;
+export const finalizeAuctionSaleBodyAllocationsItemShareMax = 1;
+
+
+
+export const FinalizeAuctionSaleBody = zod.object({
+  "totalCents": zod.number().min(1).optional(),
+  "price": zod.number().gt(finalizeAuctionSaleBodyPriceExclusiveMin).optional(),
+  "expectedRevision": zod.number(),
+  "idempotencyKey": zod.string().optional(),
+  "reason": zod.string().optional(),
+  "allocations": zod.array(zod.object({
+  "bidderId": zod.number(),
+  "share": zod.number().gt(finalizeAuctionSaleBodyAllocationsItemShareExclusiveMin).max(finalizeAuctionSaleBodyAllocationsItemShareMax)
+}))
+})
+
+export const FinalizeAuctionSaleResponse = zod.object({
+  "id": zod.number(),
+  "calcuttaId": zod.number(),
+  "status": zod.enum(['setup', 'live', 'complete']),
+  "revision": zod.number(),
+  "lots": zod.array(zod.object({
+  "id": zod.number(),
+  "auctionId": zod.number(),
+  "externalId": zod.string(),
+  "displayName": zod.string(),
+  "aliases": zod.array(zod.string()).optional(),
+  "metadata": zod.object({
+  "note": zod.string().nullish(),
+  "source": zod.string().nullish(),
+  "lotId": zod.number().nullish(),
+  "saleId": zod.number().nullish(),
+  "totalCents": zod.number().nullish(),
+  "reason": zod.string().nullish(),
+  "cents": zod.number().nullish(),
+  "count": zod.number().nullish(),
+  "consortiumId": zod.number().nullish(),
+  "before": zod.array(zod.object({
+  "bidderId": zod.number(),
+  "share": zod.number(),
+  "costBasis": zod.number().nullish(),
+  "cents": zod.number().nullish()
+})).nullish(),
+  "after": zod.array(zod.object({
+  "bidderId": zod.number(),
+  "share": zod.number(),
+  "costBasis": zod.number().nullish(),
+  "cents": zod.number().nullish()
+})).nullish()
+}).optional(),
+  "entryId": zod.number(),
+  "status": zod.enum(['available', 'bidding', 'sold']),
+  "nominationId": zod.string().nullish(),
+  "nominationSequence": zod.number().nullish(),
+  "currentBidCents": zod.number().nullish(),
+  "nominatedAt": zod.coerce.date().nullish(),
+  "updatedAt": zod.coerce.date().optional()
+})),
+  "consortia": zod.array(zod.object({
+  "id": zod.number(),
+  "auctionId": zod.number(),
+  "displayName": zod.string(),
+  "aliases": zod.array(zod.string()).optional(),
+  "bidderId": zod.number().nullish(),
+  "active": zod.number()
+})),
+  "sales": zod.array(zod.object({
+  "id": zod.number(),
+  "auctionId": zod.number(),
+  "lotId": zod.number(),
+  "totalCents": zod.number(),
+  "source": zod.string(),
+  "reason": zod.string().nullish(),
+  "createdAt": zod.coerce.date().optional(),
+  "correctedAt": zod.coerce.date().nullish(),
+  "allocations": zod.array(zod.object({
+  "saleId": zod.number(),
+  "bidderId": zod.number(),
+  "share": zod.string(),
+  "cents": zod.number(),
+  "bidderName": zod.string(),
+  "consortiumName": zod.string().nullish()
+}))
+})),
+  "metrics": zod.object({
+  "poolSizeCents": zod.number(),
+  "lotsSold": zod.number(),
+  "totalLots": zod.number(),
+  "averageSaleCents": zod.number().nullable()
+})
+})
+
+
+export const CompleteAuctionParams = zod.object({
+  "calcuttaId": zod.coerce.number().int(),
+  "auctionId": zod.coerce.number().int()
+})
+
+export const CompleteAuctionResponse = zod.object({
+  "id": zod.number(),
+  "calcuttaId": zod.number(),
+  "status": zod.enum(['setup', 'live', 'complete']),
+  "revision": zod.number(),
+  "lots": zod.array(zod.object({
+  "id": zod.number(),
+  "auctionId": zod.number(),
+  "externalId": zod.string(),
+  "displayName": zod.string(),
+  "aliases": zod.array(zod.string()).optional(),
+  "metadata": zod.object({
+  "note": zod.string().nullish(),
+  "source": zod.string().nullish(),
+  "lotId": zod.number().nullish(),
+  "saleId": zod.number().nullish(),
+  "totalCents": zod.number().nullish(),
+  "reason": zod.string().nullish(),
+  "cents": zod.number().nullish(),
+  "count": zod.number().nullish(),
+  "consortiumId": zod.number().nullish(),
+  "before": zod.array(zod.object({
+  "bidderId": zod.number(),
+  "share": zod.number(),
+  "costBasis": zod.number().nullish(),
+  "cents": zod.number().nullish()
+})).nullish(),
+  "after": zod.array(zod.object({
+  "bidderId": zod.number(),
+  "share": zod.number(),
+  "costBasis": zod.number().nullish(),
+  "cents": zod.number().nullish()
+})).nullish()
+}).optional(),
+  "entryId": zod.number(),
+  "status": zod.enum(['available', 'bidding', 'sold']),
+  "nominationId": zod.string().nullish(),
+  "nominationSequence": zod.number().nullish(),
+  "currentBidCents": zod.number().nullish(),
+  "nominatedAt": zod.coerce.date().nullish(),
+  "updatedAt": zod.coerce.date().optional()
+})),
+  "consortia": zod.array(zod.object({
+  "id": zod.number(),
+  "auctionId": zod.number(),
+  "displayName": zod.string(),
+  "aliases": zod.array(zod.string()).optional(),
+  "bidderId": zod.number().nullish(),
+  "active": zod.number()
+})),
+  "sales": zod.array(zod.object({
+  "id": zod.number(),
+  "auctionId": zod.number(),
+  "lotId": zod.number(),
+  "totalCents": zod.number(),
+  "source": zod.string(),
+  "reason": zod.string().nullish(),
+  "createdAt": zod.coerce.date().optional(),
+  "correctedAt": zod.coerce.date().nullish(),
+  "allocations": zod.array(zod.object({
+  "saleId": zod.number(),
+  "bidderId": zod.number(),
+  "share": zod.string(),
+  "cents": zod.number(),
+  "bidderName": zod.string(),
+  "consortiumName": zod.string().nullish()
+}))
+})),
+  "metrics": zod.object({
+  "poolSizeCents": zod.number(),
+  "lotsSold": zod.number(),
+  "totalLots": zod.number(),
+  "averageSaleCents": zod.number().nullable()
+})
+})
+
+
+export const GetAuctionEventsParams = zod.object({
+  "calcuttaId": zod.coerce.number().int(),
+  "auctionId": zod.coerce.number().int()
+})
+
+export const getAuctionEventsQueryAfterDefault = 0;
+
+export const GetAuctionEventsQueryParams = zod.object({
+  "after": zod.coerce.number().int().default(getAuctionEventsQueryAfterDefault)
+})
+
+export const GetAuctionEventsResponseItem = zod.object({
+  "id": zod.number(),
+  "auctionId": zod.number(),
+  "sequence": zod.number(),
+  "eventType": zod.string(),
+  "idempotencyKey": zod.string().nullish(),
+  "nominationId": zod.string().nullish(),
+  "payload": zod.object({
+  "note": zod.string().nullish(),
+  "source": zod.string().nullish(),
+  "lotId": zod.number().nullish(),
+  "saleId": zod.number().nullish(),
+  "totalCents": zod.number().nullish(),
+  "reason": zod.string().nullish(),
+  "cents": zod.number().nullish(),
+  "count": zod.number().nullish(),
+  "consortiumId": zod.number().nullish(),
+  "before": zod.array(zod.object({
+  "bidderId": zod.number(),
+  "share": zod.number(),
+  "costBasis": zod.number().nullish(),
+  "cents": zod.number().nullish()
+})).nullish(),
+  "after": zod.array(zod.object({
+  "bidderId": zod.number(),
+  "share": zod.number(),
+  "costBasis": zod.number().nullish(),
+  "cents": zod.number().nullish()
+})).nullish()
+}),
+  "createdAt": zod.coerce.date()
+})
+export const GetAuctionEventsResponse = zod.array(GetAuctionEventsResponseItem)
+
+
 /**
  * @summary Return every current signed position for one owner
  */

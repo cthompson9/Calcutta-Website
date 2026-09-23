@@ -15,6 +15,8 @@ import jobsRouter from "./jobs";
 import v2AgentRouter from "./v2Agent";
 import normalizedHistoricalRouter from "./normalizedHistorical";
 import calendarsRouter from "./calendars";
+import auctionsRouter from "./auctions";
+import listenerRouter from "./listener";
 
 const router = Router();
 
@@ -34,5 +36,7 @@ router.use(jobsRouter);
 router.use(v2AgentRouter);
 router.use(normalizedHistoricalRouter);
 router.use(calendarsRouter);
+router.use(auctionsRouter);
+router.use(listenerRouter);
 
 export default router;

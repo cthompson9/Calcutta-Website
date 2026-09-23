@@ -14,6 +14,7 @@ import {
   tradesTable,
   importRunsTable,
   positionsTable,
+  auctionSessionsTable,
 } from "@workspace/db";
 import {
   ImportAuctionDataBody,
@@ -156,7 +157,6 @@ router.post("/auction/import", requireAdmin, async (req, res): Promise<void> => 
     sendParsedJson(res, ErrorResponse, { error: `Season ${parsed.data.seasonYear} not found.` }, 404);
     return;
   }
-
   try {
     const sourcePayload = await fetchAuctionProPayload();
     const importedTeams = await resolveImportTeams(sourcePayload);
@@ -176,6 +176,9 @@ router.post("/auction/import", requireAdmin, async (req, res): Promise<void> => 
         calcuttaId: (parsed.data as typeof parsed.data & { calcuttaId?: number }).calcuttaId,
       });
       if (!calcuttaId) throw new AuctionProImportError("Calcutta not found for this season.", 404);
+      const [auctionSession] = await tx.select({ id: auctionSessionsTable.id })
+        .from(auctionSessionsTable).where(eq(auctionSessionsTable.calcuttaId, calcuttaId)).limit(1);
+      if (auctionSession) throw new AuctionProImportError("Historical bulk imports are blocked for Calcuttas with an explicit auction session.", 409);
       const calcutta = await tx
         .select({
           sport: calcuttasTable.sport,
@@ -334,7 +337,6 @@ router.post("/auction/import/draft-order", requireAdmin, async (req, res): Promi
     sendParsedJson(res, ErrorResponse, { error: `Season ${parsed.data.seasonYear} not found.` }, 404);
     return;
   }
-
   try {
     const rawEntries = await fetchDraftOrderPayload();
 
@@ -402,6 +404,9 @@ router.post("/auction/import/draft-order", requireAdmin, async (req, res): Promi
         calcuttaId: (parsed.data as typeof parsed.data & { calcuttaId?: number }).calcuttaId,
       });
       if (!calcuttaId) throw new DraftOrderImportError("Calcutta not found for this season.", 404);
+      const [auctionSession] = await tx.select({ id: auctionSessionsTable.id })
+        .from(auctionSessionsTable).where(eq(auctionSessionsTable.calcuttaId, calcuttaId)).limit(1);
+      if (auctionSession) throw new DraftOrderImportError("Historical bulk imports are blocked for Calcuttas with an explicit auction session.", 409);
       const calcutta = await tx
         .select({
           sport: calcuttasTable.sport,

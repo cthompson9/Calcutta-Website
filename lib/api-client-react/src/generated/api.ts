@@ -29,8 +29,16 @@ import type {
   AgentPointsRubric,
   AgentSchedule,
   AgentTeamSchedule,
+  AuctionBulkResult,
+  AuctionCreateInput,
+  AuctionEligibleEntry,
+  AuctionEvent,
   AuctionImportInput,
   AuctionImportResult,
+  AuctionLotsBulkInput,
+  AuctionNominationInput,
+  AuctionSaleInput,
+  AuctionSnapshot,
   AuctionSummary,
   Bidder,
   BidderInput,
@@ -40,6 +48,7 @@ import type {
   CalcuttaComparisonResponse,
   CalcuttaOption,
   ErrorResponse,
+  GetAuctionEventsParams,
   GetAuctionSummaryParams,
   GetBiddersParams,
   GetCalendarsParams,
@@ -3884,6 +3893,656 @@ export const useImportDraftOrder = <TError = ErrorType<ErrorResponse>,
       > => {
       return useMutation(getImportDraftOrderMutationOptions(options));
     }
+
+export const getCreateAuctionSessionUrl = (calcuttaId: number,) => {
+
+
+
+
+  return `/api/calcuttas/${calcuttaId}/auctions`
+}
+
+export const createAuctionSession = async (calcuttaId: number,
+    auctionCreateInput?: AuctionCreateInput, options?: Parameters<typeof customFetch>[1]): Promise<AuctionSnapshot> => {
+
+  return customFetch<AuctionSnapshot>(getCreateAuctionSessionUrl(calcuttaId),
+  {
+    ...options,
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json', ...options?.headers },
+    body: JSON.stringify(auctionCreateInput)
+  }
+);}
+
+
+
+
+
+export const getCreateAuctionSessionMutationOptions = <TError = ErrorType<ErrorResponse>,
+    TContext = unknown>(options?: { mutation?:UseMutationOptions<Awaited<ReturnType<typeof createAuctionSession>>, TError,{calcuttaId: number;data?: BodyType<AuctionCreateInput>}, TContext>, request?: SecondParameter<typeof customFetch>}
+): UseMutationOptions<Awaited<ReturnType<typeof createAuctionSession>>, TError,{calcuttaId: number;data?: BodyType<AuctionCreateInput>}, TContext> => {
+
+const mutationKey = ['createAuctionSession'];
+const {mutation: mutationOptions, request: requestOptions} = options ?
+      options.mutation && 'mutationKey' in options.mutation && options.mutation.mutationKey ?
+      options
+      : {...options, mutation: {...options.mutation, mutationKey}}
+      : {mutation: { mutationKey, }, request: undefined};
+
+
+
+
+      const mutationFn: MutationFunction<Awaited<ReturnType<typeof createAuctionSession>>, {calcuttaId: number;data?: BodyType<AuctionCreateInput>}> = (props) => {
+          const {calcuttaId,data} = props ?? {};
+
+          return  createAuctionSession(calcuttaId,data,requestOptions)
+        }
+
+
+
+
+
+
+  return  { mutationFn, ...mutationOptions }}
+
+    export type CreateAuctionSessionMutationResult = NonNullable<Awaited<ReturnType<typeof createAuctionSession>>>
+    export type CreateAuctionSessionMutationBody = BodyType<AuctionCreateInput> | undefined
+    export type CreateAuctionSessionMutationError = ErrorType<ErrorResponse>
+
+    export const useCreateAuctionSession = <TError = ErrorType<ErrorResponse>,
+    TContext = unknown>(options?: { mutation?:UseMutationOptions<Awaited<ReturnType<typeof createAuctionSession>>, TError,{calcuttaId: number;data?: BodyType<AuctionCreateInput>}, TContext>, request?: SecondParameter<typeof customFetch>}
+ ): UseMutationResult<
+        Awaited<ReturnType<typeof createAuctionSession>>,
+        TError,
+        {calcuttaId: number;data?: BodyType<AuctionCreateInput>},
+        TContext
+      > => {
+      return useMutation(getCreateAuctionSessionMutationOptions(options));
+    }
+
+export const getGetActiveAuctionSnapshotUrl = (calcuttaId: number,) => {
+
+
+
+
+  return `/api/calcuttas/${calcuttaId}/auctions`
+}
+
+export const getActiveAuctionSnapshot = async (calcuttaId: number, options?: Parameters<typeof customFetch>[1]): Promise<AuctionSnapshot> => {
+
+  return customFetch<AuctionSnapshot>(getGetActiveAuctionSnapshotUrl(calcuttaId),
+  {
+    ...options,
+    method: 'GET'
+
+
+  }
+);}
+
+
+
+
+
+export const getGetActiveAuctionSnapshotQueryKey = (calcuttaId: number,) => {
+    return [
+    `/api/calcuttas/${calcuttaId}/auctions`
+    ] as const;
+    }
+
+
+export const getGetActiveAuctionSnapshotQueryOptions = <TData = Awaited<ReturnType<typeof getActiveAuctionSnapshot>>, TError = ErrorType<ErrorResponse>>(calcuttaId: number, options?: { query?:UseQueryOptions<Awaited<ReturnType<typeof getActiveAuctionSnapshot>>, TError, TData>, request?: SecondParameter<typeof customFetch>}
+) => {
+
+const {query: queryOptions, request: requestOptions} = options ?? {};
+
+  const queryKey =  queryOptions?.queryKey ?? getGetActiveAuctionSnapshotQueryKey(calcuttaId);
+
+
+
+    const queryFn: QueryFunction<Awaited<ReturnType<typeof getActiveAuctionSnapshot>>> = ({ signal }) => getActiveAuctionSnapshot(calcuttaId, { signal, ...requestOptions });
+
+
+
+
+
+   return  { queryKey, queryFn, enabled: calcuttaId !== null && calcuttaId !== undefined, ...queryOptions} as UseQueryOptions<Awaited<ReturnType<typeof getActiveAuctionSnapshot>>, TError, TData> & { queryKey: QueryKey }
+}
+
+export type GetActiveAuctionSnapshotQueryResult = NonNullable<Awaited<ReturnType<typeof getActiveAuctionSnapshot>>>
+export type GetActiveAuctionSnapshotQueryError = ErrorType<ErrorResponse>
+
+
+
+export function useGetActiveAuctionSnapshot<TData = Awaited<ReturnType<typeof getActiveAuctionSnapshot>>, TError = ErrorType<ErrorResponse>>(
+ calcuttaId: number, options?: { query?:UseQueryOptions<Awaited<ReturnType<typeof getActiveAuctionSnapshot>>, TError, TData>, request?: SecondParameter<typeof customFetch>}
+
+ ):  UseQueryResult<TData, TError> & { queryKey: QueryKey } {
+
+  const queryOptions = getGetActiveAuctionSnapshotQueryOptions(calcuttaId,options)
+
+  const query = useQuery(queryOptions) as  UseQueryResult<TData, TError> & { queryKey: QueryKey };
+
+  return withQueryKey(query, queryOptions.queryKey);
+}
+
+
+
+
+
+
+
+export const getGetAuctionUrl = (calcuttaId: number,
+    auctionId: number,) => {
+
+
+
+
+  return `/api/calcuttas/${calcuttaId}/auctions/${auctionId}`
+}
+
+export const getAuction = async (calcuttaId: number,
+    auctionId: number, options?: Parameters<typeof customFetch>[1]): Promise<AuctionSnapshot> => {
+
+  return customFetch<AuctionSnapshot>(getGetAuctionUrl(calcuttaId,auctionId),
+  {
+    ...options,
+    method: 'GET'
+
+
+  }
+);}
+
+
+
+
+
+export const getGetAuctionQueryKey = (calcuttaId: number,
+    auctionId: number,) => {
+    return [
+    `/api/calcuttas/${calcuttaId}/auctions/${auctionId}`
+    ] as const;
+    }
+
+
+export const getGetAuctionQueryOptions = <TData = Awaited<ReturnType<typeof getAuction>>, TError = ErrorType<unknown>>(calcuttaId: number,
+    auctionId: number, options?: { query?:UseQueryOptions<Awaited<ReturnType<typeof getAuction>>, TError, TData>, request?: SecondParameter<typeof customFetch>}
+) => {
+
+const {query: queryOptions, request: requestOptions} = options ?? {};
+
+  const queryKey =  queryOptions?.queryKey ?? getGetAuctionQueryKey(calcuttaId,auctionId);
+
+
+
+    const queryFn: QueryFunction<Awaited<ReturnType<typeof getAuction>>> = ({ signal }) => getAuction(calcuttaId,auctionId, { signal, ...requestOptions });
+
+
+
+
+
+   return  { queryKey, queryFn, enabled: calcuttaId !== null && calcuttaId !== undefined && auctionId !== null && auctionId !== undefined, ...queryOptions} as UseQueryOptions<Awaited<ReturnType<typeof getAuction>>, TError, TData> & { queryKey: QueryKey }
+}
+
+export type GetAuctionQueryResult = NonNullable<Awaited<ReturnType<typeof getAuction>>>
+export type GetAuctionQueryError = ErrorType<unknown>
+
+
+
+export function useGetAuction<TData = Awaited<ReturnType<typeof getAuction>>, TError = ErrorType<unknown>>(
+ calcuttaId: number,
+    auctionId: number, options?: { query?:UseQueryOptions<Awaited<ReturnType<typeof getAuction>>, TError, TData>, request?: SecondParameter<typeof customFetch>}
+
+ ):  UseQueryResult<TData, TError> & { queryKey: QueryKey } {
+
+  const queryOptions = getGetAuctionQueryOptions(calcuttaId,auctionId,options)
+
+  const query = useQuery(queryOptions) as  UseQueryResult<TData, TError> & { queryKey: QueryKey };
+
+  return withQueryKey(query, queryOptions.queryKey);
+}
+
+
+
+
+
+
+
+export const getGetAuctionEligibleEntriesUrl = (calcuttaId: number,
+    auctionId: number,) => {
+
+
+
+
+  return `/api/calcuttas/${calcuttaId}/auctions/${auctionId}/entries`
+}
+
+export const getAuctionEligibleEntries = async (calcuttaId: number,
+    auctionId: number, options?: Parameters<typeof customFetch>[1]): Promise<AuctionEligibleEntry[]> => {
+
+  return customFetch<AuctionEligibleEntry[]>(getGetAuctionEligibleEntriesUrl(calcuttaId,auctionId),
+  {
+    ...options,
+    method: 'GET'
+
+
+  }
+);}
+
+
+
+
+
+export const getGetAuctionEligibleEntriesQueryKey = (calcuttaId: number,
+    auctionId: number,) => {
+    return [
+    `/api/calcuttas/${calcuttaId}/auctions/${auctionId}/entries`
+    ] as const;
+    }
+
+
+export const getGetAuctionEligibleEntriesQueryOptions = <TData = Awaited<ReturnType<typeof getAuctionEligibleEntries>>, TError = ErrorType<unknown>>(calcuttaId: number,
+    auctionId: number, options?: { query?:UseQueryOptions<Awaited<ReturnType<typeof getAuctionEligibleEntries>>, TError, TData>, request?: SecondParameter<typeof customFetch>}
+) => {
+
+const {query: queryOptions, request: requestOptions} = options ?? {};
+
+  const queryKey =  queryOptions?.queryKey ?? getGetAuctionEligibleEntriesQueryKey(calcuttaId,auctionId);
+
+
+
+    const queryFn: QueryFunction<Awaited<ReturnType<typeof getAuctionEligibleEntries>>> = ({ signal }) => getAuctionEligibleEntries(calcuttaId,auctionId, { signal, ...requestOptions });
+
+
+
+
+
+   return  { queryKey, queryFn, enabled: calcuttaId !== null && calcuttaId !== undefined && auctionId !== null && auctionId !== undefined, ...queryOptions} as UseQueryOptions<Awaited<ReturnType<typeof getAuctionEligibleEntries>>, TError, TData> & { queryKey: QueryKey }
+}
+
+export type GetAuctionEligibleEntriesQueryResult = NonNullable<Awaited<ReturnType<typeof getAuctionEligibleEntries>>>
+export type GetAuctionEligibleEntriesQueryError = ErrorType<unknown>
+
+
+
+export function useGetAuctionEligibleEntries<TData = Awaited<ReturnType<typeof getAuctionEligibleEntries>>, TError = ErrorType<unknown>>(
+ calcuttaId: number,
+    auctionId: number, options?: { query?:UseQueryOptions<Awaited<ReturnType<typeof getAuctionEligibleEntries>>, TError, TData>, request?: SecondParameter<typeof customFetch>}
+
+ ):  UseQueryResult<TData, TError> & { queryKey: QueryKey } {
+
+  const queryOptions = getGetAuctionEligibleEntriesQueryOptions(calcuttaId,auctionId,options)
+
+  const query = useQuery(queryOptions) as  UseQueryResult<TData, TError> & { queryKey: QueryKey };
+
+  return withQueryKey(query, queryOptions.queryKey);
+}
+
+
+
+
+
+
+
+export const getBulkUpsertAuctionLotsUrl = (calcuttaId: number,
+    auctionId: number,) => {
+
+
+
+
+  return `/api/calcuttas/${calcuttaId}/auctions/${auctionId}/lots/bulk`
+}
+
+export const bulkUpsertAuctionLots = async (calcuttaId: number,
+    auctionId: number,
+    auctionLotsBulkInput: AuctionLotsBulkInput, options?: Parameters<typeof customFetch>[1]): Promise<AuctionBulkResult> => {
+
+  return customFetch<AuctionBulkResult>(getBulkUpsertAuctionLotsUrl(calcuttaId,auctionId),
+  {
+    ...options,
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json', ...options?.headers },
+    body: JSON.stringify(auctionLotsBulkInput)
+  }
+);}
+
+
+
+
+
+export const getBulkUpsertAuctionLotsMutationOptions = <TError = ErrorType<ErrorResponse>,
+    TContext = unknown>(options?: { mutation?:UseMutationOptions<Awaited<ReturnType<typeof bulkUpsertAuctionLots>>, TError,{calcuttaId: number;auctionId: number;data: BodyType<AuctionLotsBulkInput>}, TContext>, request?: SecondParameter<typeof customFetch>}
+): UseMutationOptions<Awaited<ReturnType<typeof bulkUpsertAuctionLots>>, TError,{calcuttaId: number;auctionId: number;data: BodyType<AuctionLotsBulkInput>}, TContext> => {
+
+const mutationKey = ['bulkUpsertAuctionLots'];
+const {mutation: mutationOptions, request: requestOptions} = options ?
+      options.mutation && 'mutationKey' in options.mutation && options.mutation.mutationKey ?
+      options
+      : {...options, mutation: {...options.mutation, mutationKey}}
+      : {mutation: { mutationKey, }, request: undefined};
+
+
+
+
+      const mutationFn: MutationFunction<Awaited<ReturnType<typeof bulkUpsertAuctionLots>>, {calcuttaId: number;auctionId: number;data: BodyType<AuctionLotsBulkInput>}> = (props) => {
+          const {calcuttaId,auctionId,data} = props ?? {};
+
+          return  bulkUpsertAuctionLots(calcuttaId,auctionId,data,requestOptions)
+        }
+
+
+
+
+
+
+  return  { mutationFn, ...mutationOptions }}
+
+    export type BulkUpsertAuctionLotsMutationResult = NonNullable<Awaited<ReturnType<typeof bulkUpsertAuctionLots>>>
+    export type BulkUpsertAuctionLotsMutationBody = BodyType<AuctionLotsBulkInput>
+    export type BulkUpsertAuctionLotsMutationError = ErrorType<ErrorResponse>
+
+    export const useBulkUpsertAuctionLots = <TError = ErrorType<ErrorResponse>,
+    TContext = unknown>(options?: { mutation?:UseMutationOptions<Awaited<ReturnType<typeof bulkUpsertAuctionLots>>, TError,{calcuttaId: number;auctionId: number;data: BodyType<AuctionLotsBulkInput>}, TContext>, request?: SecondParameter<typeof customFetch>}
+ ): UseMutationResult<
+        Awaited<ReturnType<typeof bulkUpsertAuctionLots>>,
+        TError,
+        {calcuttaId: number;auctionId: number;data: BodyType<AuctionLotsBulkInput>},
+        TContext
+      > => {
+      return useMutation(getBulkUpsertAuctionLotsMutationOptions(options));
+    }
+
+export const getNominateAuctionLotUrl = (calcuttaId: number,
+    auctionId: number,) => {
+
+
+
+
+  return `/api/calcuttas/${calcuttaId}/auctions/${auctionId}/nominate-next`
+}
+
+export const nominateAuctionLot = async (calcuttaId: number,
+    auctionId: number,
+    auctionNominationInput: AuctionNominationInput, options?: Parameters<typeof customFetch>[1]): Promise<AuctionSnapshot> => {
+
+  return customFetch<AuctionSnapshot>(getNominateAuctionLotUrl(calcuttaId,auctionId),
+  {
+    ...options,
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json', ...options?.headers },
+    body: JSON.stringify(auctionNominationInput)
+  }
+);}
+
+
+
+
+
+export const getNominateAuctionLotMutationOptions = <TError = ErrorType<unknown>,
+    TContext = unknown>(options?: { mutation?:UseMutationOptions<Awaited<ReturnType<typeof nominateAuctionLot>>, TError,{calcuttaId: number;auctionId: number;data: BodyType<AuctionNominationInput>}, TContext>, request?: SecondParameter<typeof customFetch>}
+): UseMutationOptions<Awaited<ReturnType<typeof nominateAuctionLot>>, TError,{calcuttaId: number;auctionId: number;data: BodyType<AuctionNominationInput>}, TContext> => {
+
+const mutationKey = ['nominateAuctionLot'];
+const {mutation: mutationOptions, request: requestOptions} = options ?
+      options.mutation && 'mutationKey' in options.mutation && options.mutation.mutationKey ?
+      options
+      : {...options, mutation: {...options.mutation, mutationKey}}
+      : {mutation: { mutationKey, }, request: undefined};
+
+
+
+
+      const mutationFn: MutationFunction<Awaited<ReturnType<typeof nominateAuctionLot>>, {calcuttaId: number;auctionId: number;data: BodyType<AuctionNominationInput>}> = (props) => {
+          const {calcuttaId,auctionId,data} = props ?? {};
+
+          return  nominateAuctionLot(calcuttaId,auctionId,data,requestOptions)
+        }
+
+
+
+
+
+
+  return  { mutationFn, ...mutationOptions }}
+
+    export type NominateAuctionLotMutationResult = NonNullable<Awaited<ReturnType<typeof nominateAuctionLot>>>
+    export type NominateAuctionLotMutationBody = BodyType<AuctionNominationInput>
+    export type NominateAuctionLotMutationError = ErrorType<unknown>
+
+    export const useNominateAuctionLot = <TError = ErrorType<unknown>,
+    TContext = unknown>(options?: { mutation?:UseMutationOptions<Awaited<ReturnType<typeof nominateAuctionLot>>, TError,{calcuttaId: number;auctionId: number;data: BodyType<AuctionNominationInput>}, TContext>, request?: SecondParameter<typeof customFetch>}
+ ): UseMutationResult<
+        Awaited<ReturnType<typeof nominateAuctionLot>>,
+        TError,
+        {calcuttaId: number;auctionId: number;data: BodyType<AuctionNominationInput>},
+        TContext
+      > => {
+      return useMutation(getNominateAuctionLotMutationOptions(options));
+    }
+
+export const getFinalizeAuctionSaleUrl = (calcuttaId: number,
+    auctionId: number,
+    lotId: number,) => {
+
+
+
+
+  return `/api/calcuttas/${calcuttaId}/auctions/${auctionId}/lots/${lotId}/sale`
+}
+
+export const finalizeAuctionSale = async (calcuttaId: number,
+    auctionId: number,
+    lotId: number,
+    auctionSaleInput: AuctionSaleInput, options?: Parameters<typeof customFetch>[1]): Promise<AuctionSnapshot> => {
+
+  return customFetch<AuctionSnapshot>(getFinalizeAuctionSaleUrl(calcuttaId,auctionId,lotId),
+  {
+    ...options,
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json', ...options?.headers },
+    body: JSON.stringify(auctionSaleInput)
+  }
+);}
+
+
+
+
+
+export const getFinalizeAuctionSaleMutationOptions = <TError = ErrorType<unknown>,
+    TContext = unknown>(options?: { mutation?:UseMutationOptions<Awaited<ReturnType<typeof finalizeAuctionSale>>, TError,{calcuttaId: number;auctionId: number;lotId: number;data: BodyType<AuctionSaleInput>}, TContext>, request?: SecondParameter<typeof customFetch>}
+): UseMutationOptions<Awaited<ReturnType<typeof finalizeAuctionSale>>, TError,{calcuttaId: number;auctionId: number;lotId: number;data: BodyType<AuctionSaleInput>}, TContext> => {
+
+const mutationKey = ['finalizeAuctionSale'];
+const {mutation: mutationOptions, request: requestOptions} = options ?
+      options.mutation && 'mutationKey' in options.mutation && options.mutation.mutationKey ?
+      options
+      : {...options, mutation: {...options.mutation, mutationKey}}
+      : {mutation: { mutationKey, }, request: undefined};
+
+
+
+
+      const mutationFn: MutationFunction<Awaited<ReturnType<typeof finalizeAuctionSale>>, {calcuttaId: number;auctionId: number;lotId: number;data: BodyType<AuctionSaleInput>}> = (props) => {
+          const {calcuttaId,auctionId,lotId,data} = props ?? {};
+
+          return  finalizeAuctionSale(calcuttaId,auctionId,lotId,data,requestOptions)
+        }
+
+
+
+
+
+
+  return  { mutationFn, ...mutationOptions }}
+
+    export type FinalizeAuctionSaleMutationResult = NonNullable<Awaited<ReturnType<typeof finalizeAuctionSale>>>
+    export type FinalizeAuctionSaleMutationBody = BodyType<AuctionSaleInput>
+    export type FinalizeAuctionSaleMutationError = ErrorType<unknown>
+
+    export const useFinalizeAuctionSale = <TError = ErrorType<unknown>,
+    TContext = unknown>(options?: { mutation?:UseMutationOptions<Awaited<ReturnType<typeof finalizeAuctionSale>>, TError,{calcuttaId: number;auctionId: number;lotId: number;data: BodyType<AuctionSaleInput>}, TContext>, request?: SecondParameter<typeof customFetch>}
+ ): UseMutationResult<
+        Awaited<ReturnType<typeof finalizeAuctionSale>>,
+        TError,
+        {calcuttaId: number;auctionId: number;lotId: number;data: BodyType<AuctionSaleInput>},
+        TContext
+      > => {
+      return useMutation(getFinalizeAuctionSaleMutationOptions(options));
+    }
+
+export const getCompleteAuctionUrl = (calcuttaId: number,
+    auctionId: number,) => {
+
+
+
+
+  return `/api/calcuttas/${calcuttaId}/auctions/${auctionId}/complete`
+}
+
+export const completeAuction = async (calcuttaId: number,
+    auctionId: number, options?: Parameters<typeof customFetch>[1]): Promise<AuctionSnapshot> => {
+
+  return customFetch<AuctionSnapshot>(getCompleteAuctionUrl(calcuttaId,auctionId),
+  {
+    ...options,
+    method: 'POST'
+
+
+  }
+);}
+
+
+
+
+
+export const getCompleteAuctionMutationOptions = <TError = ErrorType<unknown>,
+    TContext = unknown>(options?: { mutation?:UseMutationOptions<Awaited<ReturnType<typeof completeAuction>>, TError,{calcuttaId: number;auctionId: number}, TContext>, request?: SecondParameter<typeof customFetch>}
+): UseMutationOptions<Awaited<ReturnType<typeof completeAuction>>, TError,{calcuttaId: number;auctionId: number}, TContext> => {
+
+const mutationKey = ['completeAuction'];
+const {mutation: mutationOptions, request: requestOptions} = options ?
+      options.mutation && 'mutationKey' in options.mutation && options.mutation.mutationKey ?
+      options
+      : {...options, mutation: {...options.mutation, mutationKey}}
+      : {mutation: { mutationKey, }, request: undefined};
+
+
+
+
+      const mutationFn: MutationFunction<Awaited<ReturnType<typeof completeAuction>>, {calcuttaId: number;auctionId: number}> = (props) => {
+          const {calcuttaId,auctionId} = props ?? {};
+
+          return  completeAuction(calcuttaId,auctionId,requestOptions)
+        }
+
+
+
+
+
+
+  return  { mutationFn, ...mutationOptions }}
+
+    export type CompleteAuctionMutationResult = NonNullable<Awaited<ReturnType<typeof completeAuction>>>
+
+    export type CompleteAuctionMutationError = ErrorType<unknown>
+
+    export const useCompleteAuction = <TError = ErrorType<unknown>,
+    TContext = unknown>(options?: { mutation?:UseMutationOptions<Awaited<ReturnType<typeof completeAuction>>, TError,{calcuttaId: number;auctionId: number}, TContext>, request?: SecondParameter<typeof customFetch>}
+ ): UseMutationResult<
+        Awaited<ReturnType<typeof completeAuction>>,
+        TError,
+        {calcuttaId: number;auctionId: number},
+        TContext
+      > => {
+      return useMutation(getCompleteAuctionMutationOptions(options));
+    }
+
+export const getGetAuctionEventsUrl = (calcuttaId: number,
+    auctionId: number,
+    params?: GetAuctionEventsParams,) => {
+  const normalizedParams = new URLSearchParams();
+
+  Object.entries(params || {}).forEach(([key, value]) => {
+
+    if (value !== undefined) {
+      normalizedParams.append(key, value === null ? 'null' : String(value))
+    }
+  });
+
+  const stringifiedParams = normalizedParams.toString();
+
+  return stringifiedParams.length > 0 ? `/api/calcuttas/${calcuttaId}/auctions/${auctionId}/events?${stringifiedParams}` : `/api/calcuttas/${calcuttaId}/auctions/${auctionId}/events`
+}
+
+export const getAuctionEvents = async (calcuttaId: number,
+    auctionId: number,
+    params?: GetAuctionEventsParams, options?: Parameters<typeof customFetch>[1]): Promise<AuctionEvent[]> => {
+
+  return customFetch<AuctionEvent[]>(getGetAuctionEventsUrl(calcuttaId,auctionId,params),
+  {
+    ...options,
+    method: 'GET'
+
+
+  }
+);}
+
+
+
+
+
+export const getGetAuctionEventsQueryKey = (calcuttaId: number,
+    auctionId: number,
+    params?: GetAuctionEventsParams,) => {
+    return [
+    `/api/calcuttas/${calcuttaId}/auctions/${auctionId}/events`, ...(params ? [params] : [])
+    ] as const;
+    }
+
+
+export const getGetAuctionEventsQueryOptions = <TData = Awaited<ReturnType<typeof getAuctionEvents>>, TError = ErrorType<ErrorResponse>>(calcuttaId: number,
+    auctionId: number,
+    params?: GetAuctionEventsParams, options?: { query?:UseQueryOptions<Awaited<ReturnType<typeof getAuctionEvents>>, TError, TData>, request?: SecondParameter<typeof customFetch>}
+) => {
+
+const {query: queryOptions, request: requestOptions} = options ?? {};
+
+  const queryKey =  queryOptions?.queryKey ?? getGetAuctionEventsQueryKey(calcuttaId,auctionId,params);
+
+
+
+    const queryFn: QueryFunction<Awaited<ReturnType<typeof getAuctionEvents>>> = ({ signal }) => getAuctionEvents(calcuttaId,auctionId,params, { signal, ...requestOptions });
+
+
+
+
+
+   return  { queryKey, queryFn, enabled: calcuttaId !== null && calcuttaId !== undefined && auctionId !== null && auctionId !== undefined, ...queryOptions} as UseQueryOptions<Awaited<ReturnType<typeof getAuctionEvents>>, TError, TData> & { queryKey: QueryKey }
+}
+
+export type GetAuctionEventsQueryResult = NonNullable<Awaited<ReturnType<typeof getAuctionEvents>>>
+export type GetAuctionEventsQueryError = ErrorType<ErrorResponse>
+
+
+
+export function useGetAuctionEvents<TData = Awaited<ReturnType<typeof getAuctionEvents>>, TError = ErrorType<ErrorResponse>>(
+ calcuttaId: number,
+    auctionId: number,
+    params?: GetAuctionEventsParams, options?: { query?:UseQueryOptions<Awaited<ReturnType<typeof getAuctionEvents>>, TError, TData>, request?: SecondParameter<typeof customFetch>}
+
+ ):  UseQueryResult<TData, TError> & { queryKey: QueryKey } {
+
+  const queryOptions = getGetAuctionEventsQueryOptions(calcuttaId,auctionId,params,options)
+
+  const query = useQuery(queryOptions) as  UseQueryResult<TData, TError> & { queryKey: QueryKey };
+
+  return withQueryKey(query, queryOptions.queryKey);
+}
+
+
+
+
+
+
 
 export const getGetOwnerPortfolioV2Url = (params: GetOwnerPortfolioV2Params,) => {
   const normalizedParams = new URLSearchParams();

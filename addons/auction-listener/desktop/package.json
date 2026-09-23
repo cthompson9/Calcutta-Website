@@ -1,0 +1,10 @@
+{
+  "name": "calcutta-listener-desktop",
+  "productName": "Calcutta Listener",
+  "version": "0.1.0",
+  "private": true,
+  "main": "main.cjs",
+  "dependencies": { "@recallai/desktop-sdk": "2.0.32" },
+  "devDependencies": { "electron": "44.4.3", "@electron/packager": "20.3.0" },
+  "scripts": { "start": "electron .", "package": "node package.mjs" }
+}

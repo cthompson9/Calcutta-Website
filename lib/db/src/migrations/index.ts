@@ -52,3 +52,6 @@ export { mtmAttemptDeleteGameGuardMigration } from "./0056MtmAttemptDeleteGameGu
 export { mtmCanonicalPeriodSelectionIdentityMigration } from "./0057MtmCanonicalPeriodSelectionIdentity";
 export { mtmReferenceMarksMigration } from "./0058MtmReferenceMarks";
 export { mtmActualsRequestsMigration } from "./0059MtmActualsRequests";
+export { auctionMigration } from "./0060Auction";
+export { auctionConsortiumBidderMigration } from "./0061AuctionConsortiumBidder";
+export { listenerMigration } from "./0062Listener";
