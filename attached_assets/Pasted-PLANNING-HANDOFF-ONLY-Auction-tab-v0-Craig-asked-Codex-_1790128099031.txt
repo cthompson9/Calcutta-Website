@@ -1,0 +1,194 @@
+PLANNING HANDOFF ONLY — Auction tab v0. Craig asked Codex to create the implementation plan and pass it to this project. Full plan below. Your ONE objective now: perform a bounded read-only compatibility check against this Replit checkout. Report current HEAD/dirty state, only material differences from the named integration points, whether existing Git transfer/post-merge behavior permits applying a reviewed branch without unreviewed schema changes, and any concrete blockers to the proposed ledger/roster mapping or realtime transport. Do not restate the full plan, broadly re-audit the repository, implement code, run migrations, start recordings, change secrets, or publish. Stop after a concise report (aim <=500 words). Codex will prepare implementation patches and local checks; reserve Replit for runtime evidence unavailable locally. This prompt supplies the plan text directly; local-only listener source is NOT yet transferred.
+
+# Calcutta Auction tab — implementation plan
+
+Prepared September 22, 2026. Target: cfthompson9/Calcutta-Website in Replit; GitHub cthompson9/Calcutta-Website.
+
+## 1. Scope and agreed behavior
+
+Extend the existing Auction Results page into the live Auction tab. Preserve its auction-results ledger and Points Rubric. Keep existing historical results, analysis, trades, navigation links, and sport-specific scoring working.
+
+Craig has confirmed: nominations are button driven only; split ownership is allowed with unequal percentages; every lot must receive a sale price; admins control the auction and regular viewers watch read-only. Audio announces bids and completed sales, never changes the nominated lot.
+
+The Windows Recall listener has passed user-observed local microphone and remote-caller tests. Craig reports very low latency; no formal latency benchmark exists. Reuse that listener. Replit hosts the website/API/database; the Windows application captures local microphone and computer audio. Do not rebuild capture in a Replit container or assume a website can hear all system audio.
+
+This document specifies implementation. The immediate Replit handoff is a bounded planning review: confirm only current revision/integration differences, then stop before coding or publishing. Subsequent implementation should be prepared in Codex where practical, with narrow Replit runtime checks.
+
+## 2. Page layout and permissions
+
+Keep the existing /dashboard route so old links continue working. Change desktop/mobile navigation and page title to Auction. Do not rename the separate /results results-analysis page.
+
+Top to bottom:
+
+1. Existing Calcutta/season selector and Auction title; clear setup/live/complete state; admin unlock.
+2. Metrics: Pool Size, Lots Sold / Total Lots, Average Sale Price. Clearly label inclusion of the current live bid in pool size.
+3. On the Block: large lot name, nomination number, current bid, recognized consortium or Bidder unknown, status Bidding / Sold / Needs review. Show split percentages for a completed shared purchase. A completed lot stays here until the next nomination.
+4. Admin nomination button and listener connection/recording status. Admin actions: pair listener, start/stop recording through the local app, edit current bid/buyer, finalize manually, amend sale. Recording does not start just because Launch is clicked.
+5. Consortium List beside On the Block on desktop and below on mobile. Read-only names for viewers; admin add/edit names and spoken aliases. Provide a split editor with consortium selectors and percentage fields.
+6. Live transcript preview, with interim/final distinction, connection state, last received time, and bounded scrollback. Preserve scroll position when reading older lines. Admin sees review/error details and correction controls; viewers see transcript and auction state without credentials or diagnostics.
+7. Existing results ledger and Points Rubric. Preserve original sale order and original buyers separately from later trade ownership. Results update on finalized sales/corrections.
+8. Admin lot inventory panel: add/import/edit lots, availability status, validation errors, totals. Empty setup state explains how to upload lots. Completed auctions show this read-only.
+
+Use existing typography, colors, cards, spacing and admin pattern. Keyboard-accessible controls and labeled form errors; announce nomination and finalized sale changes without announcing every partial transcript. At narrow widths avoid horizontal page overflow.
+
+All write restrictions are enforced server-side, including direct HTTP and MCP calls. Hiding buttons is not authorization. Scope all data and streams to explicit calcuttaId AND auctionId, never infer an auction from a default NFL year.
+
+## 3. Auction state machine
+
+Auction states: setup -> live -> complete. Lot states: available -> bidding -> sold. At most one bidding lot per auction. Keep currentLotId after sale for display. No skip, pass, reset-to-queue, or automatic voice nomination.
+
+| Condition | Button | Behavior |
+|---|---|---|
+| No lots | Launch, disabled | Explain that lots must be loaded |
+| No lot nominated, inventory valid | Launch | Atomically choose one available lot and start auction |
+| Current lot bidding; other lots available | Start Next Item, disabled | Finish current sale first |
+| Current lot sold; available lots remain | Start Next Item | Atomically choose one available lot |
+| Last available lot now bidding | End Auction, disabled | Final sale must be resolved |
+| Every lot sold | End Auction | Confirm completion summary, then freeze auction |
+| Auction complete | Auction Complete, disabled | Historical read-only state |
+
+The server randomly selects uniformly from available lots inside the same transaction that marks nomination and records its order. Do not let the browser pick or reshuffle on refresh. Persist nomination ID, sequence, timestamps and random selection outcome. Double clicks/retries reuse an idempotency key; concurrent admins cannot nominate two lots. Requests with stale revision return conflict plus refreshed state.
+
+Launch requires a nonempty valid lot set. Consortia can be added during bidding because participants may be unknown initially. A sale requires a valid price and fully resolved allocation before it counts as sold. Recommended v0 price rule: positive USD amount to cents; never substitute zero for a missing price. Zero-dollar explicit sales, if desired later, are a separate validation decision.
+
+Before completion, admins may edit labels/aliases/metadata for any lot. Available lots may be added or removed with an audit trail and total count recalculation. A nominated/sold lot cannot be silently deleted, replaced with a different economic asset, or removed to evade the all-lots-sold rule. Correct a mistaken nomination's descriptive label in place only if the underlying lot is unchanged. Adding a lot after the previous last sale changes the button back to Start Next Item. End Auction rechecks the entire inventory transactionally.
+
+Completed inventory is frozen. Commissioner sale corrections remain a separate audited operation, subject to existing trade protections; they do not reopen bidding or replace original nomination order. Do not add a general auction-reset feature in v0.
+
+## 4. Consortium identity and splits
+
+Maintain an auction-specific roster of stable consortium IDs, display names and speech aliases. Names are unique after case/whitespace normalization within an auction; aliases cannot ambiguously identify two active consortia. Renaming preserves ID and sale history. Referenced consortia cannot be destructively removed; retain historical identity.
+
+Do not equate audio speaker labels with buyers. Recognize the named bidder in auctioneer speech; if a price is clear but buyer is not, show Bidder unknown rather than carrying the previous buyer forward. Never auto-create a consortium from transcription. Admin can add the actual consortium and resolve the pending sale.
+
+Single buyer means 100%. Shared sale stores an allocation list; each selected consortium appears once, each percentage is positive, and the sum must be exactly 100%. Unequal percentages are supported. Use fixed decimal/integer arithmetic and the repository's existing ownership precision rules, not floating-point equality. Missing percentages on a shared sale require resolution; do not assume an equal split unless speech explicitly says equal/half etc. UI may offer an explicit Equal split action.
+
+The current global consortia and consortium_memberships tables represent a different, cross-auction grouping model. Add an auction roster/mapping rather than rewriting global membership when an auction consortium is renamed. Explicitly map each buying consortium to the existing ownership-ledger identity (bidderId); preserve existing historical mappings. For newly created buyers, create/link the compatible ledger identity transactionally and prohibit ambiguous name-based cross-auction matching.
+
+## 5. Speech ingestion and finalization
+
+Flow: Windows audio -> existing Recall streaming transcript -> authenticated event bridge -> server interpretation/validation -> transactional auction state -> realtime viewers.
+
+Use the existing local capture and durable outbox, but replace the rehearsal's voice-nomination behavior. Transcript events cannot select a team. Lot references in speech can confirm the current lot or flag a mismatch; they never override the button selection.
+
+Implement structured events for transcript partial/final, bid observed, sale proposed, sale finalized, review required, correction, listener status. The authoritative server validates/derives auction mutations from transcripts; never trust arbitrary client sale payloads as committed ledger writes. Reuse bounded deterministic parsing for supported bid/sale language, then extend against recorded test fixtures. If an LLM fallback is added, constrain output to a schema and supplied roster/current lot, validate identically, and keep it out of the ordinary fast path.
+
+Recognize actual bids separately from asks: 'I have 500' is a bid; 'do I hear 600?' must not raise the price. 'Once' and 'twice' alone never finalize. Negated/retracted 'not sold' and ambiguous numbers go to review. Only an explicit completed-sale statement with amount and resolved buyer/allocation finalizes automatically. Assemble fragmented final transcript segments within the same utterance/context; do not join unrelated speech across lots.
+
+Partial transcripts can display a provisional bid promptly. Replace revised partials rather than appending duplicates. Do not permanently finalize a sale from a revisable partial. The accepted live amount normally increases; an explicit correction can decrease it, with provenance. Provisional status must be visible when included in pool size.
+
+Event envelope: unique event ID, source recording/session ID, provider utterance ID/version, source audio timestamps, receivedAt, auctionId, nominationId/context epoch, and expected auction revision where appropriate. Persist dedup keys so retries after restarts are harmless. At nomination boundaries map audio time to the correct nomination interval; stamping only currentLotId at delayed callback arrival is unsafe. Unknown, delayed or overlapping boundary events are held for review. Manual corrections supersede earlier automatic events; replay must never overwrite them.
+
+Persist final transcripts, bids, sales, review decisions and a transactional event/outbox row before broadcasting. Bound ephemeral partial data and viewer scrollback. One active capture lease per auction avoids duplicate independent recordings; a reconnect resumes the same lease or explicitly replaces it. Stop/revoke ingestion on completion. Disconnects show visibly and preserve local queued events. Replays of old events are validated against their original lot and revision, not applied to whichever lot is now current.
+
+Unknown buyer/split/price: display Needs review and retain the pending transcript. Do not count it sold or enable the next nomination until admin resolves it. Manual entry remains available if audio is interrupted. Corrections include actor, before/after values, timestamp and reason/source.
+
+Latency objective remains less than one second from end of completed sale speech to visible website update. Measure end-to-end, including provider finalization; do not claim the tested microphone path proves this guarantee. Also measure ingestion-to-commit and commit-to-render independently. Target app-side p95 below 300 ms on the deployed test environment, leaving room for provider delay. If final transcripts exceed the end-to-end target, show provisional recognition promptly and report the measured limitation; do not sacrifice sale correctness to imply an SLA.
+
+## 6. Data model and ledger integration
+
+Suggested additive Drizzle tables (adapt names to current conventions):
+
+- auction_sessions: calcuttaId, status, currentLotId, revision, created/started/completed timestamps; only one active session per Calcutta.
+- auction_lots: auctionId, stable externalId, displayName, aliases/metadata, optional existing entry/team association, status, nominationId/order, current bid cents, live bidder/allocation, revision.
+- auction_consortia: auctionId, displayName, aliases, ledger bidderId mapping, active flag.
+- auction_sales and auction_sale_allocations: one current sale per lot, total cents, buyers and exact shares, ledger linkage, source event, revision. Preserve versions through audit history.
+- auction_events/review items: persistent dedup, event sequence, actor/source, nomination context, before/after, transcript references and review outcome.
+- listener_sessions: auction-scoped revocable capability/lease, expiry and connection health. Store token hashes, not plaintext reusable tokens.
+
+Database constraints enforce scope, one sale per lot, no duplicate allocation, valid amounts and shares. Use the existing per-season ownership advisory lock BEFORE reading/reloading ownership state; acquire locks consistently with existing write paths. In ONE transaction validate state, write sale/allocation, update canonical primary positions/cost basis, write ownership audit and auction event, and advance revision. Publish only after commit. A failure rolls back all these changes.
+
+Use shared domain services for UI/API/MCP/capture paths. Do not create a parallel price ledger that disagrees with existing summary/results/analysis. Preserve original buyers and nomination order for Auction results even after ownership trades. Respect existing prohibition on rewriting primary ownership after approved trades; surface its established correction workflow.
+
+Allocate dollar cost basis to split owners in integer cents with deterministic residual distribution so parts sum exactly to the sale total. Do not independently round every owner's share and lose/gain cents. Split sale totals count once.
+
+Generic lot model must not hard-code 32 NFL teams. Current calcutta_entries requires team association and existing Dashboard is NFL-gated. For ordinary team lots, link the existing entry explicitly. For non-team/bundled lots, define a compatible entry mapping before enabling that inventory type; do not invent fake NFL teams. Preserve existing historical views until their mapping is verified. Support variable lot counts immediately.
+
+Existing auctions must not suddenly become live drafts. No automatic historical backfill/reinterpretation. New sessions are explicit and cannot accidentally overwrite a populated completed auction. Use additive versioned migrations in the existing migration runner and schema-convergence workflow; no destructive production schema push.
+
+## 7. API and MCP contract
+
+Recommended base: /api/calcuttas/:calcuttaId/auctions/:auctionId. Define OpenAPI/Zod first and regenerate existing clients.
+
+| Route/action | Access and purpose |
+|---|---|
+| POST /api/calcuttas/:id/auctions | Admin creates setup session explicitly |
+| GET base | Viewer snapshot, revision, roster, lots, metrics, current lot and results |
+| POST base/lots/bulk | Authorized admin/MCP bulk upsert by stable externalId; validate entire batch, report row errors, all-or-nothing write |
+| PATCH base/lots/:lotId | Admin/MCP edit with revision; freeze inventory on complete |
+| DELETE base/lots/:lotId | Admin/MCP remove only never-nominated inventory; audit |
+| POST/PATCH base/consortia | Admin roster and aliases with explicit ledger mapping |
+| POST base/nominate-next | Admin button only, revision + idempotency key |
+| PATCH base/current-bid | Admin correction with reason/context |
+| POST base/lots/:lotId/sale | Validated manual finalization or authorized internal interpretation path |
+| PATCH base/lots/:lotId/sale | Audited correction; existing ownership/trade guards |
+| POST base/complete | Admin, recheck every retained lot sold |
+| POST base/listener-sessions | Admin pairs/revokes limited capture capability |
+| POST base/listener-events | Paired listener only, bounded batch, per-event acknowledgments/dedup |
+| GET base/events | Realtime read stream with sequence/reconnect support |
+
+Expose MCP tools list_auction_lots, upsert_auction_lots, update_auction_lot and remove_unstarted_auction_lot using the same service. Bulk upsert accepts auction ID, expected revision, idempotency key and lots [{externalId, name, aliases, entryId/teamId?, metadata?}]. Include dry-run validation. An ordinary read-only MCP/OAuth connection must not acquire writes just because tools were added: existing mcpServer authentication distinguishes admin from MCP read access. Gate mutation tool registration/execution through existing admin authorization or an explicitly scoped write grant. Keep nomination UI-only in v0.
+
+Errors must distinguish validation, unauthorized, wrong auction, completed, stale revision, duplicate external ID, unresolved sale, and ledger/trade conflict. Validate limits and sanitize transcript text as plain text; never render it as HTML.
+
+Use SSE or equivalent supported push with a database-backed sequence/outbox, initial snapshot plus after-sequence catch-up, reconnect dedup, heartbeat and gap-triggered snapshot refresh. PostgreSQL notifications can wake readers but are not durable history. Do not depend on one Node process's in-memory event emitter for correctness. Verify actual Replit proxy streaming behavior; bounded polling is fallback and must display degraded latency. Scope TanStack query invalidation to the selected Calcutta/session.
+
+## 8. Metrics
+
+Let F = sum of finalized sale totals, L = current lot's live amount only while it is bidding, N = finalized lot count, T = current retained lot count.
+
+- Pool Size = F + L. No live amount means L = 0.
+- Lots Sold = N / T; nomination does not increase N.
+- Average Sale Price = F / N; display an em dash when N = 0.
+
+Once current lot sells, its price belongs to F and L becomes zero, even though On the Block continues showing the sale. Example: finalized prices $100 and $300, current live $150 -> pool $550, sold 2/T, average $200. Finalize current at $150 -> pool still $550, sold 3/T, average $183.33. Split percentages do not change pool totals or lot count. Corrections recompute all metrics from canonical data.
+
+## 9. Local audit findings and concrete touchpoints
+
+Audited local snapshot: commit 709641b; local branch feature/auction-listener-v0. This may lag Replit/upstream. Verify revision and only changed relevant interfaces before patching. Authoritative project is repository root; a duplicate nested Calcutta-Website tree exists and must not be edited accidentally.
+
+- artifacts/nfl-auction/src/components/layout/Shell.tsx: Auction Results navigation uses /dashboard.
+- artifacts/nfl-auction/src/pages/Dashboard.tsx: existing auction summary, results ledger, Points Rubric, admin unlock/import controls; currently NFL-specific gating. Compose AuctionMetrics, AuctionBlock, AuctionControls, ConsortiumList, TranscriptPanel and LotManager here or in a dedicated feature directory.
+- artifacts/nfl-auction/src/hooks/useSeason.ts: selection context; switching selection must detach old streams and avoid cross-auction mutations.
+- artifacts/api-server/src/routes/index.ts: mount dedicated auction routes.
+- artifacts/api-server/src/mcpServer.ts and mcpOAuth.ts: MCP tool registration and authorization distinction.
+- artifacts/api-server/src/lib/ownershipShares.ts, routes/teams.ts: shared ownership invariants, advisory lock, validation, audit and approved-trade restrictions.
+- artifacts/api-server/src/lib/auctionResults.ts: original results aggregation/order must remain compatible.
+- lib/db/src/schema and lib/db/src/migrate.ts: additive schema and registered migrations.
+- lib/api-spec plus generated API clients/Zod packages: contract generation.
+- routes/auctionImport.ts: existing 32-team bulk importer is NOT the per-lot live-sale endpoint. Disable conflicting imports for active live sessions; preserve historical import workflow otherwise.
+
+Local-only addon under addons/auction-listener has 19 passing automated tests plus backend smoke coverage and user audio tests. Its files are staged locally, not assumed present in Replit/GitHub. It still uses a rehearsal store and simpler owner parsing. It needs the explicit bridge, roster/split rules and button-nomination changes above. Do not infer its current parser already supports all this specification.
+
+Transfer reviewed changes via a verified supported Git path or explicit attachment/patch mechanism. Replit cannot read a Codex filesystem path. Before syncing a branch check Replit's dirty state and post-merge hooks; current .replit configuration references a post-merge dependency/schema command. Do not trigger an unreviewed production schema change during transfer. Never transfer .local backend configuration, Recall keys, node_modules, raw recordings or desktop.ini files.
+
+## 10. Delivery sequence
+
+1. Bounded Replit planning check: running revision, relevant differences from audit, database/dev environment and supported transfer path. No broad repo re-audit, no code, no publish. Return only concrete blockers/deltas.
+2. Codex prepares domain model, state transitions, migrations, API contracts, MCP inventory tools and focused tests. Validate locally wherever dependencies permit. Review ledger identity mapping before UI integration.
+3. Codex prepares Auction components, admin/read-only views, metrics and realtime stream; reuse existing widgets. Verify fixture-driven browser states and responsive layout.
+4. Codex adapts the tested Windows listener to paired auction context, durable event bridge, strict roster/splits and disabled voice nominations. Keep Recall credentials on the existing local backend for v0; send only bounded transcripts/events to the website over HTTPS. Hosted browser clients never receive a Recall key or global admin key from the server.
+5. Transfer reviewed changes through the verified path. Ask Replit only to apply the prepared change and run checks requiring its database/proxy/runtime. Stop on material conflicts; report exact error/revision rather than redesigning.
+6. Rehearsal in a clearly identified nonproduction Calcutta: local speech, remote caller, shared 60/40 sale, unknown buyer resolution, manual amendment, disconnect/replay, end auction. Measure latency at both sites of the bridge and browser render.
+7. Review test evidence and migration/rollback plan. Publishing is a separate explicit authorization; no automatic deployment.
+
+Use a feature flag scoped to designated test Calcuttas initially. Rollback disables ingestion/new controls and returns existing views to their prior path; retain committed ledger/audit data. Take the established database backup before any production migration. No destructive down migration of finalized sales.
+
+## 11. Acceptance tests and completion evidence
+
+- Setup: empty Launch blocked; MCP bulk upload supports counts other than 32; duplicate IDs and ambiguous aliases fail clearly; retries do not duplicate lots; inventory freezes on completion.
+- Lifecycle: each lot nominated exactly once; concurrent requests/double click produce one nomination; no next while unsold; End disabled on final bidding lot; all sold required; adding available inventory updates counts/button correctly.
+- Speech: amount-only bid with unknown buyer; recognized named buyer; auctioneer ask ignored; partial revision; once/twice without sold; fragmented sold statement; unknown consortium; negated sale; ambiguous price; late previous-lot transcript; duplicate callback and polling event; manual override protected from replay.
+- Splits: one buyer, explicit half/half, 60/40, three-way exact total, missing shares, duplicates, totals other than 100%, cents residual distribution; never silently invent percentages.
+- Ledger: atomic sale and ownership writes; simulated rollback leaves neither partial sale nor ownership; approved-trade correction restriction; result order and original owners preserved; split totals counted once.
+- Metrics: no sales average em dash; sample arithmetic in section 8; current sold lot not double counted; manual lower correction updates everything.
+- Permissions: viewer cannot mutate through UI/API/MCP; unscoped MCP token cannot write; wrong-session capture denied; token revoked/expired rejected; no credentials in browser or stream; Calcutta switch and forged cross-auction IDs isolated.
+- Resilience: two viewers update without refresh; reconnect/sequence gaps recover; backend restart preserves state; outbox replay idempotent; no stale event assigned to new lot; listener loss shown without losing finalized results.
+- Regression: old /dashboard and result deep links, Points Rubric, original ledger, Results/Analysis/Trades, legacy import outside live sessions, non-NFL/historical views, desktop and mobile.
+- Run relevant repository tests and migration/convergence checks; pnpm run typecheck and pnpm run build; regenerate contracts with pnpm --filter @workspace/api-spec run codegen. Confirm script names on the actual revision. Rerun listener's focused tests after adapter changes. Report failed/unavailable checks honestly rather than substituting only a screenshot.
+- Final evidence: exact revision, migration IDs, changed paths, checks and outcomes, screenshots of setup/live/sold/complete and mobile, measured median/p95 speech-to-render over a stated sample count, remaining limitations, and explicit unpublished status.
+
+## 12. Out of scope for v0
+
+Voice-driven nomination, meeting bots/calendar scheduling, automatic consortium creation, voiceprint buyer identification, speculative partial-transcript final sales, auction resets/reopening, a replacement trade system, new scoring rules, and publication without Craig's separate instruction.
+
