@@ -1,38 +1,70 @@
 import { useState } from "react";
-import { type AuctionConsortium, type BidderSummary, type AuctionLot, getGetBiddersQueryKey } from "@workspace/api-client-react";
-import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter, DialogDescription } from "@/components/ui/dialog";
-import { editConsortium, addConsortium, addLotBulk, editLot, deleteLot } from "./admin-actions";
+import { type AuctionConsortium, type AuctionSale, type BidderSummary, type AuctionLot, getGetBiddersQueryKey } from "@workspace/api-client-react";
+import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription } from "@/components/ui/dialog";
+import { editConsortium, addConsortium, addLotBulk, deleteLot, type ConsortiumOwnerInput } from "./admin-actions";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { useToast } from "@/hooks/use-toast";
-import { Loader2, Plus, Edit2, Trash2, X } from "lucide-react";
+import { Loader2, Plus, Trash2, X } from "lucide-react";
 
-export function ManageRosterDialog({ open, onOpenChange, calcuttaId, auctionId, consortia, bidders, adminKey, revision }: { open: boolean, onOpenChange: (open: boolean) => void, calcuttaId: number, auctionId: number, consortia: AuctionConsortium[], bidders: BidderSummary[], adminKey: string, revision: number }) {
+type Owner = { bidderId?: number; newBidderName: string; percent: string };
+type RosterConsortium = AuctionConsortium & { owners?: { bidderId: number; bidderName: string; share: number }[] };
+export function equalOwnerShares(owners: Owner[]): Owner[] {
+  if (!owners.length) return owners;
+  const each = Math.floor(10000 / owners.length);
+  return owners.map((owner, index) => ({ ...owner, percent: ((index === owners.length - 1 ? 10000 - each * (owners.length - 1) : each) / 100).toFixed(2) }));
+}
+
+export function ManageRosterDialog({ open, onOpenChange, calcuttaId, auctionId, consortia, sales, bidders, biddersLoading, biddersError, retryBidders, adminKey, revision }: { open: boolean, onOpenChange: (open: boolean) => void, calcuttaId: number, auctionId: number, consortia: AuctionConsortium[], sales: AuctionSale[], bidders: BidderSummary[], biddersLoading: boolean, biddersError: boolean, retryBidders: () => void, adminKey: string, revision: number }) {
   const queryClient = useQueryClient();
   const { toast } = useToast();
   const [isPending, setIsPending] = useState(false);
 
-  const [newName, setNewName] = useState("");
-  const [newAliases, setNewAliases] = useState("");
-  const [newBidderId, setNewBidderId] = useState("");
-  const [newBidderName, setNewBidderName] = useState("");
+  const [name, setName] = useState("");
+  const [editingId, setEditingId] = useState<number | null>(null);
+  const [owners, setOwners] = useState<Owner[]>([{ newBidderName: "", percent: "100.00" }]);
+
+  const reset = () => { setEditingId(null); setName(""); setOwners([{ newBidderName: "", percent: "100.00" }]); };
+  const edit = (c: RosterConsortium) => {
+    setEditingId(c.id);
+    setName(c.displayName);
+    setOwners(c.owners?.length
+      ? c.owners.map(o => ({ bidderId: o.bidderId, newBidderName: "", percent: (o.share * 100).toFixed(2) }))
+      : [{ newBidderName: "", percent: "100.00" }]);
+  };
+  const usedByOther = new Set((consortia as RosterConsortium[]).filter(c => c.id !== editingId).flatMap(c => (c.owners || []).map(o => o.bidderId)));
+  const soldConsortiumIds = new Set(sales.flatMap(sale => sale.allocations.map(allocation =>
+    allocation.consortiumId ?? consortia.find(c => c.bidderId === allocation.bidderId)?.id
+  )).filter((id): id is number => id != null));
+  const namesByOther = new Set((consortia as RosterConsortium[]).filter(c => c.id !== editingId).flatMap(c => (c.owners || []).map(o => o.bidderName.trim().toLocaleLowerCase())));
+  const duplicate = owners.some((o, i) => {
+    const normalized = (o.bidderId ? bidders.find(b => b.id === o.bidderId)?.name : o.newBidderName)?.trim().toLocaleLowerCase();
+    return (!!o.bidderId && usedByOther.has(o.bidderId)) || (!!normalized && namesByOther.has(normalized)) ||
+      (!!normalized && (bidders.some(b => b.name.trim().toLocaleLowerCase() === normalized && b.id !== o.bidderId) ||
+        owners.some((other, j) => i !== j && (other.bidderId ? bidders.find(b => b.id === other.bidderId)?.name : other.newBidderName)?.trim().toLocaleLowerCase() === normalized)));
+  });
+  const total = owners.reduce((sum, o) => sum + (Number(o.percent) || 0), 0);
+  const valid = !biddersLoading && !biddersError && !!name.trim() && owners.length > 0 && !duplicate &&
+    owners.every(o => (o.bidderId != null || !!o.newBidderName.trim()) && /^\d+(\.\d{1,2})?$/.test(o.percent) && Number(o.percent) > 0) &&
+    owners.reduce((sum, o) => sum + Math.round(Number(o.percent) * 100), 0) === 10000;
 
   const handleAdd = async (e: React.FormEvent) => {
     e.preventDefault();
-    if (!newName || !newBidderId || (newBidderId === "__new" && !newBidderName.trim())) return;
+    if (!valid) return;
     setIsPending(true);
     try {
-      await addConsortium(calcuttaId, auctionId, newName,
-        newBidderId === "__new" ? null : parseInt(newBidderId, 10),
-        newBidderId === "__new" ? newBidderName.trim() : null, adminKey, revision);
-      queryClient.invalidateQueries({ queryKey: ["active-auction", calcuttaId] });
-      setNewName("");
-      setNewAliases("");
-      setNewBidderId("");
-      setNewBidderName("");
-      queryClient.invalidateQueries({ queryKey: getGetBiddersQueryKey() });
-      toast({ title: "Consortium added" });
+      const payload: ConsortiumOwnerInput[] = owners.map(o => o.bidderId != null
+        ? { bidderId: o.bidderId, share: Math.round(Number(o.percent) * 100) / 10000 }
+        : { newBidderName: o.newBidderName.trim(), share: Math.round(Number(o.percent) * 100) / 10000 });
+      if (editingId != null) await editConsortium(calcuttaId, auctionId, editingId, { displayName: name.trim(), owners: payload }, adminKey, revision);
+      else await addConsortium(calcuttaId, auctionId, name.trim(), payload, adminKey, revision);
+      await Promise.all([
+        queryClient.invalidateQueries({ queryKey: ["active-auction", calcuttaId] }),
+        queryClient.invalidateQueries({ queryKey: getGetBiddersQueryKey() }),
+      ]);
+      reset();
+      toast({ title: editingId != null ? "Consortium updated" : "Consortium added" });
     } catch (err: any) {
-      toast({ title: "Failed to add", description: err.message, variant: "destructive" });
+      toast({ title: "Failed to save consortium", description: err.message, variant: "destructive" });
     } finally {
       setIsPending(false);
     }
@@ -43,21 +75,6 @@ export function ManageRosterDialog({ open, onOpenChange, calcuttaId, auctionId, 
     try {
       await editConsortium(calcuttaId, auctionId, c.id, { active: c.active === 1 ? false : true }, adminKey, revision);
       queryClient.invalidateQueries({ queryKey: ["active-auction", calcuttaId] });
-    } catch (err: any) {
-      toast({ title: "Failed to update", description: err.message, variant: "destructive" });
-    } finally {
-      setIsPending(false);
-    }
-  };
-
-  const handleRename = async (c: AuctionConsortium) => {
-    const newNamePrompt = prompt("Enter new name:", c.displayName);
-    if (!newNamePrompt || newNamePrompt === c.displayName) return;
-    setIsPending(true);
-    try {
-      await editConsortium(calcuttaId, auctionId, c.id, { displayName: newNamePrompt }, adminKey, revision);
-      queryClient.invalidateQueries({ queryKey: ["active-auction", calcuttaId] });
-      toast({ title: "Name updated" });
     } catch (err: any) {
       toast({ title: "Failed to update", description: err.message, variant: "destructive" });
     } finally {
@@ -82,47 +99,62 @@ export function ManageRosterDialog({ open, onOpenChange, calcuttaId, auctionId, 
 
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
-      <DialogContent className="max-w-3xl max-h-[80vh] overflow-y-auto">
+      <DialogContent className="w-[calc(100vw-2rem)] max-w-3xl max-h-[85dvh] overflow-y-auto">
         <DialogHeader>
           <DialogTitle className="font-mono uppercase tracking-widest text-lg">Manage Roster</DialogTitle>
         </DialogHeader>
 
         <div className="space-y-6">
           <div className="border border-border p-4 bg-muted/30">
-            <h4 className="font-mono text-xs font-bold uppercase tracking-widest mb-4">Add New Consortium</h4>
-            <form onSubmit={handleAdd} className="flex items-end gap-2">
-              <div className="flex-1 space-y-1">
-                <label className="text-xs font-mono text-muted-foreground">Name</label>
-                <input type="text" value={newName} onChange={e => setNewName(e.target.value)} className="w-full bg-background border border-border px-3 py-2 text-sm" placeholder="Consortium Name" />
+            <h4 className="font-mono text-xs font-bold uppercase tracking-widest mb-4">{editingId != null ? "Edit Consortium" : "Add New Consortium"}</h4>
+            {biddersLoading && <p role="status" className="text-sm text-muted-foreground">Loading owner directory…</p>}
+            {biddersError && <div role="alert" className="mb-4 border border-destructive/30 bg-destructive/5 p-3 text-sm text-destructive">Could not load owner directory. Changes cannot be saved until it loads. <button type="button" onClick={retryBidders} className="underline font-bold">Retry</button></div>}
+            {!biddersLoading && !biddersError && <form onSubmit={handleAdd} className="space-y-4">
+              <label className="block space-y-1 text-xs font-mono text-muted-foreground">Consortium name
+                <input aria-label="Consortium name" type="text" value={name} onChange={e => setName(e.target.value)} className="w-full bg-background border border-border px-3 py-2 text-sm text-foreground" placeholder="Consortium name" />
+              </label>
+              <div className="flex justify-between items-center">
+                <span className="font-mono text-xs uppercase tracking-widest">Owners & shares</span>
+                <button type="button" onClick={() => setOwners(equalOwnerShares(owners))} className="text-xs text-primary hover:underline">Equal Split</button>
               </div>
-              <div className="flex-1 space-y-1">
-                <label className="text-xs font-mono text-muted-foreground">Bidder Mapping</label>
-                <select value={newBidderId} onChange={e => setNewBidderId(e.target.value)} className="w-full bg-background border border-border px-3 py-2 text-sm">
-                  <option value="" disabled>Select Bidder...</option>
-                  {bidders.map(b => <option key={b.id} value={b.id}>{b.name}</option>)}
-                  <option value="__new">Create a new bidder…</option>
-                </select>
-                {newBidderId === "__new" && (
-                  <input aria-label="New bidder name" type="text" value={newBidderName}
-                    onChange={e => setNewBidderName(e.target.value)}
-                    className="w-full bg-background border border-border px-3 py-2 text-sm"
-                    placeholder="New bidder name" />
-                )}
+              {owners.map((owner, index) => (
+                <div key={index} className="flex flex-wrap sm:flex-nowrap gap-2 items-start">
+                  <div className="flex-1 min-w-[150px] space-y-2">
+                    <select aria-label={`Owner ${index + 1}`} value={owner.bidderId != null ? String(owner.bidderId) : owner.newBidderName !== "" ? "__new" : ""} onChange={e => setOwners(current => current.map((o, i) => i === index ? { bidderId: e.target.value && e.target.value !== "__new" ? Number(e.target.value) : undefined, newBidderName: "", percent: o.percent } : o))} className="w-full bg-background border border-border px-3 py-2 text-sm">
+                      <option value="">Select owner…</option>
+                      {bidders.map(b => <option key={b.id} value={b.id} disabled={usedByOther.has(b.id) || owners.some((o, i) => i !== index && o.bidderId === b.id)}>{b.name}</option>)}
+                      <option value="__new">Create new owner…</option>
+                    </select>
+                    {owner.bidderId == null && <input aria-label={`New owner ${index + 1} name`} value={owner.newBidderName} onChange={e => setOwners(current => current.map((o, i) => i === index ? { ...o, newBidderName: e.target.value } : o))} placeholder="Or enter new owner name" className="w-full bg-background border border-border px-3 py-2 text-sm" />}
+                  </div>
+                  <label className="flex items-center gap-1 text-sm font-mono"><input aria-label={`Owner ${index + 1} percent`} type="number" min="0.01" max="100" step="0.01" value={owner.percent} onChange={e => setOwners(current => current.map((o, i) => i === index ? { ...o, percent: e.target.value } : o))} className="w-20 bg-background border border-border px-2 py-2 text-right" />%</label>
+                  <button type="button" aria-label={`Remove owner ${index + 1}`} disabled={owners.length === 1} onClick={() => setOwners(equalOwnerShares(owners.filter((_, i) => i !== index)))} className="p-2 text-muted-foreground hover:text-destructive disabled:opacity-40"><X className="w-4 h-4" /></button>
+                </div>
+              ))}
+              <div className="flex flex-wrap items-center justify-between gap-2">
+                <button type="button" onClick={() => setOwners(equalOwnerShares([...owners, { newBidderName: "", percent: "" }]))} className="inline-flex items-center gap-1 text-xs text-primary font-mono uppercase"><Plus className="w-3 h-3" /> Add owner</button>
+                <span className={`text-xs font-mono ${Math.abs(total - 100) > 0.001 ? "text-destructive" : "text-foreground"}`}>Total {total.toFixed(2)}% / 100%</span>
               </div>
-              <button disabled={isPending || !newName || !newBidderId || (newBidderId === "__new" && !newBidderName.trim())} type="submit" className="bg-primary text-primary-foreground font-mono text-xs font-bold uppercase tracking-widest px-4 py-2 hover:bg-primary/90 disabled:opacity-50 h-9 shrink-0">
-                {isPending ? <Loader2 className="w-3 h-3 animate-spin" /> : <Plus className="w-3 h-3" />} Add
-              </button>
+              {duplicate && <p role="alert" className="text-xs text-destructive">An owner is already listed here or in another consortium. Choose a different owner.</p>}
+              <div className="flex gap-2 justify-end">
+                {editingId != null && <button type="button" onClick={reset} className="border border-border px-4 py-2 text-xs font-mono uppercase">Cancel</button>}
+                <button disabled={isPending || !valid} type="submit" className="bg-primary text-primary-foreground font-mono text-xs font-bold uppercase tracking-widest px-4 py-2 hover:bg-primary/90 disabled:opacity-50">
+                  {isPending ? "Saving…" : editingId != null ? "Save Changes" : "Add Consortium"}
+                </button>
+              </div>
             </form>
+            }
           </div>
 
           <div>
             <h4 className="font-mono text-xs font-bold uppercase tracking-widest mb-2">Existing Roster</h4>
-            <table className="w-full text-sm text-left">
+            <div className="overflow-x-auto">
+            <table className="w-full min-w-[540px] text-sm text-left">
               <thead className="bg-muted text-xs font-mono uppercase tracking-widest text-muted-foreground">
                 <tr>
                   <th className="px-3 py-2">Name</th>
                   <th className="px-3 py-2">Aliases</th>
-                  <th className="px-3 py-2">Mapped Bidder</th>
+                   <th className="px-3 py-2">Owners / Shares</th>
                   <th className="px-3 py-2 text-right">Actions</th>
                 </tr>
               </thead>
@@ -131,16 +163,16 @@ export function ManageRosterDialog({ open, onOpenChange, calcuttaId, auctionId, 
                   <tr key={c.id} className={c.active === 0 ? "opacity-50" : ""}>
                     <td className="px-3 py-2 font-bold">
                       {c.displayName}
-                      <button onClick={() => handleRename(c)} disabled={isPending} className="ml-2 text-[10px] text-primary hover:underline">Rename</button>
                     </td>
                     <td className="px-3 py-2 font-mono text-xs text-muted-foreground">
                       {c.aliases?.join(", ") || "—"}
                       <button onClick={() => handleEditAliases(c)} disabled={isPending} className="ml-2 text-[10px] text-primary hover:underline font-sans">Edit</button>
                     </td>
                     <td className="px-3 py-2">
-                      {bidders.find(b => b.id === c.bidderId)?.name || <span className="text-destructive">Unmapped</span>}
+                       {((c as RosterConsortium).owners || []).map(o => <div key={o.bidderId} className="text-xs whitespace-nowrap">{o.bidderName} <span className="font-mono text-muted-foreground">{(o.share * 100).toFixed(2)}%</span></div>)}
                     </td>
                     <td className="px-3 py-2 text-right">
+                       <button onClick={() => edit(c as RosterConsortium)} disabled={isPending || biddersLoading || biddersError || soldConsortiumIds.has(c.id)} title={soldConsortiumIds.has(c.id) ? "Owner shares are locked after a recorded sale. Use an audited sale correction to change ownership." : undefined} className="mr-3 text-[10px] font-mono uppercase tracking-widest text-primary hover:underline disabled:opacity-50 disabled:no-underline">{soldConsortiumIds.has(c.id) ? "Ownership locked" : "Edit owners"}</button>
                       <button onClick={() => handleToggleActive(c)} disabled={isPending} className="text-[10px] font-mono uppercase tracking-widest text-primary hover:underline">
                         {c.active === 1 ? "Deactivate" : "Activate"}
                       </button>
@@ -149,6 +181,7 @@ export function ManageRosterDialog({ open, onOpenChange, calcuttaId, auctionId, 
                 ))}
               </tbody>
             </table>
+            </div>
           </div>
         </div>
       </DialogContent>

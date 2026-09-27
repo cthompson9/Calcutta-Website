@@ -52,6 +52,19 @@ export const auctionConsortiaTable = pgTable("auction_consortia", {
   uniqueIndex("auction_consortia_bidder_idx").on(t.auctionId, t.bidderId).where(sql`${t.bidderId} is not null`),
 ]);
 
+export const auctionConsortiumOwnersTable = pgTable("auction_consortium_owners", {
+  id: serial("id").primaryKey(),
+  auctionId: integer("auction_id").notNull().references(() => auctionSessionsTable.id, { onDelete: "cascade" }),
+  consortiumId: integer("consortium_id").notNull().references(() => auctionConsortiaTable.id, { onDelete: "cascade" }),
+  bidderId: integer("bidder_id").notNull().references(() => biddersTable.id),
+  share: numeric("share", { precision: 5, scale: 4 }).notNull(),
+}, (t) => [
+  uniqueIndex("auction_consortium_owners_identity_idx").on(t.auctionId, t.bidderId),
+  uniqueIndex("auction_consortium_owners_consortium_idx").on(t.consortiumId, t.bidderId),
+  index("auction_consortium_owners_consortium_order_idx").on(t.consortiumId, t.id),
+  check("auction_consortium_owners_share_check", sql`${t.share} > 0 and ${t.share} <= 1`),
+]);
+
 export const auctionSalesTable = pgTable("auction_sales", {
   id: serial("id").primaryKey(),
   auctionId: integer("auction_id").notNull().references(() => auctionSessionsTable.id, { onDelete: "cascade" }),
@@ -69,6 +82,7 @@ export const auctionSalesTable = pgTable("auction_sales", {
 export const auctionSaleAllocationsTable = pgTable("auction_sale_allocations", {
   id: serial("id").primaryKey(),
   saleId: integer("sale_id").notNull().references(() => auctionSalesTable.id, { onDelete: "cascade" }),
+  consortiumId: integer("consortium_id").references(() => auctionConsortiaTable.id, { onDelete: "set null" }),
   bidderId: integer("bidder_id").notNull().references(() => biddersTable.id),
   share: numeric("share", { precision: 9, scale: 6 }).notNull(),
   cents: integer("cents").notNull(),

@@ -1,6 +1,6 @@
 import { useQueryClient } from "@tanstack/react-query";
-import { getGetBiddersQueryKey, type AuctionSnapshot, useGetBidders } from "@workspace/api-client-react";
-import { formatCurrency, cn } from "@/lib/utils";
+import { type AuctionSnapshot, useGetBidders } from "@workspace/api-client-react";
+import { formatCurrency } from "@/lib/utils";
 import { Loader2, AlertCircle, Users, DollarSign, List, Play, CheckCircle2, Gavel, Activity } from "lucide-react";
 import { SaleEditor } from "./SaleEditor";
 import { LotInventory } from "./LotInventory";
@@ -22,16 +22,13 @@ interface AuctionRoomProps {
   error: any;
 }
 
-export function AuctionRoom({ calcuttaId, year, adminKey, historicalSummaryRefetch, activeAuction, hasHistoricalResults, isSeasonComplete, isLoading, error }: AuctionRoomProps) {
+export function AuctionRoom({ calcuttaId, adminKey, historicalSummaryRefetch, activeAuction, hasHistoricalResults, isSeasonComplete, isLoading, error }: AuctionRoomProps) {
   const queryClient = useQueryClient();
   const { toast } = useToast();
   const [isPending, setIsPending] = useState(false);
   const [showRoster, setShowRoster] = useState(false);
 
-  const { data: bidders } = useGetBidders(
-    { season: year, calcuttaId },
-    { query: { enabled: calcuttaId > 0, queryKey: getGetBiddersQueryKey({ season: year, calcuttaId }) } },
-  );
+  const { data: bidders, isLoading: biddersLoading, isError: biddersError, refetch: retryBidders } = useGetBidders();
 
   if (isLoading) {
     return (
@@ -391,11 +388,10 @@ export function AuctionRoom({ calcuttaId, year, adminKey, historicalSummaryRefet
                           {c.aliases.join(", ")}
                         </span>
                       )}
-                      {!c.bidderId && (
-                        <span className="text-xs text-destructive flex items-center gap-1 mt-1">
-                          <AlertCircle className="w-3 h-3" /> Unmapped
-                        </span>
-                      )}
+                       <span className="text-xs text-muted-foreground">
+                         {((c as typeof c & { owners: { bidderId: number; bidderName: string; share: number }[] }).owners || [])
+                           .map(owner => `${owner.bidderName} ${(owner.share * 100).toFixed(2)}%`).join(" · ") || "No owners"}
+                       </span>
                     </li>
                   ))}
                 </ul>
@@ -437,7 +433,11 @@ export function AuctionRoom({ calcuttaId, year, adminKey, historicalSummaryRefet
           calcuttaId={calcuttaId}
           auctionId={auctionId}
           consortia={consortia}
-          bidders={bidders || []}
+          sales={activeAuction.sales}
+           bidders={bidders || []}
+           biddersLoading={biddersLoading}
+           biddersError={biddersError}
+           retryBidders={() => { void retryBidders(); }}
           adminKey={adminKey}
           revision={activeAuction.revision}
         />

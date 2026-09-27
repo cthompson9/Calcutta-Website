@@ -15,7 +15,6 @@ import { useQueryClient } from "@tanstack/react-query";
 import { useLocation } from "wouter";
 import { parseResultSourceTarget } from "@/lib/resultSourceLinks";
 import { AuctionRoom } from "@/components/auction/AuctionRoom";
-import { LotInventory } from "@/components/auction/LotInventory";
 import { useActiveAuction } from "@/hooks/useActiveAuction";
 import {
   AlertDialog,
@@ -427,12 +426,6 @@ export default function Dashboard() {
           </div>
         )}
       </div>
-
-      {activeAuction && isPreview && (
-        <div className="mt-8">
-          <LotInventory lots={activeAuction.lots} sales={activeAuction.sales} />
-        </div>
-      )}
 
       {/* Confirmation dialog */}
       <AlertDialog open={confirmOpen} onOpenChange={setConfirmOpen}>

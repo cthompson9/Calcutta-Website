@@ -14,4 +14,6 @@ export interface AuctionSaleAllocation {
   bidderName: string;
   /** @nullable */
   consortiumName?: string | null;
+  /** @nullable */
+  consortiumId: number | null;
 }

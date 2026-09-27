@@ -38,7 +38,7 @@ export async function nominateNext(calcuttaId: number, auctionId: number, expect
   });
 }
 
-export async function recordSale(calcuttaId: number, auctionId: number, lotId: number, price: number, allocations: { bidderId: number, share: number }[], expectedRevision: number, adminKey: string): Promise<AuctionSnapshot> {
+export async function recordSale(calcuttaId: number, auctionId: number, lotId: number, price: number, allocations: { consortiumId: number, share: number }[], expectedRevision: number, adminKey: string): Promise<AuctionSnapshot> {
   return adminFetch(`/api/calcuttas/${calcuttaId}/auctions/${auctionId}/lots/${lotId}/sale`, "POST", adminKey, {
     price,
     allocations,
@@ -50,16 +50,18 @@ export async function completeAuctionSession(calcuttaId: number, auctionId: numb
   return adminFetch(`/api/calcuttas/${calcuttaId}/auctions/${auctionId}/complete`, "POST", adminKey, { expectedRevision });
 }
 
-export async function addConsortium(calcuttaId: number, auctionId: number, displayName: string, bidderId: number | null, newBidderName: string | null, adminKey: string, expectedRevision: number) {
+export type ConsortiumOwnerInput = { bidderId: number; share: number } | { newBidderName: string; share: number };
+
+export async function addConsortium(calcuttaId: number, auctionId: number, displayName: string, owners: ConsortiumOwnerInput[], adminKey: string, expectedRevision: number) {
   return adminFetch(`/api/calcuttas/${calcuttaId}/auctions/${auctionId}/consortia`, "POST", adminKey, {
     displayName,
-    ...(bidderId != null ? { bidderId } : { newBidderName }),
+    owners,
     expectedRevision,
   });
 }
 
 
-export async function editConsortium(calcuttaId: number, auctionId: number, consortiumId: number, data: { displayName?: string; aliases?: string[]; bidderId?: number; active?: boolean }, adminKey: string, expectedRevision: number) {
+export async function editConsortium(calcuttaId: number, auctionId: number, consortiumId: number, data: { displayName?: string; aliases?: string[]; owners?: ConsortiumOwnerInput[]; active?: boolean }, adminKey: string, expectedRevision: number) {
   return adminFetch(`/api/calcuttas/${calcuttaId}/auctions/${auctionId}/consortia/${consortiumId}`, "PATCH", adminKey, {
     ...data,
     expectedRevision,
@@ -92,7 +94,7 @@ export async function correctCurrentBid(calcuttaId: number, auctionId: number, l
   });
 }
 
-export async function correctSale(calcuttaId: number, auctionId: number, lotId: number, price: number, allocations: { bidderId: number, share: number }[], reason: string, adminKey: string, expectedRevision: number) {
+export async function correctSale(calcuttaId: number, auctionId: number, lotId: number, price: number, allocations: { consortiumId: number, share: number }[], reason: string, adminKey: string, expectedRevision: number) {
   return adminFetch(`/api/calcuttas/${calcuttaId}/auctions/${auctionId}/lots/${lotId}/sale`, "PATCH", adminKey, {
     totalCents: Math.round(price * 100),
     allocations,

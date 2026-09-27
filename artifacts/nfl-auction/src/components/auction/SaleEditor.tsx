@@ -27,7 +27,7 @@ export function SaleEditor({ calcuttaId, auctionId, lot, revision, consortia, ad
   const [isPending, setIsPending] = useState(false);
   const [isCorrectingBid, setIsCorrectingBid] = useState(false);
 
-  const activeRoster = consortia.filter(c => c.active === 1 && c.bidderId != null);
+  const activeRoster = consortia.filter(c => c.active === 1 && (c as typeof c & { owners?: unknown[] }).owners?.length);
 
   const totalShare = useMemo(() => {
     return allocations.reduce((sum, a) => sum + (parseFloat(a.share) || 0), 0);
@@ -37,6 +37,7 @@ export function SaleEditor({ calcuttaId, auctionId, lot, revision, consortia, ad
     if (!price || isNaN(parseFloat(price)) || parseFloat(price) <= 0) return false;
     if (allocations.length === 0) return false;
     if (allocations.some(a => !a.consortiumId || isNaN(parseFloat(a.share)) || parseFloat(a.share) <= 0)) return false;
+    if (new Set(allocations.map(a => a.consortiumId)).size !== allocations.length) return false;
     if (Math.abs(totalShare - 100) > 0.01) return false;
     return true;
   }, [price, allocations, totalShare]);
@@ -90,7 +91,7 @@ export function SaleEditor({ calcuttaId, auctionId, lot, revision, consortia, ad
       const apiAllocations = allocations.map(a => {
         const c = activeRoster.find(r => r.id.toString() === a.consortiumId);
         return {
-          bidderId: c!.bidderId!,
+          consortiumId: c!.id,
           share: parseFloat(a.share) / 100
         };
       });
@@ -175,7 +176,7 @@ export function SaleEditor({ calcuttaId, auctionId, lot, revision, consortia, ad
                   >
                     <option value="" disabled>Select Consortium...</option>
                     {activeRoster.map(c => (
-                      <option key={c.id} value={c.id}>{c.displayName}</option>
+                       <option key={c.id} value={c.id} disabled={allocations.some((a, i) => i !== index && a.consortiumId === String(c.id))}>{c.displayName} — {(c as typeof c & { owners: { bidderName: string; share: number }[] }).owners.map(o => `${o.bidderName} ${(o.share * 100).toFixed(2)}%`).join(", ")}</option>
                     ))}
                   </select>
                 </div>
@@ -210,6 +211,7 @@ export function SaleEditor({ calcuttaId, auctionId, lot, revision, consortia, ad
               </div>
             ))}
           </div>
+          {new Set(allocations.map(a => a.consortiumId).filter(Boolean)).size !== allocations.filter(a => a.consortiumId).length && <p role="alert" className="text-xs text-destructive">Each consortium may be selected only once.</p>}
 
           <div className="flex items-center justify-between pt-1">
             <button

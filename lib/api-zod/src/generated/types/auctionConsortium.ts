@@ -5,6 +5,7 @@
  * NFL Auction Manager API
  * OpenAPI spec version: 0.1.0
  */
+import type { AuctionConsortiumOwner } from './auctionConsortiumOwner';
 
 export interface AuctionConsortium {
   id: number;
@@ -14,4 +15,5 @@ export interface AuctionConsortium {
   /** @nullable */
   bidderId?: number | null;
   active: number;
+  owners: AuctionConsortiumOwner[];
 }

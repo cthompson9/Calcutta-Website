@@ -1680,15 +1680,58 @@ paths:
       operationId: finalizeAuctionSale
       tags: [auction]
       parameters:
-        - {name: calcuttaId, in: path, required: true, schema: {type: integer}}
-        - {name: auctionId, in: path, required: true, schema: {type: integer}}
-        - {name: lotId, in: path, required: true, schema: {type: integer}}
+        - {name: calcuttaId, in: path, required: true, schema: {type: number}}
+        - {name: auctionId, in: path, required: true, schema: {type: number}}
+        - {name: lotId, in: path, required: true, schema: {type: number}}
       requestBody:
         required: true
         content:
           application/json: {schema: {$ref: "#/components/schemas/AuctionSaleInput"}}
       responses:
         "200": {description: Snapshot, content: {application/json: {schema: {$ref: "#/components/schemas/AuctionSnapshot"}}}}
+    patch:
+      operationId: correctAuctionSale
+      tags: [auction]
+      parameters:
+        - {name: calcuttaId, in: path, required: true, schema: {type: number}}
+        - {name: auctionId, in: path, required: true, schema: {type: number}}
+        - {name: lotId, in: path, required: true, schema: {type: number}}
+      requestBody:
+        required: true
+        content:
+          application/json: {schema: {$ref: "#/components/schemas/AuctionSaleCorrectionInput"}}
+      responses:
+        "200": {description: Corrected snapshot, content: {application/json: {schema: {$ref: "#/components/schemas/AuctionSnapshot"}}}}
+        "409": {description: Correction rejected, content: {application/json: {schema: {$ref: "#/components/schemas/ErrorResponse"}}}}
+  /calcuttas/{calcuttaId}/auctions/{auctionId}/consortia/{consortiumId}:
+    patch:
+      operationId: updateAuctionConsortium
+      tags: [auction]
+      parameters:
+        - {name: calcuttaId, in: path, required: true, schema: {type: number}}
+        - {name: auctionId, in: path, required: true, schema: {type: number}}
+        - {name: consortiumId, in: path, required: true, schema: {type: number}}
+      requestBody:
+        required: true
+        content:
+          application/json: {schema: {$ref: "#/components/schemas/AuctionConsortiumUpdate"}}
+      responses:
+        "200": {description: Updated consortium, content: {application/json: {schema: {$ref: "#/components/schemas/AuctionConsortium"}}}}
+        "409": {description: Update rejected, content: {application/json: {schema: {$ref: "#/components/schemas/ErrorResponse"}}}}
+  /calcuttas/{calcuttaId}/auctions/{auctionId}/consortia:
+    post:
+      operationId: createAuctionConsortium
+      tags: [auction]
+      parameters:
+        - {name: calcuttaId, in: path, required: true, schema: {type: number}}
+        - {name: auctionId, in: path, required: true, schema: {type: number}}
+      requestBody:
+        required: true
+        content:
+          application/json: {schema: {$ref: "#/components/schemas/AuctionConsortiumInput"}}
+      responses:
+        "201": {description: Created consortium, content: {application/json: {schema: {$ref: "#/components/schemas/AuctionConsortium"}}}}
+        "409": {description: Consortium rejected, content: {application/json: {schema: {$ref: "#/components/schemas/ErrorResponse"}}}}
   /calcuttas/{calcuttaId}/auctions/{auctionId}/complete:
     post:
       operationId: completeAuction
@@ -2094,7 +2137,7 @@ components:
     AuctionConsortium:
       type: object
       additionalProperties: false
-      required: [id, auctionId, displayName, active]
+      required: [id, auctionId, displayName, active, owners]
       properties:
         id: {type: number}
         auctionId: {type: number}
@@ -2102,6 +2145,15 @@ components:
         aliases: {type: array, items: {type: string}}
         bidderId: {type: ["number", "null"]}
         active: {type: number}
+        owners: {type: array, items: {$ref: "#/components/schemas/AuctionConsortiumOwner"}}
+    AuctionConsortiumOwner:
+      type: object
+      additionalProperties: false
+      required: [bidderId, bidderName, share]
+      properties:
+        bidderId: {type: number, minimum: 1, multipleOf: 1}
+        bidderName: {type: string}
+        share: {type: number, exclusiveMinimum: 0, maximum: 1, multipleOf: 0.0001}
     AuctionSale:
       type: object
       additionalProperties: false
@@ -2121,7 +2173,7 @@ components:
     AuctionSaleAllocation:
       type: object
       additionalProperties: false
-      required: [saleId, bidderId, share, cents, bidderName]
+      required: [saleId, bidderId, share, cents, bidderName, consortiumId]
       properties:
         saleId: {type: number}
         bidderId: {type: number}
@@ -2129,6 +2181,7 @@ components:
         cents: {type: number}
         bidderName: {type: string}
         consortiumName: {type: ["string", "null"]}
+        consortiumId: {type: ["number", "null"], multipleOf: 1}
     AuctionMetrics:
       type: object
       additionalProperties: false
@@ -2178,12 +2231,77 @@ components:
           type: array
           items: {$ref: "#/components/schemas/AuctionAllocationInput"}
     AuctionAllocationInput:
+      oneOf:
+        - {$ref: "#/components/schemas/AuctionBidderAllocationInput"}
+        - {$ref: "#/components/schemas/AuctionConsortiumAllocationInput"}
+    AuctionBidderAllocationInput:
       type: object
       additionalProperties: false
       required: [bidderId, share]
       properties:
-        bidderId: {type: number}
-        share: {type: number, exclusiveMinimum: 0, maximum: 1}
+        bidderId: {type: number, minimum: 1, multipleOf: 1}
+        consortiumId: {type: "null"}
+        share: {type: number, exclusiveMinimum: 0, maximum: 1, multipleOf: 0.0001}
+    AuctionConsortiumAllocationInput:
+      type: object
+      additionalProperties: false
+      required: [consortiumId, share]
+      properties:
+        bidderId: {type: "null"}
+        consortiumId: {type: number, minimum: 1, multipleOf: 1}
+        share: {type: number, exclusiveMinimum: 0, maximum: 1, multipleOf: 0.0001}
+    AuctionSaleCorrectionInput:
+      type: object
+      additionalProperties: false
+      required: [totalCents, reason, idempotencyKey, expectedRevision, allocations]
+      properties:
+        totalCents: {type: number, minimum: 1, multipleOf: 1}
+        reason: {type: string, minLength: 1, maxLength: 500}
+        idempotencyKey: {type: string, minLength: 8, maxLength: 200}
+        expectedRevision: {type: number, minimum: 0, multipleOf: 1}
+        allocations: {type: array, minItems: 1, items: {$ref: "#/components/schemas/AuctionAllocationInput"}}
+    AuctionConsortiumOwnerInput:
+      oneOf:
+        - {$ref: "#/components/schemas/AuctionExistingOwnerInput"}
+        - {$ref: "#/components/schemas/AuctionNewOwnerInput"}
+    AuctionExistingOwnerInput:
+      type: object
+      additionalProperties: false
+      required: [bidderId, share]
+      properties:
+        bidderId: {type: number, minimum: 1, multipleOf: 1}
+        newBidderName: {type: "null"}
+        share: {type: number, exclusiveMinimum: 0, maximum: 1, multipleOf: 0.0001}
+    AuctionNewOwnerInput:
+      type: object
+      additionalProperties: false
+      required: [newBidderName, share]
+      properties:
+        bidderId: {type: "null"}
+        newBidderName: {type: string, minLength: 1, maxLength: 200}
+        share: {type: number, exclusiveMinimum: 0, maximum: 1, multipleOf: 0.0001}
+    AuctionConsortiumInput:
+      type: object
+      additionalProperties: false
+      required: [displayName, expectedRevision]
+      properties:
+        displayName: {type: string, minLength: 1, maxLength: 200}
+        aliases: {type: array, maxItems: 20, items: {type: string, minLength: 1}}
+        bidderId: {type: number, minimum: 1, multipleOf: 1}
+        newBidderName: {type: string, minLength: 1, maxLength: 200}
+        owners: {type: array, minItems: 1, items: {$ref: "#/components/schemas/AuctionConsortiumOwnerInput"}}
+        expectedRevision: {type: number, minimum: 0, multipleOf: 1}
+    AuctionConsortiumUpdate:
+      type: object
+      additionalProperties: false
+      required: [expectedRevision]
+      properties:
+        displayName: {type: string, minLength: 1, maxLength: 200}
+        aliases: {type: array, maxItems: 20, items: {type: string, minLength: 1}}
+        bidderId: {type: number, minimum: 1, multipleOf: 1}
+        owners: {type: array, minItems: 1, items: {$ref: "#/components/schemas/AuctionConsortiumOwnerInput"}}
+        active: {type: boolean}
+        expectedRevision: {type: number, minimum: 0, multipleOf: 1}
     AuctionBulkResult:
       type: object
       additionalProperties: false

@@ -1,11 +1,26 @@
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import { type AuctionLot, type AuctionSale, type AuctionConsortium } from "@workspace/api-client-react";
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from "@/components/ui/dialog";
 import { correctSale } from "./admin-actions";
 import { useQueryClient } from "@tanstack/react-query";
 import { useToast } from "@/hooks/use-toast";
-import { Loader2, AlertTriangle, Plus, X } from "lucide-react";
+import { Loader2, AlertTriangle, Plus, X, SplitSquareHorizontal } from "lucide-react";
 import { cn } from "@/lib/utils";
+
+type SaleMember = { consortiumId?: number | null; bidderId?: number | null; share: number | string };
+export function groupedSaleAllocations(allocations: SaleMember[], consortia: AuctionConsortium[]) {
+  const grouped = new Map<string, number>();
+  for (const member of allocations) {
+    const share = Number(member.share);
+    if (!Number.isFinite(share)) throw new Error("Sale allocation has an invalid ownership share.");
+    const consortiumId = member.consortiumId ?? consortia.find(c =>
+      (c as typeof c & { owners?: { bidderId: number }[] }).owners?.some(o => o.bidderId === member.bidderId) || (c as typeof c & { bidderId?: number | null }).bidderId === member.bidderId
+    )?.id;
+    const key = consortiumId == null ? "" : String(consortiumId);
+    grouped.set(key, (grouped.get(key) || 0) + share);
+  }
+  return [...grouped].map(([consortiumId, share]) => ({ consortiumId, share: (Math.round(share * 10000) / 100).toFixed(2) }));
+}
 
 export function SaleCorrectionDialog({
   open,
@@ -35,22 +50,23 @@ export function SaleCorrectionDialog({
   const [isPending, setIsPending] = useState(false);
 
   // Default to the sale's current allocations or just 100%
-  const activeRoster = consortia.filter(c => c.active === 1 && c.bidderId != null);
-  const existingPrice = sale ? (sale.totalCents / 100).toString() : "";
-  const existingAllocations = sale && (sale as any).allocations ? (sale as any).allocations.map((a: any) => ({
-    consortiumId: consortia.find(c => c.bidderId === a.bidderId)?.id.toString() || "",
-    share: (a.share * 100).toString()
-  })) : [{ consortiumId: "", share: "100" }];
-
-  const [price, setPrice] = useState(existingPrice);
-  const [allocations, setAllocations] = useState<Array<{ consortiumId: string; share: string }>>(existingAllocations);
+  const activeRoster = consortia.filter(c => c.active === 1 && (c as typeof c & { owners?: unknown[] }).owners?.length);
+  const [price, setPrice] = useState("");
+  const [allocations, setAllocations] = useState<Array<{ consortiumId: string; share: string }>>([{ consortiumId: "", share: "100" }]);
   const [reason, setReason] = useState("");
 
-  // Need to make sure state resets if it changes, but React doesn't do this automatically if the component is just hidden. 
-  // We can just rely on the parent providing key={lot?.id} or similar, or we can use useEffect to sync. For simplicity, we just use whatever is typed in when submitting.
+  useEffect(() => {
+    if (!open || !sale) return;
+    setPrice((sale.totalCents / 100).toString());
+    const members = (sale as AuctionSale & { allocations?: SaleMember[] }).allocations || [];
+    setAllocations(members.length ? groupedSaleAllocations(members, consortia) : [{ consortiumId: "", share: "100" }]);
+    setReason("");
+    // Only reinitialize when opening a different sale, not on background snapshot refresh.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [open, sale?.lotId]);
 
   const totalShare = allocations.reduce((sum, a) => sum + (parseFloat(a.share) || 0), 0);
-  const isValid = price && parseFloat(price) > 0 && allocations.every(a => a.consortiumId && parseFloat(a.share) > 0) && Math.abs(totalShare - 100) < 0.01 && reason.trim().length > 0;
+  const isValid = !!price && parseFloat(price) > 0 && allocations.length > 0 && allocations.every(a => a.consortiumId && activeRoster.some(c => String(c.id) === a.consortiumId) && parseFloat(a.share) > 0) && new Set(allocations.map(a => a.consortiumId)).size === allocations.length && Math.abs(totalShare - 100) < 0.001 && reason.trim().length > 0;
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -61,7 +77,7 @@ export function SaleCorrectionDialog({
       const apiAllocations = allocations.map(a => {
         const c = activeRoster.find(r => r.id.toString() === a.consortiumId);
         return {
-          bidderId: c!.bidderId!,
+          consortiumId: c!.id,
           share: parseFloat(a.share) / 100
         };
       });
@@ -123,8 +139,8 @@ export function SaleCorrectionDialog({
                       className="w-full bg-background border border-border px-3 py-2 text-sm font-sans"
                     >
                       <option value="" disabled>Select Consortium...</option>
-                      {activeRoster.map(c => (
-                        <option key={c.id} value={c.id}>{c.displayName}</option>
+                       {activeRoster.map(c => (
+                         <option key={c.id} value={c.id} disabled={allocations.some((a, i) => i !== index && a.consortiumId === String(c.id))}>{c.displayName} — {(c as typeof c & { owners: { bidderName: string; share: number }[] }).owners.map(o => `${o.bidderName} ${(o.share * 100).toFixed(2)}%`).join(", ")}</option>
                       ))}
                     </select>
                   </div>
@@ -159,6 +175,10 @@ export function SaleCorrectionDialog({
                 </div>
               ))}
               <div className="flex items-center justify-between pt-1">
+                <button type="button" onClick={() => {
+                  const each = Math.floor(10000 / allocations.length);
+                  setAllocations(allocations.map((a, i) => ({ ...a, share: ((i === allocations.length - 1 ? 10000 - each * (allocations.length - 1) : each) / 100).toFixed(2) })));
+                }} className="text-[10px] flex items-center gap-1 font-mono uppercase text-primary"><SplitSquareHorizontal className="w-3 h-3" /> Equal Split</button>
                 <button
                   type="button"
                   onClick={() => setAllocations([...allocations, { consortiumId: "", share: "" }])}
@@ -170,6 +190,7 @@ export function SaleCorrectionDialog({
                   Total: {totalShare.toFixed(2)}%
                 </div>
               </div>
+              {new Set(allocations.map(a => a.consortiumId).filter(Boolean)).size !== allocations.filter(a => a.consortiumId).length && <p role="alert" className="text-xs text-destructive">Each consortium may be selected only once.</p>}
             </div>
 
             <div>

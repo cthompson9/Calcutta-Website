@@ -67,7 +67,7 @@ export function Shell({ children, isPreview }: ShellProps) {
     { href: "/results", label: "Results", mobileLabel: "Results", icon: Trophy },
     { href: "/analysis", label: "Analysis", mobileLabel: "Analysis", icon: TrendingUp },
     { href: "/trades", label: "Trades", mobileLabel: "Trades", icon: ArrowLeftRight },
-    { href: "/dashboard", label: "Auction", mobileLabel: "Auction", icon: LayoutDashboard },
+    { href: "/auction", label: "Auction", mobileLabel: "Auction", icon: LayoutDashboard },
   ];
   const utilityNavItems = [
     { href: "/whats-new", label: "What's New", mobileLabel: "New", icon: Sparkles },
@@ -277,7 +277,7 @@ export function Shell({ children, isPreview }: ShellProps) {
             </span>
           )}
         </div>
-        {isPreview && location !== "/dashboard" && (
+        {isPreview && location !== "/auction" && (
           <div className="unified-preview-page-crest" aria-hidden="true">
             <img src="/crest-transparent.png" alt="" />
           </div>

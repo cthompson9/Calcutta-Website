@@ -2050,6 +2050,14 @@ export const CreateAuctionSessionBody = zod.object({
 
 export const createAuctionSessionResponseCurrentLotIdMultipleOf = 1;
 
+export const createAuctionSessionResponseConsortiaItemOwnersItemBidderIdMultipleOf = 1;
+
+export const createAuctionSessionResponseConsortiaItemOwnersItemShareExclusiveMin = 0;
+export const createAuctionSessionResponseConsortiaItemOwnersItemShareMax = 1;
+export const createAuctionSessionResponseConsortiaItemOwnersItemShareMultipleOf = 0.0001;
+
+export const createAuctionSessionResponseSalesItemAllocationsItemConsortiumIdMultipleOf = 1;
+
 
 
 export const CreateAuctionSessionResponse = zod.object({
@@ -2104,7 +2112,12 @@ export const CreateAuctionSessionResponse = zod.object({
   "displayName": zod.string(),
   "aliases": zod.array(zod.string()).optional(),
   "bidderId": zod.number().nullish(),
-  "active": zod.number()
+  "active": zod.number(),
+  "owners": zod.array(zod.object({
+  "bidderId": zod.number().min(1).multipleOf(createAuctionSessionResponseConsortiaItemOwnersItemBidderIdMultipleOf),
+  "bidderName": zod.string(),
+  "share": zod.number().gt(createAuctionSessionResponseConsortiaItemOwnersItemShareExclusiveMin).max(createAuctionSessionResponseConsortiaItemOwnersItemShareMax).multipleOf(createAuctionSessionResponseConsortiaItemOwnersItemShareMultipleOf)
+}))
 })),
   "sales": zod.array(zod.object({
   "id": zod.number(),
@@ -2121,7 +2134,8 @@ export const CreateAuctionSessionResponse = zod.object({
   "share": zod.string(),
   "cents": zod.number(),
   "bidderName": zod.string(),
-  "consortiumName": zod.string().nullish()
+  "consortiumName": zod.string().nullish(),
+  "consortiumId": zod.number().multipleOf(createAuctionSessionResponseSalesItemAllocationsItemConsortiumIdMultipleOf).nullable()
 }))
 })),
   "metrics": zod.object({
@@ -2138,6 +2152,14 @@ export const GetActiveAuctionSnapshotParams = zod.object({
 })
 
 export const getActiveAuctionSnapshotResponseCurrentLotIdMultipleOf = 1;
+
+export const getActiveAuctionSnapshotResponseConsortiaItemOwnersItemBidderIdMultipleOf = 1;
+
+export const getActiveAuctionSnapshotResponseConsortiaItemOwnersItemShareExclusiveMin = 0;
+export const getActiveAuctionSnapshotResponseConsortiaItemOwnersItemShareMax = 1;
+export const getActiveAuctionSnapshotResponseConsortiaItemOwnersItemShareMultipleOf = 0.0001;
+
+export const getActiveAuctionSnapshotResponseSalesItemAllocationsItemConsortiumIdMultipleOf = 1;
 
 
 
@@ -2193,7 +2215,12 @@ export const GetActiveAuctionSnapshotResponse = zod.object({
   "displayName": zod.string(),
   "aliases": zod.array(zod.string()).optional(),
   "bidderId": zod.number().nullish(),
-  "active": zod.number()
+  "active": zod.number(),
+  "owners": zod.array(zod.object({
+  "bidderId": zod.number().min(1).multipleOf(getActiveAuctionSnapshotResponseConsortiaItemOwnersItemBidderIdMultipleOf),
+  "bidderName": zod.string(),
+  "share": zod.number().gt(getActiveAuctionSnapshotResponseConsortiaItemOwnersItemShareExclusiveMin).max(getActiveAuctionSnapshotResponseConsortiaItemOwnersItemShareMax).multipleOf(getActiveAuctionSnapshotResponseConsortiaItemOwnersItemShareMultipleOf)
+}))
 })),
   "sales": zod.array(zod.object({
   "id": zod.number(),
@@ -2210,7 +2237,8 @@ export const GetActiveAuctionSnapshotResponse = zod.object({
   "share": zod.string(),
   "cents": zod.number(),
   "bidderName": zod.string(),
-  "consortiumName": zod.string().nullish()
+  "consortiumName": zod.string().nullish(),
+  "consortiumId": zod.number().multipleOf(getActiveAuctionSnapshotResponseSalesItemAllocationsItemConsortiumIdMultipleOf).nullable()
 }))
 })),
   "metrics": zod.object({
@@ -2228,6 +2256,14 @@ export const GetAuctionParams = zod.object({
 })
 
 export const getAuctionResponseCurrentLotIdMultipleOf = 1;
+
+export const getAuctionResponseConsortiaItemOwnersItemBidderIdMultipleOf = 1;
+
+export const getAuctionResponseConsortiaItemOwnersItemShareExclusiveMin = 0;
+export const getAuctionResponseConsortiaItemOwnersItemShareMax = 1;
+export const getAuctionResponseConsortiaItemOwnersItemShareMultipleOf = 0.0001;
+
+export const getAuctionResponseSalesItemAllocationsItemConsortiumIdMultipleOf = 1;
 
 
 
@@ -2283,7 +2319,12 @@ export const GetAuctionResponse = zod.object({
   "displayName": zod.string(),
   "aliases": zod.array(zod.string()).optional(),
   "bidderId": zod.number().nullish(),
-  "active": zod.number()
+  "active": zod.number(),
+  "owners": zod.array(zod.object({
+  "bidderId": zod.number().min(1).multipleOf(getAuctionResponseConsortiaItemOwnersItemBidderIdMultipleOf),
+  "bidderName": zod.string(),
+  "share": zod.number().gt(getAuctionResponseConsortiaItemOwnersItemShareExclusiveMin).max(getAuctionResponseConsortiaItemOwnersItemShareMax).multipleOf(getAuctionResponseConsortiaItemOwnersItemShareMultipleOf)
+}))
 })),
   "sales": zod.array(zod.object({
   "id": zod.number(),
@@ -2300,7 +2341,8 @@ export const GetAuctionResponse = zod.object({
   "share": zod.string(),
   "cents": zod.number(),
   "bidderName": zod.string(),
-  "consortiumName": zod.string().nullish()
+  "consortiumName": zod.string().nullish(),
+  "consortiumId": zod.number().multipleOf(getAuctionResponseSalesItemAllocationsItemConsortiumIdMultipleOf).nullable()
 }))
 })),
   "metrics": zod.object({
@@ -2335,6 +2377,14 @@ export const StartAuctionBody = zod.object({
 })
 
 export const startAuctionResponseCurrentLotIdMultipleOf = 1;
+
+export const startAuctionResponseConsortiaItemOwnersItemBidderIdMultipleOf = 1;
+
+export const startAuctionResponseConsortiaItemOwnersItemShareExclusiveMin = 0;
+export const startAuctionResponseConsortiaItemOwnersItemShareMax = 1;
+export const startAuctionResponseConsortiaItemOwnersItemShareMultipleOf = 0.0001;
+
+export const startAuctionResponseSalesItemAllocationsItemConsortiumIdMultipleOf = 1;
 
 
 
@@ -2390,7 +2440,12 @@ export const StartAuctionResponse = zod.object({
   "displayName": zod.string(),
   "aliases": zod.array(zod.string()).optional(),
   "bidderId": zod.number().nullish(),
-  "active": zod.number()
+  "active": zod.number(),
+  "owners": zod.array(zod.object({
+  "bidderId": zod.number().min(1).multipleOf(startAuctionResponseConsortiaItemOwnersItemBidderIdMultipleOf),
+  "bidderName": zod.string(),
+  "share": zod.number().gt(startAuctionResponseConsortiaItemOwnersItemShareExclusiveMin).max(startAuctionResponseConsortiaItemOwnersItemShareMax).multipleOf(startAuctionResponseConsortiaItemOwnersItemShareMultipleOf)
+}))
 })),
   "sales": zod.array(zod.object({
   "id": zod.number(),
@@ -2407,7 +2462,8 @@ export const StartAuctionResponse = zod.object({
   "share": zod.string(),
   "cents": zod.number(),
   "bidderName": zod.string(),
-  "consortiumName": zod.string().nullish()
+  "consortiumName": zod.string().nullish(),
+  "consortiumId": zod.number().multipleOf(startAuctionResponseSalesItemAllocationsItemConsortiumIdMultipleOf).nullable()
 }))
 })),
   "metrics": zod.object({
@@ -2491,6 +2547,14 @@ export const NominateAuctionLotBody = zod.object({
 
 export const nominateAuctionLotResponseCurrentLotIdMultipleOf = 1;
 
+export const nominateAuctionLotResponseConsortiaItemOwnersItemBidderIdMultipleOf = 1;
+
+export const nominateAuctionLotResponseConsortiaItemOwnersItemShareExclusiveMin = 0;
+export const nominateAuctionLotResponseConsortiaItemOwnersItemShareMax = 1;
+export const nominateAuctionLotResponseConsortiaItemOwnersItemShareMultipleOf = 0.0001;
+
+export const nominateAuctionLotResponseSalesItemAllocationsItemConsortiumIdMultipleOf = 1;
+
 
 
 export const NominateAuctionLotResponse = zod.object({
@@ -2545,7 +2609,12 @@ export const NominateAuctionLotResponse = zod.object({
   "displayName": zod.string(),
   "aliases": zod.array(zod.string()).optional(),
   "bidderId": zod.number().nullish(),
-  "active": zod.number()
+  "active": zod.number(),
+  "owners": zod.array(zod.object({
+  "bidderId": zod.number().min(1).multipleOf(nominateAuctionLotResponseConsortiaItemOwnersItemBidderIdMultipleOf),
+  "bidderName": zod.string(),
+  "share": zod.number().gt(nominateAuctionLotResponseConsortiaItemOwnersItemShareExclusiveMin).max(nominateAuctionLotResponseConsortiaItemOwnersItemShareMax).multipleOf(nominateAuctionLotResponseConsortiaItemOwnersItemShareMultipleOf)
+}))
 })),
   "sales": zod.array(zod.object({
   "id": zod.number(),
@@ -2562,7 +2631,8 @@ export const NominateAuctionLotResponse = zod.object({
   "share": zod.string(),
   "cents": zod.number(),
   "bidderName": zod.string(),
-  "consortiumName": zod.string().nullish()
+  "consortiumName": zod.string().nullish(),
+  "consortiumId": zod.number().multipleOf(nominateAuctionLotResponseSalesItemAllocationsItemConsortiumIdMultipleOf).nullable()
 }))
 })),
   "metrics": zod.object({
@@ -2575,16 +2645,25 @@ export const NominateAuctionLotResponse = zod.object({
 
 
 export const FinalizeAuctionSaleParams = zod.object({
-  "calcuttaId": zod.coerce.number().int(),
-  "auctionId": zod.coerce.number().int(),
-  "lotId": zod.coerce.number().int()
+  "calcuttaId": zod.coerce.number(),
+  "auctionId": zod.coerce.number(),
+  "lotId": zod.coerce.number()
 })
 
 
 export const finalizeAuctionSaleBodyPriceExclusiveMin = 0;
 
-export const finalizeAuctionSaleBodyAllocationsItemShareExclusiveMin = 0;
-export const finalizeAuctionSaleBodyAllocationsItemShareMax = 1;
+export const finalizeAuctionSaleBodyAllocationsItemOneBidderIdMultipleOf = 1;
+
+export const finalizeAuctionSaleBodyAllocationsItemOneShareExclusiveMin = 0;
+export const finalizeAuctionSaleBodyAllocationsItemOneShareMax = 1;
+export const finalizeAuctionSaleBodyAllocationsItemOneShareMultipleOf = 0.0001;
+
+export const finalizeAuctionSaleBodyAllocationsItemTwoConsortiumIdMultipleOf = 1;
+
+export const finalizeAuctionSaleBodyAllocationsItemTwoShareExclusiveMin = 0;
+export const finalizeAuctionSaleBodyAllocationsItemTwoShareMax = 1;
+export const finalizeAuctionSaleBodyAllocationsItemTwoShareMultipleOf = 0.0001;
 
 
 
@@ -2594,13 +2673,26 @@ export const FinalizeAuctionSaleBody = zod.object({
   "expectedRevision": zod.number(),
   "idempotencyKey": zod.string().optional(),
   "reason": zod.string().optional(),
-  "allocations": zod.array(zod.object({
-  "bidderId": zod.number(),
-  "share": zod.number().gt(finalizeAuctionSaleBodyAllocationsItemShareExclusiveMin).max(finalizeAuctionSaleBodyAllocationsItemShareMax)
-}))
+  "allocations": zod.array(zod.union([zod.object({
+  "bidderId": zod.number().min(1).multipleOf(finalizeAuctionSaleBodyAllocationsItemOneBidderIdMultipleOf),
+  "consortiumId": zod.null().optional(),
+  "share": zod.number().gt(finalizeAuctionSaleBodyAllocationsItemOneShareExclusiveMin).max(finalizeAuctionSaleBodyAllocationsItemOneShareMax).multipleOf(finalizeAuctionSaleBodyAllocationsItemOneShareMultipleOf)
+}),zod.object({
+  "bidderId": zod.null().optional(),
+  "consortiumId": zod.number().min(1).multipleOf(finalizeAuctionSaleBodyAllocationsItemTwoConsortiumIdMultipleOf),
+  "share": zod.number().gt(finalizeAuctionSaleBodyAllocationsItemTwoShareExclusiveMin).max(finalizeAuctionSaleBodyAllocationsItemTwoShareMax).multipleOf(finalizeAuctionSaleBodyAllocationsItemTwoShareMultipleOf)
+})]))
 })
 
 export const finalizeAuctionSaleResponseCurrentLotIdMultipleOf = 1;
+
+export const finalizeAuctionSaleResponseConsortiaItemOwnersItemBidderIdMultipleOf = 1;
+
+export const finalizeAuctionSaleResponseConsortiaItemOwnersItemShareExclusiveMin = 0;
+export const finalizeAuctionSaleResponseConsortiaItemOwnersItemShareMax = 1;
+export const finalizeAuctionSaleResponseConsortiaItemOwnersItemShareMultipleOf = 0.0001;
+
+export const finalizeAuctionSaleResponseSalesItemAllocationsItemConsortiumIdMultipleOf = 1;
 
 
 
@@ -2656,7 +2748,12 @@ export const FinalizeAuctionSaleResponse = zod.object({
   "displayName": zod.string(),
   "aliases": zod.array(zod.string()).optional(),
   "bidderId": zod.number().nullish(),
-  "active": zod.number()
+  "active": zod.number(),
+  "owners": zod.array(zod.object({
+  "bidderId": zod.number().min(1).multipleOf(finalizeAuctionSaleResponseConsortiaItemOwnersItemBidderIdMultipleOf),
+  "bidderName": zod.string(),
+  "share": zod.number().gt(finalizeAuctionSaleResponseConsortiaItemOwnersItemShareExclusiveMin).max(finalizeAuctionSaleResponseConsortiaItemOwnersItemShareMax).multipleOf(finalizeAuctionSaleResponseConsortiaItemOwnersItemShareMultipleOf)
+}))
 })),
   "sales": zod.array(zod.object({
   "id": zod.number(),
@@ -2673,7 +2770,8 @@ export const FinalizeAuctionSaleResponse = zod.object({
   "share": zod.string(),
   "cents": zod.number(),
   "bidderName": zod.string(),
-  "consortiumName": zod.string().nullish()
+  "consortiumName": zod.string().nullish(),
+  "consortiumId": zod.number().multipleOf(finalizeAuctionSaleResponseSalesItemAllocationsItemConsortiumIdMultipleOf).nullable()
 }))
 })),
   "metrics": zod.object({
@@ -2685,12 +2783,309 @@ export const FinalizeAuctionSaleResponse = zod.object({
 })
 
 
+export const CorrectAuctionSaleParams = zod.object({
+  "calcuttaId": zod.coerce.number(),
+  "auctionId": zod.coerce.number(),
+  "lotId": zod.coerce.number()
+})
+
+export const correctAuctionSaleBodyTotalCentsMultipleOf = 1;
+
+export const correctAuctionSaleBodyReasonMax = 500;
+
+export const correctAuctionSaleBodyIdempotencyKeyMin = 8;
+export const correctAuctionSaleBodyIdempotencyKeyMax = 200;
+
+export const correctAuctionSaleBodyExpectedRevisionMin = 0;
+export const correctAuctionSaleBodyExpectedRevisionMultipleOf = 1;
+
+export const correctAuctionSaleBodyAllocationsItemOneBidderIdMultipleOf = 1;
+
+export const correctAuctionSaleBodyAllocationsItemOneShareExclusiveMin = 0;
+export const correctAuctionSaleBodyAllocationsItemOneShareMax = 1;
+export const correctAuctionSaleBodyAllocationsItemOneShareMultipleOf = 0.0001;
+
+export const correctAuctionSaleBodyAllocationsItemTwoConsortiumIdMultipleOf = 1;
+
+export const correctAuctionSaleBodyAllocationsItemTwoShareExclusiveMin = 0;
+export const correctAuctionSaleBodyAllocationsItemTwoShareMax = 1;
+export const correctAuctionSaleBodyAllocationsItemTwoShareMultipleOf = 0.0001;
+
+
+
+
+export const CorrectAuctionSaleBody = zod.object({
+  "totalCents": zod.number().min(1).multipleOf(correctAuctionSaleBodyTotalCentsMultipleOf),
+  "reason": zod.string().min(1).max(correctAuctionSaleBodyReasonMax),
+  "idempotencyKey": zod.string().min(correctAuctionSaleBodyIdempotencyKeyMin).max(correctAuctionSaleBodyIdempotencyKeyMax),
+  "expectedRevision": zod.number().min(correctAuctionSaleBodyExpectedRevisionMin).multipleOf(correctAuctionSaleBodyExpectedRevisionMultipleOf),
+  "allocations": zod.array(zod.union([zod.object({
+  "bidderId": zod.number().min(1).multipleOf(correctAuctionSaleBodyAllocationsItemOneBidderIdMultipleOf),
+  "consortiumId": zod.null().optional(),
+  "share": zod.number().gt(correctAuctionSaleBodyAllocationsItemOneShareExclusiveMin).max(correctAuctionSaleBodyAllocationsItemOneShareMax).multipleOf(correctAuctionSaleBodyAllocationsItemOneShareMultipleOf)
+}),zod.object({
+  "bidderId": zod.null().optional(),
+  "consortiumId": zod.number().min(1).multipleOf(correctAuctionSaleBodyAllocationsItemTwoConsortiumIdMultipleOf),
+  "share": zod.number().gt(correctAuctionSaleBodyAllocationsItemTwoShareExclusiveMin).max(correctAuctionSaleBodyAllocationsItemTwoShareMax).multipleOf(correctAuctionSaleBodyAllocationsItemTwoShareMultipleOf)
+})])).min(1)
+})
+
+export const correctAuctionSaleResponseCurrentLotIdMultipleOf = 1;
+
+export const correctAuctionSaleResponseConsortiaItemOwnersItemBidderIdMultipleOf = 1;
+
+export const correctAuctionSaleResponseConsortiaItemOwnersItemShareExclusiveMin = 0;
+export const correctAuctionSaleResponseConsortiaItemOwnersItemShareMax = 1;
+export const correctAuctionSaleResponseConsortiaItemOwnersItemShareMultipleOf = 0.0001;
+
+export const correctAuctionSaleResponseSalesItemAllocationsItemConsortiumIdMultipleOf = 1;
+
+
+
+export const CorrectAuctionSaleResponse = zod.object({
+  "id": zod.number(),
+  "calcuttaId": zod.number(),
+  "status": zod.enum(['setup', 'live', 'complete']),
+  "currentLotId": zod.number().multipleOf(correctAuctionSaleResponseCurrentLotIdMultipleOf).nullable(),
+  "revision": zod.number(),
+  "createdAt": zod.coerce.date(),
+  "startedAt": zod.coerce.date().nullable(),
+  "completedAt": zod.coerce.date().nullable(),
+  "lots": zod.array(zod.object({
+  "id": zod.number(),
+  "auctionId": zod.number(),
+  "externalId": zod.string(),
+  "displayName": zod.string(),
+  "aliases": zod.array(zod.string()).optional(),
+  "metadata": zod.object({
+  "note": zod.string().nullish(),
+  "source": zod.string().nullish(),
+  "lotId": zod.number().nullish(),
+  "saleId": zod.number().nullish(),
+  "totalCents": zod.number().nullish(),
+  "reason": zod.string().nullish(),
+  "cents": zod.number().nullish(),
+  "count": zod.number().nullish(),
+  "consortiumId": zod.number().nullish(),
+  "before": zod.array(zod.object({
+  "bidderId": zod.number(),
+  "share": zod.number(),
+  "costBasis": zod.number().nullish(),
+  "cents": zod.number().nullish()
+})).nullish(),
+  "after": zod.array(zod.object({
+  "bidderId": zod.number(),
+  "share": zod.number(),
+  "costBasis": zod.number().nullish(),
+  "cents": zod.number().nullish()
+})).nullish()
+}).optional(),
+  "entryId": zod.number(),
+  "status": zod.enum(['available', 'bidding', 'sold']),
+  "nominationId": zod.string().nullish(),
+  "nominationSequence": zod.number().nullish(),
+  "currentBidCents": zod.number().nullish(),
+  "nominatedAt": zod.coerce.date().nullish(),
+  "updatedAt": zod.coerce.date().optional()
+})),
+  "consortia": zod.array(zod.object({
+  "id": zod.number(),
+  "auctionId": zod.number(),
+  "displayName": zod.string(),
+  "aliases": zod.array(zod.string()).optional(),
+  "bidderId": zod.number().nullish(),
+  "active": zod.number(),
+  "owners": zod.array(zod.object({
+  "bidderId": zod.number().min(1).multipleOf(correctAuctionSaleResponseConsortiaItemOwnersItemBidderIdMultipleOf),
+  "bidderName": zod.string(),
+  "share": zod.number().gt(correctAuctionSaleResponseConsortiaItemOwnersItemShareExclusiveMin).max(correctAuctionSaleResponseConsortiaItemOwnersItemShareMax).multipleOf(correctAuctionSaleResponseConsortiaItemOwnersItemShareMultipleOf)
+}))
+})),
+  "sales": zod.array(zod.object({
+  "id": zod.number(),
+  "auctionId": zod.number(),
+  "lotId": zod.number(),
+  "totalCents": zod.number(),
+  "source": zod.string(),
+  "reason": zod.string().nullish(),
+  "createdAt": zod.coerce.date().optional(),
+  "correctedAt": zod.coerce.date().nullish(),
+  "allocations": zod.array(zod.object({
+  "saleId": zod.number(),
+  "bidderId": zod.number(),
+  "share": zod.string(),
+  "cents": zod.number(),
+  "bidderName": zod.string(),
+  "consortiumName": zod.string().nullish(),
+  "consortiumId": zod.number().multipleOf(correctAuctionSaleResponseSalesItemAllocationsItemConsortiumIdMultipleOf).nullable()
+}))
+})),
+  "metrics": zod.object({
+  "poolSizeCents": zod.number(),
+  "lotsSold": zod.number(),
+  "totalLots": zod.number(),
+  "averageSaleCents": zod.number().nullable()
+})
+})
+
+
+export const UpdateAuctionConsortiumParams = zod.object({
+  "calcuttaId": zod.coerce.number(),
+  "auctionId": zod.coerce.number(),
+  "consortiumId": zod.coerce.number()
+})
+
+export const updateAuctionConsortiumBodyDisplayNameMax = 200;
+
+
+export const updateAuctionConsortiumBodyAliasesMax = 20;
+
+export const updateAuctionConsortiumBodyBidderIdMultipleOf = 1;
+
+export const updateAuctionConsortiumBodyOwnersItemOneBidderIdMultipleOf = 1;
+
+export const updateAuctionConsortiumBodyOwnersItemOneShareExclusiveMin = 0;
+export const updateAuctionConsortiumBodyOwnersItemOneShareMax = 1;
+export const updateAuctionConsortiumBodyOwnersItemOneShareMultipleOf = 0.0001;
+
+export const updateAuctionConsortiumBodyOwnersItemTwoNewBidderNameMax = 200;
+
+export const updateAuctionConsortiumBodyOwnersItemTwoShareExclusiveMin = 0;
+export const updateAuctionConsortiumBodyOwnersItemTwoShareMax = 1;
+export const updateAuctionConsortiumBodyOwnersItemTwoShareMultipleOf = 0.0001;
+
+
+export const updateAuctionConsortiumBodyExpectedRevisionMin = 0;
+export const updateAuctionConsortiumBodyExpectedRevisionMultipleOf = 1;
+
+
+
+export const UpdateAuctionConsortiumBody = zod.object({
+  "displayName": zod.string().min(1).max(updateAuctionConsortiumBodyDisplayNameMax).optional(),
+  "aliases": zod.array(zod.string().min(1)).max(updateAuctionConsortiumBodyAliasesMax).optional(),
+  "bidderId": zod.number().min(1).multipleOf(updateAuctionConsortiumBodyBidderIdMultipleOf).optional(),
+  "owners": zod.array(zod.union([zod.object({
+  "bidderId": zod.number().min(1).multipleOf(updateAuctionConsortiumBodyOwnersItemOneBidderIdMultipleOf),
+  "newBidderName": zod.null().optional(),
+  "share": zod.number().gt(updateAuctionConsortiumBodyOwnersItemOneShareExclusiveMin).max(updateAuctionConsortiumBodyOwnersItemOneShareMax).multipleOf(updateAuctionConsortiumBodyOwnersItemOneShareMultipleOf)
+}),zod.object({
+  "bidderId": zod.null().optional(),
+  "newBidderName": zod.string().min(1).max(updateAuctionConsortiumBodyOwnersItemTwoNewBidderNameMax),
+  "share": zod.number().gt(updateAuctionConsortiumBodyOwnersItemTwoShareExclusiveMin).max(updateAuctionConsortiumBodyOwnersItemTwoShareMax).multipleOf(updateAuctionConsortiumBodyOwnersItemTwoShareMultipleOf)
+})])).min(1).optional(),
+  "active": zod.boolean().optional(),
+  "expectedRevision": zod.number().min(updateAuctionConsortiumBodyExpectedRevisionMin).multipleOf(updateAuctionConsortiumBodyExpectedRevisionMultipleOf)
+})
+
+export const updateAuctionConsortiumResponseOwnersItemBidderIdMultipleOf = 1;
+
+export const updateAuctionConsortiumResponseOwnersItemShareExclusiveMin = 0;
+export const updateAuctionConsortiumResponseOwnersItemShareMax = 1;
+export const updateAuctionConsortiumResponseOwnersItemShareMultipleOf = 0.0001;
+
+
+
+export const UpdateAuctionConsortiumResponse = zod.object({
+  "id": zod.number(),
+  "auctionId": zod.number(),
+  "displayName": zod.string(),
+  "aliases": zod.array(zod.string()).optional(),
+  "bidderId": zod.number().nullish(),
+  "active": zod.number(),
+  "owners": zod.array(zod.object({
+  "bidderId": zod.number().min(1).multipleOf(updateAuctionConsortiumResponseOwnersItemBidderIdMultipleOf),
+  "bidderName": zod.string(),
+  "share": zod.number().gt(updateAuctionConsortiumResponseOwnersItemShareExclusiveMin).max(updateAuctionConsortiumResponseOwnersItemShareMax).multipleOf(updateAuctionConsortiumResponseOwnersItemShareMultipleOf)
+}))
+})
+
+
+export const CreateAuctionConsortiumParams = zod.object({
+  "calcuttaId": zod.coerce.number(),
+  "auctionId": zod.coerce.number()
+})
+
+export const createAuctionConsortiumBodyDisplayNameMax = 200;
+
+
+export const createAuctionConsortiumBodyAliasesMax = 20;
+
+export const createAuctionConsortiumBodyBidderIdMultipleOf = 1;
+
+export const createAuctionConsortiumBodyNewBidderNameMax = 200;
+
+export const createAuctionConsortiumBodyOwnersItemOneBidderIdMultipleOf = 1;
+
+export const createAuctionConsortiumBodyOwnersItemOneShareExclusiveMin = 0;
+export const createAuctionConsortiumBodyOwnersItemOneShareMax = 1;
+export const createAuctionConsortiumBodyOwnersItemOneShareMultipleOf = 0.0001;
+
+export const createAuctionConsortiumBodyOwnersItemTwoNewBidderNameMax = 200;
+
+export const createAuctionConsortiumBodyOwnersItemTwoShareExclusiveMin = 0;
+export const createAuctionConsortiumBodyOwnersItemTwoShareMax = 1;
+export const createAuctionConsortiumBodyOwnersItemTwoShareMultipleOf = 0.0001;
+
+
+export const createAuctionConsortiumBodyExpectedRevisionMin = 0;
+export const createAuctionConsortiumBodyExpectedRevisionMultipleOf = 1;
+
+
+
+export const CreateAuctionConsortiumBody = zod.object({
+  "displayName": zod.string().min(1).max(createAuctionConsortiumBodyDisplayNameMax),
+  "aliases": zod.array(zod.string().min(1)).max(createAuctionConsortiumBodyAliasesMax).optional(),
+  "bidderId": zod.number().min(1).multipleOf(createAuctionConsortiumBodyBidderIdMultipleOf).optional(),
+  "newBidderName": zod.string().min(1).max(createAuctionConsortiumBodyNewBidderNameMax).optional(),
+  "owners": zod.array(zod.union([zod.object({
+  "bidderId": zod.number().min(1).multipleOf(createAuctionConsortiumBodyOwnersItemOneBidderIdMultipleOf),
+  "newBidderName": zod.null().optional(),
+  "share": zod.number().gt(createAuctionConsortiumBodyOwnersItemOneShareExclusiveMin).max(createAuctionConsortiumBodyOwnersItemOneShareMax).multipleOf(createAuctionConsortiumBodyOwnersItemOneShareMultipleOf)
+}),zod.object({
+  "bidderId": zod.null().optional(),
+  "newBidderName": zod.string().min(1).max(createAuctionConsortiumBodyOwnersItemTwoNewBidderNameMax),
+  "share": zod.number().gt(createAuctionConsortiumBodyOwnersItemTwoShareExclusiveMin).max(createAuctionConsortiumBodyOwnersItemTwoShareMax).multipleOf(createAuctionConsortiumBodyOwnersItemTwoShareMultipleOf)
+})])).min(1).optional(),
+  "expectedRevision": zod.number().min(createAuctionConsortiumBodyExpectedRevisionMin).multipleOf(createAuctionConsortiumBodyExpectedRevisionMultipleOf)
+})
+
+export const createAuctionConsortiumResponseOwnersItemBidderIdMultipleOf = 1;
+
+export const createAuctionConsortiumResponseOwnersItemShareExclusiveMin = 0;
+export const createAuctionConsortiumResponseOwnersItemShareMax = 1;
+export const createAuctionConsortiumResponseOwnersItemShareMultipleOf = 0.0001;
+
+
+
+export const CreateAuctionConsortiumResponse = zod.object({
+  "id": zod.number(),
+  "auctionId": zod.number(),
+  "displayName": zod.string(),
+  "aliases": zod.array(zod.string()).optional(),
+  "bidderId": zod.number().nullish(),
+  "active": zod.number(),
+  "owners": zod.array(zod.object({
+  "bidderId": zod.number().min(1).multipleOf(createAuctionConsortiumResponseOwnersItemBidderIdMultipleOf),
+  "bidderName": zod.string(),
+  "share": zod.number().gt(createAuctionConsortiumResponseOwnersItemShareExclusiveMin).max(createAuctionConsortiumResponseOwnersItemShareMax).multipleOf(createAuctionConsortiumResponseOwnersItemShareMultipleOf)
+}))
+})
+
+
 export const CompleteAuctionParams = zod.object({
   "calcuttaId": zod.coerce.number().int(),
   "auctionId": zod.coerce.number().int()
 })
 
 export const completeAuctionResponseCurrentLotIdMultipleOf = 1;
+
+export const completeAuctionResponseConsortiaItemOwnersItemBidderIdMultipleOf = 1;
+
+export const completeAuctionResponseConsortiaItemOwnersItemShareExclusiveMin = 0;
+export const completeAuctionResponseConsortiaItemOwnersItemShareMax = 1;
+export const completeAuctionResponseConsortiaItemOwnersItemShareMultipleOf = 0.0001;
+
+export const completeAuctionResponseSalesItemAllocationsItemConsortiumIdMultipleOf = 1;
 
 
 
@@ -2746,7 +3141,12 @@ export const CompleteAuctionResponse = zod.object({
   "displayName": zod.string(),
   "aliases": zod.array(zod.string()).optional(),
   "bidderId": zod.number().nullish(),
-  "active": zod.number()
+  "active": zod.number(),
+  "owners": zod.array(zod.object({
+  "bidderId": zod.number().min(1).multipleOf(completeAuctionResponseConsortiaItemOwnersItemBidderIdMultipleOf),
+  "bidderName": zod.string(),
+  "share": zod.number().gt(completeAuctionResponseConsortiaItemOwnersItemShareExclusiveMin).max(completeAuctionResponseConsortiaItemOwnersItemShareMax).multipleOf(completeAuctionResponseConsortiaItemOwnersItemShareMultipleOf)
+}))
 })),
   "sales": zod.array(zod.object({
   "id": zod.number(),
@@ -2763,7 +3163,8 @@ export const CompleteAuctionResponse = zod.object({
   "share": zod.string(),
   "cents": zod.number(),
   "bidderName": zod.string(),
-  "consortiumName": zod.string().nullish()
+  "consortiumName": zod.string().nullish(),
+  "consortiumId": zod.number().multipleOf(completeAuctionResponseSalesItemAllocationsItemConsortiumIdMultipleOf).nullable()
 }))
 })),
   "metrics": zod.object({

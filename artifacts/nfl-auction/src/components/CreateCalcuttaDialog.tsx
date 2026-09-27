@@ -111,7 +111,7 @@ export function CreateCalcuttaDialog({
       setCalcutta(created.id);
       onOpenChange(false);
       reset();
-      navigate("/dashboard");
+      navigate("/auction");
     } catch (reason) {
       setError(reason instanceof Error ? reason.message : "Could not create Calcutta. Please try again.");
     } finally {

@@ -30,6 +30,9 @@ import type {
   AgentSchedule,
   AgentTeamSchedule,
   AuctionBulkResult,
+  AuctionConsortium,
+  AuctionConsortiumInput,
+  AuctionConsortiumUpdate,
   AuctionCreateInput,
   AuctionEligibleEntry,
   AuctionEvent,
@@ -37,6 +40,7 @@ import type {
   AuctionImportResult,
   AuctionLotsBulkInput,
   AuctionNominationInput,
+  AuctionSaleCorrectionInput,
   AuctionSaleInput,
   AuctionSnapshot,
   AuctionStartInput,
@@ -4536,6 +4540,214 @@ const {mutation: mutationOptions, request: requestOptions} = options ?
         TContext
       > => {
       return useMutation(getFinalizeAuctionSaleMutationOptions(options));
+    }
+
+export const getCorrectAuctionSaleUrl = (calcuttaId: number,
+    auctionId: number,
+    lotId: number,) => {
+
+
+
+
+  return `/api/calcuttas/${calcuttaId}/auctions/${auctionId}/lots/${lotId}/sale`
+}
+
+export const correctAuctionSale = async (calcuttaId: number,
+    auctionId: number,
+    lotId: number,
+    auctionSaleCorrectionInput: AuctionSaleCorrectionInput, options?: Parameters<typeof customFetch>[1]): Promise<AuctionSnapshot> => {
+
+  return customFetch<AuctionSnapshot>(getCorrectAuctionSaleUrl(calcuttaId,auctionId,lotId),
+  {
+    ...options,
+    method: 'PATCH',
+    headers: { 'Content-Type': 'application/json', ...options?.headers },
+    body: JSON.stringify(auctionSaleCorrectionInput)
+  }
+);}
+
+
+
+
+
+export const getCorrectAuctionSaleMutationOptions = <TError = ErrorType<ErrorResponse>,
+    TContext = unknown>(options?: { mutation?:UseMutationOptions<Awaited<ReturnType<typeof correctAuctionSale>>, TError,{calcuttaId: number;auctionId: number;lotId: number;data: BodyType<AuctionSaleCorrectionInput>}, TContext>, request?: SecondParameter<typeof customFetch>}
+): UseMutationOptions<Awaited<ReturnType<typeof correctAuctionSale>>, TError,{calcuttaId: number;auctionId: number;lotId: number;data: BodyType<AuctionSaleCorrectionInput>}, TContext> => {
+
+const mutationKey = ['correctAuctionSale'];
+const {mutation: mutationOptions, request: requestOptions} = options ?
+      options.mutation && 'mutationKey' in options.mutation && options.mutation.mutationKey ?
+      options
+      : {...options, mutation: {...options.mutation, mutationKey}}
+      : {mutation: { mutationKey, }, request: undefined};
+
+
+
+
+      const mutationFn: MutationFunction<Awaited<ReturnType<typeof correctAuctionSale>>, {calcuttaId: number;auctionId: number;lotId: number;data: BodyType<AuctionSaleCorrectionInput>}> = (props) => {
+          const {calcuttaId,auctionId,lotId,data} = props ?? {};
+
+          return  correctAuctionSale(calcuttaId,auctionId,lotId,data,requestOptions)
+        }
+
+
+
+
+
+
+  return  { mutationFn, ...mutationOptions }}
+
+    export type CorrectAuctionSaleMutationResult = NonNullable<Awaited<ReturnType<typeof correctAuctionSale>>>
+    export type CorrectAuctionSaleMutationBody = BodyType<AuctionSaleCorrectionInput>
+    export type CorrectAuctionSaleMutationError = ErrorType<ErrorResponse>
+
+    export const useCorrectAuctionSale = <TError = ErrorType<ErrorResponse>,
+    TContext = unknown>(options?: { mutation?:UseMutationOptions<Awaited<ReturnType<typeof correctAuctionSale>>, TError,{calcuttaId: number;auctionId: number;lotId: number;data: BodyType<AuctionSaleCorrectionInput>}, TContext>, request?: SecondParameter<typeof customFetch>}
+ ): UseMutationResult<
+        Awaited<ReturnType<typeof correctAuctionSale>>,
+        TError,
+        {calcuttaId: number;auctionId: number;lotId: number;data: BodyType<AuctionSaleCorrectionInput>},
+        TContext
+      > => {
+      return useMutation(getCorrectAuctionSaleMutationOptions(options));
+    }
+
+export const getUpdateAuctionConsortiumUrl = (calcuttaId: number,
+    auctionId: number,
+    consortiumId: number,) => {
+
+
+
+
+  return `/api/calcuttas/${calcuttaId}/auctions/${auctionId}/consortia/${consortiumId}`
+}
+
+export const updateAuctionConsortium = async (calcuttaId: number,
+    auctionId: number,
+    consortiumId: number,
+    auctionConsortiumUpdate: AuctionConsortiumUpdate, options?: Parameters<typeof customFetch>[1]): Promise<AuctionConsortium> => {
+
+  return customFetch<AuctionConsortium>(getUpdateAuctionConsortiumUrl(calcuttaId,auctionId,consortiumId),
+  {
+    ...options,
+    method: 'PATCH',
+    headers: { 'Content-Type': 'application/json', ...options?.headers },
+    body: JSON.stringify(auctionConsortiumUpdate)
+  }
+);}
+
+
+
+
+
+export const getUpdateAuctionConsortiumMutationOptions = <TError = ErrorType<ErrorResponse>,
+    TContext = unknown>(options?: { mutation?:UseMutationOptions<Awaited<ReturnType<typeof updateAuctionConsortium>>, TError,{calcuttaId: number;auctionId: number;consortiumId: number;data: BodyType<AuctionConsortiumUpdate>}, TContext>, request?: SecondParameter<typeof customFetch>}
+): UseMutationOptions<Awaited<ReturnType<typeof updateAuctionConsortium>>, TError,{calcuttaId: number;auctionId: number;consortiumId: number;data: BodyType<AuctionConsortiumUpdate>}, TContext> => {
+
+const mutationKey = ['updateAuctionConsortium'];
+const {mutation: mutationOptions, request: requestOptions} = options ?
+      options.mutation && 'mutationKey' in options.mutation && options.mutation.mutationKey ?
+      options
+      : {...options, mutation: {...options.mutation, mutationKey}}
+      : {mutation: { mutationKey, }, request: undefined};
+
+
+
+
+      const mutationFn: MutationFunction<Awaited<ReturnType<typeof updateAuctionConsortium>>, {calcuttaId: number;auctionId: number;consortiumId: number;data: BodyType<AuctionConsortiumUpdate>}> = (props) => {
+          const {calcuttaId,auctionId,consortiumId,data} = props ?? {};
+
+          return  updateAuctionConsortium(calcuttaId,auctionId,consortiumId,data,requestOptions)
+        }
+
+
+
+
+
+
+  return  { mutationFn, ...mutationOptions }}
+
+    export type UpdateAuctionConsortiumMutationResult = NonNullable<Awaited<ReturnType<typeof updateAuctionConsortium>>>
+    export type UpdateAuctionConsortiumMutationBody = BodyType<AuctionConsortiumUpdate>
+    export type UpdateAuctionConsortiumMutationError = ErrorType<ErrorResponse>
+
+    export const useUpdateAuctionConsortium = <TError = ErrorType<ErrorResponse>,
+    TContext = unknown>(options?: { mutation?:UseMutationOptions<Awaited<ReturnType<typeof updateAuctionConsortium>>, TError,{calcuttaId: number;auctionId: number;consortiumId: number;data: BodyType<AuctionConsortiumUpdate>}, TContext>, request?: SecondParameter<typeof customFetch>}
+ ): UseMutationResult<
+        Awaited<ReturnType<typeof updateAuctionConsortium>>,
+        TError,
+        {calcuttaId: number;auctionId: number;consortiumId: number;data: BodyType<AuctionConsortiumUpdate>},
+        TContext
+      > => {
+      return useMutation(getUpdateAuctionConsortiumMutationOptions(options));
+    }
+
+export const getCreateAuctionConsortiumUrl = (calcuttaId: number,
+    auctionId: number,) => {
+
+
+
+
+  return `/api/calcuttas/${calcuttaId}/auctions/${auctionId}/consortia`
+}
+
+export const createAuctionConsortium = async (calcuttaId: number,
+    auctionId: number,
+    auctionConsortiumInput: AuctionConsortiumInput, options?: Parameters<typeof customFetch>[1]): Promise<AuctionConsortium> => {
+
+  return customFetch<AuctionConsortium>(getCreateAuctionConsortiumUrl(calcuttaId,auctionId),
+  {
+    ...options,
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json', ...options?.headers },
+    body: JSON.stringify(auctionConsortiumInput)
+  }
+);}
+
+
+
+
+
+export const getCreateAuctionConsortiumMutationOptions = <TError = ErrorType<ErrorResponse>,
+    TContext = unknown>(options?: { mutation?:UseMutationOptions<Awaited<ReturnType<typeof createAuctionConsortium>>, TError,{calcuttaId: number;auctionId: number;data: BodyType<AuctionConsortiumInput>}, TContext>, request?: SecondParameter<typeof customFetch>}
+): UseMutationOptions<Awaited<ReturnType<typeof createAuctionConsortium>>, TError,{calcuttaId: number;auctionId: number;data: BodyType<AuctionConsortiumInput>}, TContext> => {
+
+const mutationKey = ['createAuctionConsortium'];
+const {mutation: mutationOptions, request: requestOptions} = options ?
+      options.mutation && 'mutationKey' in options.mutation && options.mutation.mutationKey ?
+      options
+      : {...options, mutation: {...options.mutation, mutationKey}}
+      : {mutation: { mutationKey, }, request: undefined};
+
+
+
+
+      const mutationFn: MutationFunction<Awaited<ReturnType<typeof createAuctionConsortium>>, {calcuttaId: number;auctionId: number;data: BodyType<AuctionConsortiumInput>}> = (props) => {
+          const {calcuttaId,auctionId,data} = props ?? {};
+
+          return  createAuctionConsortium(calcuttaId,auctionId,data,requestOptions)
+        }
+
+
+
+
+
+
+  return  { mutationFn, ...mutationOptions }}
+
+    export type CreateAuctionConsortiumMutationResult = NonNullable<Awaited<ReturnType<typeof createAuctionConsortium>>>
+    export type CreateAuctionConsortiumMutationBody = BodyType<AuctionConsortiumInput>
+    export type CreateAuctionConsortiumMutationError = ErrorType<ErrorResponse>
+
+    export const useCreateAuctionConsortium = <TError = ErrorType<ErrorResponse>,
+    TContext = unknown>(options?: { mutation?:UseMutationOptions<Awaited<ReturnType<typeof createAuctionConsortium>>, TError,{calcuttaId: number;auctionId: number;data: BodyType<AuctionConsortiumInput>}, TContext>, request?: SecondParameter<typeof customFetch>}
+ ): UseMutationResult<
+        Awaited<ReturnType<typeof createAuctionConsortium>>,
+        TError,
+        {calcuttaId: number;auctionId: number;data: BodyType<AuctionConsortiumInput>},
+        TContext
+      > => {
+      return useMutation(getCreateAuctionConsortiumMutationOptions(options));
     }
 
 export const getCompleteAuctionUrl = (calcuttaId: number,

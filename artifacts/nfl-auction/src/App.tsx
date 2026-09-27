@@ -42,7 +42,10 @@ function MainRoutes() {
       <Route path="/trades" component={Trades} />
       <Route path="/teams" component={Teams} />
       <Route path="/bidders" component={Bidders} />
-      <Route path="/dashboard" component={Dashboard} />
+      <Route path="/dashboard">
+        <Redirect to={`/auction${window.location.search}`} />
+      </Route>
+      <Route path="/auction" component={Dashboard} />
       <Route path="/whats-new" component={WhatsNew} />
       <Route path="/faq" component={Faq} />
       <Route component={NotFound} />

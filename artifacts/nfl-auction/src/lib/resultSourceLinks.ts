@@ -30,7 +30,7 @@ export function auctionResultHref(seasonYear: number, teamId: number): string {
     season: String(seasonYear),
     teamId: String(teamId),
   });
-  return `/dashboard?${params.toString()}`;
+  return `/auction?${params.toString()}`;
 }
 
 export function tradeHref(seasonYear: number, tradeId: number): string {

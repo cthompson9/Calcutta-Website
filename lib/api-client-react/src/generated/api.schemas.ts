@@ -90,6 +90,17 @@ export interface AuctionLot {
   updatedAt?: string;
 }
 
+export interface AuctionConsortiumOwner {
+  /** @minimum 1 */
+  bidderId: number;
+  bidderName: string;
+  /**
+     * @maximum 1
+     * @exclusiveMinimum 0
+     */
+  share: number;
+}
+
 export interface AuctionConsortium {
   id: number;
   auctionId: number;
@@ -98,6 +109,7 @@ export interface AuctionConsortium {
   /** @nullable */
   bidderId?: number | null;
   active: number;
+  owners: AuctionConsortiumOwner[];
 }
 
 export interface AuctionSaleAllocation {
@@ -108,6 +120,8 @@ export interface AuctionSaleAllocation {
   bidderName: string;
   /** @nullable */
   consortiumName?: string | null;
+  /** @nullable */
+  consortiumId: number | null;
 }
 
 export interface AuctionSale {
@@ -170,14 +184,31 @@ export interface AuctionEligibleEntry {
   teamName: string;
 }
 
-export interface AuctionAllocationInput {
+export interface AuctionBidderAllocationInput {
+  /** @minimum 1 */
   bidderId: number;
+  /** @nullable */
+  consortiumId?: null;
   /**
      * @maximum 1
      * @exclusiveMinimum 0
      */
   share: number;
 }
+
+export interface AuctionConsortiumAllocationInput {
+  /** @nullable */
+  bidderId?: null;
+  /** @minimum 1 */
+  consortiumId: number;
+  /**
+     * @maximum 1
+     * @exclusiveMinimum 0
+     */
+  share: number;
+}
+
+export type AuctionAllocationInput = AuctionBidderAllocationInput | AuctionConsortiumAllocationInput;
 
 export interface AuctionSaleInput {
   /** @minimum 1 */
@@ -188,6 +219,98 @@ export interface AuctionSaleInput {
   idempotencyKey?: string;
   reason?: string;
   allocations: AuctionAllocationInput[];
+}
+
+export interface AuctionSaleCorrectionInput {
+  /** @minimum 1 */
+  totalCents: number;
+  /**
+     * @minLength 1
+     * @maxLength 500
+     */
+  reason: string;
+  /**
+     * @minLength 8
+     * @maxLength 200
+     */
+  idempotencyKey: string;
+  /** @minimum 0 */
+  expectedRevision: number;
+  /** @minItems 1 */
+  allocations: AuctionAllocationInput[];
+}
+
+export interface AuctionExistingOwnerInput {
+  /** @minimum 1 */
+  bidderId: number;
+  /** @nullable */
+  newBidderName?: null;
+  /**
+     * @maximum 1
+     * @exclusiveMinimum 0
+     */
+  share: number;
+}
+
+export interface AuctionNewOwnerInput {
+  /** @nullable */
+  bidderId?: null;
+  /**
+     * @minLength 1
+     * @maxLength 200
+     */
+  newBidderName: string;
+  /**
+     * @maximum 1
+     * @exclusiveMinimum 0
+     */
+  share: number;
+}
+
+export type AuctionConsortiumOwnerInput = AuctionExistingOwnerInput | AuctionNewOwnerInput;
+
+export interface AuctionConsortiumInput {
+  /**
+     * @minLength 1
+     * @maxLength 200
+     */
+  displayName: string;
+  /**
+     * @maxItems 20
+     * @items.minLength 1
+     */
+  aliases?: string[];
+  /** @minimum 1 */
+  bidderId?: number;
+  /**
+     * @minLength 1
+     * @maxLength 200
+     */
+  newBidderName?: string;
+  /** @minItems 1 */
+  owners?: AuctionConsortiumOwnerInput[];
+  /** @minimum 0 */
+  expectedRevision: number;
+}
+
+export interface AuctionConsortiumUpdate {
+  /**
+     * @minLength 1
+     * @maxLength 200
+     */
+  displayName?: string;
+  /**
+     * @maxItems 20
+     * @items.minLength 1
+     */
+  aliases?: string[];
+  /** @minimum 1 */
+  bidderId?: number;
+  /** @minItems 1 */
+  owners?: AuctionConsortiumOwnerInput[];
+  active?: boolean;
+  /** @minimum 0 */
+  expectedRevision: number;
 }
 
 export interface AuctionBulkResult {

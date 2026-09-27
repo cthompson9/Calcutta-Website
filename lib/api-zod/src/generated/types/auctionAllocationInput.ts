@@ -5,12 +5,7 @@
  * NFL Auction Manager API
  * OpenAPI spec version: 0.1.0
  */
+import type { AuctionBidderAllocationInput } from './auctionBidderAllocationInput';
+import type { AuctionConsortiumAllocationInput } from './auctionConsortiumAllocationInput';
 
-export interface AuctionAllocationInput {
-  bidderId: number;
-  /**
-     * @maximum 1
-     * @exclusiveMinimum 0
-     */
-  share: number;
-}
+export type AuctionAllocationInput = AuctionBidderAllocationInput | AuctionConsortiumAllocationInput;
