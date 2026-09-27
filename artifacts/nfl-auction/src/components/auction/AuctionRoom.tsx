@@ -1,11 +1,12 @@
 import { useQueryClient } from "@tanstack/react-query";
 import { type AuctionSnapshot, useGetBidders } from "@workspace/api-client-react";
 import { formatCurrency } from "@/lib/utils";
-import { Loader2, AlertCircle, Users, DollarSign, List, Play, CheckCircle2, Gavel, Activity } from "lucide-react";
+import { Loader2, AlertCircle, Users, DollarSign, List, Play, CheckCircle2, Gavel, Activity, RotateCcw } from "lucide-react";
 import { SaleEditor } from "./SaleEditor";
 import { LotInventory } from "./LotInventory";
 import { ManageRosterDialog } from "./AdminDialogs";
 import { ListenerConnect, ListenerTranscript } from "./ListenerConnect";
+import { ResetAuctionDialog } from "./ResetAuctionDialog";
 import { createAuction, startAuctionSession, nominateNext, completeAuctionSession } from "./admin-actions";
 import { useToast } from "@/hooks/use-toast";
 import { useState } from "react";
@@ -27,6 +28,7 @@ export function AuctionRoom({ calcuttaId, adminKey, historicalSummaryRefetch, ac
   const { toast } = useToast();
   const [isPending, setIsPending] = useState(false);
   const [showRoster, setShowRoster] = useState(false);
+  const [showReset, setShowReset] = useState(false);
 
   const { data: bidders, isLoading: biddersLoading, isError: biddersError, refetch: retryBidders } = useGetBidders();
 
@@ -425,6 +427,36 @@ export function AuctionRoom({ calcuttaId, adminKey, historicalSummaryRefetch, ac
         consortia={consortia}
         historicalSummaryRefetch={historicalSummaryRefetch}
       />
+
+      {adminKey && status !== "complete" && !isSeasonComplete && (
+        <div className="border-t border-border pt-4 text-right">
+          <button
+            type="button"
+            data-testid="button-reset-auction-run"
+            onClick={() => setShowReset(true)}
+            disabled={isPending}
+            className="inline-flex items-center gap-2 border border-destructive/40 px-4 py-2 font-mono text-xs font-bold uppercase tracking-widest text-destructive hover:bg-destructive/5 disabled:opacity-50"
+          >
+            <RotateCcw className="h-4 w-4" /> Reset auction run
+          </button>
+          <ResetAuctionDialog
+            key={auctionId}
+            open={showReset}
+            onOpenChange={setShowReset}
+            calcuttaId={calcuttaId}
+            auctionId={auctionId}
+            revision={activeAuction.revision}
+            adminKey={adminKey}
+            onReset={(snapshot) => {
+              queryClient.setQueryData(["active-auction", calcuttaId], snapshot);
+              void queryClient.invalidateQueries();
+              historicalSummaryRefetch();
+              toast({ title: "Auction run reset", description: "Roster and lots were kept. The session is ready to start again." });
+            }}
+            onStale={() => { void queryClient.invalidateQueries({ queryKey: ["active-auction", calcuttaId] }); }}
+          />
+        </div>
+      )}
 
       {adminKey && (
         <ManageRosterDialog

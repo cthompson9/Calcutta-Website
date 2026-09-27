@@ -31,6 +31,10 @@ export async function startAuctionSession(calcuttaId: number, auctionId: number,
   return adminFetch(`/api/calcuttas/${calcuttaId}/auctions/${auctionId}/start`, "POST", adminKey, { expectedRevision });
 }
 
+export async function resetAuctionRun(calcuttaId: number, auctionId: number, expectedRevision: number, confirmation: string, adminKey: string): Promise<AuctionSnapshot> {
+  return adminFetch(`/api/calcuttas/${calcuttaId}/auctions/${auctionId}/reset`, "POST", adminKey, { expectedRevision, confirmation });
+}
+
 export async function nominateNext(calcuttaId: number, auctionId: number, expectedRevision: number, adminKey: string): Promise<AuctionSnapshot> {
   return adminFetch(`/api/calcuttas/${calcuttaId}/auctions/${auctionId}/nominate-next`, "POST", adminKey, {
     expectedRevision,

@@ -2355,6 +2355,124 @@ export const GetAuctionResponse = zod.object({
 
 
 /**
+ * Requires admin access and exact DELETE DRAFT {auctionId} confirmation. Clears bids, nominations, sales, sale-derived primary ownership, and listener sessions. Retains the auction event audit history. Rejects completed seasons or auctions, approved trades, stale revisions, and mismatched ownership.
+ * @summary Reset an unfinished auction run while keeping the Calcutta, roster, and lots
+ */
+export const ResetAuctionRunParams = zod.object({
+  "calcuttaId": zod.coerce.number(),
+  "auctionId": zod.coerce.number()
+})
+
+export const resetAuctionRunBodyExpectedRevisionMin = 0;
+export const resetAuctionRunBodyExpectedRevisionMultipleOf = 1;
+
+
+
+export const ResetAuctionRunBody = zod.object({
+  "expectedRevision": zod.number().min(resetAuctionRunBodyExpectedRevisionMin).multipleOf(resetAuctionRunBodyExpectedRevisionMultipleOf),
+  "confirmation": zod.string()
+})
+
+export const resetAuctionRunResponseCurrentLotIdMultipleOf = 1;
+
+export const resetAuctionRunResponseConsortiaItemOwnersItemBidderIdMultipleOf = 1;
+
+export const resetAuctionRunResponseConsortiaItemOwnersItemShareExclusiveMin = 0;
+export const resetAuctionRunResponseConsortiaItemOwnersItemShareMax = 1;
+export const resetAuctionRunResponseConsortiaItemOwnersItemShareMultipleOf = 0.0001;
+
+export const resetAuctionRunResponseSalesItemAllocationsItemConsortiumIdMultipleOf = 1;
+
+
+
+export const ResetAuctionRunResponse = zod.object({
+  "id": zod.number(),
+  "calcuttaId": zod.number(),
+  "status": zod.enum(['setup', 'live', 'complete']),
+  "currentLotId": zod.number().multipleOf(resetAuctionRunResponseCurrentLotIdMultipleOf).nullable(),
+  "revision": zod.number(),
+  "createdAt": zod.coerce.date(),
+  "startedAt": zod.coerce.date().nullable(),
+  "completedAt": zod.coerce.date().nullable(),
+  "lots": zod.array(zod.object({
+  "id": zod.number(),
+  "auctionId": zod.number(),
+  "externalId": zod.string(),
+  "displayName": zod.string(),
+  "aliases": zod.array(zod.string()).optional(),
+  "metadata": zod.object({
+  "note": zod.string().nullish(),
+  "source": zod.string().nullish(),
+  "lotId": zod.number().nullish(),
+  "saleId": zod.number().nullish(),
+  "totalCents": zod.number().nullish(),
+  "reason": zod.string().nullish(),
+  "cents": zod.number().nullish(),
+  "count": zod.number().nullish(),
+  "consortiumId": zod.number().nullish(),
+  "before": zod.array(zod.object({
+  "bidderId": zod.number(),
+  "share": zod.number(),
+  "costBasis": zod.number().nullish(),
+  "cents": zod.number().nullish()
+})).nullish(),
+  "after": zod.array(zod.object({
+  "bidderId": zod.number(),
+  "share": zod.number(),
+  "costBasis": zod.number().nullish(),
+  "cents": zod.number().nullish()
+})).nullish()
+}).optional(),
+  "entryId": zod.number(),
+  "status": zod.enum(['available', 'bidding', 'sold']),
+  "nominationId": zod.string().nullish(),
+  "nominationSequence": zod.number().nullish(),
+  "currentBidCents": zod.number().nullish(),
+  "nominatedAt": zod.coerce.date().nullish(),
+  "updatedAt": zod.coerce.date().optional()
+})),
+  "consortia": zod.array(zod.object({
+  "id": zod.number(),
+  "auctionId": zod.number(),
+  "displayName": zod.string(),
+  "aliases": zod.array(zod.string()).optional(),
+  "bidderId": zod.number().nullish(),
+  "active": zod.number(),
+  "owners": zod.array(zod.object({
+  "bidderId": zod.number().min(1).multipleOf(resetAuctionRunResponseConsortiaItemOwnersItemBidderIdMultipleOf),
+  "bidderName": zod.string(),
+  "share": zod.number().gt(resetAuctionRunResponseConsortiaItemOwnersItemShareExclusiveMin).max(resetAuctionRunResponseConsortiaItemOwnersItemShareMax).multipleOf(resetAuctionRunResponseConsortiaItemOwnersItemShareMultipleOf)
+}))
+})),
+  "sales": zod.array(zod.object({
+  "id": zod.number(),
+  "auctionId": zod.number(),
+  "lotId": zod.number(),
+  "totalCents": zod.number(),
+  "source": zod.string(),
+  "reason": zod.string().nullish(),
+  "createdAt": zod.coerce.date().optional(),
+  "correctedAt": zod.coerce.date().nullish(),
+  "allocations": zod.array(zod.object({
+  "saleId": zod.number(),
+  "bidderId": zod.number(),
+  "share": zod.string(),
+  "cents": zod.number(),
+  "bidderName": zod.string(),
+  "consortiumName": zod.string().nullish(),
+  "consortiumId": zod.number().multipleOf(resetAuctionRunResponseSalesItemAllocationsItemConsortiumIdMultipleOf).nullable()
+}))
+})),
+  "metrics": zod.object({
+  "poolSizeCents": zod.number(),
+  "lotsSold": zod.number(),
+  "totalLots": zod.number(),
+  "averageSaleCents": zod.number().nullable()
+})
+})
+
+
+/**
  * Requires the ADMIN_API_KEY bearer token. Atomically changes a setup auction to live, records startedAt and an auction_started event, increments the revision, and returns the updated snapshot. The expected revision must match.
  * @summary Start a setup auction without nominating a lot
  */

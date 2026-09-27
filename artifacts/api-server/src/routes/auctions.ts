@@ -6,7 +6,7 @@ import {
   db, auctionSessionsTable, auctionLotsTable, auctionConsortiaTable,
   auctionConsortiumOwnersTable, auctionSalesTable, auctionSaleAllocationsTable, auctionEventsTable,
   calcuttasTable, calcuttaEntriesTable, teamsTable, positionsTable, tradesTable, biddersTable, ownershipAdjustmentsTable, teamSeasonAuctionsTable,
-  listenerSessionsTable, seasonsTable,
+  listenerSessionsTable, listenerTicketsTable, seasonsTable,
 } from "@workspace/db";
 import { OWNERSHIP_SEASON_LOCK_NAMESPACE } from "../lib/ownershipShares";
 import { requireAdmin } from "../middlewares/requireAdmin";
@@ -210,6 +210,97 @@ router.get("/calcuttas/:calcuttaId/auctions", async (req, res): Promise<any> => 
     .from(auctionSessionsTable).where(eq(auctionSessionsTable.calcuttaId, calcuttaId)).limit(1);
   if (!session) return sendParsedJson(res, ErrorResponse, { error: "Auction not found for this Calcutta." }, 404);
   res.json(await snapshot(session.id));
+});
+
+router.post("/calcuttas/:calcuttaId/auctions/:auctionId/reset", requireAdmin, async (req, res): Promise<any> => {
+  const { calcuttaId, auctionId } = routeIds(req);
+  if (!id.safeParse(calcuttaId).success || !id.safeParse(auctionId).success || !(await ownsAuction(calcuttaId, auctionId))) {
+    return sendParsedJson(res, ErrorResponse, { error: "Auction not found for this Calcutta." }, 404);
+  }
+  const body = z.object({
+    expectedRevision: z.number().int().nonnegative(),
+    confirmation: z.literal(`DELETE DRAFT ${auctionId}`),
+  }).safeParse(req.body);
+  if (!body.success) return sendParsedJson(res, ErrorResponse, { error: `Type DELETE DRAFT ${auctionId} to confirm.` }, 400);
+
+  try {
+    await db.transaction(async (tx) => {
+      const [calcutta] = await tx.select({ seasonId: calcuttasTable.seasonId })
+        .from(calcuttasTable).where(eq(calcuttasTable.id, calcuttaId));
+      if (!calcutta) throw new Error("Calcutta not found.");
+      await tx.execute(sql`select pg_advisory_xact_lock(${OWNERSHIP_SEASON_LOCK_NAMESPACE}, ${calcutta.seasonId})`);
+      const [session] = await tx.select().from(auctionSessionsTable)
+        .where(and(eq(auctionSessionsTable.id, auctionId), eq(auctionSessionsTable.calcuttaId, calcuttaId))).for("update");
+      const [season] = await tx.select({ isComplete: seasonsTable.isComplete }).from(seasonsTable)
+        .where(eq(seasonsTable.id, calcutta.seasonId)).for("update");
+      if (!session || !season) throw new Error("Auction not found.");
+      if (session.revision !== body.data.expectedRevision) throw new Error("Stale auction revision. Refresh before resetting.");
+      if (session.status === "complete" || season.isComplete) throw new Error("Completed auctions and seasons cannot be reset.");
+
+      const lots = await tx.select({ id: auctionLotsTable.id, entryId: auctionLotsTable.entryId })
+        .from(auctionLotsTable).where(eq(auctionLotsTable.auctionId, auctionId));
+      const entryIds = lots.map((lot) => lot.entryId);
+      const sales = await tx.select().from(auctionSalesTable).where(eq(auctionSalesTable.auctionId, auctionId));
+      if (entryIds.length) {
+        const poolEntries = await tx.select({ id: calcuttaEntriesTable.id }).from(calcuttaEntriesTable)
+          .where(and(eq(calcuttaEntriesTable.calcuttaId, calcuttaId), inArray(calcuttaEntriesTable.id, entryIds)));
+        if (poolEntries.length !== lots.length) throw new Error("Auction contains a lot outside this Calcutta. Reset was blocked.");
+        const [approvedTrade] = await tx.select({ id: tradesTable.id }).from(tradesTable)
+          .where(and(inArray(tradesTable.entryId, entryIds), eq(tradesTable.status, "approved"))).limit(1);
+        if (approvedTrade) throw new Error("Approved trades protect this ownership. This auction cannot be reset.");
+
+        // Only remove ownership that exactly matches this auction's recorded sales.
+        // An external correction or pre-existing primary position must never be erased.
+        const primary = await tx.select().from(positionsTable)
+          .where(and(inArray(positionsTable.entryId, entryIds), eq(positionsTable.source, "primary")));
+        const allocations = sales.length
+          ? await tx.select().from(auctionSaleAllocationsTable)
+            .where(inArray(auctionSaleAllocationsTable.saleId, sales.map((sale) => sale.id)))
+          : [];
+        if (sales.some((sale) => !allocations.some((allocation) => allocation.saleId === sale.id))) {
+          throw new Error("A recorded sale is missing its ownership allocations. Reset was blocked.");
+        }
+        if (sales.some((sale) => allocations.filter((row) => row.saleId === sale.id)
+          .reduce((sum, row) => sum + row.cents, 0) !== sale.totalCents)) {
+          throw new Error("A recorded sale has inconsistent allocation amounts. Reset was blocked.");
+        }
+        const entryByLot = new Map(lots.map((lot) => [lot.id, lot.entryId]));
+        const expected = new Map<string, { share: number; cents: number }>();
+        for (const sale of sales) {
+          const entryId = entryByLot.get(sale.lotId);
+          if (entryId == null) throw new Error("Sale has no matching auction lot.");
+          for (const allocation of allocations.filter((row) => row.saleId === sale.id)) {
+            expected.set(`${entryId}:${allocation.bidderId}`, {
+              share: Math.round(Number(allocation.share) * 1_000_000),
+              cents: allocation.cents,
+            });
+          }
+        }
+        if (primary.length !== expected.size || primary.some((position) => {
+          const recorded = expected.get(`${position.entryId}:${position.bidderId}`);
+          return !recorded || Math.round(Number(position.ownershipShare) * 1_000_000) !== recorded.share
+            || Math.round(Number(position.costBasis) * 100) !== recorded.cents;
+        })) throw new Error("Auction ownership no longer matches the sales. Reset was blocked to protect existing results.");
+
+        if (primary.length) await tx.delete(positionsTable).where(and(inArray(positionsTable.entryId, entryIds), eq(positionsTable.source, "primary")));
+      }
+      await tx.delete(auctionSalesTable).where(eq(auctionSalesTable.auctionId, auctionId));
+      await tx.delete(listenerTicketsTable).where(eq(listenerTicketsTable.auctionId, auctionId));
+      await tx.delete(listenerSessionsTable).where(eq(listenerSessionsTable.auctionId, auctionId));
+      await tx.update(auctionLotsTable).set({
+        status: "available", nominationId: null, nominationSequence: null,
+        currentBidCents: null, nominatedAt: null, updatedAt: new Date(),
+      }).where(eq(auctionLotsTable.auctionId, auctionId));
+      await tx.update(auctionSessionsTable).set({
+        status: "setup", currentLotId: null, startedAt: null, completedAt: null,
+        revision: session.revision + 1,
+      }).where(eq(auctionSessionsTable.id, auctionId));
+      await event(tx, auctionId, "auction_reset", { clearedSales: sales.length, clearedLots: lots.length });
+    });
+    res.json(await snapshot(auctionId));
+  } catch (error) {
+    sendParsedJson(res, ErrorResponse, { error: error instanceof Error ? error.message : "Auction reset rejected." }, 409);
+  }
 });
 
 router.post("/calcuttas/:calcuttaId/auctions/:auctionId/start", requireAdmin, async (req, res): Promise<any> => {

@@ -17,6 +17,12 @@ export interface AuctionStartInput {
   expectedRevision: number;
 }
 
+export interface AuctionResetInput {
+  /** @minimum 0 */
+  expectedRevision: number;
+  confirmation: string;
+}
+
 export type AuctionSnapshotStatus = typeof AuctionSnapshotStatus[keyof typeof AuctionSnapshotStatus];
 
 

@@ -75,6 +75,7 @@ export * from './auctionMetadata';
 export * from './auctionMetrics';
 export * from './auctionNewOwnerInput';
 export * from './auctionNominationInput';
+export * from './auctionResetInput';
 export * from './auctionResult';
 export * from './auctionSale';
 export * from './auctionSaleAllocation';

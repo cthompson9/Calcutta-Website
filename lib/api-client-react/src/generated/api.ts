@@ -40,6 +40,7 @@ import type {
   AuctionImportResult,
   AuctionLotsBulkInput,
   AuctionNominationInput,
+  AuctionResetInput,
   AuctionSaleCorrectionInput,
   AuctionSaleInput,
   AuctionSnapshot,
@@ -4184,6 +4185,81 @@ export function useGetAuction<TData = Awaited<ReturnType<typeof getAuction>>, TE
 
 
 
+
+export const getResetAuctionRunUrl = (calcuttaId: number,
+    auctionId: number,) => {
+
+
+
+
+  return `/api/calcuttas/${calcuttaId}/auctions/${auctionId}/reset`
+}
+
+/**
+ * Requires admin access and exact DELETE DRAFT {auctionId} confirmation. Clears bids, nominations, sales, sale-derived primary ownership, and listener sessions. Retains the auction event audit history. Rejects completed seasons or auctions, approved trades, stale revisions, and mismatched ownership.
+ * @summary Reset an unfinished auction run while keeping the Calcutta, roster, and lots
+ */
+export const resetAuctionRun = async (calcuttaId: number,
+    auctionId: number,
+    auctionResetInput: AuctionResetInput, options?: Parameters<typeof customFetch>[1]): Promise<AuctionSnapshot> => {
+
+  return customFetch<AuctionSnapshot>(getResetAuctionRunUrl(calcuttaId,auctionId),
+  {
+    ...options,
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json', ...options?.headers },
+    body: JSON.stringify(auctionResetInput)
+  }
+);}
+
+
+
+
+
+export const getResetAuctionRunMutationOptions = <TError = ErrorType<ErrorResponse>,
+    TContext = unknown>(options?: { mutation?:UseMutationOptions<Awaited<ReturnType<typeof resetAuctionRun>>, TError,{calcuttaId: number;auctionId: number;data: BodyType<AuctionResetInput>}, TContext>, request?: SecondParameter<typeof customFetch>}
+): UseMutationOptions<Awaited<ReturnType<typeof resetAuctionRun>>, TError,{calcuttaId: number;auctionId: number;data: BodyType<AuctionResetInput>}, TContext> => {
+
+const mutationKey = ['resetAuctionRun'];
+const {mutation: mutationOptions, request: requestOptions} = options ?
+      options.mutation && 'mutationKey' in options.mutation && options.mutation.mutationKey ?
+      options
+      : {...options, mutation: {...options.mutation, mutationKey}}
+      : {mutation: { mutationKey, }, request: undefined};
+
+
+
+
+      const mutationFn: MutationFunction<Awaited<ReturnType<typeof resetAuctionRun>>, {calcuttaId: number;auctionId: number;data: BodyType<AuctionResetInput>}> = (props) => {
+          const {calcuttaId,auctionId,data} = props ?? {};
+
+          return  resetAuctionRun(calcuttaId,auctionId,data,requestOptions)
+        }
+
+
+
+
+
+
+  return  { mutationFn, ...mutationOptions }}
+
+    export type ResetAuctionRunMutationResult = NonNullable<Awaited<ReturnType<typeof resetAuctionRun>>>
+    export type ResetAuctionRunMutationBody = BodyType<AuctionResetInput>
+    export type ResetAuctionRunMutationError = ErrorType<ErrorResponse>
+
+    /**
+ * @summary Reset an unfinished auction run while keeping the Calcutta, roster, and lots
+ */
+export const useResetAuctionRun = <TError = ErrorType<ErrorResponse>,
+    TContext = unknown>(options?: { mutation?:UseMutationOptions<Awaited<ReturnType<typeof resetAuctionRun>>, TError,{calcuttaId: number;auctionId: number;data: BodyType<AuctionResetInput>}, TContext>, request?: SecondParameter<typeof customFetch>}
+ ): UseMutationResult<
+        Awaited<ReturnType<typeof resetAuctionRun>>,
+        TError,
+        {calcuttaId: number;auctionId: number;data: BodyType<AuctionResetInput>},
+        TContext
+      > => {
+      return useMutation(getResetAuctionRunMutationOptions(options));
+    }
 
 export const getStartAuctionUrl = (calcuttaId: number,
     auctionId: number,) => {

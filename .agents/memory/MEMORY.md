@@ -61,6 +61,7 @@
 - [Historical reference bootstrap](historical-reference-bootstrap.md) — seed raw marks only from official saved books or identifiable pre-de-vig inputs; unsupported win gaps remain model-derived.
 - [MTM policy dispatch](mtm-policy-dispatch.md) — every official policy must be accepted consistently by TypeScript validation, Python pre-dispatch, and engine routing.
 - [Auction mutation parity](auction-mutation-parity.md) — HTTP and MCP inventory writes must share identity, revision, and completion rules.
+- [Auction test reset scope](auction-test-reset-scope.md) — test-run resets preserve the Calcutta, roster, and lots; protect settled ownership and retain the event audit.
 - [Consortium owner split history](consortium-owner-split-history.md) — roster shares become fixed once a consortium has recorded sales; corrections are audited separately.
 - [Hosted listener runtime](hosted-listener-runtime.md) — bundled API routes cannot require an addon source file via a source-relative path; preserve its ticket policy in the bundle.
 - [Startup migration validation](startup-migration-validation.md) — a migration already applied in dev can still break first-time production startup; replay pending SQL in a rolled-back transaction.

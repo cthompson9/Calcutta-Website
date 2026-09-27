@@ -1611,6 +1611,28 @@ paths:
         - {name: auctionId, in: path, required: true, schema: {type: number}}
       responses:
         "200": {description: Snapshot, content: {application/json: {schema: {$ref: "#/components/schemas/AuctionSnapshot"}}}}
+  /calcuttas/{calcuttaId}/auctions/{auctionId}/reset:
+    post:
+      operationId: resetAuctionRun
+      tags: [auction]
+      summary: Reset an unfinished auction run while keeping the Calcutta, roster, and lots
+      description: Requires admin access and exact DELETE DRAFT {auctionId} confirmation. Clears bids, nominations, sales, sale-derived primary ownership, and listener sessions. Retains the auction event audit history. Rejects completed seasons or auctions, approved trades, stale revisions, and mismatched ownership.
+      security:
+        - AdminBearerAuth: []
+      parameters:
+        - {name: calcuttaId, in: path, required: true, schema: {type: number}}
+        - {name: auctionId, in: path, required: true, schema: {type: number}}
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: {$ref: "#/components/schemas/AuctionResetInput"}
+      responses:
+        "200": {description: Reset auction snapshot, content: {application/json: {schema: {$ref: "#/components/schemas/AuctionSnapshot"}}}}
+        "400": {description: Invalid request or confirmation, content: {application/json: {schema: {$ref: "#/components/schemas/ErrorResponse"}}}}
+        "401": {description: Admin authentication required, content: {application/json: {schema: {$ref: "#/components/schemas/ErrorResponse"}}}}
+        "404": {description: Auction not found for this Calcutta, content: {application/json: {schema: {$ref: "#/components/schemas/ErrorResponse"}}}}
+        "409": {description: Auction cannot safely be reset or revision is stale, content: {application/json: {schema: {$ref: "#/components/schemas/ErrorResponse"}}}}
   /calcuttas/{calcuttaId}/auctions/{auctionId}/start:
     post:
       operationId: startAuction
@@ -2075,6 +2097,13 @@ components:
       required: [expectedRevision]
       properties:
         expectedRevision: {type: number, minimum: 0, multipleOf: 1}
+    AuctionResetInput:
+      type: object
+      additionalProperties: false
+      required: [expectedRevision, confirmation]
+      properties:
+        expectedRevision: {type: number, minimum: 0, multipleOf: 1}
+        confirmation: {type: string}
     AuctionSnapshot:
       type: object
       additionalProperties: false
