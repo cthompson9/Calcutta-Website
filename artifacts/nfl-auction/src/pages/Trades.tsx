@@ -11,7 +11,7 @@ import {
   useGetHistoricalPoolTrades,
   getGetHistoricalPoolTradesQueryKey,
 } from "@workspace/api-client-react";
-import type { TradeInput, TradeRow } from "@workspace/api-client-react";
+import type { AuctionSnapshot, TradeInput, TradeRow } from "@workspace/api-client-react";
 import { formatCurrency } from "@/lib/utils";
 import { cn } from "@/lib/utils";
 import { todayInNewYork } from "@/lib/newYorkTime";
@@ -36,7 +36,9 @@ import {
   Search,
   ChevronDown,
 } from "lucide-react";
-import { bidderConsortiums, ownerLabelById } from "@/lib/ownerDisplay";
+import { auctionConsortiumsByBidderId, ownerLabelById } from "@/lib/ownerDisplay";
+import { useActiveAuction } from "@/hooks/useActiveAuction";
+import { AuctionRosterSummary } from "@/components/auction/AuctionRosterSummary";
 import { ConsortiumLabel } from "@/components/ConsortiumLabel";
 import { HistoricalTradeTable } from "@/components/HistoricalResultsView";
 
@@ -621,6 +623,7 @@ function TradeForm({
   teams,
   fromBidders,
   toBidders,
+  consortiumByBidderId,
   seasonYear,
   calcuttaId,
   onCreate,
@@ -629,8 +632,9 @@ function TradeForm({
   submitError,
 }: {
   teams: any[];
-  fromBidders: any[];
-  toBidders: any[];
+  fromBidders: Array<{ id: number; name: string }>;
+  toBidders: Array<{ id: number; name: string }>;
+  consortiumByBidderId: Map<number, string>;
   seasonYear: number;
   calcuttaId?: number;
   onCreate: (data: TradeInput) => void;
@@ -706,16 +710,17 @@ function TradeForm({
           <Field label="Seller / Short Seller">
             <select value={fromId} onChange={(e) => setFromId(e.target.value)} className="w-full border border-border bg-background px-3 py-2 text-sm">
               <option value="">Select seller…</option>
-              {eligibleFromBidders.map((b: any) => <option key={b.id} value={b.id}>{b.name}</option>)}
+              {eligibleFromBidders.map((b) => <option key={b.id} value={b.id}>{consortiumByBidderId.has(b.id) ? `${consortiumByBidderId.get(b.id)} — ${b.name}` : b.name}</option>)}
             </select>
           </Field>
 
           <Field label="To Owner">
             <select value={toId} onChange={(e) => setToId(e.target.value)} className="w-full border border-border bg-background px-3 py-2 text-sm">
               <option value="">Select owner…</option>
-              {toBidders.map((b: any) => <option key={b.id} value={b.id}>{b.name}</option>)}
+              {toBidders.map((b) => <option key={b.id} value={b.id}>{consortiumByBidderId.has(b.id) ? `${consortiumByBidderId.get(b.id)} — ${b.name}` : b.name}</option>)}
             </select>
           </Field>
+          <p className="text-xs text-muted-foreground">Select an owner within the consortium. Trades are recorded against owners, not the consortium itself.</p>
 
           {/* Percentage */}
           <Field label={`% of team traded: ${percentage}%`}>
@@ -837,16 +842,22 @@ function Field({ label, children }: { label: string; children: React.ReactNode }
 
 export default function Trades() {
   const { year, selectedCalcutta } = useSeason();
+  const { data: auction, error: auctionError } = useActiveAuction(selectedCalcutta?.id);
   if (selectedCalcutta && selectedCalcutta.sport !== "NFL") {
-    return <LiveTrades poolCalcuttaId={selectedCalcutta.id} poolYear={selectedCalcutta.year} />;
+    return <LiveTrades poolCalcuttaId={selectedCalcutta.id} poolYear={selectedCalcutta.year} auction={auction} auctionError={auctionError} />;
   }
   const usesLiveTrades =
     selectedCalcutta?.sport === "NFL" && year >= 2025;
 
-  return usesLiveTrades ? <LiveTrades /> : <HistoricalTrades />;
+  return usesLiveTrades
+    ? <LiveTrades auction={auction} auctionError={auctionError} />
+    : <HistoricalTrades auction={auction} auctionError={auctionError} />;
 }
 
-function HistoricalTrades() {
+function HistoricalTrades({ auction, auctionError }: {
+  auction: AuctionSnapshot | null | undefined;
+  auctionError: Error | null;
+}) {
   const { selectedCalcutta } = useSeason();
   const { data: historicalPools, isLoading: loadingPools } =
     useGetHistoricalPools();
@@ -882,6 +893,7 @@ function HistoricalTrades() {
           Historical trade ledger · {selectedCalcutta?.year}
         </p>
       </header>
+      <AuctionRosterSummary auction={auction} error={auctionError} />
 
       {loadingPools || (historicalPool != null && loadingTrades) ? (
         <div className="space-y-3 animate-pulse">
@@ -920,10 +932,14 @@ function HistoricalTrades() {
 function LiveTrades({
   poolCalcuttaId,
   poolYear,
+  auction,
+  auctionError,
 }: {
   poolCalcuttaId?: number;
   poolYear?: number;
-} = {}) {
+  auction: AuctionSnapshot | null | undefined;
+  auctionError: Error | null;
+}) {
   const { year: seasonYear, setYear, selectedCalcutta } = useSeason();
   const year = poolYear ?? seasonYear;
   const isNflCalcutta = selectedCalcutta?.sport === "NFL";
@@ -950,7 +966,21 @@ function LiveTrades({
   const { data: bidderDirectory } = useGetBidders(bidderParams, {
     query: { enabled: calcuttaId != null, queryKey: getGetBiddersQueryKey(bidderParams) },
   });
-  const consortiumByBidderId = bidderConsortiums(bidderDirectory);
+  const consortiumByBidderId = useMemo(
+    () => auctionConsortiumsByBidderId(auction, bidderDirectory),
+    [auction, bidderDirectory],
+  );
+  const tradeBidders = useMemo(() => {
+    const byId = new Map((bidderDirectory ?? []).map((bidder) => [
+      bidder.id, { id: bidder.id, name: bidder.name },
+    ] as const));
+    for (const consortium of auction?.consortia ?? []) {
+      for (const owner of consortium.owners) {
+        byId.set(owner.bidderId, { id: owner.bidderId, name: owner.bidderName });
+      }
+    }
+    return [...byId.values()].sort((a, b) => a.name.localeCompare(b.name));
+  }, [auction, bidderDirectory]);
   const { mutate: createTrade, isPending: creating } = useCreateTrade();
   async function handleDelete(id: number) {
     if (!adminKey || !window.confirm("Delete this pending trade record?")) return;
@@ -1092,6 +1122,7 @@ function LiveTrades({
           </button>
         </div>
       </header>
+      <AuctionRosterSummary auction={auction} error={auctionError} />
 
       {sourceTarget.tradeId != null && (
         <div className="border border-primary/30 bg-primary/5 px-3 py-2 text-xs font-mono text-muted-foreground">
@@ -1105,11 +1136,12 @@ function LiveTrades({
         </div>
       )}
 
-      {showForm && teams && bidderDirectory && (
+      {showForm && teams && (bidderDirectory || auction) && (
         <TradeForm
           teams={teams}
-          fromBidders={bidderDirectory}
-          toBidders={bidderDirectory}
+          fromBidders={tradeBidders}
+          toBidders={tradeBidders}
+          consortiumByBidderId={consortiumByBidderId}
           seasonYear={year}
           calcuttaId={calcuttaId}
           onCreate={(data) =>

@@ -1,5 +1,11 @@
+import type { AuctionSnapshot } from "@workspace/api-client-react";
+
+let auctionOverride: AuctionSnapshot | null = null;
 vi.mock("@/hooks/useActiveAuction", () => ({
-  useActiveAuction: () => ({ data: null, isLoading: false, error: null }),
+  useActiveAuction: (calcuttaId: number | undefined) => ({
+    data: auctionOverride?.calcuttaId === calcuttaId ? auctionOverride : null,
+    isLoading: false, error: null,
+  }),
 }));
 import { render, screen, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
@@ -305,6 +311,7 @@ async function selectCalcutta(user: ReturnType<typeof userEvent.setup>, label: s
 
 describe("Results Calcutta data source", () => {
   beforeEach(() => {
+    auctionOverride = null;
     mtmValuation = undefined;
     liveOwnerRowsOverride = undefined;
     localStorage.clear();
@@ -352,6 +359,47 @@ describe("Results Calcutta data source", () => {
     expect(screen.getByRole("complementary", { name: "Detail panel" })).toBeInTheDocument();
     expect(screen.getByRole("button", { name: "By Consortium" })).toBeInTheDocument();
     expect(screen.queryByText("Blue Bloods")).not.toBeInTheDocument();
+  });
+
+  it("shows registered consortia and owners in a draft pool before any sale", async () => {
+    auctionOverride = {
+      id: 60, calcuttaId: 1, status: "setup", revision: 0,
+      currentLotId: null, createdAt: "2026-09-01T00:00:00Z", startedAt: null, completedAt: null,
+      lots: [], sales: [], metrics: { poolSizeCents: 0, lotsSold: 0, totalLots: 0, averageSaleCents: null },
+      consortia: [{ id: 70, auctionId: 60, displayName: "Draft Crew", active: 1, owners: [
+        { bidderId: 81, bidderName: "Taylor", share: 0.75 },
+        { bidderId: 82, bidderName: "Morgan", share: 0.25 },
+      ] }],
+    };
+    const user = userEvent.setup();
+    renderResults();
+    await selectCalcutta(user, "Calcutta I - NCAAM 2022");
+
+    const roster = await screen.findByTestId("auction-roster-summary");
+    expect(within(roster).getByText("Draft Crew")).toBeInTheDocument();
+    expect(within(roster).getByText("Taylor 75.00% · Morgan 25.00%")).toBeInTheDocument();
+    const row = screen.getByTestId("row-consortium-0");
+    expect(within(row).getByText("Draft Crew")).toBeInTheDocument();
+    expect(within(row).getAllByText("—")).toHaveLength(3);
+    await user.click(row);
+    expect(screen.getByText(/No lot has been sold to this consortium yet/)).toBeInTheDocument();
+    await user.click(screen.getByTestId("tab-byTeam"));
+    expect(screen.getByTestId("auction-roster-summary")).toBeInTheDocument();
+  });
+
+  it("shows the selected NFL auction roster independently of financial owner rows", () => {
+    auctionOverride = {
+      id: 61, calcuttaId: 8, status: "setup", revision: 0,
+      currentLotId: null, createdAt: "2026-09-01T00:00:00Z", startedAt: null, completedAt: null,
+      lots: [], sales: [], metrics: { poolSizeCents: 0, lotsSold: 0, totalLots: 0, averageSaleCents: null },
+      consortia: [{ id: 71, auctionId: 61, displayName: "New NFL Group", active: 1, owners: [
+        { bidderId: 83, bidderName: "Jordan", share: 1 },
+      ] }],
+    };
+    renderResults();
+    const roster = screen.getByTestId("auction-roster-summary");
+    expect(within(roster).getByText("New NFL Group")).toBeInTheDocument();
+    expect(within(roster).getByText("Jordan 100.00%")).toBeInTheDocument();
   });
 
   it("keeps Calcutta VIII on live Results without the retired command-center label or Compare tab", () => {

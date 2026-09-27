@@ -51,7 +51,8 @@ import {
   X,
 } from "lucide-react";
 import { Link } from "wouter";
-import { bidderConsortiums, ownerLabelById } from "@/lib/ownerDisplay";
+import { auctionConsortiumsByBidderId, ownerLabelById } from "@/lib/ownerDisplay";
+import { AuctionRosterSummary } from "@/components/auction/AuctionRosterSummary";
 import { ConsortiumLabel } from "@/components/ConsortiumLabel";
 import { auctionResultHref, tradeHref } from "@/lib/resultSourceLinks";
 import {
@@ -122,7 +123,7 @@ function NonNflResults({ calcutta }: { calcutta: CalcuttaOption }) {
   const [tab, setTab] = useState<"byOwner" | "byTeam">("byOwner");
   const [selectedBuyer, setSelectedBuyer] = useState<string | null>(null);
   const [search, setSearch] = useState("");
-  const { data: auction } = useActiveAuction(calcutta.id);
+  const { data: auction, error: auctionError } = useActiveAuction(calcutta.id);
   const params = { season: calcutta.year, calcuttaId: calcutta.id };
   const { data: summary, isLoading, error, refetch } = useGetAuctionSummary(params, {
     query: {
@@ -141,8 +142,7 @@ function NonNflResults({ calcutta }: { calcutta: CalcuttaOption }) {
         };
       })
     : summary?.auctionResults ?? [];
-  const buyers = Array.from(
-    (auction?.sales?.length
+  const buyersByName = (auction?.sales?.length
       ? auction.sales.flatMap((sale) => sale.allocations.map((allocation) => ({
           buyer: allocation.consortiumName || allocation.bidderName,
           cost: allocation.cents / 100,
@@ -157,8 +157,13 @@ function NonNflResults({ calcutta }: { calcutta: CalcuttaOption }) {
         groups.set(buyer, entry);
       }
       return groups;
-    }, new Map<string, { name: string; lots: number; spent: number }>()),
-  ).map(([, entry]) => entry);
+    }, new Map<string, { name: string; lots: number; spent: number }>());
+  for (const consortium of auction?.consortia ?? []) {
+    if (!buyersByName.has(consortium.displayName)) {
+      buyersByName.set(consortium.displayName, { name: consortium.displayName, lots: 0, spent: 0 });
+    }
+  }
+  const buyers = Array.from(buyersByName.values());
   const selected = buyers.find((buyer) => buyer.name === selectedBuyer);
   const filteredBuyers = buyers.filter((buyer) => buyer.name.toLowerCase().includes(search.toLowerCase().trim()));
   const filteredSales = sales.filter((sale) => `${sale.teamName} ${sale.winnerName}`.toLowerCase().includes(search.toLowerCase().trim()));
@@ -183,6 +188,7 @@ function NonNflResults({ calcutta }: { calcutta: CalcuttaOption }) {
         <span className="sr-only">{calcutta.name} · {calcutta.sport} {calcutta.year}</span>
       </header>
       <div className="hidden px-4 md:block md:px-0"><ReleaseNotes /></div>
+      <div className="mx-4 md:mx-0"><AuctionRosterSummary auction={auction} error={auctionError} /></div>
       <div className="mx-4 flex overflow-x-auto border-b border-border md:mx-0">
         {(["byOwner", "byTeam"] as const).map((view) => (
           <button key={view} type="button" data-testid={`tab-${view}`} onClick={() => setTab(view)}
@@ -238,7 +244,7 @@ function NonNflResults({ calcutta }: { calcutta: CalcuttaOption }) {
               <div className="flex flex-col gap-3 border-b border-border p-4 sm:flex-row sm:items-center sm:justify-between">
                 <div>
                   <p className="font-mono text-[10px] font-bold uppercase tracking-widest text-primary">{tab === "byOwner" ? "Live standings" : "By team standings"}</p>
-                  <p className="mt-1 text-xs text-muted-foreground">{tab === "byOwner" ? "Select a consortium to inspect its recorded auction positions." : "Recorded sales only · MTM, scoring and payouts are not available for this pool."}</p>
+                   <p className="mt-1 text-xs text-muted-foreground">{tab === "byOwner" ? "Registered consortia appear before sales; select one to inspect recorded positions." : "Recorded sales only · MTM, scoring and payouts are not available for this pool."}</p>
                 </div>
                 <label className="relative block sm:w-64">
                   <Search className="pointer-events-none absolute left-2.5 top-2.5 h-3.5 w-3.5 text-muted-foreground" aria-hidden="true" />
@@ -267,7 +273,7 @@ function NonNflResults({ calcutta }: { calcutta: CalcuttaOption }) {
                         className={cn("cursor-pointer hover:bg-muted/40 focus:bg-muted/40 focus:outline-none", selectedBuyer === buyer.name && "bg-primary/5")}>
                         <td className="px-4 py-3 text-center font-mono text-muted-foreground">{index + 1}</td>
                         <td className="px-3 py-3 font-bold">{buyer.name}</td>
-                        <td className="px-3 py-3 text-right font-mono tabular-nums">{formatCurrency(buyer.spent)}</td>
+                         <td className="px-3 py-3 text-right font-mono tabular-nums">{buyer.lots ? formatCurrency(buyer.spent) : "—"}</td>
                         <td className="px-3 py-3 text-right text-muted-foreground">—</td>
                         <td className="px-3 py-3 text-right text-muted-foreground">—</td>
                         <td className="px-3 py-3 text-right font-mono">{buyer.lots}</td>
@@ -284,8 +290,8 @@ function NonNflResults({ calcutta }: { calcutta: CalcuttaOption }) {
                     ))}
                     {(tab === "byOwner" ? filteredBuyers.length : filteredSales.length) === 0 && (
                       <tr><td colSpan={6} className="px-6 py-16 text-center">
-                        <p className="font-mono text-xs font-bold uppercase tracking-widest">{isLoading ? "Loading auction sales…" : search ? "No matching sales" : "No auction sales yet"}</p>
-                        <p className="mt-2 text-sm text-muted-foreground">Names, costs and returns remain blank until this pool records sales.</p>
+                         <p className="font-mono text-xs font-bold uppercase tracking-widest">{isLoading ? "Loading auction sales…" : search ? "No matching entries" : "No auction sales yet"}</p>
+                         <p className="mt-2 text-sm text-muted-foreground">Costs and returns remain blank until this pool records sales.</p>
                       </td></tr>
                     )}
                   </tbody>
@@ -306,7 +312,7 @@ function NonNflResults({ calcutta }: { calcutta: CalcuttaOption }) {
                     <button type="button" onClick={() => setSelectedBuyer(null)} aria-label="Close detail" data-testid="button-close-detail" className="text-muted-foreground hover:text-foreground"><X className="h-4 w-4" /></button>
                   </div>
                   <div className="mt-6 grid grid-cols-2 gap-4 border-y border-border py-4">
-                    <CommandMetric label="Auction cost" value={formatCurrency(selected.spent)} />
+                   <CommandMetric label="Auction cost" value={selected.lots ? formatCurrency(selected.spent) : "—"} />
                     <CommandMetric label="Net MTM" value="—" />
                   </div>
                   <p className="mt-5 font-mono text-[10px] font-bold uppercase tracking-widest text-muted-foreground">Recorded positions</p>
@@ -315,7 +321,7 @@ function NonNflResults({ calcutta }: { calcutta: CalcuttaOption }) {
                       <li key={`${lot.name}-${index}`} className="flex justify-between gap-3 py-3 text-sm"><span>{lot.name}</span><span className="shrink-0 font-mono">{formatCurrency(lot.cost)}</span></li>
                     ))}
                   </ul>
-                  <p className="mt-5 text-xs text-muted-foreground">Valuation and returns are unavailable for this pool.</p>
+                   <p className="mt-5 text-xs text-muted-foreground">{selected.lots ? "Valuation and returns are unavailable for this pool." : "No lot has been sold to this consortium yet. Ownership and valuation remain unavailable."}</p>
                 </div>
               ) : (
                 <div>
@@ -342,6 +348,7 @@ function NflResults() {
   const prefersHistoricalResults =
     selectedCalcutta != null && !usesLiveResults;
   const calcuttaId = usesLiveResults ? selectedCalcutta.id : undefined;
+  const { data: auction, error: auctionError } = useActiveAuction(selectedCalcutta?.id);
   const [returnState, setReturnState] = useState(readResultsReturnState);
   const [tab, setTab] = useState<TabId>(returnState.tab);
   const [expandedOwner, setExpandedOwner] = useState<number | null>(null);
@@ -516,7 +523,7 @@ function NflResults() {
     { season: year, calcuttaId },
     { query: { enabled: usesLiveResults, queryKey: getGetBiddersQueryKey({ season: year, calcuttaId }) } },
   );
-  const consortiumByBidderId = useMemo(() => bidderConsortiums(bidders), [bidders]);
+  const consortiumByBidderId = useMemo(() => auctionConsortiumsByBidderId(auction, bidders), [auction, bidders]);
 
   const isLoading = prefersHistoricalResults
     ? loadingHistoricalPools ||
@@ -560,6 +567,9 @@ function NflResults() {
       <div className="hidden px-4 md:block md:px-0">
         <ReleaseNotes />
       </div>
+      {selectedCalcutta && (
+        <div className="mx-4 md:mx-0"><AuctionRosterSummary auction={auction} error={auctionError} /></div>
+      )}
 
       {/* Tabs */}
       <div className="flex border-b border-border overflow-x-auto no-scrollbar mx-4 md:mx-0">

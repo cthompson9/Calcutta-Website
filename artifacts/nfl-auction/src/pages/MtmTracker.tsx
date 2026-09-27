@@ -7,6 +7,7 @@ import {
   getGetMtmValuationQueryKey,
 } from "@workspace/api-client-react";
 import type {
+  AuctionSnapshot,
   MtmData,
   MtmWeekData,
   MtmTeamWeekMarketStatus,
@@ -27,10 +28,12 @@ import { trackEvent } from "@/lib/analytics";
 import { TrendingUp, TrendingDown, Plus, X, ChevronDown, ChevronUp, Activity, AlertTriangle, ShieldCheck, Zap, Info, ServerOff, RefreshCw, Search, ListFilter, Trash2 } from "lucide-react";
 import { toast } from "sonner";
 import {
-  bidderConsortiumsByName,
+  auctionConsortiumsByBidderName,
   combinedOwnerLabel,
   ownerLabel,
 } from "@/lib/ownerDisplay";
+import { AuctionRosterSummary } from "@/components/auction/AuctionRosterSummary";
+import { useActiveAuction } from "@/hooks/useActiveAuction";
 import { ConsortiumLabel } from "@/components/ConsortiumLabel";
 import { Tooltip, TooltipContent, TooltipTrigger } from "@/components/ui/tooltip";
 import { momentumBaselineNetPayout } from "@/lib/mtmMomentum";
@@ -416,13 +419,17 @@ export function AdminMtmDiagnostics({
 
 export default function MtmTracker() {
   const { selectedCalcutta } = useSeason();
+  const { data: auction, error: auctionError } = useActiveAuction(selectedCalcutta?.id);
   if (selectedCalcutta && selectedCalcutta.sport !== "NFL") {
-    return <UnpopulatedAnalysis name={selectedCalcutta.name} sport={selectedCalcutta.sport} year={selectedCalcutta.year} />;
+    return <UnpopulatedAnalysis name={selectedCalcutta.name} sport={selectedCalcutta.sport} year={selectedCalcutta.year} auction={auction} auctionError={auctionError} />;
   }
-  return <NflMtmTracker />;
+  return <NflMtmTracker auction={auction} auctionError={auctionError} />;
 }
 
-function UnpopulatedAnalysis({ name, sport, year }: { name: string; sport: string; year: number }) {
+function UnpopulatedAnalysis({ name, sport, year, auction, auctionError }: {
+  name: string; sport: string; year: number;
+  auction: AuctionSnapshot | null | undefined; auctionError: Error | null;
+}) {
   return (
     <div className="mx-auto max-w-5xl space-y-5 px-4 pb-6 pt-4 md:space-y-6 md:p-8">
       <header className="flex flex-col items-center text-center">
@@ -430,6 +437,7 @@ function UnpopulatedAnalysis({ name, sport, year }: { name: string; sport: strin
         <h1 className="font-serif text-4xl font-medium tracking-[-0.035em] md:text-5xl" data-testid="text-mtm-title">Analysis</h1>
         <p className="mt-3 font-mono text-xs uppercase tracking-widest text-muted-foreground">Current team and consortium values · {year}</p>
       </header>
+      <AuctionRosterSummary auction={auction} error={auctionError} />
       <section className="border border-border bg-card" aria-label={`${sport} analysis`}>
         <div className="flex flex-wrap items-start justify-between gap-4 border-b border-border p-4">
           <div>
@@ -472,12 +480,14 @@ function UnpopulatedAnalysis({ name, sport, year }: { name: string; sport: strin
   );
 }
 
-function NflMtmTracker() {
+function NflMtmTracker({ auction, auctionError }: {
+  auction: AuctionSnapshot | null | undefined; auctionError: Error | null;
+}) {
   const { year, selectedCalcutta } = useSeason();
   const isNflCalcutta = selectedCalcutta?.sport === "NFL";
   const calcuttaId = isNflCalcutta ? selectedCalcutta.id : undefined;
   const { data: bidders } = useGetBidders({});
-  const consortiumByName = bidderConsortiumsByName(bidders);
+  const consortiumByName = auctionConsortiumsByBidderName(auction, bidders);
   const { adminKey, lock: clearAdminKey } = useAdminAccess();
   const [pipelineStatus, setPipelineStatus] = useState<PipelineStatus | null>(null);
   const [pipelineLoading, setPipelineLoading] = useState(false);
@@ -589,6 +599,7 @@ function NflMtmTracker() {
           </p>
         </div>
       </header>
+      <AuctionRosterSummary auction={auction} error={auctionError} />
 
       {isNflCalcutta && (
         <PipelineMarkPanel

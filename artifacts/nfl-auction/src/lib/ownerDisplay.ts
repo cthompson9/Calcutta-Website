@@ -1,4 +1,4 @@
-import type { Bidder } from "@workspace/api-client-react";
+import type { AuctionSnapshot, Bidder } from "@workspace/api-client-react";
 
 export function bidderConsortiums(
   bidders: Bidder[] | undefined,
@@ -18,6 +18,24 @@ export function bidderConsortiumsByName(
       .filter((bidder): bidder is Bidder & { consortium: string } => Boolean(bidder.consortium))
       .map((bidder) => [bidder.name, bidder.consortium]),
   );
+}
+
+export function auctionConsortiumsByBidderId(
+  auction: AuctionSnapshot | null | undefined,
+  bidders: Bidder[] | undefined,
+): Map<number, string> {
+  if (!auction) return bidderConsortiums(bidders);
+  return new Map(auction.consortia.flatMap((consortium) =>
+    consortium.owners.map((owner) => [owner.bidderId, consortium.displayName] as const)));
+}
+
+export function auctionConsortiumsByBidderName(
+  auction: AuctionSnapshot | null | undefined,
+  bidders: Bidder[] | undefined,
+): Map<string, string> {
+  if (!auction) return bidderConsortiumsByName(bidders);
+  return new Map(auction.consortia.flatMap((consortium) =>
+    consortium.owners.map((owner) => [owner.bidderName, consortium.displayName] as const)));
 }
 
 export function ownerLabel(
