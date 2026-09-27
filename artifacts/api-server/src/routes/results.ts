@@ -69,7 +69,7 @@ async function resolveNflCalcutta(
   seasonId: number,
   calcuttaId?: number | null,
 ): Promise<number | null> {
-  return resolveCalcuttaId(db, { seasonId, calcuttaId });
+  return resolveCalcuttaId(db, { seasonId, sport: "NFL", calcuttaId });
 }
 
 async function loadCalcuttaTeamIds(calcuttaId: number): Promise<number[]> {
@@ -686,10 +686,10 @@ router.get("/results", async (req, res): Promise<void> => {
   const calcuttaTeamIds = await loadCalcuttaTeamIds(resolvedCalcuttaId);
 
   let teamQuery = db.select().from(teamsTable).$dynamic();
-  if (conference)
-    teamQuery = teamQuery.where(eq(teamsTable.conference, conference));
-  if (search)
-    teamQuery = teamQuery.where(ilike(teamsTable.name, `%${search}%`));
+  const teamConditions = [eq(teamsTable.sport, "NFL")];
+  if (conference) teamConditions.push(eq(teamsTable.conference, conference));
+  if (search) teamConditions.push(ilike(teamsTable.name, `%${search}%`));
+  teamQuery = teamQuery.where(and(...teamConditions));
   const allTeams = await teamQuery.orderBy(
     teamsTable.conference,
     teamsTable.division,
@@ -824,7 +824,8 @@ router.get("/results/by-owner", async (req, res): Promise<void> => {
   await ensureWeekZeroReportingBaseline(seasonId, resolvedCalcuttaId);
   const calcuttaTeamIds = await loadCalcuttaTeamIds(resolvedCalcuttaId);
 
-  const allTeams = await db.select().from(teamsTable);
+  const allTeams = await db.select().from(teamsTable)
+    .where(eq(teamsTable.sport, "NFL"));
   const allBidders = await db
     .select({
       id: biddersTable.id,
@@ -1227,7 +1228,10 @@ router.post("/results/upsert", requireAdmin, async (req, res): Promise<void> => 
   const teamInfo = await db
     .select()
     .from(teamsTable)
-    .where(eq(teamsTable.id, data.teamId))
+    .where(and(
+      eq(teamsTable.id, data.teamId),
+      eq(teamsTable.sport, "NFL"),
+    ))
     .limit(1);
   const team = teamInfo[0];
   if (!team) {

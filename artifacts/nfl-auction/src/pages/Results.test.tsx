@@ -3,6 +3,7 @@ import userEvent from "@testing-library/user-event";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import { Shell } from "@/components/layout/Shell";
 import { SeasonProvider } from "@/hooks/useSeason";
+import { AdminAccessProvider } from "@/hooks/useAdminAccess";
 import Results from "@/pages/Results";
 
 const calcuttas = [
@@ -285,11 +286,18 @@ vi.mock("@workspace/api-client-react", () => {
 function renderResults() {
   return render(
     <SeasonProvider>
-      <Shell>
-        <Results />
-      </Shell>
+      <AdminAccessProvider>
+        <Shell>
+          <Results />
+        </Shell>
+      </AdminAccessProvider>
     </SeasonProvider>,
   );
+}
+
+async function selectCalcutta(user: ReturnType<typeof userEvent.setup>, label: string) {
+  await user.click(screen.getByTestId("select-calcutta-desktop"));
+  await user.click(await screen.findByRole("option", { name: label }));
 }
 
 describe("Results Calcutta data source", () => {
@@ -304,7 +312,7 @@ describe("Results Calcutta data source", () => {
     const user = userEvent.setup();
     renderResults();
 
-    await user.selectOptions(screen.getByTestId("select-calcutta-desktop"), "3");
+    await selectCalcutta(user, "Calcutta III - NFL 2023");
 
     const ownerRow = await screen.findByTestId("historical-owner-row");
     expect(within(ownerRow).getByText("North Star")).toBeInTheDocument();
@@ -328,15 +336,16 @@ describe("Results Calcutta data source", () => {
     expect(within(tradeRow).getByText("25.0%")).toBeInTheDocument();
   });
 
-  it("allows non-NFL historical Results for Calcutta I", async () => {
+  it("shows the selected non-NFL pool results view without falling back to historical data", async () => {
     const user = userEvent.setup();
     renderResults();
 
-    await user.selectOptions(screen.getByTestId("select-calcutta-desktop"), "1");
+    await selectCalcutta(user, "Calcutta I - NCAAM 2022");
 
-    expect(await screen.findByTestId("historical-results-notice")).toBeInTheDocument();
-    expect(screen.getByText("Blue Bloods")).toBeInTheDocument();
-    expect(screen.queryByText(/reports are not available yet/i)).not.toBeInTheDocument();
+    expect(await screen.findByRole("region", { name: "NCAAM results" })).toBeInTheDocument();
+    expect(screen.getByText(/auction summary is not available for this pool yet/i)).toBeInTheDocument();
+    expect(screen.getByText(/scoring, final standings, and payout calculations are not supported/i)).toBeInTheDocument();
+    expect(screen.queryByText("Blue Bloods")).not.toBeInTheDocument();
   });
 
   it("keeps Calcutta VIII on live Results without the retired command-center label or Compare tab", () => {

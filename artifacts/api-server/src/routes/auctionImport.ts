@@ -92,7 +92,8 @@ function assertCompleteImport(teamCount: number, sourceLabel: string): void {
 
 async function resolveImportTeams(sourceTeams: AuctionProTeam[]): Promise<ResolvedImportTeam[]> {
   const [teams, bidders] = await Promise.all([
-    db.select({ id: teamsTable.id, name: teamsTable.name }).from(teamsTable),
+    db.select({ id: teamsTable.id, name: teamsTable.name }).from(teamsTable)
+      .where(eq(teamsTable.sport, "NFL")),
     db.select({ id: biddersTable.id, name: biddersTable.name }).from(biddersTable),
   ]);
 
@@ -173,6 +174,7 @@ router.post("/auction/import", requireAdmin, async (req, res): Promise<void> => 
       );
       const calcuttaId = await resolveCalcuttaId(tx, {
         seasonId: seasonRows[0]!.id,
+        sport: "NFL",
         calcuttaId: (parsed.data as typeof parsed.data & { calcuttaId?: number }).calcuttaId,
       });
       if (!calcuttaId) throw new AuctionProImportError("Calcutta not found for this season.", 404);
@@ -341,7 +343,8 @@ router.post("/auction/import/draft-order", requireAdmin, async (req, res): Promi
     const rawEntries = await fetchDraftOrderPayload();
 
     const [teams, bidders] = await Promise.all([
-      db.select({ id: teamsTable.id, name: teamsTable.name }).from(teamsTable),
+      db.select({ id: teamsTable.id, name: teamsTable.name }).from(teamsTable)
+        .where(eq(teamsTable.sport, "NFL")),
       db.select({ id: biddersTable.id, name: biddersTable.name }).from(biddersTable),
     ]);
 
@@ -401,6 +404,7 @@ router.post("/auction/import/draft-order", requireAdmin, async (req, res): Promi
       );
       const calcuttaId = await resolveCalcuttaId(tx, {
         seasonId: seasonRows[0]!.id,
+        sport: "NFL",
         calcuttaId: (parsed.data as typeof parsed.data & { calcuttaId?: number }).calcuttaId,
       });
       if (!calcuttaId) throw new DraftOrderImportError("Calcutta not found for this season.", 404);

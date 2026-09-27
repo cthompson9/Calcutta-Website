@@ -248,6 +248,7 @@ async function resolveContext(
   if (!season[0]) return { error: `Season ${seasonYear} not found.`, status: 404 };
   const calcuttaId = await resolveCalcuttaId(db, {
     seasonId: season[0].id,
+    sport: "NFL",
     calcuttaId: requestedCalcuttaId,
   });
   if (!calcuttaId) {
@@ -491,6 +492,7 @@ async function resolveTeamForCalcutta(
   const teams = await db.select({
     id: teamsTable.id,
     name: teamsTable.name,
+    sport: teamsTable.sport,
     conference: teamsTable.conference,
     division: teamsTable.division,
   }).from(teamsTable).innerJoin(

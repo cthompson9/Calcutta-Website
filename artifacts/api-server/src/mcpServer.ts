@@ -113,7 +113,10 @@ async function findTeam(name: string) {
   const rows = await db
     .select()
     .from(teamsTable)
-    .where(ilike(teamsTable.name, `%${name}%`))
+    .where(and(
+      eq(teamsTable.sport, "NFL"),
+      ilike(teamsTable.name, `%${name}%`),
+    ))
     .limit(1);
   return rows[0] ?? null;
 }
@@ -132,7 +135,9 @@ function mtmQuoteTeamCode(team: string | null, ticker: string): string | null {
 }
 
 async function resolveExistingTeam(name: string): Promise<NamedRecord | { error: string }> {
-  const teams = await db.select({ id: teamsTable.id, name: teamsTable.name }).from(teamsTable);
+  const teams = await db.select({ id: teamsTable.id, name: teamsTable.name })
+    .from(teamsTable)
+    .where(eq(teamsTable.sport, "NFL"));
   return resolveUniqueName(teams, name, "Team");
 }
 
@@ -274,7 +279,7 @@ async function getTeamCost(
   seasonId: number,
   calcuttaId?: number,
 ): Promise<number | null> {
-  const resolvedCalcuttaId = await resolveSelectedCalcuttaId(db, { seasonId, calcuttaId });
+  const resolvedCalcuttaId = await resolveSelectedCalcuttaId(db, { seasonId, sport: "NFL", calcuttaId });
   if (!resolvedCalcuttaId) return null;
   const rows = await db
     .select({ costBasis: positionsTable.costBasis })
@@ -294,7 +299,7 @@ async function getTeamCost(
 
 /** Returns effective current owner names for a team in a season (post-trades). */
 async function getTeamOwners(teamId: number, seasonId: number, calcuttaId?: number): Promise<string[]> {
-  const resolvedCalcuttaId = await resolveSelectedCalcuttaId(db, { seasonId, calcuttaId });
+  const resolvedCalcuttaId = await resolveSelectedCalcuttaId(db, { seasonId, sport: "NFL", calcuttaId });
   if (!resolvedCalcuttaId) return [];
   const ownership = await loadSeasonOwnership(seasonId, resolvedCalcuttaId);
   return (ownership.currentOwnersByTeam.get(teamId) ?? []).map((o) => o.bidderName);
@@ -302,7 +307,7 @@ async function getTeamOwners(teamId: number, seasonId: number, calcuttaId?: numb
 
 /** Aggregate cost/return/mtm for a bidder using effective ownership (post-trades). */
 async function getOwnerAgg(bidderId: number, seasonId: number, calcuttaId?: number) {
-  const resolvedCalcuttaId = await resolveSelectedCalcuttaId(db, { seasonId, calcuttaId });
+  const resolvedCalcuttaId = await resolveSelectedCalcuttaId(db, { seasonId, sport: "NFL", calcuttaId });
   if (!resolvedCalcuttaId) {
     return { totalCost: 0, totalReturn: 0, totalMtm: 0, totalNetMtm: 0 };
   }
@@ -1450,7 +1455,7 @@ function buildMcpServer(isAdmin: boolean) {
       const year = season ?? await defaultSeasonYear();
       const sid = await resolveSeasonId(year);
       if (!sid) return text(null);
-      const resolvedCalcuttaId = await resolveSelectedCalcuttaId(db, { seasonId: sid, calcuttaId });
+      const resolvedCalcuttaId = await resolveSelectedCalcuttaId(db, { seasonId: sid, sport: "NFL", calcuttaId });
       if (!resolvedCalcuttaId) return text(null);
       const calculated = (await loadCalculatedTeamReturnsForCalcutta(resolvedCalcuttaId)).get(t.id);
       return text(calculated?.realized?.grossReturn);
@@ -1682,7 +1687,8 @@ function buildMcpServer(isAdmin: boolean) {
       if (!isAdmin) return commissionerAuthorizationRequired();
 
       const [teams, bidders] = await Promise.all([
-        db.select({ id: teamsTable.id, name: teamsTable.name }).from(teamsTable),
+        db.select({ id: teamsTable.id, name: teamsTable.name }).from(teamsTable)
+          .where(eq(teamsTable.sport, "NFL")),
         db.select({ id: biddersTable.id, name: biddersTable.name }).from(biddersTable),
       ]);
       const teamMatch = resolveUniqueName(teams, team, "Team");
@@ -1910,7 +1916,7 @@ function buildMcpServer(isAdmin: boolean) {
           sql`select pg_advisory_xact_lock(${OWNERSHIP_SEASON_LOCK_NAMESPACE}, ${sid})`,
         );
         const created = await createPendingTrade(tx, {
-          seasonId: sid, calcuttaId, teamId: t.id,
+          seasonId: sid, calcuttaId, sport: "NFL", teamId: t.id,
           fromBidderId: from.id, toBidderId: to.id, percentage, price,
           tradeDate: tradeDate ?? todayInNewYork(), notes,
         });
@@ -2132,7 +2138,7 @@ function buildMcpServer(isAdmin: boolean) {
       const year = season ?? await defaultSeasonYear();
       const sid = await resolveSeasonId(year);
       if (!sid) return text(`Season ${year} not found`);
-      const resolvedCalcuttaId = await resolveSelectedCalcuttaId(db, { seasonId: sid, calcuttaId });
+      const resolvedCalcuttaId = await resolveSelectedCalcuttaId(db, { seasonId: sid, sport: "NFL", calcuttaId });
       if (!resolvedCalcuttaId) return text(null);
       const calculated = (await loadCalculatedTeamReturnsForCalcutta(resolvedCalcuttaId, period)).get(t.id);
       if (!await hasConfiguredPayoutRulesForCalcutta(resolvedCalcuttaId)) {
@@ -2182,7 +2188,7 @@ function buildMcpServer(isAdmin: boolean) {
       const saved = await db.transaction(async (tx) => {
         await tx.execute(sql`select pg_advisory_xact_lock(${OWNERSHIP_SEASON_LOCK_NAMESPACE}, ${sid})`);
         await ensureNflSportPeriods(tx);
-        const resolvedCalcuttaId = await resolveSelectedCalcuttaId(tx, { seasonId: sid, calcuttaId });
+        const resolvedCalcuttaId = await resolveSelectedCalcuttaId(tx, { seasonId: sid, sport: "NFL", calcuttaId });
         if (!resolvedCalcuttaId) return null;
         const entry = (await tx
           .select({ id: calcuttaEntriesTable.id })
@@ -2281,7 +2287,7 @@ function buildMcpServer(isAdmin: boolean) {
       if (saved === "game_ledger_authoritative") {
         return text("Error: Realized regular-season snapshots are derived from the NFL game ledger. Update the final game instead.");
       }
-      const resolvedCalcuttaId = await resolveSelectedCalcuttaId(db, { seasonId: sid, calcuttaId });
+      const resolvedCalcuttaId = await resolveSelectedCalcuttaId(db, { seasonId: sid, sport: "NFL", calcuttaId });
       const grossReturn = resolvedCalcuttaId
         ? (await loadCalculatedTeamReturnsForCalcutta(resolvedCalcuttaId, period)).get(t.id)?.[basis]?.grossReturn ?? 0
         : 0;
@@ -2394,6 +2400,7 @@ function buildMcpServer(isAdmin: boolean) {
         );
         const resolvedCalcuttaId = await resolveSelectedCalcuttaId(tx, {
           seasonId: sid,
+          sport: "NFL",
           calcuttaId,
         });
         if (!resolvedCalcuttaId) return false;
@@ -2454,6 +2461,7 @@ function buildMcpServer(isAdmin: boolean) {
       if (!sid) return text(`Season ${year} not found`);
       const resolvedCalcuttaId = await resolveSelectedCalcuttaId(db, {
         seasonId: sid,
+        sport: "NFL",
         calcuttaId,
       });
       if (!resolvedCalcuttaId) {

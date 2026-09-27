@@ -261,7 +261,9 @@ export async function mapSourceActualsForPool(
     eq(eventsTable.sport, "NFL"),
     eq(eventsTable.competition, "NFL_REGULAR_SEASON"),
   ));
-  const teams = await executor.select({ id: teamsTable.id, name: teamsTable.name }).from(teamsTable);
+  const teams = await executor.select({ id: teamsTable.id, name: teamsTable.name })
+    .from(teamsTable)
+    .where(eq(teamsTable.sport, "NFL"));
   const codeByTeamId = new Map<number, string>();
   for (const [code, name] of Object.entries(TEAM_ABBREVIATION_ALIASES)) {
     const team = teams.find((row: { id: number; name: string }) => row.name === name);

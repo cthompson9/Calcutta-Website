@@ -5,13 +5,10 @@
  * NFL Auction Manager API
  * OpenAPI spec version: 0.1.0
  */
-import type { GetTeamsConference } from './getTeamsConference';
-import type { GetTeamsDivision } from './getTeamsDivision';
-import type { GetTeamsSport } from './getTeamsSport';
 
 export type GetTeamsParams = {
-conference?: GetTeamsConference;
-division?: GetTeamsDivision;
+conference?: string;
+division?: string;
 search?: string;
 /**
  * @nullable
@@ -25,5 +22,5 @@ season?: number | null;
  * @nullable
  */
 calcuttaId?: number | null;
-sport?: GetTeamsSport;
+sport?: string;
 };

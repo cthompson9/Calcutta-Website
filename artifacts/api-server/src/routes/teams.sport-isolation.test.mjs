@@ -98,14 +98,16 @@ test(
 
     const { server, baseUrl } = await listen();
     try {
-      const [legacyResponse, nflResponse, cfbResponse] = await Promise.all([
+      const [legacyResponse, nflResponse, cfbResponse, selectedCfbResponse] = await Promise.all([
         fetch(`${baseUrl}/api/teams?season=${year}`),
         fetch(`${baseUrl}/api/teams?season=${year}&sport=NFL`),
         fetch(`${baseUrl}/api/teams?season=${year}&sport=CFB`),
+        fetch(`${baseUrl}/api/teams?season=${year}&calcuttaId=${cfbCalcutta.id}`),
       ]);
       assert.equal(legacyResponse.status, 200);
       assert.equal(nflResponse.status, 200);
       assert.equal(cfbResponse.status, 200);
+      assert.equal(selectedCfbResponse.status, 200);
       assert.deepEqual(
         (await legacyResponse.json()).map((team) => team.id),
         [nflTeam.id],
@@ -116,6 +118,10 @@ test(
       );
       assert.deepEqual(
         (await cfbResponse.json()).map((team) => team.id),
+        [cfbTeam.id],
+      );
+      assert.deepEqual(
+        (await selectedCfbResponse.json()).map((team) => team.id),
         [cfbTeam.id],
       );
 

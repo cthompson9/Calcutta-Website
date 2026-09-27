@@ -725,6 +725,67 @@ export interface CalcuttaOption {
   isCanonical: boolean;
 }
 
+export type CalcuttaCreateType = typeof CalcuttaCreateType[keyof typeof CalcuttaCreateType];
+
+
+export const CalcuttaCreateType = {
+  full_season: 'full_season',
+  postseason: 'postseason',
+} as const;
+
+export type CalcuttaCreateScoringFormat = typeof CalcuttaCreateScoringFormat[keyof typeof CalcuttaCreateScoringFormat];
+
+
+export const CalcuttaCreateScoringFormat = {
+  points: 'points',
+  percentage: 'percentage',
+} as const;
+
+export type CalcuttaCreateRubricItem = {
+  /**
+     * @minLength 1
+     * @maxLength 200
+     */
+  event: string;
+  /** @minimum 0 */
+  value: number;
+};
+
+export interface CalcuttaCreate {
+  /**
+     * @minLength 1
+     * @maxLength 50
+     */
+  sport: string;
+  type: CalcuttaCreateType;
+  /**
+     * @minimum 1900
+     * @maximum 2200
+     */
+  year: number;
+  /**
+     * @minItems 1
+     * @maxItems 500
+     * @items.minLength 1
+     * @items.maxLength 300
+     */
+  lots: string[];
+  scoringFormat: CalcuttaCreateScoringFormat;
+  /**
+     * @minItems 1
+     * @maxItems 500
+     */
+  rubric: CalcuttaCreateRubricItem[];
+}
+
+export interface CreatedCalcutta {
+  id: number;
+  name: string;
+  sport: string;
+  year: number;
+  auctionId: number;
+}
+
 export interface Bidder {
   id: number;
   name: string;
@@ -775,24 +836,6 @@ export interface BidderUpdate {
   calcuttaId?: number;
 }
 
-export type TeamConference = typeof TeamConference[keyof typeof TeamConference];
-
-
-export const TeamConference = {
-  AFC: 'AFC',
-  NFC: 'NFC',
-} as const;
-
-export type TeamDivision = typeof TeamDivision[keyof typeof TeamDivision];
-
-
-export const TeamDivision = {
-  East: 'East',
-  North: 'North',
-  South: 'South',
-  West: 'West',
-} as const;
-
 export interface TeamOwner {
   bidderId: number;
   bidderName: string;
@@ -802,8 +845,8 @@ export interface TeamOwner {
 export interface Team {
   id: number;
   name: string;
-  conference: TeamConference;
-  division: TeamDivision;
+  conference: string;
+  division: string;
   bidAmount: number;
   owners: TeamOwner[];
 }
@@ -2801,8 +2844,8 @@ export type AgentIncludeMarketParameter = boolean;
 export type AgentIncludeProjectionParameter = boolean;
 
 export type GetTeamsParams = {
-conference?: GetTeamsConference;
-division?: GetTeamsDivision;
+conference?: string;
+division?: string;
 search?: string;
 /**
  * @nullable
@@ -2816,34 +2859,8 @@ season?: number | null;
  * @nullable
  */
 calcuttaId?: number | null;
-sport?: GetTeamsSport;
+sport?: string;
 };
-
-export type GetTeamsConference = typeof GetTeamsConference[keyof typeof GetTeamsConference];
-
-
-export const GetTeamsConference = {
-  AFC: 'AFC',
-  NFC: 'NFC',
-} as const;
-
-export type GetTeamsDivision = typeof GetTeamsDivision[keyof typeof GetTeamsDivision];
-
-
-export const GetTeamsDivision = {
-  East: 'East',
-  North: 'North',
-  South: 'South',
-  West: 'West',
-} as const;
-
-export type GetTeamsSport = typeof GetTeamsSport[keyof typeof GetTeamsSport];
-
-
-export const GetTeamsSport = {
-  NFL: 'NFL',
-  CFB: 'CFB',
-} as const;
 
 export type GetBiddersParams = {
 /**

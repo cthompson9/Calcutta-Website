@@ -33,6 +33,7 @@ import {
   resolveCalcuttaId,
   resolveDefaultSeasonYearForSport,
   resolveSeasonIdForSport,
+  getCalcuttaContextById,
 } from "../lib/calcuttaContext";
 import { requireAdmin } from "../middlewares/requireAdmin";
 
@@ -40,7 +41,7 @@ const router: IRouter = Router();
 const TeamContextQuery = z.object({
   season: z.coerce.number().int().min(2000).max(2200).optional(),
   calcuttaId: z.coerce.number().int().positive().optional(),
-  sport: z.enum(["NFL", "CFB"]).default("NFL"),
+  sport: z.string().trim().min(1).max(50).default("NFL"),
 });
 
 async function getActiveSeasonId(sport: string): Promise<number> {
@@ -125,29 +126,44 @@ router.get("/teams", async (req, res): Promise<void> => {
     search,
     bidderId,
     season: seasonYear,
-    sport = "NFL",
+    sport: requestedSport = "NFL",
     calcuttaId: requestedCalcuttaId,
   } = parsed.data;
-
-  // Resolve season
-  let seasonId: number | null = null;
-  if (seasonYear != null) {
-    const resolved = await resolveSeasonId(seasonYear, sport);
-    if (!resolved) {
-      // Unknown season → empty list, no active-season fallback
+  const requestSpecifiedSport = req.query["sport"] !== undefined;
+  let sport = requestedSport;
+  let ownershipSeasonId: number;
+  let calcuttaId: number | null;
+  if (requestedCalcuttaId != null) {
+    const context = await getCalcuttaContextById(db, requestedCalcuttaId);
+    if (!context ||
+        (seasonYear != null && context.year !== seasonYear) ||
+        (requestSpecifiedSport && context.sport !== requestedSport)) {
       sendParsedJson(res, GetTeamsResponse, []);
       return;
     }
-    seasonId = resolved;
+    sport = context.sport;
+    ownershipSeasonId = context.seasonId;
+    calcuttaId = await resolveCalcuttaId(db, {
+      seasonId: context.seasonId,
+      calcuttaId: context.id,
+    });
+  } else {
+    let seasonId: number | null = null;
+    if (seasonYear != null) {
+      seasonId = await resolveSeasonId(seasonYear, sport);
+      if (!seasonId) {
+        // Unknown season → empty list, no active-season fallback
+        sendParsedJson(res, GetTeamsResponse, []);
+        return;
+      }
+    }
+    // A team belongs to the selected Calcutta only when it has a ledger entry.
+    ownershipSeasonId = seasonId ?? (await getActiveSeasonId(sport));
+    calcuttaId = await resolveCalcuttaId(db, {
+      seasonId: ownershipSeasonId,
+      sport,
+    });
   }
-
-  // A team belongs to the selected Calcutta only when it has a ledger entry.
-  const ownershipSeasonId = seasonId ?? (await getActiveSeasonId(sport));
-  const calcuttaId = await resolveCalcuttaId(db, {
-    seasonId: ownershipSeasonId,
-    sport,
-    calcuttaId: requestedCalcuttaId,
-  });
   if (!calcuttaId) {
     sendParsedJson(res, GetTeamsResponse, []);
     return;
@@ -336,10 +352,23 @@ router.get("/teams/:id", async (req, res): Promise<void> => {
     sendParsedJson(res, ErrorResponse, { error: query.error.message }, 400);
     return;
   }
-  const sport = query.data.sport ?? "NFL";
-  const seasonId = query.data.season == null
-    ? await getActiveSeasonId(sport)
-    : await resolveSeasonId(query.data.season, sport);
+  let sport = query.data.sport ?? "NFL";
+  let seasonId: number | null;
+  if (query.data.calcuttaId != null) {
+    const context = await getCalcuttaContextById(db, query.data.calcuttaId);
+    if (!context ||
+        (query.data.season != null && context.year !== query.data.season) ||
+        (req.query["sport"] !== undefined && context.sport !== sport)) {
+      sendParsedJson(res, ErrorResponse, { error: "Team not found" }, 404);
+      return;
+    }
+    sport = context.sport;
+    seasonId = context.seasonId;
+  } else {
+    seasonId = query.data.season == null
+      ? await getActiveSeasonId(sport)
+      : await resolveSeasonId(query.data.season, sport);
+  }
   if (seasonId == null) {
     sendParsedJson(res, ErrorResponse, { error: "Team not found" }, 404);
     return;

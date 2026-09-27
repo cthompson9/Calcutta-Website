@@ -83,12 +83,10 @@ paths:
           in: query
           schema:
             type: string
-            enum: [AFC, NFC]
         - name: division
           in: query
           schema:
             type: string
-            enum: [East, North, South, West]
         - name: search
           in: query
           schema:
@@ -109,7 +107,6 @@ paths:
           in: query
           schema:
             type: string
-            enum: [NFL, CFB]
             default: NFL
       responses:
         "200":
@@ -279,6 +276,47 @@ paths:
                 type: array
                 items:
                   $ref: "#/components/schemas/CalcuttaOption"
+    post:
+      operationId: createCalcutta
+      tags: [calcuttas]
+      summary: Create a Calcutta and initialize its auction pool
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/CalcuttaCreate"
+      responses:
+        "201":
+          description: Created Calcutta and setup auction
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/CreatedCalcutta"
+        "400":
+          description: Invalid request
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+        "401":
+          description: Admin authentication required
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+        "409":
+          description: Duplicate Calcutta
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+        "500":
+          description: Could not create Calcutta
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
 
   /calendars:
     get:
@@ -2485,6 +2523,69 @@ components:
           type: boolean
       required: [id, seasonId, name, sport, year, isActive, isComplete, isCanonical]
 
+    CalcuttaCreate:
+      type: object
+      additionalProperties: false
+      properties:
+        sport:
+          type: string
+          minLength: 1
+          maxLength: 50
+        type:
+          type: string
+          enum: [full_season, postseason]
+        year:
+          type: number
+          multipleOf: 1
+          minimum: 1900
+          maximum: 2200
+        lots:
+          type: array
+          minItems: 1
+          maxItems: 500
+          items:
+            type: string
+            minLength: 1
+            maxLength: 300
+        scoringFormat:
+          type: string
+          enum: [points, percentage]
+        rubric:
+          type: array
+          minItems: 1
+          maxItems: 500
+          items:
+            type: object
+            additionalProperties: false
+            properties:
+              event:
+                type: string
+                minLength: 1
+                maxLength: 200
+              value:
+                type: number
+                minimum: 0
+            required: [event, value]
+      required: [sport, type, year, lots, scoringFormat, rubric]
+
+    CreatedCalcutta:
+      type: object
+      properties:
+        id:
+          type: number
+          multipleOf: 1
+        name:
+          type: string
+        sport:
+          type: string
+        year:
+          type: number
+          multipleOf: 1
+        auctionId:
+          type: number
+          multipleOf: 1
+      required: [id, name, sport, year, auctionId]
+
     Bidder:
       type: object
       properties:
@@ -2564,10 +2665,8 @@ components:
           type: string
         conference:
           type: string
-          enum: [AFC, NFC]
         division:
           type: string
-          enum: [East, North, South, West]
         bidAmount:
           type: number
         owners:

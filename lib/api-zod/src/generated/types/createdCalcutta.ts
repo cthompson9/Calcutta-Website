@@ -5,13 +5,11 @@
  * NFL Auction Manager API
  * OpenAPI spec version: 0.1.0
  */
-import type { TeamOwner } from './teamOwner';
 
-export interface Team {
+export interface CreatedCalcutta {
   id: number;
   name: string;
-  conference: string;
-  division: string;
-  bidAmount: number;
-  owners: TeamOwner[];
+  sport: string;
+  year: number;
+  auctionId: number;
 }

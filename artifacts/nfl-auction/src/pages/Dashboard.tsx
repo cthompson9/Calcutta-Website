@@ -81,7 +81,7 @@ export default function Dashboard() {
     },
   );
 
-  const { data: activeAuction, isLoading: loadingActiveAuction, error: activeAuctionError } = useActiveAuction(calcuttaId);
+  const { data: activeAuction, isLoading: loadingActiveAuction, error: activeAuctionError } = useActiveAuction(selectedCalcutta?.id);
 
   const sourceTarget = parseResultSourceTarget(
     typeof window === "undefined" ? location : window.location.href,
@@ -150,6 +150,30 @@ export default function Dashboard() {
     } finally {
       setImporting(false);
     }
+  }
+
+  if (selectedCalcutta && !isNflCalcutta) {
+    return (
+      <div className="mx-auto max-w-7xl space-y-5 px-4 pb-6 pt-8 md:p-8">
+        <header>
+          <h1 className="text-3xl font-serif font-medium tracking-tight md:text-5xl">Auction</h1>
+          <p className="mt-2 text-sm text-muted-foreground">{selectedCalcutta.name} · {selectedCalcutta.sport} {selectedCalcutta.year}</p>
+        </header>
+        <p className="rounded-md border border-border bg-card p-4 text-sm text-muted-foreground">
+          Auction activity is scoped to this Calcutta. NFL historical summaries and scoring rubrics are not shown here.
+        </p>
+        <AuctionRoom
+          calcuttaId={selectedCalcutta.id}
+          year={selectedCalcutta.year}
+          adminKey={adminKey}
+          historicalSummaryRefetch={refetch}
+          activeAuction={activeAuction}
+          hasHistoricalResults={false}
+          isLoading={loadingActiveAuction}
+          error={activeAuctionError}
+        />
+      </div>
+    );
   }
 
   if (loadingSummary) {

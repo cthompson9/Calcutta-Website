@@ -246,12 +246,16 @@ async function resolveOrCreateTeam(
   if (existing) return existing;
   await tx.insert(teamsTable).values({
     name: identity.canonicalName,
+    sport: CFB_SPORT,
     conference: "CFB",
     division: "CFB",
-  }).onConflictDoNothing({ target: teamsTable.name });
+  }).onConflictDoNothing({ target: [teamsTable.sport, teamsTable.name] });
   const rows = await tx.select({ id: teamsTable.id })
     .from(teamsTable)
-    .where(eq(teamsTable.name, identity.canonicalName))
+    .where(and(
+      eq(teamsTable.sport, CFB_SPORT),
+      eq(teamsTable.name, identity.canonicalName),
+    ))
     .limit(1);
   const teamId = rows[0]?.id;
   if (!teamId) throw new Error(`Could not create CFB team ${identity.canonicalName}.`);
@@ -266,7 +270,8 @@ export async function syncCfbEventsTx(
   payload: EspnCfbScoreboardPayload,
 ): Promise<{ eventsUpserted: number; metricsUpserted: number }> {
   const parsed = validateEspnCfbEvents(payload, seasonYear);
-  const teamRows = await tx.select().from(teamsTable);
+  const teamRows = await tx.select().from(teamsTable)
+    .where(eq(teamsTable.sport, CFB_SPORT));
   const teamIdByName = new Map(teamRows.map((team) => [team.name, team.id]));
   const knownIdentities = await tx.select({
     providerTeamId: providerTeamIdentitiesTable.providerTeamId,

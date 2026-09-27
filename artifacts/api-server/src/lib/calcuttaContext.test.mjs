@@ -11,10 +11,18 @@ import {
   resolveCalcuttaId,
   resolveDefaultSeasonYearForSport,
   resolveSeasonIdForSport,
+  hasCalcuttaPoolType,
 } from "./calcuttaContext.ts";
 
+test("pool type duplicate detection separates postseason from full-season formats", () => {
+  assert.equal(hasCalcuttaPoolType(["MLB_FULL_SEASON"], "full_season"), true);
+  assert.equal(hasCalcuttaPoolType(["NFL_REGULAR_SEASON"], "full_season"), true);
+  assert.equal(hasCalcuttaPoolType(["MLB_FULL_SEASON"], "postseason"), false);
+  assert.equal(hasCalcuttaPoolType(["MLB_POSTSEASON"], "postseason"), true);
+});
+
 test(
-  "same-year NFL and CFB contexts resolve independently and reject crossed IDs",
+  "season defaults remain NFL, explicit IDs resolve sport-neutrally, and crossed IDs can be rejected",
   { skip: !process.env.DATABASE_URL },
   async () => {
     await runDatabaseMigrations();
@@ -24,7 +32,7 @@ test(
       label: `${year} shared calendar season`,
     }).returning({ id: seasonsTable.id });
     try {
-      const [nfl, cfb] = await db.insert(calcuttasTable).values([
+      const [nfl, cfb, nflPostseason] = await db.insert(calcuttasTable).values([
         {
           seasonId: season.id,
           year,
@@ -40,6 +48,14 @@ test(
           sport: "CFB",
           competitionFormat: "CFB_REGULAR_SEASON",
           isCanonical: true,
+        },
+        {
+          seasonId: season.id,
+          year,
+          name: `${year} NFL postseason context test`,
+          sport: "NFL",
+          competitionFormat: "NFL_POSTSEASON",
+          isCanonical: false,
         },
       ]).returning({ id: calcuttasTable.id, sport: calcuttasTable.sport });
 
@@ -66,6 +82,25 @@ test(
           calcuttaId: cfb.id,
         }),
         null,
+      );
+      assert.equal(
+        await resolveCalcuttaId(db, {
+          seasonId: season.id,
+          calcuttaId: cfb.id,
+        }),
+        cfb.id,
+      );
+      assert.equal(
+        await resolveCalcuttaId(db, { seasonId: season.id }),
+        nfl.id,
+      );
+      assert.equal(
+        await resolveCalcuttaId(db, { seasonId: season.id, calcuttaId: nflPostseason.id }),
+        nflPostseason.id,
+      );
+      assert.equal(
+        hasCalcuttaPoolType(["NFL_REGULAR_SEASON", "NFL_POSTSEASON"], "postseason"),
+        true,
       );
 
       await assert.rejects(

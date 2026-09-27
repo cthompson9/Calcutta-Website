@@ -9,6 +9,7 @@ class ResizeObserverStub {
 }
 
 globalThis.ResizeObserver = ResizeObserverStub;
+Element.prototype.scrollIntoView ??= () => {};
 
 afterEach(() => {
   cleanup();

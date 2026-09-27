@@ -6,6 +6,7 @@ import {
   useCreateTrade,
   getGetTradesQueryKey,
   getGetTeamsQueryKey,
+  getGetBiddersQueryKey,
   useGetHistoricalPools,
   useGetHistoricalPoolTrades,
   getGetHistoricalPoolTradesQueryKey,
@@ -184,7 +185,7 @@ function TradeActions({
   showDecisions?: boolean;
 }) {
   const { selectedCalcutta } = useSeason();
-  const calcuttaId = selectedCalcutta?.sport === "NFL" ? selectedCalcutta.id : undefined;
+  const calcuttaId = selectedCalcutta?.id;
   const [acting, setActing] = useState(false);
   const [adminError, setAdminError] = useState("");
 
@@ -836,6 +837,9 @@ function Field({ label, children }: { label: string; children: React.ReactNode }
 
 export default function Trades() {
   const { year, selectedCalcutta } = useSeason();
+  if (selectedCalcutta && selectedCalcutta.sport !== "NFL") {
+    return <LiveTrades poolCalcuttaId={selectedCalcutta.id} poolYear={selectedCalcutta.year} />;
+  }
   const usesLiveTrades =
     selectedCalcutta?.sport === "NFL" && year >= 2025;
 
@@ -913,10 +917,17 @@ function HistoricalTrades() {
   );
 }
 
-function LiveTrades() {
-  const { year, setYear, selectedCalcutta } = useSeason();
+function LiveTrades({
+  poolCalcuttaId,
+  poolYear,
+}: {
+  poolCalcuttaId?: number;
+  poolYear?: number;
+} = {}) {
+  const { year: seasonYear, setYear, selectedCalcutta } = useSeason();
+  const year = poolYear ?? seasonYear;
   const isNflCalcutta = selectedCalcutta?.sport === "NFL";
-  const calcuttaId = isNflCalcutta ? selectedCalcutta.id : undefined;
+  const calcuttaId = poolCalcuttaId ?? (isNflCalcutta ? selectedCalcutta.id : undefined);
   const tradeParams = { season: year, calcuttaId };
   const [location] = useLocation();
   const sourceTarget = parseResultSourceTarget(
@@ -930,12 +941,15 @@ function LiveTrades() {
   const sourceExpandedTradeId = useRef<number | null>(null);
 
   const { data: trades, isLoading, refetch } = useGetTrades(tradeParams, {
-    query: { enabled: isNflCalcutta, queryKey: getGetTradesQueryKey(tradeParams) },
+    query: { enabled: calcuttaId != null, queryKey: getGetTradesQueryKey(tradeParams) },
   });
   const { data: teams } = useGetTeams(tradeParams, {
-    query: { enabled: isNflCalcutta, queryKey: getGetTeamsQueryKey(tradeParams) },
+    query: { enabled: calcuttaId != null, queryKey: getGetTeamsQueryKey(tradeParams) },
   });
-  const { data: bidderDirectory } = useGetBidders({});
+  const bidderParams = { season: year, calcuttaId };
+  const { data: bidderDirectory } = useGetBidders(bidderParams, {
+    query: { enabled: calcuttaId != null, queryKey: getGetBiddersQueryKey(bidderParams) },
+  });
   const consortiumByBidderId = bidderConsortiums(bidderDirectory);
   const { mutate: createTrade, isPending: creating } = useCreateTrade();
   async function handleDelete(id: number) {
@@ -994,10 +1008,10 @@ function LiveTrades() {
       ) ?? null;
 
   useEffect(() => {
-    if (sourceTarget.seasonYear != null && sourceTarget.seasonYear !== year) {
+    if (poolCalcuttaId == null && sourceTarget.seasonYear != null && sourceTarget.seasonYear !== year) {
       setYear(sourceTarget.seasonYear);
     }
-  }, [setYear, sourceTarget.seasonYear, year]);
+  }, [poolCalcuttaId, setYear, sourceTarget.seasonYear, year]);
 
   useEffect(() => {
     if (sourceTarget.tradeId == null) {
@@ -1071,7 +1085,7 @@ function LiveTrades() {
           <button
             data-testid="button-submit-trade"
             onClick={() => { setSubmissionError(""); setShowForm(true); }}
-            disabled={!isNflCalcutta}
+            disabled={calcuttaId == null}
             className="flex flex-1 items-center justify-center gap-2 px-4 py-2 bg-primary text-primary-foreground font-mono font-bold uppercase tracking-widest text-xs hover:bg-primary/90 transition-colors h-10 sm:flex-none"
           >
             <Plus className="w-4 h-4" /> Submit Trade

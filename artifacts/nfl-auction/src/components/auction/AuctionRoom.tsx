@@ -1,5 +1,5 @@
 import { useQueryClient } from "@tanstack/react-query";
-import { type AuctionSnapshot, useGetBidders } from "@workspace/api-client-react";
+import { getGetBiddersQueryKey, type AuctionSnapshot, useGetBidders } from "@workspace/api-client-react";
 import { formatCurrency, cn } from "@/lib/utils";
 import { Loader2, AlertCircle, Users, DollarSign, List, Play, CheckCircle2, Gavel, Activity } from "lucide-react";
 import { SaleEditor } from "./SaleEditor";
@@ -27,7 +27,10 @@ export function AuctionRoom({ calcuttaId, year, adminKey, historicalSummaryRefet
   const [isPending, setIsPending] = useState(false);
   const [showRoster, setShowRoster] = useState(false);
 
-  const { data: bidders } = useGetBidders();
+  const { data: bidders } = useGetBidders(
+    { season: year, calcuttaId },
+    { query: { enabled: calcuttaId > 0, queryKey: getGetBiddersQueryKey({ season: year, calcuttaId }) } },
+  );
 
   if (isLoading) {
     return (

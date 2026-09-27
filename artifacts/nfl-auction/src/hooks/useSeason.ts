@@ -134,5 +134,10 @@ export function useSeason() {
 export function formatCalcuttaLabel(
   calcutta: Pick<CalcuttaOption, "name" | "sport" | "year">,
 ): string {
-  return `${calcutta.name} - ${calcutta.sport} ${calcutta.year}`;
+  const normalizedName = calcutta.name.trim();
+  const containsSportAndYear =
+    normalizedName.toLowerCase().includes(calcutta.sport.trim().toLowerCase()) &&
+    new RegExp(`\\b${calcutta.year}\\s*$`).test(normalizedName);
+  if (containsSportAndYear) return normalizedName;
+  return `${normalizedName} - ${calcutta.sport} ${calcutta.year}`;
 }

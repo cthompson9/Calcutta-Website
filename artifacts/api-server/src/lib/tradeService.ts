@@ -70,6 +70,7 @@ export async function createPendingTrade(
   args: {
     seasonId: number;
     calcuttaId?: number;
+    sport?: string;
     teamId: number;
     fromBidderId: number;
     toBidderId: number;
@@ -88,6 +89,7 @@ export async function createPendingTrade(
   }
   const calcuttaId = await resolveCalcuttaId(writer, {
     seasonId: args.seasonId,
+    sport: args.sport,
     calcuttaId: args.calcuttaId,
   });
   if (!calcuttaId) return { ok: false, error: "Calcutta not found for this season." };

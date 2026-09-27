@@ -46,7 +46,9 @@ import type {
   BidderUpdate,
   CalcuttaCalendar,
   CalcuttaComparisonResponse,
+  CalcuttaCreate,
   CalcuttaOption,
+  CreatedCalcutta,
   ErrorResponse,
   GetAuctionEventsParams,
   GetAuctionSummaryParams,
@@ -973,6 +975,77 @@ export function useGetCalcuttas<TData = Awaited<ReturnType<typeof getCalcuttas>>
 
 
 
+
+export const getCreateCalcuttaUrl = () => {
+
+
+
+
+  return `/api/calcuttas`
+}
+
+/**
+ * @summary Create a Calcutta and initialize its auction pool
+ */
+export const createCalcutta = async (calcuttaCreate: CalcuttaCreate, options?: Parameters<typeof customFetch>[1]): Promise<CreatedCalcutta> => {
+
+  return customFetch<CreatedCalcutta>(getCreateCalcuttaUrl(),
+  {
+    ...options,
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json', ...options?.headers },
+    body: JSON.stringify(calcuttaCreate)
+  }
+);}
+
+
+
+
+
+export const getCreateCalcuttaMutationOptions = <TError = ErrorType<ErrorResponse>,
+    TContext = unknown>(options?: { mutation?:UseMutationOptions<Awaited<ReturnType<typeof createCalcutta>>, TError,{data: BodyType<CalcuttaCreate>}, TContext>, request?: SecondParameter<typeof customFetch>}
+): UseMutationOptions<Awaited<ReturnType<typeof createCalcutta>>, TError,{data: BodyType<CalcuttaCreate>}, TContext> => {
+
+const mutationKey = ['createCalcutta'];
+const {mutation: mutationOptions, request: requestOptions} = options ?
+      options.mutation && 'mutationKey' in options.mutation && options.mutation.mutationKey ?
+      options
+      : {...options, mutation: {...options.mutation, mutationKey}}
+      : {mutation: { mutationKey, }, request: undefined};
+
+
+
+
+      const mutationFn: MutationFunction<Awaited<ReturnType<typeof createCalcutta>>, {data: BodyType<CalcuttaCreate>}> = (props) => {
+          const {data} = props ?? {};
+
+          return  createCalcutta(data,requestOptions)
+        }
+
+
+
+
+
+
+  return  { mutationFn, ...mutationOptions }}
+
+    export type CreateCalcuttaMutationResult = NonNullable<Awaited<ReturnType<typeof createCalcutta>>>
+    export type CreateCalcuttaMutationBody = BodyType<CalcuttaCreate>
+    export type CreateCalcuttaMutationError = ErrorType<ErrorResponse>
+
+    /**
+ * @summary Create a Calcutta and initialize its auction pool
+ */
+export const useCreateCalcutta = <TError = ErrorType<ErrorResponse>,
+    TContext = unknown>(options?: { mutation?:UseMutationOptions<Awaited<ReturnType<typeof createCalcutta>>, TError,{data: BodyType<CalcuttaCreate>}, TContext>, request?: SecondParameter<typeof customFetch>}
+ ): UseMutationResult<
+        Awaited<ReturnType<typeof createCalcutta>>,
+        TError,
+        {data: BodyType<CalcuttaCreate>},
+        TContext
+      > => {
+      return useMutation(getCreateCalcuttaMutationOptions(options));
+    }
 
 export const getGetCalendarsUrl = (params?: GetCalendarsParams,) => {
   const normalizedParams = new URLSearchParams();

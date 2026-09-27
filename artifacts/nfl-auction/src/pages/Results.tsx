@@ -24,6 +24,7 @@ import {
   getGetMtmValuationQueryKey,
 } from "@workspace/api-client-react";
 import type {
+  CalcuttaOption,
   OwnershipSegment,
   TeamResultRow,
   OwnerResultRow,
@@ -109,6 +110,78 @@ function clearResultsReturnState(): void {
 }
 
 export default function Results() {
+  const { selectedCalcutta } = useSeason();
+  if (selectedCalcutta && selectedCalcutta.sport !== "NFL") {
+    return <NonNflResults calcutta={selectedCalcutta} />;
+  }
+  return <NflResults />;
+}
+
+function NonNflResults({ calcutta }: { calcutta: CalcuttaOption }) {
+  const params = { season: calcutta.year, calcuttaId: calcutta.id };
+  const { data: summary, isLoading, error } = useGetAuctionSummary(params, {
+    query: {
+      enabled: true,
+      queryKey: getGetAuctionSummaryQueryKey(params),
+    },
+  });
+
+  return (
+    <section className="mx-auto max-w-6xl space-y-5 px-4 pb-6 pt-8 md:p-8" aria-label={`${calcutta.sport} results`}>
+      <header>
+        <h1 className="text-3xl font-serif font-medium tracking-tight md:text-5xl">Results</h1>
+        <p className="mt-2 text-sm text-muted-foreground">{calcutta.name} · {calcutta.sport} {calcutta.year}</p>
+      </header>
+      <p className="border border-sky-300 bg-sky-50 px-4 py-3 text-sm text-sky-950 dark:border-sky-800 dark:bg-sky-950/40 dark:text-sky-100">
+        This view reports recorded auction sales only. Scoring, final standings, and payout calculations are not supported for {calcutta.sport} yet.
+      </p>
+      {isLoading ? (
+        <div role="status" className="rounded-md border border-border bg-card p-8 text-center text-sm text-muted-foreground">Loading this pool’s auction results…</div>
+      ) : error ? (
+        <div role="alert" className="rounded-md border border-destructive/40 bg-destructive/5 p-4 text-sm text-destructive">
+          Could not load results for this Calcutta. {error instanceof Error ? error.message : "Please try again."}
+        </div>
+      ) : summary ? (
+        <>
+          <div className="grid gap-3 sm:grid-cols-2">
+            <div className="rounded-md border border-border bg-card p-4">
+              <p className="text-xs font-mono font-bold uppercase tracking-widest text-muted-foreground">Pool sold total</p>
+              <p className="mt-2 text-2xl font-bold tabular-nums">{formatCurrency(summary.potSize)}</p>
+            </div>
+            <div className="rounded-md border border-border bg-card p-4">
+              <p className="text-xs font-mono font-bold uppercase tracking-widest text-muted-foreground">Lots sold</p>
+              <p className="mt-2 text-2xl font-bold tabular-nums">{summary.auctionResults.length}</p>
+            </div>
+          </div>
+          <div className="overflow-hidden rounded-md border border-border bg-card">
+            <div className="border-b border-border px-4 py-3">
+              <h2 className="font-semibold">Auction sales</h2>
+            </div>
+            {summary.auctionResults.length === 0 ? (
+              <p className="p-8 text-center text-sm text-muted-foreground">No lots have been sold in this pool yet.</p>
+            ) : (
+              <div className="divide-y divide-border">
+                {summary.auctionResults.map((result) => (
+                  <div key={result.teamId} className="grid grid-cols-[minmax(0,1fr)_minmax(0,1fr)_auto] items-center gap-3 px-4 py-3">
+                    <span className="truncate font-semibold">{result.teamName}</span>
+                    <span className="truncate text-sm text-muted-foreground">{result.winnerName}</span>
+                    <span className="font-mono font-bold tabular-nums">{formatCurrency(result.bidAmount)}</span>
+                  </div>
+                ))}
+              </div>
+            )}
+          </div>
+        </>
+      ) : (
+        <div className="rounded-md border border-border bg-card p-8 text-center text-sm text-muted-foreground">
+          Auction summary is not available for this pool yet.
+        </div>
+      )}
+    </section>
+  );
+}
+
+function NflResults() {
   const { year, selectedCalcutta } = useSeason();
   const isNflCalcutta = selectedCalcutta?.sport === "NFL";
   const usesLiveResults =

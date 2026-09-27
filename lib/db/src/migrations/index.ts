@@ -55,3 +55,5 @@ export { mtmActualsRequestsMigration } from "./0059MtmActualsRequests";
 export { auctionMigration } from "./0060Auction";
 export { auctionConsortiumBidderMigration } from "./0061AuctionConsortiumBidder";
 export { listenerMigration } from "./0062Listener";
+export { sportScopedTeamsMigration } from "./0063SportScopedTeams";
+export { sportScopedTeamsUniqueIndexRepairMigration } from "./0064SportScopedTeamsUniqueIndexRepair";

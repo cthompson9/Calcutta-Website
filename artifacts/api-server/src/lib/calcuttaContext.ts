@@ -17,14 +17,16 @@ export async function resolveCalcuttaId(
   query: CalcuttaQuery,
   args: { seasonId: number; sport?: string; calcuttaId?: number | null },
 ): Promise<number | null> {
-  const sport = args.sport ?? DEFAULT_CALCUTTA_SPORT;
+  // An explicitly selected pool is sport-neutral unless the caller supplies
+  // an expected sport. Legacy season-only callers still default to NFL.
+  const sport = args.sport ?? (args.calcuttaId == null ? DEFAULT_CALCUTTA_SPORT : undefined);
   const rows = await query
     .select({ id: calcuttasTable.id })
     .from(calcuttasTable)
     .where(
       and(
         eq(calcuttasTable.seasonId, args.seasonId),
-        eq(calcuttasTable.sport, sport),
+        ...(sport == null ? [] : [eq(calcuttasTable.sport, sport)]),
         args.calcuttaId == null
           ? eq(calcuttasTable.isCanonical, true)
           : eq(calcuttasTable.id, args.calcuttaId),
@@ -35,6 +37,40 @@ export async function resolveCalcuttaId(
     throw new Error(`Multiple canonical ${sport} Calcuttas are configured for season ${args.seasonId}.`);
   }
   return rows[0]?.id ?? null;
+}
+
+export type CalcuttaPoolType = "full_season" | "postseason";
+
+export function competitionFormatMatchesPoolType(
+  competitionFormat: string,
+  type: CalcuttaPoolType,
+): boolean {
+  const postseason = /POSTSEASON|PLAYOFF/i.test(competitionFormat);
+  return type === "postseason" ? postseason : !postseason;
+}
+
+export function hasCalcuttaPoolType(
+  competitionFormats: string[],
+  type: CalcuttaPoolType,
+): boolean {
+  return competitionFormats.some((format) => competitionFormatMatchesPoolType(format, type));
+}
+
+export async function getCalcuttaContextById(
+  query: Pick<typeof import("@workspace/db").db, "select">,
+  calcuttaId: number,
+): Promise<{ id: number; seasonId: number; year: number; sport: string } | null> {
+  const rows = await query
+    .select({
+      id: calcuttasTable.id,
+      seasonId: calcuttasTable.seasonId,
+      year: calcuttasTable.year,
+      sport: calcuttasTable.sport,
+    })
+    .from(calcuttasTable)
+    .where(eq(calcuttasTable.id, calcuttaId))
+    .limit(1);
+  return rows[0] ?? null;
 }
 
 export async function resolveSeasonIdForSport(

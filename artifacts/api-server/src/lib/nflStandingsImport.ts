@@ -366,7 +366,8 @@ async function resolvePayload(
         conference: teamsTable.conference,
         division: teamsTable.division,
       })
-      .from(teamsTable),
+      .from(teamsTable)
+      .where(eq(teamsTable.sport, "NFL")),
     db
       .select({ teamId: teamSeasonAuctionsTable.teamId })
       .from(teamSeasonAuctionsTable)

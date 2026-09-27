@@ -330,7 +330,8 @@ export async function syncNflEventsAndRealizedMetricsTx(
   const parsed = options.completeSeasonPayload === false
     ? parseEspnRegularSeasonEvents(payload, seasonYear)
     : validateEspnRegularSeasonEvents(payload, seasonYear);
-  const teamRows = await tx.select().from(teamsTable);
+  const teamRows = await tx.select().from(teamsTable)
+    .where(eq(teamsTable.sport, NFL_SPORT));
   const teamIdByName = new Map(teamRows.map((team) => [team.name, team.id]));
   const resolveTeamId = (abbreviation: string): number => {
     const name = TEAM_ABBREVIATION_ALIASES[abbreviation];

@@ -42,7 +42,7 @@ export function Shell({ children, isPreview }: ShellProps) {
   }, [sidebarCollapsed]);
 
   const isNflOnlyRoute =
-    ["/analysis", "/teams", "/bidders", "/dashboard"].some((route) =>
+    ["/analysis", "/teams", "/bidders"].some((route) =>
       location.startsWith(route),
     );
   const unsupportedSport =
@@ -348,9 +348,9 @@ function UnsupportedSportState({
           {sport} reports are not available yet
         </h1>
         <p className="mt-3 text-sm leading-6 text-muted-foreground">
-          This catalog includes Calcuttas from multiple sports, but the current
-          reports are still NFL-only. Choose an NFL Calcutta above to view
-          Results, Analysis, Trades, or Auction.
+          This catalog includes Calcuttas from multiple sports. Results, Trades,
+          and pool-scoped Auction are available for this Calcutta; NFL-only
+          Analysis, Teams, and Bidder reports require an NFL selection.
         </p>
       </div>
     </section>

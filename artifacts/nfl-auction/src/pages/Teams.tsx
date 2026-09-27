@@ -8,9 +8,7 @@ import {
   getGetTeamsQueryKey,
   getGetAuctionSummaryQueryKey,
   getGetBiddersQueryKey,
-  Team,
-  TeamConference,
-  TeamDivision
+  Team
 } from "@workspace/api-client-react";
 import { formatCurrency } from "@/lib/utils";
 import { useQueryClient } from "@tanstack/react-query";

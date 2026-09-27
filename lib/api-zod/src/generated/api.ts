@@ -54,20 +54,20 @@ export const CreateSeasonResponse = zod.object({
 export const getTeamsQuerySportDefault = `NFL`;
 
 export const GetTeamsQueryParams = zod.object({
-  "conference": zod.enum(['AFC', 'NFC']).optional(),
-  "division": zod.enum(['East', 'North', 'South', 'West']).optional(),
+  "conference": zod.coerce.string().optional(),
+  "division": zod.coerce.string().optional(),
   "search": zod.coerce.string().optional(),
   "bidderId": zod.coerce.number().nullish(),
   "season": zod.coerce.number().nullish(),
   "calcuttaId": zod.coerce.number().nullish(),
-  "sport": zod.enum(['NFL', 'CFB']).default(getTeamsQuerySportDefault)
+  "sport": zod.coerce.string().default(getTeamsQuerySportDefault)
 })
 
 export const GetTeamsResponseItem = zod.object({
   "id": zod.number(),
   "name": zod.string(),
-  "conference": zod.enum(['AFC', 'NFC']),
-  "division": zod.enum(['East', 'North', 'South', 'West']),
+  "conference": zod.string(),
+  "division": zod.string(),
   "bidAmount": zod.number(),
   "owners": zod.array(zod.object({
   "bidderId": zod.number(),
@@ -104,8 +104,8 @@ export const CreateTeamBody = zod.object({
 export const CreateTeamResponse = zod.object({
   "id": zod.number(),
   "name": zod.string(),
-  "conference": zod.enum(['AFC', 'NFC']),
-  "division": zod.enum(['East', 'North', 'South', 'West']),
+  "conference": zod.string(),
+  "division": zod.string(),
   "bidAmount": zod.number(),
   "owners": zod.array(zod.object({
   "bidderId": zod.number(),
@@ -125,8 +125,8 @@ export const GetTeamParams = zod.object({
 export const GetTeamResponse = zod.object({
   "id": zod.number(),
   "name": zod.string(),
-  "conference": zod.enum(['AFC', 'NFC']),
-  "division": zod.enum(['East', 'North', 'South', 'West']),
+  "conference": zod.string(),
+  "division": zod.string(),
   "bidAmount": zod.number(),
   "owners": zod.array(zod.object({
   "bidderId": zod.number(),
@@ -166,8 +166,8 @@ export const UpdateTeamBody = zod.object({
 export const UpdateTeamResponse = zod.object({
   "id": zod.number(),
   "name": zod.string(),
-  "conference": zod.enum(['AFC', 'NFC']),
-  "division": zod.enum(['East', 'North', 'South', 'West']),
+  "conference": zod.string(),
+  "division": zod.string(),
   "bidAmount": zod.number(),
   "owners": zod.array(zod.object({
   "bidderId": zod.number(),
@@ -246,6 +246,56 @@ export const GetCalcuttasResponseItem = zod.object({
   "isCanonical": zod.boolean()
 })
 export const GetCalcuttasResponse = zod.array(GetCalcuttasResponseItem)
+
+
+/**
+ * @summary Create a Calcutta and initialize its auction pool
+ */
+export const createCalcuttaBodySportMax = 50;
+
+export const createCalcuttaBodyYearMin = 1900;
+export const createCalcuttaBodyYearMax = 2200;
+export const createCalcuttaBodyYearMultipleOf = 1;
+
+export const createCalcuttaBodyLotsItemMax = 300;
+
+export const createCalcuttaBodyLotsMax = 500;
+
+export const createCalcuttaBodyRubricItemEventMax = 200;
+
+export const createCalcuttaBodyRubricItemValueMin = 0;
+
+export const createCalcuttaBodyRubricMax = 500;
+
+
+
+export const CreateCalcuttaBody = zod.object({
+  "sport": zod.string().min(1).max(createCalcuttaBodySportMax),
+  "type": zod.enum(['full_season', 'postseason']),
+  "year": zod.number().min(createCalcuttaBodyYearMin).max(createCalcuttaBodyYearMax).multipleOf(createCalcuttaBodyYearMultipleOf),
+  "lots": zod.array(zod.string().min(1).max(createCalcuttaBodyLotsItemMax)).min(1).max(createCalcuttaBodyLotsMax),
+  "scoringFormat": zod.enum(['points', 'percentage']),
+  "rubric": zod.array(zod.object({
+  "event": zod.string().min(1).max(createCalcuttaBodyRubricItemEventMax),
+  "value": zod.number().min(createCalcuttaBodyRubricItemValueMin)
+})).min(1).max(createCalcuttaBodyRubricMax)
+})
+
+export const createCalcuttaResponseIdMultipleOf = 1;
+
+export const createCalcuttaResponseYearMultipleOf = 1;
+
+export const createCalcuttaResponseAuctionIdMultipleOf = 1;
+
+
+
+export const CreateCalcuttaResponse = zod.object({
+  "id": zod.number().multipleOf(createCalcuttaResponseIdMultipleOf),
+  "name": zod.string(),
+  "sport": zod.string(),
+  "year": zod.number().multipleOf(createCalcuttaResponseYearMultipleOf),
+  "auctionId": zod.number().multipleOf(createCalcuttaResponseAuctionIdMultipleOf)
+})
 
 
 /**

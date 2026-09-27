@@ -58,6 +58,8 @@ import {
   auctionMigration,
   auctionConsortiumBidderMigration,
   listenerMigration,
+  sportScopedTeamsMigration,
+  sportScopedTeamsUniqueIndexRepairMigration,
 } from "./migrations";
 
 const migrations = [
@@ -118,6 +120,8 @@ const migrations = [
   auctionMigration,
   auctionConsortiumBidderMigration,
   listenerMigration,
+  sportScopedTeamsMigration,
+  sportScopedTeamsUniqueIndexRepairMigration,
 ] as const;
 
 /**
