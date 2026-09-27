@@ -23,6 +23,7 @@ import WhatsNew from '@/pages/WhatsNew';
 import Faq from '@/pages/Faq';
 import FormatPreview from '@/pages/FormatPreview';
 import { SeasonProvider } from '@/hooks/useSeason';
+import { AdminAccessProvider } from '@/hooks/useAdminAccess';
 import './unified-preview.css';
 
 const queryClient = new QueryClient();
@@ -93,9 +94,11 @@ function App() {
     <QueryClientProvider client={queryClient}>
       <TooltipProvider>
         <SeasonProvider>
-          <WouterRouter base={import.meta.env.BASE_URL.replace(/\/$/, '')}>
-            <Router />
-          </WouterRouter>
+          <AdminAccessProvider>
+            <WouterRouter base={import.meta.env.BASE_URL.replace(/\/$/, '')}>
+              <Router />
+            </WouterRouter>
+          </AdminAccessProvider>
         </SeasonProvider>
         <Toaster />
       </TooltipProvider>

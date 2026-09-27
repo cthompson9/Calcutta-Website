@@ -15,6 +15,7 @@ import { formatCurrency } from "@/lib/utils";
 import { cn } from "@/lib/utils";
 import { todayInNewYork } from "@/lib/newYorkTime";
 import { useSeason } from "@/hooks/useSeason";
+import { useAdminAccess } from "@/hooks/useAdminAccess";
 import { useBacklinkBackShortcut } from "@/hooks/useBacklinkBackShortcut";
 import { useLocation } from "wouter";
 import { parseResultSourceTarget } from "@/lib/resultSourceLinks";
@@ -29,8 +30,6 @@ import {
   Plus,
   Trash2,
   X,
-  Lock,
-  Unlock,
   Check,
   Ban,
   Search,
@@ -85,19 +84,6 @@ async function setTradeStatus(
     return { ok: true };
   } catch {
     return { ok: false, error: "Network error" };
-  }
-}
-
-async function validateAdminKey(adminKey: string): Promise<{ ok: boolean; error?: string }> {
-  try {
-    const res = await fetch("/api/admin/validate", {
-      headers: { Authorization: `Bearer ${adminKey}` },
-    });
-    if (res.status === 401) return { ok: false, error: "Invalid admin key" };
-    if (!res.ok) return { ok: false, error: "Could not validate admin key" };
-    return { ok: true };
-  } catch {
-    return { ok: false, error: "Network error while validating admin key" };
   }
 }
 
@@ -835,82 +821,6 @@ function TradeForm({
   );
 }
 
-// ── Admin key panel ───────────────────────────────────────────────────────────
-
-function AdminPanel({
-  adminKey,
-  onSetKey,
-  onClearKey,
-}: {
-  adminKey: string | null;
-  onSetKey: (k: string) => Promise<{ ok: boolean; error?: string }>;
-  onClearKey: () => void;
-}) {
-  const [expanded, setExpanded] = useState(false);
-  const [input, setInput] = useState("");
-  const [error, setError] = useState("");
-
-  async function handleUnlock() {
-    if (!input.trim()) return;
-    setError("");
-    const result = await onSetKey(input.trim());
-    if (!result.ok) {
-      setError(result.error ?? "Invalid admin key");
-      return;
-    }
-    setInput("");
-    setExpanded(false);
-  }
-
-  if (adminKey) {
-    return (
-      <button
-        onClick={onClearKey}
-        className="flex items-center gap-1.5 px-3 py-1.5 border border-green-600 text-green-700 text-xs font-mono font-bold uppercase tracking-widest hover:bg-green-50 transition-colors"
-        title="Admin mode active — click to lock"
-      >
-        <Unlock className="w-3 h-3" /> Admin Active
-      </button>
-    );
-  }
-
-  return (
-    <div className="relative">
-      <button
-        onClick={() => setExpanded((v) => !v)}
-        className="flex items-center gap-1.5 px-3 py-1.5 border border-border text-muted-foreground text-xs font-mono font-bold uppercase tracking-widest hover:bg-muted transition-colors"
-        title="Enter admin key to approve/reject trades"
-      >
-        <Lock className="w-3 h-3" /> Admin
-      </button>
-      {expanded && (
-        <div className="absolute right-0 top-full mt-1 z-50 bg-background border border-border p-3 w-64 space-y-2 shadow-lg">
-          <p className="text-xs font-mono text-muted-foreground">
-            Enter your admin key to approve, reject, void, or delete trades. It is validated and kept only until this page reloads.
-          </p>
-          <input
-            type="password"
-            value={input}
-            onChange={(e) => { setInput(e.target.value); setError(""); }}
-            onKeyDown={(e) => { if (e.key === "Enter") handleUnlock(); }}
-            placeholder="Admin key…"
-            className="w-full border border-border bg-background px-2 py-1.5 text-sm font-mono"
-            autoFocus
-          />
-          {error && <p className="text-xs text-destructive font-mono">{error}</p>}
-          <button
-            onClick={handleUnlock}
-            disabled={!input.trim()}
-            className="w-full bg-primary text-primary-foreground text-xs font-mono font-bold uppercase tracking-widest py-1.5 hover:bg-primary/90 disabled:opacity-50 transition-colors"
-          >
-            Unlock
-          </button>
-        </div>
-      )}
-    </div>
-  );
-}
-
 function Field({ label, children }: { label: string; children: React.ReactNode }) {
   return (
     <div>
@@ -1015,7 +925,7 @@ function LiveTrades() {
   useBacklinkBackShortcut(sourceTarget.tradeId != null);
   const [showForm, setShowForm]     = useState(false);
   const [submissionError, setSubmissionError] = useState("");
-  const [adminKey, setAdminKey]     = useState<string | null>(null);
+  const { adminKey, lock: clearAdminKey } = useAdminAccess();
   const [expandedGroups, setExpandedGroups] = useState<Set<string>>(() => new Set());
   const sourceExpandedTradeId = useRef<number | null>(null);
 
@@ -1028,16 +938,6 @@ function LiveTrades() {
   const { data: bidderDirectory } = useGetBidders({});
   const consortiumByBidderId = bidderConsortiums(bidderDirectory);
   const { mutate: createTrade, isPending: creating } = useCreateTrade();
-  async function saveAdminKey(key: string): Promise<{ ok: boolean; error?: string }> {
-    const result = await validateAdminKey(key);
-    if (result.ok) setAdminKey(key);
-    return result;
-  }
-
-  function clearAdminKey() {
-    setAdminKey(null);
-  }
-
   async function handleDelete(id: number) {
     if (!adminKey || !window.confirm("Delete this pending trade record?")) return;
     const result = await deleteTradeRecord(id, adminKey);
@@ -1168,7 +1068,6 @@ function LiveTrades() {
           </p>
         </div>
         <div className="flex w-full items-center gap-2 sm:w-auto sm:gap-3 flex-wrap">
-          <AdminPanel adminKey={adminKey} onSetKey={saveAdminKey} onClearKey={clearAdminKey} />
           <button
             data-testid="button-submit-trade"
             onClick={() => { setSubmissionError(""); setShowForm(true); }}

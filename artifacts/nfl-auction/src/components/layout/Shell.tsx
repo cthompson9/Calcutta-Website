@@ -18,6 +18,7 @@ import { cn } from "@/lib/utils";
 import { ReactNode, useEffect, useState } from "react";
 import { SeasonToggle } from "@/components/SeasonToggle";
 import { useSeason } from "@/hooks/useSeason";
+import { AdminControl } from "@/components/layout/AdminControl";
 import { trackEvent } from "@/lib/analytics";
 
 interface ShellProps {
@@ -117,7 +118,7 @@ export function Shell({ children, isPreview }: ShellProps) {
         <div className="min-w-72 border-b border-sidebar-border px-3 py-4">
           <SeasonToggle testId="select-calcutta-desktop" />
         </div>
-        <nav className="flex min-w-72 flex-1 flex-col gap-1 px-3 py-6">
+        <nav className="flex min-h-0 min-w-72 flex-1 flex-col gap-1 overflow-y-auto px-3 py-6">
           {navItems.map((item) => {
             const active =
               location === item.href ||
@@ -200,6 +201,7 @@ export function Shell({ children, isPreview }: ShellProps) {
                 </Link>
               );
             })}
+            <AdminControl />
             </div>
           </div>
         </nav>
@@ -320,6 +322,7 @@ export function Shell({ children, isPreview }: ShellProps) {
             </Link>
           );
         })}
+        <AdminControl mobile />
       </nav>
     </div>
   );

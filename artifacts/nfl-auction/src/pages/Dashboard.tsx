@@ -7,8 +7,9 @@ import {
   getGetPointsRubricV2QueryKey,
 } from "@workspace/api-client-react";
 import { formatCurrency, cn } from "@/lib/utils";
-import { DollarSign, Activity, Download, Lock, Unlock, Loader2 } from "lucide-react";
+import { DollarSign, Activity, Download, Loader2 } from "lucide-react";
 import { useSeason } from "@/hooks/useSeason";
+import { useAdminAccess } from "@/hooks/useAdminAccess";
 import { useBacklinkBackShortcut } from "@/hooks/useBacklinkBackShortcut";
 import { useQueryClient } from "@tanstack/react-query";
 import { useLocation } from "wouter";
@@ -57,88 +58,6 @@ function rubricRuleText(
   }
 }
 
-// ── Admin key panel (reused from Trades pattern) ──────────────────────────────
-
-function AdminPanel({
-  adminKey,
-  onSetKey,
-  onClearKey,
-}: {
-  adminKey: string | null;
-  onSetKey: (k: string) => Promise<{ ok: boolean; error?: string }>;
-  onClearKey: () => void;
-}) {
-  const [expanded, setExpanded] = useState(false);
-  const [input, setInput] = useState("");
-  const [error, setError] = useState("");
-  const [validating, setValidating] = useState(false);
-
-  async function handleUnlock() {
-    if (!input.trim()) return;
-    setError("");
-    setValidating(true);
-    const result = await onSetKey(input.trim());
-    setValidating(false);
-    if (!result.ok) {
-      setError(result.error ?? "Invalid admin key");
-      return;
-    }
-    setInput("");
-    setExpanded(false);
-  }
-
-  if (adminKey) {
-    return (
-      <button
-        onClick={onClearKey}
-        className="flex items-center gap-1.5 px-3 py-1.5 border border-green-600 text-green-700 text-xs font-mono font-bold uppercase tracking-widest hover:bg-green-50 transition-colors"
-        title="Admin mode active — click to lock"
-      >
-        <Unlock className="w-3 h-3" /> Admin Active
-      </button>
-    );
-  }
-
-  return (
-    <div className="relative">
-      <button
-        onClick={() => setExpanded((v) => !v)}
-        className="flex items-center gap-1.5 px-3 py-1.5 border border-border text-muted-foreground text-xs font-mono font-bold uppercase tracking-widest hover:bg-muted transition-colors"
-        title="Enter admin key to manage auction controls"
-      >
-        <Lock className="w-3 h-3" /> Admin
-      </button>
-      {expanded && (
-        <div className="absolute right-0 top-full mt-1 z-50 bg-background border border-border p-3 w-64 space-y-2 shadow-lg">
-          <p className="text-xs font-mono text-muted-foreground">
-            Enter your admin key to manage auction controls.
-          </p>
-          <input
-            type="password"
-            value={input}
-            onChange={(e) => {
-              setInput(e.target.value);
-              setError("");
-            }}
-            onKeyDown={(e) => { if (e.key === "Enter") void handleUnlock(); }}
-            placeholder="Admin key…"
-            className="w-full border border-border bg-background px-2 py-1.5 text-sm font-mono"
-            autoFocus
-          />
-          {error && <p role="alert" className="text-xs text-destructive font-mono">{error}</p>}
-          <button
-            onClick={() => void handleUnlock()}
-            disabled={!input.trim() || validating}
-            className="w-full bg-primary text-primary-foreground text-xs font-mono font-bold uppercase tracking-widest py-1.5 hover:bg-primary/90 disabled:opacity-50 transition-colors"
-          >
-            {validating ? "Validating…" : "Unlock"}
-          </button>
-        </div>
-      )}
-    </div>
-  );
-}
-
 // ── Page ──────────────────────────────────────────────────────────────────────
 
 export default function Dashboard() {
@@ -170,7 +89,7 @@ export default function Dashboard() {
   useBacklinkBackShortcut(sourceTarget.teamId != null);
 
   const isPreview = true;
-  const [adminKey, setAdminKey] = useState<string | null>(null);
+  const { adminKey } = useAdminAccess();
   const [confirmOpen, setConfirmOpen] = useState(false);
   const [importing, setImporting] = useState(false);
   const [importResult, setImportResult] = useState<{ ok: true; msg: string } | { ok: false; msg: string } | null>(null);
@@ -207,23 +126,6 @@ export default function Dashboard() {
     summary,
     year,
   ]);
-
-  async function saveAdminKey(key: string): Promise<{ ok: boolean; error?: string }> {
-    try {
-      const response = await fetch("/api/admin/validate", {
-        headers: { Authorization: `Bearer ${key}` },
-      });
-      if (response.status === 401) return { ok: false, error: "Invalid admin key" };
-      if (!response.ok) return { ok: false, error: "Could not validate admin key" };
-      setAdminKey(key);
-      return { ok: true };
-    } catch {
-      return { ok: false, error: "Network error while validating admin key" };
-    }
-  }
-  function clearAdminKey() {
-    setAdminKey(null);
-  }
 
   async function runImport() {
     if (!adminKey || !calcuttaId) return;
@@ -303,7 +205,6 @@ export default function Dashboard() {
 
         {/* Admin controls */}
         <div className={cn("flex items-center gap-3 flex-wrap", isPreview && "justify-center")}>
-          <AdminPanel adminKey={adminKey} onSetKey={saveAdminKey} onClearKey={clearAdminKey} />
           {adminKey && !activeAuction && (
             <button
               onClick={() => { setImportResult(null); setConfirmOpen(true); }}
