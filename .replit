@@ -27,3 +27,6 @@ packages = ["libxcrypt", "pkg-config", "xsimd"]
 
 [userenv.shared]
 AUCTIONPRO_SOURCE_URL = "https://nfl-calcutta-bid-helper.replit.app"
+
+[userenv.production]
+LISTENER_PUBLIC_ORIGIN = "https://thecalcutta.app"
