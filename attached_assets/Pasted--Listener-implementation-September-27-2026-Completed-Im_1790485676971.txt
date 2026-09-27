@@ -1,0 +1,61 @@
+# Listener implementation — September 27, 2026
+
+## Completed
+
+Implemented in `work/Calcutta-listener-implementation`, based on GitHub revision `abe80cf6ac1dc2c3b988f55f3a0db4fda5a6b909`.
+
+- Replaced the rehearsal dashboard with Start/Stop, connection status, active lot, What we heard, and an inline results table.
+- Active nomination comes from the website, is blank while stopped/disconnected/unassigned, and highlights changes.
+- Exact website consortium names/aliases resolve to consortium IDs. Missing winners, uncertain amounts and incomplete percentages require review. Each uncertain field has a red cell and text label.
+- Starting a manual edit reserves the draft against automatic submission by later speech. Manual submissions validate revision, current nomination, amount and shares.
+- Final, unambiguous announcements submit automatically. Partials, ordinary bids and countdowns never finalize results. Delayed/uncertain speech stays bound to its original nomination or requires manual review.
+- Persisted drafts and immutable submission IDs survive retries/restart. Pending delivery and Saved on website are distinct states.
+- Added authenticated auction-context and result endpoints. Manual and listener sales share the existing ownership transaction, including current consortium-member expansion and historical/trade protections. Website receipts use the existing auction events table.
+- Removed rehearsal-only HTTP controls and duplicate browser-board launch. Historical private files were preserved.
+- Fixed the hosted ticket service's missing default clock, which otherwise prevented issuing tickets after configuration was repaired.
+
+## Multi-auction follow-up
+
+- Saved state now uses website origin plus auction ID, independently of a short-lived connection. A new auction opens blank; returning restores its local history alongside official website results.
+- Same-auction reconnection renews the existing stopped, non-revoked session, even after expiry. Pending reviews, queued transcripts and immutable receipt IDs remain attached to that session.
+- Website ticket preview identifies the destination before pairing. Switching displays the destination Calcutta name and auction ID, keeps listening off, and blocks unresolved reviews/deliveries from moving to another auction.
+- The desktop shows the auction ID and clears stale editors when changing auction. Website controls clear old launch links/status when changing auction and distinguish missing listener configuration from auction availability errors.
+- Ticket policy now lives in the testable production module `artifacts/api-server/src/lib/listenerTickets.ts`. The older hosted example remains legacy documentation; deploy the production server implementation.
+
+## Local installation
+
+Updated the existing registered installation:
+
+`C:\Users\CraigThompson\Documents\Codex\2026-09-20\i-want-to-work-on-the\work\Calcutta-Website\addons\auction-listener`
+
+Confirmed it was idle and had no queued transcripts. All preexisting application files matched the repository base before replacement. Backed up affected existing files in `Listener-before-update-20260927.zip`, copied and hash-verified 16 files, then reopened the app. Private configuration, recordings, transcripts and registration were preserved. Recording is off; the app is unpaired and displays Not connected. No website configuration change, live recording, live result submission or deployment was performed.
+
+A second update backed up six public application files in `Listener-before-multi-auction-20260927.zip`, installed and hash-verified their replacements, and reopened the listener. Private state was untouched.
+
+## Verification
+
+- **46/46 addon tests passed**, including simulated capture, parsing, nomination timing, durable retries, manual review, HTTP integration, and DOM editing tests.
+- **12/12 API tests passed**: six result/schema/transaction tests using embedded PostgreSQL, three production ticket-preview/resumption tests, and three existing listener source-contract tests.
+- Local HTTP smoke test passed.
+- Database/API-Zod/API-client library declaration builds and API/frontend TypeScript checks passed.
+- API bundle and website frontend production builds passed. Frontend build emitted existing-size chunk and sourcemap warnings.
+- Visually checked the compact UI with simulated auction data and verified the installed desktop opens with recording disabled.
+- Patch reverse-application check passed against the implemented tree.
+
+The database tests inject an in-memory PGlite database and never use production. Their schema fixtures cover the sale transaction; they do not test applying the full production migration history. Local test dependencies were installed from the lockfile. PGlite is a development dependency. Matching Windows esbuild, Rollup, Lightning CSS and Tailwind helpers were used in a local tools folder because repository overrides exclude platform binaries; these helpers are not included in the patch.
+
+## Handoff artifact
+
+`Listener-implementation.patch` contains the application changes, tests, README and dependency/lockfile change. It contains no private configuration or runtime data. The desktop changes are already installed locally; the website changes are **not deployed**.
+
+For a supported Git/file handoff, apply this patch to the stated base (or review intervening changes first), run the normal dependency install, typechecks and API/frontend builds, then stop for separate deployment authorization. Do not ask Replit to redesign or regenerate these changes. Do not assume a natural-language connector can read this local patch.
+
+Before any release, obtain a single bounded, read-only Replit diagnostic: running revision, valid configured listener origin, adequate stable session secret, and availability of the existing listener/auction/consortium schemas. Return booleans/reason codes only. This change introduces no migration, but it depends on the existing consortium-owner tables from the base revision.
+
+## Remaining live checks and limits
+
+After separately authorized deployment, verify ticket launch, pairing, website nominations and acknowledgments. Then perform an explicitly authorized short Recall capture in a test auction to validate device permissions, credential validity, and recording timestamp alignment. Simulations do not prove those live behaviors.
+
+The speech parser remains deliberately bounded: explicit sale phrases, exact names/aliases, standard numeric or English whole-dollar amounts, equal splits, and numeric percentages. Unsupported or ambiguous speech is held for review. Accepted sales are corrected in the website. Unresolved results and transcripts prevent auction switching; same-auction expiry can be renewed using a fresh website ticket and the existing device credential. Revoked credentials or a server-side recording flag still require operational recovery; preserve queues and verify official results.
+
+To roll back the desktop, close it while stopped, restore the backed-up application files, and remove only the newly introduced `server/live-auction.mjs` if desired. Do not delete any private `.local` files. Website rollback is a separate release action; retain official sale records and event receipts.
