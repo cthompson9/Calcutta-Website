@@ -62,3 +62,4 @@
 - [MTM policy dispatch](mtm-policy-dispatch.md) — every official policy must be accepted consistently by TypeScript validation, Python pre-dispatch, and engine routing.
 - [Auction mutation parity](auction-mutation-parity.md) — HTTP and MCP inventory writes must share identity, revision, and completion rules.
 - [Hosted listener runtime](hosted-listener-runtime.md) — bundled API routes cannot require an addon source file via a source-relative path; preserve its ticket policy in the bundle.
+- [Startup migration validation](startup-migration-validation.md) — a migration already applied in dev can still break first-time production startup; replay pending SQL in a rolled-back transaction.

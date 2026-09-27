@@ -2,15 +2,21 @@ export const auctionMigration = {
   version: "0060_auction",
   sql: `
     do $guard$
-    declare t text; required text[] := array['auction_sessions','auction_lots','auction_consortia','auction_sales','auction_sale_allocations','auction_events'];
+    declare
+      t text;
+      required text[] := array['auction_sessions','auction_lots','auction_consortia','auction_sales','auction_sale_allocations','auction_events'];
+      expected_count integer;
+      actual_count integer;
     begin
       foreach t in array required loop
         if to_regclass(t) is not null then
-          if (select count(*) from information_schema.columns where table_name=t) <
-             case t when 'auction_sessions' then 9 when 'auction_lots' then 14
-             when 'auction_consortia' then 7 when 'auction_sales' then 8
-             when 'auction_sale_allocations' then 5 when 'auction_events' then 8 end
-          then raise exception 'incompatible partially matching auction table %', t; end if;
+          expected_count := case t
+            when 'auction_sessions' then 8 when 'auction_lots' then 13
+            when 'auction_consortia' then 6 when 'auction_sales' then 8
+            when 'auction_sale_allocations' then 5 when 'auction_events' then 8
+          end;
+          select count(*) into actual_count from information_schema.columns where table_name=t;
+          if actual_count < expected_count then raise exception 'incompatible partially matching auction table %', t; end if;
           if t = 'auction_sessions' and not exists (select 1 from information_schema.columns where table_name=t and column_name='calcutta_id') then raise exception 'incompatible pre-existing auction table %', t; end if;
           if t = 'auction_lots' and not exists (select 1 from information_schema.columns where table_name=t and column_name='entry_id') then raise exception 'incompatible pre-existing auction table %', t; end if;
           if t = 'auction_consortia' and not exists (select 1 from information_schema.columns where table_name=t and column_name='auction_id') then raise exception 'incompatible pre-existing auction table %', t; end if;
@@ -19,7 +25,8 @@ export const auctionMigration = {
           if t = 'auction_events' and not exists (select 1 from information_schema.columns where table_name=t and column_name='sequence') then raise exception 'incompatible pre-existing auction table %', t; end if;
         end if;
       end loop;
-    end $guard$;
+    end;
+    $guard$;
     create table if not exists auction_sessions (
       id serial primary key, calcutta_id integer not null references calcuttas(id) on delete cascade,
       status text not null default 'setup', current_lot_id integer, revision integer not null default 0,
