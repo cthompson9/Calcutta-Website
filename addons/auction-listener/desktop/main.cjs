@@ -9,7 +9,8 @@ trace('desktop-module-loaded');
 const sdk=require('@recallai/desktop-sdk');
 const {CaptureController}=require('./controller.cjs');
 if(!app.requestSingleInstanceLock()) app.exit(0);
-let window,controller,closing=false,timer,backend,api,pairing=false;
+let window,controller,closing=false,timer,heartbeatTimer,backend,api,pairing=false;
+let syncing=false,heartbeating=false;
 let pendingLink=findLaunchLink(process.argv);
 async function connectWebsite(raw) {
   if(!raw)return;
@@ -17,10 +18,19 @@ async function connectWebsite(raw) {
   if(pairing)return;
   pairing=true;
   try {
-    if(controller.active || controller.busy || controller.queue.length)throw new Error('Stop recording and deliver pending transcripts before switching auctions.');
+    if(controller.active || controller.busy)throw new Error('Stop recording before connecting to an auction.');
+    const target=await api('/api/website/preview',{url:raw});
+    if(controller.queue.length && !target.sameAuction)throw new Error('Deliver pending transcripts before switching auctions. Reopen the current auction to reconnect.');
+    if(target.current && !target.sameAuction) {
+      const choice=await dialog.showMessageBox(window,{type:'question',title:'Switch auction',
+        message:`Open ${target.auction.name} — Auction #${target.auction.id}?`,
+        detail:`Currently connected to ${target.current.name} — Auction #${target.current.id}. Saved history stays with each auction. Listening will remain off.`,
+        buttons:['Cancel','Switch auction'],defaultId:1,cancelId:0});
+      if(choice.response!==1)return;
+    }
     const state=await api('/api/website/pair',{url:raw});
     window.webContents.send('website:state',state);
-    window.setTitle(`Calcutta Listener — ${state.auction.name}`);
+    window.setTitle(`Calcutta Listener — ${state.auction.name} — Auction #${state.auction.id}`);
   } catch(error) {dialog.showErrorBox('Connect to auction',error.message);}
   finally {pairing=false;}
 }
@@ -53,32 +63,40 @@ app.whenReady().then(async()=>{
     readQueue:()=>existsSync(queuePath)?JSON.parse(readFileSync(queuePath,'utf8')):[],
     writeQueue:queue=>{writeFileSync(`${queuePath}.tmp`,JSON.stringify(queue),{mode:0o600});renameSync(`${queuePath}.tmp`,queuePath);},
   });
-  window=new BrowserWindow({width:1180,height:860,minWidth:760,minHeight:600,title:'Calcutta Listener — Rehearsal',webPreferences:{preload:path.join(__dirname,'preload.cjs'),contextIsolation:true,nodeIntegration:false,sandbox:true}});
+  window=new BrowserWindow({width:1180,height:860,minWidth:760,minHeight:600,title:'Calcutta Listener',webPreferences:{preload:path.join(__dirname,'preload.cjs'),contextIsolation:true,nodeIntegration:false,sandbox:true}});
   trace('window-created');
   window.webContents.on('did-fail-load',(_e,code)=>trace(`page-load-failed-${code}`));
   window.setMenuBarVisibility(false);
   window.webContents.setWindowOpenHandler(()=>({action:'deny'}));
   window.webContents.on('will-navigate',(event,url)=>{if(new URL(url).origin!==connection.url)event.preventDefault();});
   const allowed=event=>{if(event.sender!==window.webContents || new URL(event.senderFrame.url).origin!==connection.url)throw new Error('Unauthorized window.');};
-  ipcMain.handle('capture:start',async event=>{allowed(event);await controller.start();return controller.state;});
+  ipcMain.handle('capture:start',async event=>{allowed(event);if(pairing)throw new Error('Finish connecting to the auction first.');const live=await api('/api/live/sync',{});if(!live.ready)throw new Error('Connect to the website before recording.');await controller.start();return controller.state;});
   ipcMain.handle('capture:stop',async event=>{allowed(event);await controller.stop();return controller.state;});
   ipcMain.handle('capture:status',event=>{allowed(event);return controller.state;});
   ipcMain.handle('capture:permissions',async(event,p)=>{allowed(event);await controller.fixPermission(p);});
-  ipcMain.handle('capture:board',async event=>{allowed(event);await shell.openExternal(`${connection.url}/#${connection.token}`);});
   ipcMain.handle('website:status',async event=>{allowed(event);return api('/api/website');});
   await window.loadURL(`${connection.url}/#${connection.token}`);
   trace('page-loaded');
   window.show();
   if(pendingLink){const link=pendingLink;pendingLink=null;await connectWebsite(link);}
   else window.webContents.send('website:state',await api('/api/website'));
+  // Snapshot polling and heartbeats must not wait behind transcript/result delivery.
   timer=setInterval(async()=>{
-    await controller.flush();
+    if(syncing)return; syncing=true;
+    try {await api('/api/live/sync',{});void controller.flush();}
+    catch { /* The local UI reports a failed backend connection. */ }
+    finally {syncing=false;}
+  },2000);
+  heartbeatTimer=setInterval(async()=>{
+    if(heartbeating)return; heartbeating=true;
+    try {
     const website=await api('/api/website/tick',{recording:!!controller.active}).catch(()=>null);
     if(website && window && !window.isDestroyed())window.webContents.send('website:state',website);
     const state=await api('/api/state').catch(()=>null);
     for(const upload of state?.uploads??[]) {
       if(upload.id && ['recording_ended','uploading'].includes(upload.status)) await api('/api/reconcile',{id:upload.id}).catch(()=>{});
     }
+    } finally {heartbeating=false;}
   },10000);
   window.on('close',event=>{
     if(closing)return;
@@ -90,6 +108,7 @@ app.whenReady().then(async()=>{
         await controller.stop();if(controller.active)return;
       }
       clearInterval(timer);
+      clearInterval(heartbeatTimer);
       if(controller.initialized)await sdk.shutdown().catch(()=>{});
       closing=true;window.close();
     })();

@@ -8,7 +8,7 @@ export class WebsiteBridge {
   constructor({file, allowedOrigins=DEFAULT_ORIGINS, fetcher=fetch, now=Date.now}) {
     Object.assign(this, {file, allowedOrigins, fetcher, now});
     this.data = existsSync(file) ? JSON.parse(readFileSync(file, 'utf8')) : {pairing:null, queue:[]};
-    this.message = ''; this.sending = false;
+    this.message = ''; this.sending = false; this.lastAck = 0;
   }
   save() {
     writeFileSync(`${this.file}.tmp`, JSON.stringify(this.data), {mode:0o600});
@@ -16,26 +16,53 @@ export class WebsiteBridge {
   }
   status() {
     const p = this.data.pairing;
-    return {connected:!!p && Date.parse(p.expiresAt)>this.now(), auction:p?.auction??null,
+    return {connected:!!p && Date.parse(p.expiresAt)>this.now() && this.lastAck > 0 && this.now()-this.lastAck < 30000, auction:p?.auction??null,
       origin:p?.origin??null, pending:this.data.queue.length, message:this.message};
   }
-  async request(origin, route, body, token) {
+  async request(origin, route, body, token, method='POST') {
     if (!this.allowedOrigins.includes(origin)) throw new Error('Website is not allowed.');
-    const response = await this.fetcher(`${origin}${route}`, {method:'POST',redirect:'error',
+    const response = await this.fetcher(`${origin}${route}`, {method,redirect:'error',
       headers:{'Content-Type':'application/json',...(token?{Authorization:`Bearer ${token}`}:{})},
-      body:JSON.stringify(body),signal:AbortSignal.timeout(12000)});
-    if (!response.ok) throw new Error(response.status===401 || response.status===410
-      ? 'Connection expired. Open the listener again from the Auction tab.' : 'Website unavailable. Saved events will retry.');
-    return response.json();
+      ...(method==='GET'?{}:{body:JSON.stringify(body)}),signal:AbortSignal.timeout(12000)});
+    if (!response.ok) {
+      const error=new Error(response.status===401 || response.status===410
+        ? 'Connection expired. Open the listener again from the Auction tab.'
+        : [409,422].includes(response.status) ? 'Website rejected this result. Check the current lot, winners and shares before submitting again.'
+        : response.status===404 ? 'Website needs the listener result update.' : 'Website unavailable. Saved deliveries will retry.');
+      error.status=response.status; throw error;
+    }
+    const result=await response.json(); this.lastAck=this.now(); return result;
   }
-  async pair(raw) {
-    if (this.data.queue.length) throw new Error('Deliver pending transcripts before changing the connected auction.');
+  async context() {
+    const p=this.data.pairing;
+    if(!p) throw new Error('Open the listener from the website first.');
+    return this.request(p.origin,`/api/listener/sessions/${p.id}/context`,undefined,p.token,'GET');
+  }
+  async submitResult(result) {
+    const p=this.data.pairing;
+    if(!p) throw new Error('Open the listener from the website first.');
+    return this.request(p.origin,`/api/listener/sessions/${p.id}/results`,result,p.token);
+  }
+  async preview(raw) {
+    const {origin,ticket}=parseLaunchLink(raw,this.allowedOrigins);
+    const result=await this.request(origin,'/api/listener/preview',{origin,ticket});
+    if(!Number.isSafeInteger(result.auction?.id) || result.auction.id<=0 || typeof result.auction.name!=='string')
+      throw new Error('Website returned an invalid auction.');
+    const p=this.data.pairing;
+    return {origin,auction:result.auction,sameAuction:!!p && p.origin===origin && String(p.auction.id)===String(result.auction.id)};
+  }
+  async pair(raw, {resume=false}={}) {
+    if (this.data.queue.length && !resume) throw new Error('Deliver pending transcripts before changing the connected auction.');
     const {origin,ticket} = parseLaunchLink(raw,this.allowedOrigins);
     // Persist one redemption identity so a lost HTTP response can safely be retried.
     if(this.data.pending?.ticket !== ticket) {
       this.data.pending={origin,ticket,redemptionId:randomUUID()}; this.save();
     }
-    const result=await this.request(origin,'/api/listener/pair',this.data.pending);
+    const previous=this.data.pairing;
+    const result=await this.request(origin,'/api/listener/pair',{...this.data.pending,
+      ...(resume && previous?.origin===origin?{resume:{id:previous.id,token:previous.token}}:{})});
+    if(resume && (result.id!==previous?.id || result.token!==previous?.token))
+      throw new Error('Website did not preserve the existing listener connection. Saved work is unchanged.');
     if(!/^[A-Za-z0-9_-]{43}$/.test(result.token??'') || !/^[A-Za-z0-9_-]{1,80}$/.test(result.id??'') ||
       !result.auction || typeof result.auction.name!=='string' || !Number.isFinite(Date.parse(result.expiresAt)) || Date.parse(result.expiresAt)<=this.now()) {
       throw new Error('Website returned an invalid listener session.');
@@ -67,11 +94,11 @@ export class WebsiteBridge {
     } catch(error) {this.message=error.message;}
     finally {this.sending=false;}
   }
-  async heartbeat(recording=false) {
+  async heartbeat(recording=false, pendingResults=0) {
     if(!this.data.pairing) return;
     const p=this.data.pairing;
     try {
-      await this.request(p.origin,`/api/listener/sessions/${p.id}/heartbeat`,{recording,pending:this.data.queue.length},p.token);
+      await this.request(p.origin,`/api/listener/sessions/${p.id}/heartbeat`,{recording,pending:Math.min(10000,this.data.queue.length+pendingResults)},p.token);
     } catch(error) {this.message=error.message;}
   }
 }

@@ -35,6 +35,10 @@ export function ListenerConnect({ auctionId, adminKey }: { auctionId: string | n
 
   useEffect(() => {
     const version = ++generation.current;
+    setLink(null);
+    setState(null);
+    setError("");
+    setBusy(false);
     const controller = new AbortController();
     let timeout: ReturnType<typeof setTimeout> | undefined;
     const poll = async () => {
@@ -75,7 +79,11 @@ export function ListenerConnect({ auctionId, adminKey }: { auctionId: string | n
         body: JSON.stringify({ auctionId }),
         cache: "no-store",
       });
-      if (!response.ok) throw new Error("Could not connect. Confirm this auction is open and try again.");
+      if (!response.ok) throw new Error(response.status === 503
+        ? "Listener connections are not configured on this website yet."
+        : response.status === 401 || response.status === 403
+        ? "Sign in as commissioner again to connect the listener."
+        : "Could not connect. Confirm this auction is open and try again.");
       const result = (await response.json()) as { launchUrl?: string };
       if (!result.launchUrl) throw new Error("Listener did not return a launch link.");
       const parsed = new URL(result.launchUrl);
@@ -98,6 +106,7 @@ export function ListenerConnect({ auctionId, adminKey }: { auctionId: string | n
   return (
     <section className="rounded-md border border-border bg-card p-4 space-y-2" aria-label="Auction listener">
       <h3 className="font-semibold">Calcutta Listener</h3>
+      <p className="text-sm text-muted-foreground">Connect to auction #{auctionId}. Saved listener history stays with this auction when you return.</p>
       <p role="status">{listenerStatus(state, unavailable)}</p>
       {state && <p className="text-xs text-muted-foreground">Pending deliveries: {state.pending ?? 0}</p>}
       <button type="button" onClick={() => void openListener()} disabled={busy} className="rounded bg-primary px-4 py-2 text-primary-foreground disabled:opacity-50">

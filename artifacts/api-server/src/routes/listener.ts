@@ -1,44 +1,14 @@
 import { Router } from "express";
 import { and, asc, eq, gt, isNull, sql } from "drizzle-orm";
-import { createHash, createHmac, randomBytes, randomUUID, timingSafeEqual } from "node:crypto";
 import { z } from "zod/v4";
 import { db, auctionSessionsTable, calcuttasTable, listenerTicketsTable, listenerSessionsTable, listenerTranscriptEventsTable } from "@workspace/db";
 import { requireAdmin } from "../middlewares/requireAdmin";
 import { rateLimit } from "express-rate-limit";
+import { snapshot } from "../lib/auctionState";
+import { finalizeAuctionSale } from "../lib/finalizeAuctionSale";
+import { listenerResultSchema, resultFingerprint } from "../lib/listenerResult";
 
-// Faithful TS port of hosted/tickets.mjs. Keeping this in the server bundle
-// avoids a runtime-relative .mjs dependency after esbuild output.
-const digest = (value: string) => createHash("sha256").update(value).digest("hex");
-const ticketShape = (value: unknown): value is string => typeof value === "string" && /^[A-Za-z0-9_-]{43}$/.test(value);
-class ListenerTickets {
-  repository: any; secret!: string; now!: () => number;
-  constructor(options: any) { if (typeof options.secret !== "string" || options.secret.length < 32) throw new Error("Listener signing secret must contain at least 32 characters."); Object.assign(this, options); }
-  async issue(auctionId: number, origin: string) {
-    if (new URL(origin).origin !== origin || !origin.startsWith("https://")) throw new Error("HTTPS origin required.");
-    const ticket = randomBytes(32).toString("base64url"); const expiresAt = new Date(this.now() + 90_000).toISOString();
-    await this.repository.createTicket({ hash: digest(ticket), auctionId, origin, expiresAt });
-    return { launchUrl: `calcutta-listener://connect#${new URLSearchParams({ origin, ticket })}`, expiresAt };
-  }
-  async redeem({ ticket, redemptionId, origin }: any) {
-    if (!ticketShape(ticket) || !/^[0-9a-f-]{36}$/.test(redemptionId ?? "")) throw new Error("Invalid connection ticket.");
-    return this.repository.withTicket(digest(ticket), async (tx: any) => {
-      const row = await tx.getTicket();
-      if (!row || row.origin !== origin || Date.parse(row.expiresAt) <= this.now()) throw new Error("Connection link expired.");
-      const auction = await tx.getOpenAuction(row.auctionId); if (!auction) throw new Error("Auction is unavailable or complete.");
-      if (row.redemptionId && row.redemptionId !== redemptionId) throw new Error("Connection ticket already used.");
-      const token = createHmac("sha256", this.secret).update(`calcutta-listener-v1:${row.hash}:${redemptionId}`).digest("base64url");
-      if (row.sessionId) { const existing = await tx.getSession(row.sessionId); if (!existing || existing.revokedAt || Date.parse(existing.expiresAt) <= this.now()) throw new Error("Listener session is no longer active."); return { id: existing.id, token, expiresAt: existing.expiresAt, auction }; }
-      const session = { id: randomUUID(), auctionId: row.auctionId, tokenHash: digest(token), expiresAt: new Date(this.now() + 43_200_000).toISOString() };
-      await tx.activateSession(session); await tx.markRedeemed({ redemptionId, sessionId: session.id }); return { id: session.id, token, expiresAt: session.expiresAt, auction };
-    });
-  }
-  async authenticate(id: string, token: string) {
-    if (!ticketShape(token) || !/^[0-9a-f-]{36}$/.test(id ?? "")) throw new Error("Unauthorized listener.");
-    const row = await this.repository.getSession(id); const hash = digest(token);
-    if (!row || row.revokedAt || Date.parse(row.expiresAt) <= this.now() || hash.length !== row.tokenHash.length || !timingSafeEqual(Buffer.from(row.tokenHash), Buffer.from(hash))) throw new Error("Unauthorized listener.");
-    return row;
-  }
-}
+import { ListenerTickets } from "../lib/listenerTickets";
 
 const router = Router();
 const uuid = z.string().uuid();
@@ -72,10 +42,13 @@ const repository = {
   async withTicket(hash: string, callback: (tx: any) => Promise<any>) {
     return db.transaction(async (tx) => callback({
       getTicket: async () => (await tx.select().from(listenerTicketsTable).where(eq(listenerTicketsTable.hash, hash)).for("update").limit(1))[0],
-      getOpenAuction: async (id: number) => (await tx.select({ id: auctionSessionsTable.id, name: calcuttasTable.name, status: auctionSessionsTable.status })
+      getOpenAuction: async (id: number) => (await tx.select({ id: auctionSessionsTable.id, calcuttaId: calcuttasTable.id, name: calcuttasTable.name, status: auctionSessionsTable.status })
         .from(auctionSessionsTable).innerJoin(calcuttasTable, eq(calcuttasTable.id, auctionSessionsTable.calcuttaId))
         .where(and(eq(auctionSessionsTable.id, id), sql`${auctionSessionsTable.status} <> 'complete'`)).for("update").limit(1))[0],
       getSession: async (id: string) => (await tx.select().from(listenerSessionsTable).where(eq(listenerSessionsTable.id, id)).for("update").limit(1))[0],
+      resumeSession: async (id: string, expiresAt: string) => {
+        await tx.update(listenerSessionsTable).set({expiresAt: new Date(expiresAt)}).where(eq(listenerSessionsTable.id, id));
+      },
       activateSession: async (session: any) => {
         const old = await tx.select().from(listenerSessionsTable).where(and(eq(listenerSessionsTable.auctionId, session.auctionId), isNull(listenerSessionsTable.revokedAt))).for("update");
         if (old.some((x: any) => x.recording || x.pending > 0)) throw new Error("An active listener is recording or has pending deliveries.");
@@ -106,8 +79,16 @@ router.post("/listener/tickets", requireAdmin, async (req, res) => {
 });
 
 const pairLimiter = rateLimit({ windowMs: 60_000, limit: 10, standardHeaders: "draft-8", legacyHeaders: false });
+router.post("/listener/preview", pairLimiter, async (req, res) => {
+  noStore(res); const service = tickets();
+  const body = z.object({origin: z.string(), ticket: z.string()}).safeParse(req.body);
+  if (!service) return closed(res);
+  if (!body.success || body.data.origin !== publicOrigin()) return res.status(401).json({error: "Invalid connection ticket."});
+  try { return res.json(await service.preview(body.data)); }
+  catch { return res.status(410).json({error: "Invalid or expired connection ticket."}); }
+});
 router.post("/listener/pair", pairLimiter, async (req, res) => {
-  noStore(res); const service = tickets(); const body = z.object({ origin: z.string(), ticket: z.string(), redemptionId: uuid }).safeParse(req.body);
+  noStore(res); const service = tickets(); const body = z.object({ origin: z.string(), ticket: z.string(), redemptionId: uuid, resume: z.object({id: uuid, token: z.string().regex(/^[A-Za-z0-9_-]{43}$/)}).optional() }).safeParse(req.body);
   if (!service || !publicOrigin()) return closed(res);
   if (!body.success || body.data.origin !== publicOrigin()) return res.status(401).json({ error: "Invalid connection ticket." });
   try { return res.json(await service.redeem(body.data)); }
@@ -155,6 +136,48 @@ router.post("/listener/sessions/:id/events", async (req, res) => {
     });
     return res.json({ acceptedIds });
   } catch { return res.status(401).json({ error: "Unauthorized listener." }); }
+});
+
+// An authenticated, auction-scoped snapshot. No admin/Recall credential is sent to the desktop.
+router.get("/listener/sessions/:id/context", async (req, res) => {
+  noStore(res);
+  try {
+    const s = await session(req);
+    // Serialize against nomination, roster edits, and sale transactions.
+    const context = await db.transaction(async (tx) => {
+      const [auction] = await tx.select().from(auctionSessionsTable).where(eq(auctionSessionsTable.id, s.auctionId)).for("update");
+      const [credential] = await tx.select().from(listenerSessionsTable).where(eq(listenerSessionsTable.id, s.id)).for("update");
+      if (!auction || auction.status === "complete" || !credential || credential.revokedAt || credential.expiresAt <= new Date()) throw new Error("Unauthorized listener.");
+      const value = await snapshot(s.auctionId, tx);
+      if (!value) throw new Error("Auction unavailable.");
+      return { ...value, protocolVersion: 2, serverTime: new Date().toISOString(), currentLotId: value.lots.find(l => l.id === value.currentLotId && l.status === "bidding")?.id ?? null };
+    });
+    return res.json(context);
+  } catch { return res.status(401).json({ error: "Reconnect the listener from an open auction." }); }
+});
+
+router.post("/listener/sessions/:id/results", async (req, res) => {
+  noStore(res);
+  let s;
+  try { s = await session(req); }
+  catch { return res.status(401).json({ error: "Reconnect the listener from the website." }); }
+  const parsed = listenerResultSchema.safeParse(req.body);
+  if (!parsed.success) return res.status(422).json({ error: "Check the lot, winners, amount and ownership percentages." });
+  try {
+    const [auction] = await db.select().from(auctionSessionsTable).where(eq(auctionSessionsTable.id, s.auctionId));
+    if (!auction) return res.status(404).json({ error: "Auction unavailable." });
+    const input = parsed.data;
+    const result = await finalizeAuctionSale(auction.calcuttaId, s.auctionId, input.lotId, {
+      totalCents: input.totalCents,
+      allocations: input.allocations.map(a => ({ consortiumId: a.consortiumId, share: a.basisPoints / 10000 })),
+    }, { id: s.id, nominationId: input.nominationId, key: `listener:${s.id}:${input.idempotencyKey}`, requestId: input.idempotencyKey, fingerprint: resultFingerprint(input) });
+    return res.json(result);
+  } catch (error) {
+    // Constraint/database internals must not be reflected to the desktop.
+    const message = error instanceof Error ? error.message : "";
+    const known = /^(Listener session expired|Submission ID was already used|The nominated lot changed|Auction is complete|Approved trades protect|This entry already has|Every buyer must|Every owner must|Every expanded owner|The selected consortium|Expanded allocations|Invalid sale price)/.test(message);
+    return res.status(known ? 409 : 503).json({ error: known ? message : "Result could not be saved. Retry when the website is available." });
+  }
 });
 
 router.post("/listener/sessions/:id/heartbeat", async (req, res) => {

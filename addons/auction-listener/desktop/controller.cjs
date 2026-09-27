@@ -15,7 +15,7 @@ class CaptureController {
   constructor({sdk,api,apiUrl,platform=process.platform,openSettings,onState=()=>{},readQueue=()=>[],writeQueue=()=>{}}) {
     Object.assign(this,{sdk,api,apiUrl,platform,openSettings,onState,writeQueue});
     this.queue=readQueue();this.windows=new Map();this.permissions={};this.active=null;this.busy=false;this.initialized=false;this.sending=false;
-    this.state={status:'idle',message:'Ready for a rehearsal.'};
+    this.state={status:'idle',message:'Open an auction on the website to connect.'};
   }
   update(status,message,extra={}) {this.state={status,message,recording:!!this.active,...extra};this.onState(this.state);}
   async init() {
@@ -25,7 +25,7 @@ class CaptureController {
       const recording=this.windows.get(e.window?.id); if(!recording) return;
       try {
         const event=transcriptPayload(e);if(!event) return;
-        this.queue.push({id:randomUUID(),sessionId:recording.sessionId,uploadId:recording.id,websiteSessionId:recording.websiteSessionId,event});
+        this.queue.push({id:randomUUID(),sessionId:recording.sessionId,uploadId:recording.id,websiteSessionId:recording.websiteSessionId,captureStartedAt:recording.captureStartedAt,event});
         this.writeQueue(this.queue);void this.flush();
       } catch {this.update('error','A transcript could not be read or saved. Stop and check the listener.');}
     });
@@ -65,7 +65,7 @@ class CaptureController {
       }
       const windowId=await this.sdk.prepareDesktopAudioRecording();
       upload=await this.api('/api/uploads',{});
-      const recording={id:upload.id,sessionId:upload.sessionId,websiteSessionId:upload.websiteSessionId,windowId};
+      const recording={id:upload.id,sessionId:upload.sessionId,websiteSessionId:upload.websiteSessionId,windowId,captureStartedAt:Date.now()};
       this.windows.set(windowId,recording);
       await this.sdk.startRecording({windowId,uploadToken:upload.uploadToken});
       this.active=recording;

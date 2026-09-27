@@ -12,6 +12,10 @@ import { OWNERSHIP_SEASON_LOCK_NAMESPACE } from "../lib/ownershipShares";
 import { requireAdmin } from "../middlewares/requireAdmin";
 import { ErrorResponse, sendParsedJson } from "../lib/sendParsedJson";
 
+import { snapshot, event } from "../lib/auctionState";
+import { expandSaleAllocations, validateAllocationInput, shareBasisPoints } from "../lib/auctionAllocations";
+import { finalizeAuctionSale } from "../lib/finalizeAuctionSale";
+
 const router: IRouter = Router();
 const id = z.coerce.number().int().positive();
 const lotInput = z.object({
@@ -29,131 +33,6 @@ function cents(value: number): number {
   const result = Math.round(value * 100);
   if (result <= 0) throw new Error("Sale price must be at least one cent.");
   return result;
-}
-type AllocationInput = { bidderId?: number; consortiumId?: number; share: number };
-type ExpandedAllocation = { bidderId: number; consortiumId: number; basisPoints: number; cents: number };
-function shareBasisPoints(share: number): number {
-  if (!Number.isFinite(share) || share <= 0 || share > 1 || Math.abs(share * 10000 - Math.round(share * 10000)) > 1e-7) {
-    throw new Error("Allocation shares must be positive, use at most four decimals, and total exactly 100%.");
-  }
-  return Math.round(share * 10000);
-}
-function distributeIntegerTotal<T extends { bidderId: number; weight: number }>(rows: T[], total: number): Array<T & { amount: number }> {
-  const weightTotal = rows.reduce((sum, row) => sum + row.weight, 0);
-  if (!rows.length || weightTotal <= 0) throw new Error("At least one positive owner allocation is required.");
-  const staged = rows.map((row) => {
-    const exact = total * row.weight / weightTotal;
-    const amount = Math.floor(exact);
-    return { ...row, amount, remainder: exact - amount };
-  });
-  let remaining = total - staged.reduce((sum, row) => sum + row.amount, 0);
-  const order = [...staged].sort((a, b) => b.remainder - a.remainder || a.bidderId - b.bidderId);
-  for (let i = 0; i < remaining; i++) order[i % order.length].amount++;
-  return staged.map((row) => {
-    const { remainder: _remainder, ...result } = row;
-    return result as T & { amount: number };
-  });
-}
-function validateAllocationInput(shares: AllocationInput[]): void {
-  const seen = new Set<string>();
-  let total = 0;
-  for (const allocation of shares) {
-    if ((allocation.bidderId == null) === (allocation.consortiumId == null)) throw new Error("Each allocation must name exactly one bidder or consortium.");
-    const key = allocation.consortiumId != null ? `c${allocation.consortiumId}` : `b${allocation.bidderId}`;
-    if (seen.has(key)) throw new Error("Allocation buyers must be unique.");
-    seen.add(key);
-    total += shareBasisPoints(allocation.share);
-  }
-  if (total !== 10000) throw new Error("Allocation shares must be unique, use at most four decimals, and total exactly 100%.");
-}
-async function expandSaleAllocations(tx: any, auctionId: number, inputs: AllocationInput[], totalCents: number): Promise<ExpandedAllocation[]> {
-  validateAllocationInput(inputs);
-  const consortia = await tx.select({
-    id: auctionConsortiaTable.id,
-    active: auctionConsortiaTable.active,
-  }).from(auctionConsortiaTable).where(eq(auctionConsortiaTable.auctionId, auctionId));
-  const ownerRows = await tx.select({
-    consortiumId: auctionConsortiumOwnersTable.consortiumId,
-    bidderId: auctionConsortiumOwnersTable.bidderId,
-    ownerShare: auctionConsortiumOwnersTable.share,
-  }).from(auctionConsortiumOwnersTable).where(eq(auctionConsortiumOwnersTable.auctionId, auctionId));
-  const selected: Array<{ bidderId: number; consortiumId: number; weight: number }> = [];
-  for (const input of inputs) {
-    const consortium = input.consortiumId != null
-      ? consortia.find((item: { id: number; active: number }) => item.id === input.consortiumId)
-      : undefined;
-    const directOwner = input.bidderId == null ? undefined : ownerRows.find((owner: { bidderId: number }) => owner.bidderId === input.bidderId);
-    const resolvedConsortium = consortium ?? (directOwner ? consortia.find((item: { id: number; active: number }) => item.id === directOwner.consortiumId) : undefined);
-    if (!resolvedConsortium || resolvedConsortium.active !== 1) throw new Error("Every buyer must belong to an active consortium in this auction.");
-    const inputBps = shareBasisPoints(input.share);
-    if (input.bidderId != null) {
-      if (!directOwner || directOwner.consortiumId !== resolvedConsortium.id) throw new Error("Every bidder-level buyer must be an active roster owner.");
-      selected.push({ bidderId: input.bidderId, consortiumId: resolvedConsortium.id, weight: inputBps });
-    } else {
-      const owners = ownerRows.filter((owner: { consortiumId: number }) => owner.consortiumId === resolvedConsortium.id);
-      const ownerTotal = owners.reduce((sum: number, owner: { ownerShare: string }) => sum + Math.round(Number(owner.ownerShare) * 10000), 0);
-      if (!owners.length || ownerTotal !== 10000) throw new Error("The selected consortium does not have a complete owner roster.");
-      for (const owner of owners) {
-        selected.push({
-          bidderId: owner.bidderId,
-          consortiumId: resolvedConsortium.id,
-          weight: inputBps * Math.round(Number(owner.ownerShare) * 10000),
-        });
-      }
-    }
-  }
-  if (new Set(selected.map((owner) => owner.bidderId)).size !== selected.length) {
-    throw new Error("Expanded allocations cannot assign one bidder more than once.");
-  }
-  const shares = distributeIntegerTotal(selected, 10000).map((row) => ({
-    bidderId: row.bidderId, consortiumId: row.consortiumId, basisPoints: row.amount,
-  }));
-  if (shares.some((share) => share.basisPoints <= 0)) throw new Error("Every expanded owner must receive at least one basis point.");
-  const withCents = distributeIntegerTotal(shares.map((share) => ({ ...share, weight: share.basisPoints })), totalCents)
-    .map((row) => ({ bidderId: row.bidderId, consortiumId: row.consortiumId, basisPoints: row.basisPoints, cents: row.amount }));
-  if (withCents.some((allocation) => allocation.cents <= 0)) throw new Error("Every owner must receive at least one cent.");
-  return withCents;
-}
-async function snapshot(auctionId: number) {
-  const [session] = await db.select().from(auctionSessionsTable).where(eq(auctionSessionsTable.id, auctionId));
-  if (!session) return null;
-  const lots = await db.select().from(auctionLotsTable).where(eq(auctionLotsTable.auctionId, auctionId)).orderBy(asc(auctionLotsTable.nominationSequence), asc(auctionLotsTable.id));
-  const consortia = await db.select().from(auctionConsortiaTable).where(eq(auctionConsortiaTable.auctionId, auctionId));
-  const sales = await db.select().from(auctionSalesTable).where(eq(auctionSalesTable.auctionId, auctionId));
-  const allocations = await db.select({
-    saleId: auctionSaleAllocationsTable.saleId,
-    bidderId: auctionSaleAllocationsTable.bidderId,
-    share: auctionSaleAllocationsTable.share,
-    cents: auctionSaleAllocationsTable.cents,
-    bidderName: biddersTable.name,
-    consortiumName: auctionConsortiaTable.displayName,
-    consortiumId: auctionSaleAllocationsTable.consortiumId,
-  }).from(auctionSaleAllocationsTable)
-    .innerJoin(biddersTable, eq(biddersTable.id, auctionSaleAllocationsTable.bidderId))
-    .leftJoin(auctionConsortiaTable, eq(auctionConsortiaTable.id, auctionSaleAllocationsTable.consortiumId))
-    .innerJoin(auctionSalesTable, eq(auctionSalesTable.id, auctionSaleAllocationsTable.saleId))
-    .where(eq(auctionSalesTable.auctionId, auctionId));
-  const ownerRows = await db.select({
-    consortiumId: auctionConsortiumOwnersTable.consortiumId,
-    bidderId: auctionConsortiumOwnersTable.bidderId,
-    bidderName: biddersTable.name,
-    share: auctionConsortiumOwnersTable.share,
-  }).from(auctionConsortiumOwnersTable).innerJoin(biddersTable, eq(biddersTable.id, auctionConsortiumOwnersTable.bidderId))
-    .where(eq(auctionConsortiumOwnersTable.auctionId, auctionId))
-    .orderBy(asc(auctionConsortiumOwnersTable.id));
-  const consortiaWithOwners = consortia.map((consortium) => ({
-    ...consortium,
-    owners: ownerRows.filter((owner) => owner.consortiumId === consortium.id).map(({ consortiumId: _id, ...owner }) => ({
-      ...owner, share: Number(owner.share),
-    })),
-  }));
-  const finalized = sales.reduce((sum, sale) => sum + sale.totalCents, 0);
-  const live = lots.find((lot) => lot.status === "bidding")?.currentBidCents ?? 0;
-  return { ...session, lots, consortia: consortiaWithOwners, sales: sales.map((sale) => ({ ...sale, allocations: allocations.filter((allocation) => allocation.saleId === sale.id) })), metrics: { poolSizeCents: finalized + live, lotsSold: sales.length, totalLots: lots.length, averageSaleCents: sales.length ? Math.round(finalized / sales.length) : null } };
-}
-async function event(tx: any, auctionId: number, type: string, payload: Record<string, unknown>, key?: string, nominationId?: string) {
-  const [{ max }] = await tx.select({ max: sql<number>`coalesce(max(${auctionEventsTable.sequence}),0)` }).from(auctionEventsTable).where(eq(auctionEventsTable.auctionId, auctionId));
-  await tx.insert(auctionEventsTable).values({ auctionId, sequence: Number(max) + 1, eventType: type, payload, idempotencyKey: key, nominationId });
 }
 function routeIds(req: any): { calcuttaId: number; auctionId: number } {
   return { calcuttaId: Number(req.params.calcuttaId), auctionId: Number(req.params.auctionId) };
@@ -648,30 +527,7 @@ router.post("/calcuttas/:calcuttaId/auctions/:auctionId/lots/:lotId/sale", requi
   try { total = body.data.totalCents ?? cents(body.data.price!); validateAllocationInput(body.data.allocations); }
   catch (e) { return sendParsedJson(res, ErrorResponse, { error: e instanceof Error ? e.message : "Invalid sale allocation." }, 422); }
   try {
-    await db.transaction(async (tx) => {
-      const [calcutta] = await tx.select({ seasonId: calcuttasTable.seasonId }).from(calcuttasTable).where(eq(calcuttasTable.id, calcuttaId));
-      if (!calcutta) throw new Error("Calcutta not found.");
-      await tx.execute(sql`select pg_advisory_xact_lock(${OWNERSHIP_SEASON_LOCK_NAMESPACE}, ${calcutta.seasonId})`);
-      const [session] = await tx.select().from(auctionSessionsTable).where(eq(auctionSessionsTable.id, auctionId)).for("update");
-      const [lot] = await tx.select().from(auctionLotsTable).where(and(eq(auctionLotsTable.id, lotId), eq(auctionLotsTable.auctionId, auctionId))).for("update");
-      if (!session || session.status === "complete" || !lot || lot.status !== "bidding") throw new Error("Auction is complete or lot is not currently bidding.");
-      if (body.data.expectedRevision != null && session.revision !== body.data.expectedRevision) throw new Error("Stale auction revision.");
-      const [trade] = await tx.select({ id: tradesTable.id }).from(tradesTable).where(and(eq(tradesTable.entryId, lot.entryId), eq(tradesTable.status, "approved"))).limit(1);
-      if (trade) throw new Error("Approved trades protect this ownership; use the established correcting trade workflow.");
-      const existingPrimary = await tx.select({ id: positionsTable.id }).from(positionsTable).where(and(eq(positionsTable.entryId, lot.entryId), eq(positionsTable.source, "primary"))).limit(1);
-      if (existingPrimary[0]) throw new Error("This entry already has primary ownership. Historical ownership is immutable; use the established correction workflow.");
-      const allocations = await expandSaleAllocations(tx, auctionId, body.data.allocations, total);
-      const [sale] = await tx.insert(auctionSalesTable).values({ auctionId, lotId, totalCents: total, reason: body.data.reason }).returning();
-      const allocs = allocations.map((a) => ({
-        saleId: sale.id, bidderId: a.bidderId, consortiumId: a.consortiumId,
-        share: (a.basisPoints / 10000).toFixed(6), cents: a.cents,
-      }));
-      await tx.insert(auctionSaleAllocationsTable).values(allocs);
-      await tx.delete(positionsTable).where(and(eq(positionsTable.entryId, lot.entryId), eq(positionsTable.source, "primary")));
-      await tx.insert(positionsTable).values(allocations.map((a) => ({ entryId: lot.entryId, bidderId: a.bidderId, ownershipShare: (a.basisPoints / 10000).toFixed(6), source: "primary", costBasis: (a.cents / 100).toFixed(2) })));
-      await tx.update(auctionLotsTable).set({ status: "sold", currentBidCents: total }).where(eq(auctionLotsTable.id, lotId));
-      await tx.update(auctionSessionsTable).set({ revision: session.revision + 1 }).where(eq(auctionSessionsTable.id, auctionId)); await event(tx, auctionId, "sale_finalized", { lotId, saleId: sale.id, totalCents: total });
-    }); res.json(await snapshot(auctionId));
+    await finalizeAuctionSale(calcuttaId, auctionId, lotId, { ...body.data, totalCents: total }); res.json(await snapshot(auctionId));
   } catch (e) { sendParsedJson(res, ErrorResponse, { error: e instanceof Error ? e.message : "Sale failed." }, 409); }
 });
 

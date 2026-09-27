@@ -92,9 +92,8 @@ test('HTTP boundaries reject unauthorized/cross-origin writes and never expose t
   const call=(path,data,auth=true,extra={})=>fetch(app.connection.url+path,{method:data?'POST':'GET',headers:{'Content-Type':'application/json',...(auth?{Authorization:`Bearer ${app.connection.token}`} :{}),...extra},...(data?{body:JSON.stringify(data)}:{})});
   assert.equal((await call('/api/rehearse',{text:'Chiefs sold to Craig for $500'},false)).status,401);
   assert.equal((await call('/api/rehearse',{text:'Chiefs sold to Craig for $500'},true,{Origin:'https://example.com'})).status,403);
-  const upload=await (await call('/api/uploads',{})).json();assert.equal(upload.uploadToken,'upload-token');assert.ok(!JSON.stringify(upload).includes('never-return'));
-  assert.equal((await call('/api/transcript',{sessionId:upload.sessionId,uploadId:upload.id,event:payload('Chiefs sold to Craig for $500')})).status,200);
-  const state=await (await call('/api/state')).json();assert.equal(state.sales.length,1);assert.ok(!JSON.stringify(state).includes('never-return'));assert.ok(!JSON.stringify(state).includes('upload-token'));
+  assert.equal((await call('/api/uploads',{})).status,400,'unpaired listener must not create a recording');
+  const state=await (await call('/api/state')).json();assert.equal(state.sales.length,0);assert.ok(!JSON.stringify(state).includes('never-return'));assert.ok(!JSON.stringify(state).includes('upload-token'));
 });
 function fakeCapture({platform='win32',denied=false}={}) {
   const events={},calls=[],sdk={addEventListener:(n,fn)=>events[n]=fn,init:async()=>{},requestPermission:async p=>events['permission-status']({permission:p,status:denied?'denied':'granted'}),prepareDesktopAudioRecording:async()=> 'window-1',startRecording:async args=>calls.push(args),stopRecording:async()=>{}};

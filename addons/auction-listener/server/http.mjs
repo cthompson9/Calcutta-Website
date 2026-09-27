@@ -17,8 +17,8 @@ export function verifiedWebhook(raw, headers, secret, now=Date.now()) {
   const sig=createHmac('sha256',key).update(`${id}.${stamp}.${raw}`).digest('base64');
   return String(headers['webhook-signature']??'').split(' ').some(v=>v.startsWith('v1,') && equal(v.slice(3),sig));
 }
-export function createAuctionServer({store,recall,token,bridge}) {
-  let creating=false;
+export function createAuctionServer({store,recall,token,bridge,live}) {
+  let creating=false, pairing=false;
   const server=createServer(async(req,res)=>{
     const origin=`http://${req.headers.host}`;
     res.setHeader('Cache-Control','no-store');
@@ -49,46 +49,51 @@ export function createAuctionServer({store,recall,token,bridge}) {
       if (!equal(bearer,token) && !equal(cookie,token)){json(401,{error:'Open the board from the Calcutta launcher.'});return;}
       if (req.method==='GET' && path==='/api/state') {json(200,{...store.snapshot(),recallConfigured:!!recall.config.apiKey,apiUrl:recall.config.apiUrl});return;}
       if (req.method==='GET' && path==='/api/website') {json(200,bridge?.status()??{connected:false});return;}
-      if (req.method==='GET' && path==='/api/events') {
-        res.writeHead(200,{'Content-Type':'text/event-stream','Connection':'keep-alive'});
-        const send=s=>res.write(`data: ${JSON.stringify(s)}\n\n`);
-        send(store.snapshot());store.listeners.add(send);
-        const heartbeat=setInterval(()=>res.write(': keepalive\n\n'),15000);
-        req.on('close',()=>{clearInterval(heartbeat);store.listeners.delete(send);});return;
-      }
-      if (req.method==='GET' && path==='/api/export') {
-        res.setHeader('Content-Disposition','attachment; filename="calcutta-rehearsal.json"');
-        json(200,store.snapshot());return;
-      }
+      if (req.method==='GET' && path==='/api/live') {json(200,live?.snapshot()??{});return;}
       if (req.method==='POST') {
         const input=JSON.parse((await body(req))||'{}');
+        if (path==='/api/live/sync') {await live?.sync();json(200,live?.snapshot()??{});return;}
+        if (path==='/api/live/flush') {await live?.flush();json(200,live?.snapshot()??{});return;}
+        if (path==='/api/live/result') {if(!live)throw new Error('Live results unavailable.');live.correct(input);void live.flush();json(200,live.snapshot());return;}
+        if (path==='/api/live/review') {if(!live)throw new Error('Live results unavailable.');json(200,live.beginReview(input));return;}
+        if (path==='/api/live/dismiss') {if(!live)throw new Error('Live results unavailable.');live.dismiss(input.id);json(200,live.snapshot());return;}
+        if(path==='/api/website/preview') {
+          if(!bridge) throw new Error('Website connection is unavailable.');
+          const target=await bridge.preview(input.url);
+          json(200,{...target,current:bridge.status().auction});return;
+        }
         if(path==='/api/website/pair') {
           if(!bridge) throw new Error('Website connection is unavailable.');
+          if(pairing || live?.syncing || live?.sending || bridge.sending) throw new Error('A connection or delivery is in progress. Try again shortly.');
           if(creating || store.state.uploads.some(u=>['ready','recording_started'].includes(u.status))) throw new Error('Stop recording before connecting to an auction.');
-          json(200,await bridge.pair(input.url));return;
+          pairing=true;if(live)live.switching=true;
+          try {
+            const target=await bridge.preview(input.url);
+            if(!target.sameAuction && (live?.hasUnresolved() || bridge.data.queue.length))
+              throw new Error('Resolve or dismiss unsent reviews before switching auctions. Pending deliveries must be acknowledged first.');
+            await bridge.pair(input.url,{resume:target.sameAuction});
+          } finally {pairing=false;if(live)live.switching=false;}
+          await live?.sync(); await bridge.heartbeat(false,live?.data.drafts.filter(d=>!['submitted','dismissed'].includes(d.status)).length??0);json(200,bridge.status());return;
         }
         if(path==='/api/website/tick') {
-          await bridge?.flush();await bridge?.heartbeat(!!input.recording);
+          if(pairing) {json(200,bridge?.status()??{connected:false});return;}
+          await bridge?.heartbeat(!!input.recording,live?.data.drafts.filter(d=>!['submitted','dismissed'].includes(d.status)).length??0);
+          void bridge?.flush(); void live?.flush();
           json(200,bridge?.status()??{connected:false});return;
         }
-        if(path==='/api/session') {
-          if(creating || store.state.uploads.some(u=>['ready','recording_started'].includes(u.status))) throw new Error('Stop recording before starting a new rehearsal.');
-          store.newSession(input.lots);json(200,store.snapshot());return;
-        }
-        if(path==='/api/result') {store.edit(input);json(200,store.snapshot());return;}
         if(path==='/api/transcript') {
+          if(pairing) throw new Error('Wait for the auction connection to finish.');
           if(input.websiteSessionId) {
             if(input.websiteSessionId!==bridge?.data.pairing?.id) throw new Error('Transcript belongs to a different website session.');
+            if(live) {live.ingest(input);void live.flush();}
             bridge.enqueue({...input,receivedAt:new Date().toISOString()});void bridge.flush();
-          } else store.ingest({...input,source:'recall'});
+          } else if(live) throw new Error('Connect this recording to a website auction.');
+          else store.ingest({...input,source:'recall'});
           json(200,{ok:true});return;
         }
-        if(path==='/api/rehearse') {
-          if(typeof input.text!=='string' || input.text.length>20000) throw new Error('Enter a short auction announcement.');
-          store.ingest({sessionId:store.state.id,uploadId:'typed-rehearsal',source:'typed rehearsal',event:{event:'transcript.data',data:{data:{participant:{id:0,name:'Typed rehearsal'},words:[{text:input.text,start_timestamp:{relative:Date.now()/1000}}]}}}});
-          json(200,store.snapshot());return;
-        }
         if(path==='/api/uploads') {
+          if(pairing) throw new Error('Wait for the auction connection to finish.');
+          if(live) {await live.sync();if(!live.ready())throw new Error('Connect to an updated website auction before recording.');}
           if(bridge?.data.pairing && !bridge.status().connected) throw new Error('Open the listener from the Auction tab to reconnect before recording.');
           if(creating || store.state.uploads.some(u=>['ready','recording_started'].includes(u.status))) throw new Error('A recording is already starting or active.');
           if(!recall.config.apiKey) throw new Error('Recall API key has not been configured.');

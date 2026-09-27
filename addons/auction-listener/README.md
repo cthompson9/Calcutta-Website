@@ -1,134 +1,61 @@
-# Calcutta Listener — v0, first rehearsal checkpoint
+# Calcutta Listener
 
-This is an executable **local rehearsal**, not the finished production website integration.
-It captures microphone and computer audio through Recall's Desktop SDK, receives live
-transcripts, recognizes a deliberately limited auction grammar, and updates a local web
-board automatically. The commissioner can edit prices and ownership. No live Calcutta
-records are written, and nothing is published.
+The website owns the auction, randomized nominations, consortium roster, ownership rules and accepted results. The desktop captures speech, prepares a result, flags uncertainty and submits validated results to that website. It never nominates lots or treats a local draft as an official sale.
 
-## Run on Windows
+## Interface
 
-Node 22+ is required (tested with Node 24). From this directory:
+- Start / Stop listening and a compact connection indicator.
+- Active lot: blank while stopped, disconnected or no lot is nominated; updates and briefly highlights each new website nomination.
+- What we heard: final and partial speech, followed by Results.
+- Results: active lot highlighted; uncertain winner, percentage or amount cells marked red with “Needs a look.” Correct the row using the website roster and Submit, or dismiss an unsent review. Beginning an edit holds it for manual submission; later speech cannot silently submit that draft.
+- Pending delivery is distinct from Saved on website. Accepted results are read back from the website, including subsequent commissioner corrections. Correct already accepted sales in the website.
 
-1. Install desktop dependencies: `npm install --prefix desktop`.
-2. Allow the official Electron install script and Recall SDK setup script to install
-   their native components if your npm installation blocks lifecycle scripts. The
-   scripts are `desktop/node_modules/electron/install.js` and
-   `desktop/node_modules/@recallai/desktop-sdk/setup.js`; run each from its own directory.
-3. Configure the **separate backend** using `.local/backend-config.json` (gitignored):
-   `{"RECALL_REGION":"us-west-2","RECALL_API_KEY":"YOUR_PRIVATE_KEY"}`.
-   Runtime environment variables with these names override the file. Never include
-   this file in a desktop package, archive, or commit. Don't paste real keys in chat.
-4. Run `npm start`. The launcher starts the backend on `127.0.0.1:43127` and opens
-   the Electron window. Recording only begins after the user clicks Start listening.
+The rehearsal dashboard, statistics, spoken nominations, practice form, local lot editing, export/reset and duplicate browser-board controls are removed from the live interface and local HTTP routes. Historical rehearsal files remain untouched. The old store/grammar tests remain as regression fixtures; the store still tracks recording upload lifecycle, not official results.
 
-The current user's setup has already installed the dependencies and securely configured
-a purpose-specific key for Recall workspace `90a803a2-686d-4b25-a9fb-0f3ea7e00fc0`
-(Aleph), region `us-west-2`. Credentials exist only in private backend storage.
+## Speech
 
-## First spoken check
+Examples (use consortium names or explicit aliases from the website):
 
-Click **Start listening** and wait for **Listening**. Say these with a short pause between:
+- “Sold to Alpha for five hundred dollars.”
+- “Chiefs sold to Alpha and Bravo, fifty-fifty, for $500.”
+- “Sold to Alpha 60 percent and Bravo 40 percent for $500.”
 
-1. “Next up, Chiefs.”
-2. “Sold to Craig for five hundred dollars.”
-3. “Next up, Bills.”
+Only finalized explicit sale announcements can submit automatically. Ordinary bids and countdowns do not sell lots. Unknown or ambiguous names, missing splits, malformed amounts, corrections and uncertain lot timing require review. A phrase can span consecutive final fragments from the same speaker within eight seconds. Recognition remains a bounded grammar, not unrestricted language-model interpretation. Numeric unequal percentages are supported; unsupported wording stays in review.
 
-Expect a Chiefs row for $500 owned by Craig and Bills on the block. Then click **Stop**.
-Try a second sale with “Bills sold to Craig and Dave, fifty-fifty, for two hundred
-dollars.” Use Edit to correct a price or a name. Speech cannot overwrite an existing row.
+The desktop uses recording-relative word timestamps and observed nomination history to retain the original lot. Speech without reliable timing, near a nomination transition, after reconnect, or across a lot change requires review. Server-side nomination IDs independently prevent applying an old result to a new nomination. The desktop clock/timestamp mapping still needs a real Recall capture check before live use.
 
-Use **Start a fresh rehearsal** to archive practice results. The default NFL lots are
-sample inventory; enter the real known lots and their aliases before testing another sport.
-To test Zoom/Discord, run a call on this same computer and keep the same default audio
-devices selected. Test headphones and remote speakers explicitly before a real auction.
+## API and persistence
 
-## Supported behavior and limits
+- `GET /api/listener/sessions/:id/context`: authenticated auction snapshot, roster, lots and official results; `protocolVersion: 2`.
+- `POST /api/listener/sessions/:id/results`: auction-scoped result with UUID `idempotencyKey`, lot ID, nomination UUID, integer `totalCents`, and allocations of `{consortiumId, basisPoints}` totaling 10000.
+- Context polls every two seconds. Heartbeats run independently every ten seconds. The existing website auction query refreshes every three seconds.
+- Website sales reuse the same finalization transaction as commissioner sales, including consortium-owner expansion, trade/historical ownership protections and positive allocation checks. Existing auction events store the submission fingerprint and receipt; no new migration is introduced by this change.
+- Local drafts and transcript deduplication persist in `.local/live-auction.json`. On switching, each auction is saved separately in a hashed `.auction.json` file keyed by website origin and auction ID. Returning restores that auction; a new auction starts blank. Legacy state migrates only when its session matches the authenticated connection. Unknown delivery outcomes retain the same immutable request ID for retry. Only an explicit receipt marks a result saved. Deterministic conflicts return to review; network failures remain pending.
+- Do not switch auctions with unresolved results or pending transcripts. Reopening the same auction renews the existing non-revoked, stopped session, including an expired session, preserving its credentials and receipt namespace. Revoked credentials or a server-side recording flag still require recovery; preserve local files and verify official results. Never clear a queue simply to reconnect.
+- `POST /api/listener/preview` validates a short-lived launch ticket and returns the destination without consuming it. Switching from another auction shows its name and ID before pairing. Listening remains off.
+- `POST /api/listener/pair` accepts an optional prior session credential for same-device, same-auction resumption; it never transfers that credential to another auction. The production implementation is in `artifacts/api-server/src/lib/listenerTickets.ts`; `hosted/tickets.mjs` remains the legacy integration example.
 
-- Exact known lot names or explicit aliases; nomination order is unrestricted.
-- Explicit “sold to [owner(s)] for [price]”, with a nominated or explicitly named lot.
-- Unknown names create rehearsal owners automatically; no account needed.
-- Numeric amounts and standard English whole-dollar amounts. Ambiguous shorthand
-  such as “five fifty” is rejected.
-- “and”, comma-separated buyers, “fifty-fifty”, “equally”, and “equal shares”.
-  Unequal percentages can be entered in the editor. Unspecified shares remain unresolved.
-- Partial transcripts appear on screen but never commit a sale. A sale may span two
-  consecutive finalized fragments from the same speaker within eight seconds.
-- Durable result/correction history, duplicate protection, rejected late transcripts,
-  and a desktop outbox for temporary local delivery failures.
-- Recognition is Recall AI plus a bounded rule-based auction interpreter. There is
-  no general language-model reasoning and no guarantee of recognizing arbitrary speech.
-- Any speaker can use the supported commands in this rehearsal. Auctioneer-only
-  authorization/filtering, robust owner identity reconciliation, and arbitrary verbal
-  corrections are not implemented. Do not use this version as authoritative live results.
-- No sub-second guarantee. Typed rehearsal tests interpretation, not microphone,
-  cloud transcription, speaker attribution, or end-to-end latency.
+## Running
 
-## Architecture and secrets
+Node 22+ and the existing Electron/Recall desktop dependencies are required. From this directory, install desktop dependencies with `npm install --prefix desktop`, configure `.local/backend-config.json` privately, then run `npm start`. Use the existing `node launch.mjs --register-protocol` action only if Windows protocol registration needs installation or repair.
 
-`launch.mjs` starts a separate Node backend and the desktop client. Only the backend
-loads the Recall API key. It creates a Desktop SDK upload and returns its limited upload
-token to Electron's main process. The renderer has no Node access or API key.
-The SDK's `desktop_sdk_callback` events enter `/api/transcript` with a random local
-authorization token. Both live events and clearly labeled typed fixtures use
-`AuctionStore.ingest`. JSON state is saved by replacement before broadcasting SSE.
-The backend binds only to loopback, checks Host/Origin, and authenticates all data routes.
+Example private configuration: `{"RECALL_REGION":"us-west-2","RECALL_API_KEY":"YOUR_PRIVATE_KEY"}`. Never commit this file or print credentials. Packaged installations use private Electron user data instead of the development `.local` folder.
 
-Local state, transcripts, outbox and archived rehearsals remain under `.local/` until
-removed by the user. Recall also receives/stores the audio under workspace retention
-settings; this is not an offline or zero-retention recorder. Recording is audio-only.
-
-The packaging entry point is `desktop/package.mjs`; native helpers remain unpacked,
-and macOS microphone/system-audio usage descriptions are included. Windows is the
-only platform selected for this milestone. A signed cross-platform distribution is
-not completed or tested. The desktop package always needs a separately configured backend.
-
-## Upload lifecycle and webhooks
-
-Live transcription uses authenticated callbacks forwarded by Electron. A public
-webhook URL is not needed for this local checkpoint and none has been registered.
-After stopping, the desktop periodically asks the backend to retrieve upload status.
-Both `sdk_upload.complete` and `sdk_upload.failed` are supported in the durable store.
-The optional `/api/recall/webhook` handler verifies the original payload with the
-backend's `RECALL_WEBHOOK_VERIFICATION_SECRET` and rejects expired signatures.
-For hosting, register a stable HTTPS URL, confirm the correct workspace signing secret,
-and prove an actual verified delivery before calling webhook setup complete.
-
-Calendar scheduling is deliberately deferred: this user starts an in-person or
-desktop auction manually. The existing repository's calendar routes describe sports
-schedules, not connected meeting calendars. If meeting calendar scheduling is requested,
-the next step is to inspect Recall Calendar V2 setup status, choose Google or Microsoft,
-complete that provider's authorization, and implement the user's recording opt-in rule.
+The deployed website must include the context, results, preview and updated pairing routes, its existing listener/auction/consortium migrations, a valid `LISTENER_PUBLIC_ORIGIN`, and a valid stable `SESSION_SECRET`. Pair from an open website auction. An older website is detected and recording remains disabled. Recording begins only on explicit Start listening and sends microphone/system audio to Recall according to that workspace's retention settings.
 
 ## Validation
 
-- `node --test --test-isolation=none test/listener.test.mjs`
-- `node test/smoke.mjs`
+Install repository dependencies using the root lockfile first (the UI test uses the root jsdom dev dependency).
 
-The second command starts the actual backend on a temporary loopback port and tests the
-page and auction transitions through HTTP. Tests use synthetic credentials and payloads;
-they do not record the user or call Recall. On this machine, the user also started
-two live recordings: both reached complete and six finalized transcript events arrived
-at the application. Those phrases named MLB teams while the starter inventory was NFL;
-no sale was created. A successful spoken nomination/sale with matching lots and measured
-end-to-end latency remains to be verified.
+```
+node --test addons/auction-listener/test/*.test.mjs
+node addons/auction-listener/test/smoke.mjs
+pnpm --filter @workspace/api-server exec tsx --test src/lib/listenerSale.test.mjs
+pnpm run typecheck:libs
+pnpm --filter @workspace/api-server run typecheck
+pnpm --filter @workspace/api-server run build
+```
 
-## Next checkpoint: thecalcutta.app integration
+The sale tests use injected in-memory PostgreSQL (PGlite); no production database is used. They exercise actual transactions, consortium expansion, duplicate retries and rollback. Schema fixtures cover the tables used by the transaction; these are not production migration tests. On restricted Windows runners, use Node's `--test-isolation=none` and a matching local esbuild executable, since the repository excludes Windows esbuild binaries.
 
-After the spoken check, add a dedicated, authenticated session/event endpoint to the
-existing Express app, tied to an explicitly selected Calcutta and its existing lot IDs.
-Do not send incremental results through the existing 32-team bulk import endpoint.
-Use the shared season transaction advisory lock, exact persisted share totals,
-idempotent event IDs, optimistic correction versions, and immutable approved trades.
-Resolve/create bidder identities within that transaction. Push updates to all connected
-viewers and preserve actual sale order. Test against an isolated development database.
-
-Verify Replit's current Git revision and supported handoff before transferring the
-reviewed branch. The source currently lives on local branch `feature/auction-listener-v0`.
-No Replit Agent implementation requests, pushes, merges, deployments or production
-database writes have been performed. Publishing remains a separate approval step.
-
-Recall references: [Desktop SDK](https://docs.recall.ai/docs/desktop-sdk),
-[in-person capture](https://docs.recall.ai/docs/adhoc-meetings-in-person-meetings),
-[real-time transcription](https://docs.recall.ai/docs/dsdk-realtime-transcription),
-[upload lifecycle](https://docs.recall.ai/docs/desktop-recording-sdk-webhooks).
+Before live use, separately verify deployed configuration, Windows ticket launch, pairing, nomination updates and one explicitly authorized recording in a test auction. Local simulations do not establish microphone permissions, Recall key validity or production connectivity.
