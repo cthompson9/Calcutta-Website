@@ -42,7 +42,7 @@ export function Shell({ children, isPreview }: ShellProps) {
   }, [sidebarCollapsed]);
 
   const isNflOnlyRoute =
-    ["/analysis", "/teams", "/bidders"].some((route) =>
+    ["/teams", "/bidders"].some((route) =>
       location.startsWith(route),
     );
   const unsupportedSport =

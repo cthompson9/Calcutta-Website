@@ -12,6 +12,11 @@ export interface AuctionNominationInput {
   idempotencyKey: string;
 }
 
+export interface AuctionStartInput {
+  /** @minimum 0 */
+  expectedRevision: number;
+}
+
 export type AuctionSnapshotStatus = typeof AuctionSnapshotStatus[keyof typeof AuctionSnapshotStatus];
 
 
@@ -131,7 +136,14 @@ export interface AuctionSnapshot {
   id: number;
   calcuttaId: number;
   status: AuctionSnapshotStatus;
+  /** @nullable */
+  currentLotId: number | null;
   revision: number;
+  createdAt: string;
+  /** @nullable */
+  startedAt: string | null;
+  /** @nullable */
+  completedAt: string | null;
   lots: AuctionLot[];
   consortia: AuctionConsortium[];
   sales: AuctionSale[];

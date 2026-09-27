@@ -415,6 +415,64 @@ export function AdminMtmDiagnostics({
 // ── Page ──────────────────────────────────────────────────────────────────────
 
 export default function MtmTracker() {
+  const { selectedCalcutta } = useSeason();
+  if (selectedCalcutta && selectedCalcutta.sport !== "NFL") {
+    return <UnpopulatedAnalysis name={selectedCalcutta.name} sport={selectedCalcutta.sport} year={selectedCalcutta.year} />;
+  }
+  return <NflMtmTracker />;
+}
+
+function UnpopulatedAnalysis({ name, sport, year }: { name: string; sport: string; year: number }) {
+  return (
+    <div className="mx-auto max-w-5xl space-y-5 px-4 pb-6 pt-4 md:space-y-6 md:p-8">
+      <header className="flex flex-col items-center text-center">
+        <img src="/crest-transparent.png" alt="" aria-hidden="true" className="mb-5 h-20 w-20 object-contain mix-blend-multiply md:h-28 md:w-28" />
+        <h1 className="font-serif text-4xl font-medium tracking-[-0.035em] md:text-5xl" data-testid="text-mtm-title">Analysis</h1>
+        <p className="mt-3 font-mono text-xs uppercase tracking-widest text-muted-foreground">Current team and consortium values · {year}</p>
+      </header>
+      <section className="border border-border bg-card" aria-label={`${sport} analysis`}>
+        <div className="flex flex-wrap items-start justify-between gap-4 border-b border-border p-4">
+          <div>
+            <h2 className="font-mono text-sm font-bold uppercase tracking-widest">Latest Mark</h2>
+            <p className="mt-1 text-xs text-muted-foreground">As of: not available</p>
+          </div>
+          <span className="border border-border px-3 py-2 font-mono text-[10px] font-bold uppercase tracking-widest text-muted-foreground">Mark unavailable</span>
+        </div>
+        <div className="border-b border-border p-4">
+          <h3 className="font-mono text-xs font-bold uppercase tracking-widest">Lot values over time</h3>
+          <div className="mt-3 flex h-40 items-center justify-center border border-dashed border-border bg-muted/10 text-center text-xs text-muted-foreground">
+            No valuation history for this pool
+          </div>
+        </div>
+        <div className="border-b border-border p-4">
+          <div className="flex flex-col gap-3 sm:flex-row sm:items-end sm:justify-between">
+            <div>
+              <h3 className="font-mono text-xs font-bold uppercase tracking-widest">By team standings</h3>
+              <p className="mt-1 text-xs text-muted-foreground">Current expected payout, auction price, multiple, and change from the prior mark.</p>
+              <p className="mt-1 text-[11px] text-muted-foreground">No {sport} valuation source exists for {name}; all mark fields remain blank.</p>
+            </div>
+            <div className="border border-border bg-background px-3 py-2 font-mono text-xs text-muted-foreground" aria-label="Filter unavailable">
+              Filter team or consortium…
+            </div>
+          </div>
+        </div>
+        <div className="table-scroll">
+          <table className="w-full min-w-[940px] text-sm">
+            <thead className="border-b border-border bg-muted/40 font-mono text-[10px] uppercase tracking-wider text-muted-foreground">
+              <tr><th className="px-4 py-2 text-left">Team</th><th className="px-3 py-2 text-left">Consortium</th><th className="px-3 py-2 text-right">Gross payout</th><th className="px-3 py-2 text-right">Net payout</th><th className="px-3 py-2 text-right">Auction price</th><th className="px-3 py-2 text-right">Multiple</th><th className="px-4 py-2 text-right">Momentum</th></tr>
+            </thead>
+            <tbody><tr><td colSpan={7} className="px-6 py-20 text-center">
+              <p className="font-mono text-xs font-bold uppercase tracking-widest">No team values available</p>
+              <p className="mt-2 text-sm text-muted-foreground">No MTM figures have been calculated for this pool.</p>
+            </td></tr></tbody>
+          </table>
+        </div>
+      </section>
+    </div>
+  );
+}
+
+function NflMtmTracker() {
   const { year, selectedCalcutta } = useSeason();
   const isNflCalcutta = selectedCalcutta?.sport === "NFL";
   const calcuttaId = isNflCalcutta ? selectedCalcutta.id : undefined;

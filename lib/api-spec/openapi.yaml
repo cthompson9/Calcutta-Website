@@ -1611,6 +1611,28 @@ paths:
         - {name: auctionId, in: path, required: true, schema: {type: number}}
       responses:
         "200": {description: Snapshot, content: {application/json: {schema: {$ref: "#/components/schemas/AuctionSnapshot"}}}}
+  /calcuttas/{calcuttaId}/auctions/{auctionId}/start:
+    post:
+      operationId: startAuction
+      tags: [auction]
+      summary: Start a setup auction without nominating a lot
+      description: Requires the ADMIN_API_KEY bearer token. Atomically changes a setup auction to live, records startedAt and an auction_started event, increments the revision, and returns the updated snapshot. The expected revision must match.
+      security:
+        - AdminBearerAuth: []
+      parameters:
+        - {name: calcuttaId, in: path, required: true, schema: {type: integer, minimum: 1}}
+        - {name: auctionId, in: path, required: true, schema: {type: integer, minimum: 1}}
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: {$ref: "#/components/schemas/AuctionStartInput"}
+      responses:
+        "200": {description: Started auction snapshot with no lot nominated, content: {application/json: {schema: {$ref: "#/components/schemas/AuctionSnapshot"}}}}
+        "400": {description: Invalid request, content: {application/json: {schema: {$ref: "#/components/schemas/ErrorResponse"}}}}
+        "401": {description: Admin authentication required, content: {application/json: {schema: {$ref: "#/components/schemas/ErrorResponse"}}}}
+        "404": {description: Auction not found for this Calcutta, content: {application/json: {schema: {$ref: "#/components/schemas/ErrorResponse"}}}}
+        "409": {description: "Auction is already live or complete, or expectedRevision is stale", content: {application/json: {schema: {$ref: "#/components/schemas/ErrorResponse"}}}}
   /calcuttas/{calcuttaId}/auctions/{auctionId}/entries:
     get:
       operationId: getAuctionEligibleEntries
@@ -2004,15 +2026,25 @@ components:
       properties:
         expectedRevision: {type: number}
         idempotencyKey: {type: string}
+    AuctionStartInput:
+      type: object
+      additionalProperties: false
+      required: [expectedRevision]
+      properties:
+        expectedRevision: {type: number, minimum: 0, multipleOf: 1}
     AuctionSnapshot:
       type: object
       additionalProperties: false
-      required: [id, calcuttaId, status, revision, lots, consortia, sales, metrics]
+      required: [id, calcuttaId, status, currentLotId, revision, createdAt, startedAt, completedAt, lots, consortia, sales, metrics]
       properties:
         id: {type: number}
         calcuttaId: {type: number}
         status: {type: string, enum: [setup, live, complete]}
+        currentLotId: {type: ["number", "null"], multipleOf: 1}
         revision: {type: number}
+        createdAt: {type: string, format: date-time}
+        startedAt: {type: ["string", "null"], format: date-time}
+        completedAt: {type: ["string", "null"], format: date-time}
         lots: {type: array, items: {$ref: "#/components/schemas/AuctionLot"}}
         consortia: {type: array, items: {$ref: "#/components/schemas/AuctionConsortium"}}
         sales: {type: array, items: {$ref: "#/components/schemas/AuctionSale"}}

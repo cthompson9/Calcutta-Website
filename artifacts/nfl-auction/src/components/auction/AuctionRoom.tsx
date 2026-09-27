@@ -6,7 +6,7 @@ import { SaleEditor } from "./SaleEditor";
 import { LotInventory } from "./LotInventory";
 import { ManageRosterDialog } from "./AdminDialogs";
 import { ListenerConnect, ListenerTranscript } from "./ListenerConnect";
-import { createAuction, nominateNext, completeAuctionSession } from "./admin-actions";
+import { createAuction, startAuctionSession, nominateNext, completeAuctionSession } from "./admin-actions";
 import { useToast } from "@/hooks/use-toast";
 import { useState } from "react";
 
@@ -17,11 +17,12 @@ interface AuctionRoomProps {
   historicalSummaryRefetch: () => void;
   activeAuction: AuctionSnapshot | null | undefined;
   hasHistoricalResults: boolean;
+  isSeasonComplete: boolean;
   isLoading: boolean;
   error: any;
 }
 
-export function AuctionRoom({ calcuttaId, year, adminKey, historicalSummaryRefetch, activeAuction, hasHistoricalResults, isLoading, error }: AuctionRoomProps) {
+export function AuctionRoom({ calcuttaId, year, adminKey, historicalSummaryRefetch, activeAuction, hasHistoricalResults, isSeasonComplete, isLoading, error }: AuctionRoomProps) {
   const queryClient = useQueryClient();
   const { toast } = useToast();
   const [isPending, setIsPending] = useState(false);
@@ -60,7 +61,7 @@ export function AuctionRoom({ calcuttaId, year, adminKey, historicalSummaryRefet
     try {
       await createAuction(calcuttaId, adminKey);
       queryClient.invalidateQueries({ queryKey: ["active-auction", calcuttaId] });
-      toast({ title: "Auction session started" });
+      toast({ title: "Auction session set up" });
     } catch (err: any) {
       toast({ title: "Failed to start", description: err.message, variant: "destructive" });
     } finally {
@@ -77,16 +78,21 @@ export function AuctionRoom({ calcuttaId, year, adminKey, historicalSummaryRefet
           <p className="text-muted-foreground text-sm font-mono">
             {hasHistoricalResults
               ? "This Calcutta already has historical auction results. Its original sales remain read-only."
+              : isSeasonComplete
+                ? "This season is complete. No new auction session can be set up for this existing pool."
               : "You have admin access. You can start a new live auction session."}
           </p>
-          <button
-            onClick={handleCreate}
-            disabled={isPending || hasHistoricalResults}
-            className="bg-primary text-primary-foreground font-mono text-sm font-bold uppercase tracking-widest px-6 py-3 hover:bg-primary/90 disabled:opacity-50 transition-colors inline-flex items-center gap-2"
-          >
-            {isPending ? <Loader2 className="w-4 h-4 animate-spin" /> : <Play className="w-4 h-4" />}
-            Start Auction Session
-          </button>
+          {!hasHistoricalResults && !isSeasonComplete && (
+            <button
+              data-testid="button-create-auction-session"
+              onClick={handleCreate}
+              disabled={isPending}
+              className="bg-primary text-primary-foreground font-mono text-sm font-bold uppercase tracking-widest px-6 py-3 hover:bg-primary/90 disabled:opacity-50 transition-colors inline-flex items-center gap-2"
+            >
+              {isPending ? <Loader2 className="w-4 h-4 animate-spin" /> : <Play className="w-4 h-4" />}
+              Set Up Auction Session
+            </button>
+          )}
         </div>
       );
     }
@@ -94,7 +100,9 @@ export function AuctionRoom({ calcuttaId, year, adminKey, historicalSummaryRefet
       <section className="border border-border bg-card p-6 rounded-md" aria-label="Live auction status">
         <h2 className="text-lg font-bold uppercase tracking-tight">No Active Auction</h2>
         <p className="mt-2 text-sm text-muted-foreground">
-          No live auction is configured. Admins can set up an auction for an empty Calcutta. Existing results are preserved.
+          {isSeasonComplete
+            ? "No auction session is configured for this completed season."
+            : "No live auction is configured. Admins can set up an auction for an empty Calcutta. Existing results are preserved."}
         </p>
       </section>
     );
@@ -109,6 +117,21 @@ export function AuctionRoom({ calcuttaId, year, adminKey, historicalSummaryRefet
   
   const availableLots = lots.filter(l => l.status === "available").length;
   const allSold = lots.every(l => l.status === "sold");
+
+  const handleStart = async () => {
+    if (!adminKey || status !== "setup") return;
+    setIsPending(true);
+    try {
+      const snapshot = await startAuctionSession(calcuttaId, auctionId, activeAuction.revision, adminKey);
+      queryClient.setQueryData(["active-auction", calcuttaId], snapshot);
+      toast({ title: "Auction session started" });
+    } catch (err: any) {
+      toast({ title: "Failed to start", description: err.message, variant: "destructive" });
+      queryClient.invalidateQueries({ queryKey: ["active-auction", calcuttaId] });
+    } finally {
+      setIsPending(false);
+    }
+  };
 
   const handleNominate = async () => {
     if (!adminKey) return;
@@ -141,6 +164,24 @@ export function AuctionRoom({ calcuttaId, year, adminKey, historicalSummaryRefet
 
   return (
     <div className="space-y-6">
+      {adminKey && status === "setup" && (
+        <div className="flex flex-wrap items-center justify-between gap-4 border border-border bg-card p-4">
+          <div>
+            <h2 className="font-mono text-sm font-bold uppercase tracking-widest">Session ready for setup</h2>
+            <p className="mt-1 text-xs text-muted-foreground">Review the roster and lots before opening bidding. Starting does not nominate a lot.</p>
+          </div>
+          <button
+            type="button"
+            data-testid="button-start-auction-session"
+            onClick={handleStart}
+            disabled={isPending}
+            className="inline-flex items-center gap-2 bg-primary px-5 py-3 font-mono text-xs font-bold uppercase tracking-widest text-primary-foreground hover:bg-primary/90 disabled:opacity-50"
+          >
+            {isPending ? <Loader2 className="h-4 w-4 animate-spin" /> : <Play className="h-4 w-4" />}
+            Start Auction Session
+          </button>
+        </div>
+      )}
       {/* Header & Metrics */}
       <div className="grid grid-cols-1 md:grid-cols-4 gap-0 border border-border bg-card rounded-md overflow-hidden shadow-sm">
         <div className="p-6 flex flex-col gap-2 border-b md:border-b-0 md:border-r border-border">
@@ -168,7 +209,7 @@ export function AuctionRoom({ calcuttaId, year, adminKey, historicalSummaryRefet
             <DollarSign className="w-4 h-4 opacity-50" />
           </div>
           <div className="text-3xl md:text-4xl font-mono font-black tracking-tight text-primary">
-            {formatCurrency(metrics.poolSizeCents / 100)}
+            {sales.length > 0 ? formatCurrency(metrics.poolSizeCents / 100) : "—"}
           </div>
           <span className="text-xs text-muted-foreground">Final sales{lots.some((lot) => lot.status === "bidding" && lot.currentBidCents != null) ? " + current provisional bid" : ""}</span>
         </div>
@@ -268,7 +309,7 @@ export function AuctionRoom({ calcuttaId, year, adminKey, historicalSummaryRefet
                     </div>
                   )}
 
-                  {adminKey && onTheBlock.status === "sold" && !allSold && (
+                  {adminKey && status === "live" && onTheBlock.status === "sold" && !allSold && (
                     <div className="pt-4 border-t border-border flex justify-center">
                       <button
                         onClick={handleNominate}
@@ -301,7 +342,7 @@ export function AuctionRoom({ calcuttaId, year, adminKey, historicalSummaryRefet
                     No lot currently on the block
                   </p>
                   
-                  {adminKey && availableLots > 0 && (
+                  {adminKey && status === "live" && availableLots > 0 && (
                     <button
                       onClick={handleNominate}
                       disabled={isPending}

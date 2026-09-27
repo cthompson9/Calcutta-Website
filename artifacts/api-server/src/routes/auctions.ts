@@ -6,7 +6,7 @@ import {
   db, auctionSessionsTable, auctionLotsTable, auctionConsortiaTable,
   auctionSalesTable, auctionSaleAllocationsTable, auctionEventsTable,
   calcuttasTable, calcuttaEntriesTable, teamsTable, positionsTable, tradesTable, biddersTable, ownershipAdjustmentsTable, teamSeasonAuctionsTable,
-  listenerSessionsTable,
+  listenerSessionsTable, seasonsTable,
 } from "@workspace/db";
 import { OWNERSHIP_SEASON_LOCK_NAMESPACE } from "../lib/ownershipShares";
 import { requireAdmin } from "../middlewares/requireAdmin";
@@ -68,11 +68,18 @@ router.post("/calcuttas/:calcuttaId/auctions", requireAdmin, async (req, res) =>
   const parsed = z.object({}).safeParse(req.body ?? {});
   if (!parsed.success || !id.safeParse(req.params.calcuttaId).success) return sendParsedJson(res, ErrorResponse, { error: "Invalid Calcutta." }, 400);
   const calcuttaId = Number(req.params.calcuttaId);
-  const [calcutta] = await db.select({ id: calcuttasTable.id, seasonId: calcuttasTable.seasonId }).from(calcuttasTable).where(eq(calcuttasTable.id, calcuttaId));
+  const [calcutta] = await db.select({ id: calcuttasTable.id, seasonId: calcuttasTable.seasonId })
+    .from(calcuttasTable).where(eq(calcuttasTable.id, calcuttaId));
   if (!calcutta) return sendParsedJson(res, ErrorResponse, { error: "Calcutta not found." }, 404);
   try {
   const created = await db.transaction(async (tx) => {
     await tx.execute(sql`select pg_advisory_xact_lock(${OWNERSHIP_SEASON_LOCK_NAMESPACE}, ${calcutta.seasonId})`);
+  // A newly created Calcutta already has its own setup session. This fallback
+  // only creates sessions for legacy pools with no session, where a completed
+  // season must not be reopened.
+  const [season] = await tx.select({ isComplete: seasonsTable.isComplete })
+    .from(seasonsTable).where(eq(seasonsTable.id, calcutta.seasonId)).for("update");
+  if (!season || season.isComplete) throw new Error("Completed seasons cannot receive a new live auction session.");
   const [historicalPrimary] = await tx.select({ id: positionsTable.id })
     .from(positionsTable)
     .innerJoin(calcuttaEntriesTable, eq(calcuttaEntriesTable.id, positionsTable.entryId))
@@ -104,6 +111,33 @@ router.get("/calcuttas/:calcuttaId/auctions", async (req, res): Promise<any> => 
     .from(auctionSessionsTable).where(eq(auctionSessionsTable.calcuttaId, calcuttaId)).limit(1);
   if (!session) return sendParsedJson(res, ErrorResponse, { error: "Auction not found for this Calcutta." }, 404);
   res.json(await snapshot(session.id));
+});
+
+router.post("/calcuttas/:calcuttaId/auctions/:auctionId/start", requireAdmin, async (req, res): Promise<any> => {
+  const { calcuttaId, auctionId } = routeIds(req);
+  const body = z.object({ expectedRevision: z.number().int().nonnegative() }).safeParse(req.body);
+  if (!body.success) return sendParsedJson(res, ErrorResponse, { error: body.error.message }, 400);
+  if (!id.safeParse(calcuttaId).success || !id.safeParse(auctionId).success || !(await ownsAuction(calcuttaId, auctionId))) {
+    return sendParsedJson(res, ErrorResponse, { error: "Auction not found for this Calcutta." }, 404);
+  }
+  try {
+    await db.transaction(async (tx) => {
+      const [session] = await tx.select().from(auctionSessionsTable).where(eq(auctionSessionsTable.id, auctionId)).for("update");
+      if (!session) throw new Error("Auction not found.");
+      if (session.revision !== body.data.expectedRevision) throw new Error("Stale auction revision.");
+      if (session.status !== "setup") throw new Error(session.status === "complete" ? "Auction is complete." : "Auction is already live.");
+      const startedAt = new Date();
+      await tx.update(auctionSessionsTable).set({
+        status: "live",
+        startedAt,
+        revision: session.revision + 1,
+      }).where(eq(auctionSessionsTable.id, auctionId));
+      await event(tx, auctionId, "auction_started", {});
+    });
+    res.json(await snapshot(auctionId));
+  } catch (e) {
+    sendParsedJson(res, ErrorResponse, { error: e instanceof Error ? e.message : "Auction start rejected." }, 409);
+  }
 });
 
 router.get("/calcuttas/:calcuttaId/auctions/:auctionId/entries", async (req, res): Promise<any> => {

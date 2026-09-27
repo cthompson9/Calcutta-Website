@@ -38,6 +38,7 @@ import type {
 import { formatCurrency } from "@/lib/utils";
 import { cn } from "@/lib/utils";
 import { useSeason } from "@/hooks/useSeason";
+import { useActiveAuction } from "@/hooks/useActiveAuction";
 import {
   ArrowDownRight,
   ArrowUpRight,
@@ -118,63 +119,215 @@ export default function Results() {
 }
 
 function NonNflResults({ calcutta }: { calcutta: CalcuttaOption }) {
+  const [tab, setTab] = useState<"byOwner" | "byTeam">("byOwner");
+  const [selectedBuyer, setSelectedBuyer] = useState<string | null>(null);
+  const [search, setSearch] = useState("");
+  const { data: auction } = useActiveAuction(calcutta.id);
   const params = { season: calcutta.year, calcuttaId: calcutta.id };
-  const { data: summary, isLoading, error } = useGetAuctionSummary(params, {
+  const { data: summary, isLoading, error, refetch } = useGetAuctionSummary(params, {
     query: {
       enabled: true,
       queryKey: getGetAuctionSummaryQueryKey(params),
     },
   });
+  const sales = auction?.sales?.length
+    ? auction.sales.map((sale) => {
+        const lot = auction.lots.find((item) => item.id === sale.lotId);
+        return {
+          teamId: sale.lotId,
+          teamName: lot?.displayName ?? "Unknown lot",
+          winnerName: sale.allocations.map((allocation) => allocation.consortiumName || allocation.bidderName).join(" / "),
+          bidAmount: sale.totalCents / 100,
+        };
+      })
+    : summary?.auctionResults ?? [];
+  const buyers = Array.from(
+    (auction?.sales?.length
+      ? auction.sales.flatMap((sale) => sale.allocations.map((allocation) => ({
+          buyer: allocation.consortiumName || allocation.bidderName,
+          cost: allocation.cents / 100,
+        })))
+      : sales.map((sale) => ({ buyer: sale.winnerName, cost: sale.bidAmount }))
+    ).reduce((groups, sale) => {
+      const buyer = sale.buyer?.trim();
+      if (buyer) {
+        const entry = groups.get(buyer) ?? { name: buyer, lots: 0, spent: 0 };
+        entry.lots += 1;
+        entry.spent += sale.cost;
+        groups.set(buyer, entry);
+      }
+      return groups;
+    }, new Map<string, { name: string; lots: number; spent: number }>()),
+  ).map(([, entry]) => entry);
+  const selected = buyers.find((buyer) => buyer.name === selectedBuyer);
+  const filteredBuyers = buyers.filter((buyer) => buyer.name.toLowerCase().includes(search.toLowerCase().trim()));
+  const filteredSales = sales.filter((sale) => `${sale.teamName} ${sale.winnerName}`.toLowerCase().includes(search.toLowerCase().trim()));
+  const total = sales.reduce((amount, sale) => amount + sale.bidAmount, 0);
+  const buyerLots = selected
+    ? auction?.sales?.length
+      ? auction.sales.flatMap((sale) => sale.allocations
+          .filter((allocation) => (allocation.consortiumName || allocation.bidderName) === selected.name)
+          .map((allocation) => ({
+            name: auction.lots.find((lot) => lot.id === sale.lotId)?.displayName ?? "Unknown lot",
+            cost: allocation.cents / 100,
+          })))
+      : sales.filter((sale) => sale.winnerName === selected.name).map((sale) => ({ name: sale.teamName, cost: sale.bidAmount }))
+    : [];
 
   return (
-    <section className="mx-auto max-w-6xl space-y-5 px-4 pb-6 pt-8 md:p-8" aria-label={`${calcutta.sport} results`}>
-      <header>
-        <h1 className="text-3xl font-serif font-medium tracking-tight md:text-5xl">Results</h1>
-        <p className="mt-2 text-sm text-muted-foreground">{calcutta.name} · {calcutta.sport} {calcutta.year}</p>
+    <section className="mx-auto max-w-[1400px] space-y-4 pb-6 md:space-y-6 md:p-8" aria-label={`${calcutta.sport} results`}>
+      <header className="flex flex-col items-center px-4 pt-5 text-center md:px-0 md:pt-0">
+        <img src="/crest-transparent.png" alt="" aria-hidden="true" className="mb-5 h-20 w-20 object-contain mix-blend-multiply md:h-28 md:w-28" />
+        <h1 className="font-serif text-4xl font-medium tracking-[-0.035em] md:text-5xl" data-testid="text-report-title">Results</h1>
+        <span className="mt-3 text-[13px] text-muted-foreground">Last Updated: —</span>
+        <span className="sr-only">{calcutta.name} · {calcutta.sport} {calcutta.year}</span>
       </header>
-      <p className="border border-sky-300 bg-sky-50 px-4 py-3 text-sm text-sky-950 dark:border-sky-800 dark:bg-sky-950/40 dark:text-sky-100">
-        This view reports recorded auction sales only. Scoring, final standings, and payout calculations are not supported for {calcutta.sport} yet.
-      </p>
-      {isLoading ? (
-        <div role="status" className="rounded-md border border-border bg-card p-8 text-center text-sm text-muted-foreground">Loading this pool’s auction results…</div>
-      ) : error ? (
-        <div role="alert" className="rounded-md border border-destructive/40 bg-destructive/5 p-4 text-sm text-destructive">
-          Could not load results for this Calcutta. {error instanceof Error ? error.message : "Please try again."}
+      <div className="hidden px-4 md:block md:px-0"><ReleaseNotes /></div>
+      <div className="mx-4 flex overflow-x-auto border-b border-border md:mx-0">
+        {(["byOwner", "byTeam"] as const).map((view) => (
+          <button key={view} type="button" data-testid={`tab-${view}`} onClick={() => setTab(view)}
+            className={cn("whitespace-nowrap border-b-2 px-4 py-3 font-mono text-[11px] font-bold uppercase tracking-widest -mb-px md:px-5 md:text-sm",
+              tab === view ? "border-primary text-primary" : "border-transparent text-muted-foreground hover:text-foreground")}>
+            {view === "byOwner" ? "By Consortium" : "By Team"}
+          </button>
+        ))}
+      </div>
+      {error && !auction?.sales?.length && !summary ? (
+        <div role="alert" className="mx-4 border border-destructive/40 bg-destructive/5 p-5 text-sm text-destructive md:mx-0">
+          Could not load results for this Calcutta. {error instanceof Error ? error.message : "Please try again."}{" "}
+          <button type="button" onClick={() => void refetch()} className="font-bold underline" data-testid="button-retry-results">Retry</button>
         </div>
-      ) : summary ? (
-        <>
-          <div className="grid gap-3 sm:grid-cols-2">
-            <div className="rounded-md border border-border bg-card p-4">
-              <p className="text-xs font-mono font-bold uppercase tracking-widest text-muted-foreground">Pool sold total</p>
-              <p className="mt-2 text-2xl font-bold tabular-nums">{formatCurrency(summary.potSize)}</p>
-            </div>
-            <div className="rounded-md border border-border bg-card p-4">
-              <p className="text-xs font-mono font-bold uppercase tracking-widest text-muted-foreground">Lots sold</p>
-              <p className="mt-2 text-2xl font-bold tabular-nums">{summary.auctionResults.length}</p>
-            </div>
-          </div>
-          <div className="overflow-hidden rounded-md border border-border bg-card">
-            <div className="border-b border-border px-4 py-3">
-              <h2 className="font-semibold">Auction sales</h2>
-            </div>
-            {summary.auctionResults.length === 0 ? (
-              <p className="p-8 text-center text-sm text-muted-foreground">No lots have been sold in this pool yet.</p>
-            ) : (
-              <div className="divide-y divide-border">
-                {summary.auctionResults.map((result) => (
-                  <div key={result.teamId} className="grid grid-cols-[minmax(0,1fr)_minmax(0,1fr)_auto] items-center gap-3 px-4 py-3">
-                    <span className="truncate font-semibold">{result.teamName}</span>
-                    <span className="truncate text-sm text-muted-foreground">{result.winnerName}</span>
-                    <span className="font-mono font-bold tabular-nums">{formatCurrency(result.bidAmount)}</span>
-                  </div>
-                ))}
-              </div>
-            )}
-          </div>
-        </>
       ) : (
-        <div className="rounded-md border border-border bg-card p-8 text-center text-sm text-muted-foreground">
-          Auction summary is not available for this pool yet.
+        <div className="space-y-5">
+          <section className="mx-4 border border-border bg-card shadow-sm md:mx-0">
+            <div className="flex flex-col gap-6 border-b border-border p-6 lg:flex-row lg:items-end lg:justify-between">
+              <div>
+                <div className="mt-2 flex items-end gap-3">
+                  <h2 className="font-mono text-5xl font-bold tracking-tighter tabular-nums">{sales.length ? formatCurrency(total) : "—"}</h2>
+                  <span className="pb-1 font-mono text-xs uppercase tracking-widest text-muted-foreground">total pot</span>
+                </div>
+                <p className="mt-2 max-w-xl text-sm text-muted-foreground">
+                  {sales.length ? "Recorded auction sales in this pool. MTM and payout standings are not available." : "No sales recorded yet. Auction and valuation fields remain blank until data is available."}
+                </p>
+              </div>
+              <div className="grid grid-cols-2 gap-x-8 gap-y-4 sm:grid-cols-4 lg:min-w-[44rem]">
+                <CommandMetric label="Teams auctioned" value={sales.length ? String(sales.length) : "—"} />
+                <CommandMetric label="Average bid" value={sales.length ? formatCurrency(total / sales.length) : "—"} />
+                <CommandMetric label="Leader" value="—" />
+                <CommandMetric label="Biggest mover" value="—" />
+              </div>
+            </div>
+            <div className="grid divide-y border-t border-border sm:grid-cols-3 sm:divide-x sm:divide-y-0">
+              <div className="p-4">
+                <p className="font-mono text-[10px] font-bold uppercase tracking-widest text-muted-foreground">Top net MTM</p>
+                <p className="mt-1 font-mono text-sm font-bold text-muted-foreground">—</p>
+              </div>
+              <div className="p-4">
+                <p className="font-mono text-[10px] font-bold uppercase tracking-widest text-muted-foreground">Lowest net MTM</p>
+                <p className="mt-1 font-mono text-sm font-bold text-muted-foreground">—</p>
+              </div>
+              <div className="p-4">
+                <p className="font-mono text-[10px] font-bold uppercase tracking-widest text-muted-foreground">Coverage</p>
+                <p className="mt-1 font-mono text-sm font-bold">Auction sales only</p>
+                <p className="mt-1 text-xs text-muted-foreground">Scoring, payouts and MTM are not available for {calcutta.sport}.</p>
+              </div>
+            </div>
+          </section>
+          <div className="mx-4 grid gap-5 md:mx-0 xl:grid-cols-[minmax(0,1fr)_22rem]">
+            <section className="min-w-0 border border-border bg-card shadow-sm">
+              <div className="flex flex-col gap-3 border-b border-border p-4 sm:flex-row sm:items-center sm:justify-between">
+                <div>
+                  <p className="font-mono text-[10px] font-bold uppercase tracking-widest text-primary">{tab === "byOwner" ? "Live standings" : "By team standings"}</p>
+                  <p className="mt-1 text-xs text-muted-foreground">{tab === "byOwner" ? "Select a consortium to inspect its recorded auction positions." : "Recorded sales only · MTM, scoring and payouts are not available for this pool."}</p>
+                </div>
+                <label className="relative block sm:w-64">
+                  <Search className="pointer-events-none absolute left-2.5 top-2.5 h-3.5 w-3.5 text-muted-foreground" aria-hidden="true" />
+                  <span className="sr-only">Filter standings</span>
+                  <input type="search" value={search} onChange={(event) => setSearch(event.target.value)}
+                    placeholder={tab === "byOwner" ? "Filter consortiums…" : "Filter teams…"} data-testid="input-filter-results"
+                    className="w-full border border-border/70 bg-background py-2 pl-8 pr-3 font-mono text-xs outline-none focus:border-primary focus:ring-1 focus:ring-primary" />
+                </label>
+              </div>
+              <div className="table-scroll">
+                <table className="w-full min-w-[680px] border-collapse text-sm">
+                  <thead className="sticky-table-header border-b border-border bg-muted/30 font-mono text-[10px] uppercase tracking-widest text-muted-foreground">
+                    <tr>
+                      <th className="w-12 px-4 py-3 text-center">#</th>
+                      <th className="px-3 py-3 text-left">{tab === "byOwner" ? "Consortium" : "Team"}</th>
+                      <th className="px-3 py-3 text-right">{tab === "byOwner" ? "Cost basis" : "Hammer"}</th>
+                      <th className="px-3 py-3 text-right">MTM market value</th>
+                      <th className="px-3 py-3 text-right">Net MTM</th>
+                      <th className="px-3 py-3 text-right">{tab === "byOwner" ? "Lots" : "Buyer"}</th>
+                    </tr>
+                  </thead>
+                  <tbody className="divide-y divide-border/70">
+                    {tab === "byOwner" ? filteredBuyers.map((buyer, index) => (
+                      <tr key={buyer.name} tabIndex={0} onClick={() => setSelectedBuyer(buyer.name)} onKeyDown={(event) => { if (event.key === "Enter" || event.key === " ") { event.preventDefault(); setSelectedBuyer(buyer.name); } }}
+                        aria-label={`Inspect ${buyer.name}`} data-testid={`row-consortium-${index}`}
+                        className={cn("cursor-pointer hover:bg-muted/40 focus:bg-muted/40 focus:outline-none", selectedBuyer === buyer.name && "bg-primary/5")}>
+                        <td className="px-4 py-3 text-center font-mono text-muted-foreground">{index + 1}</td>
+                        <td className="px-3 py-3 font-bold">{buyer.name}</td>
+                        <td className="px-3 py-3 text-right font-mono tabular-nums">{formatCurrency(buyer.spent)}</td>
+                        <td className="px-3 py-3 text-right text-muted-foreground">—</td>
+                        <td className="px-3 py-3 text-right text-muted-foreground">—</td>
+                        <td className="px-3 py-3 text-right font-mono">{buyer.lots}</td>
+                      </tr>
+                    )) : filteredSales.map((sale, index) => (
+                      <tr key={sale.teamId}>
+                        <td className="px-4 py-3 text-center font-mono text-muted-foreground">{index + 1}</td>
+                        <td className="px-3 py-3 font-bold">{sale.teamName}</td>
+                        <td className="px-3 py-3 text-right font-mono tabular-nums">{formatCurrency(sale.bidAmount)}</td>
+                        <td className="px-3 py-3 text-right text-muted-foreground">—</td>
+                        <td className="px-3 py-3 text-right text-muted-foreground">—</td>
+                        <td className="px-3 py-3 text-right text-xs text-muted-foreground">{sale.winnerName || "—"}</td>
+                      </tr>
+                    ))}
+                    {(tab === "byOwner" ? filteredBuyers.length : filteredSales.length) === 0 && (
+                      <tr><td colSpan={6} className="px-6 py-16 text-center">
+                        <p className="font-mono text-xs font-bold uppercase tracking-widest">{isLoading ? "Loading auction sales…" : search ? "No matching sales" : "No auction sales yet"}</p>
+                        <p className="mt-2 text-sm text-muted-foreground">Names, costs and returns remain blank until this pool records sales.</p>
+                      </td></tr>
+                    )}
+                  </tbody>
+                </table>
+              </div>
+              <div className="border-t border-border px-4 py-3 font-mono text-[10px] uppercase tracking-widest text-muted-foreground">
+                {tab === "byOwner" ? `${buyers.length} consortiums` : `${sales.length} sold lots`} · recorded auction economics only
+              </div>
+            </section>
+            <aside className="min-h-56 border border-dashed border-border bg-card/50 p-5" aria-label="Detail panel">
+              {selected && tab === "byOwner" ? (
+                <div>
+                  <div className="flex items-start justify-between gap-3">
+                    <div>
+                      <p className="font-mono text-[10px] font-bold uppercase tracking-widest text-primary">Consortium detail</p>
+                      <h3 className="mt-2 font-serif text-2xl">{selected.name}</h3>
+                    </div>
+                    <button type="button" onClick={() => setSelectedBuyer(null)} aria-label="Close detail" data-testid="button-close-detail" className="text-muted-foreground hover:text-foreground"><X className="h-4 w-4" /></button>
+                  </div>
+                  <div className="mt-6 grid grid-cols-2 gap-4 border-y border-border py-4">
+                    <CommandMetric label="Auction cost" value={formatCurrency(selected.spent)} />
+                    <CommandMetric label="Net MTM" value="—" />
+                  </div>
+                  <p className="mt-5 font-mono text-[10px] font-bold uppercase tracking-widest text-muted-foreground">Recorded positions</p>
+                  <ul className="mt-2 divide-y divide-border">
+                    {buyerLots.map((lot, index) => (
+                      <li key={`${lot.name}-${index}`} className="flex justify-between gap-3 py-3 text-sm"><span>{lot.name}</span><span className="shrink-0 font-mono">{formatCurrency(lot.cost)}</span></li>
+                    ))}
+                  </ul>
+                  <p className="mt-5 text-xs text-muted-foreground">Valuation and returns are unavailable for this pool.</p>
+                </div>
+              ) : (
+                <div>
+                  <History className="mb-4 h-4 w-4 text-primary" aria-hidden="true" />
+                  <h3 className="font-mono text-[10px] font-bold uppercase tracking-widest">Detail panel</h3>
+                  <p className="mt-2 text-sm leading-6 text-muted-foreground">
+                    {tab === "byOwner" ? "Choose any consortium in the standings to open its recorded auction positions. MTM and trade history are not available here." : "Team sales are shown at left. Valuation and returns are not available for this pool."}
+                  </p>
+                </div>
+              )}
+            </aside>
+          </div>
         </div>
       )}
     </section>

@@ -63,13 +63,13 @@ function rubricRuleText(
 export default function Dashboard() {
   const { year, setYear, selectedCalcutta } = useSeason();
   const isNflCalcutta = selectedCalcutta?.sport === "NFL";
-  const calcuttaId = isNflCalcutta ? selectedCalcutta.id : undefined;
+  const calcuttaId = selectedCalcutta?.id;
   const summaryParams = { season: year, calcuttaId };
   const [location] = useLocation();
   const queryClient = useQueryClient();
   const { data: summary, isLoading: loadingSummary, refetch } = useGetAuctionSummary(
     summaryParams,
-    { query: { enabled: isNflCalcutta, queryKey: getGetAuctionSummaryQueryKey(summaryParams) } },
+    { query: { enabled: !!selectedCalcutta, queryKey: getGetAuctionSummaryQueryKey(summaryParams) } },
   );
   const { data: pointsRubric } = useGetPointsRubricV2(
     { season: year, calcuttaId },
@@ -152,30 +152,6 @@ export default function Dashboard() {
     }
   }
 
-  if (selectedCalcutta && !isNflCalcutta) {
-    return (
-      <div className="mx-auto max-w-7xl space-y-5 px-4 pb-6 pt-8 md:p-8">
-        <header>
-          <h1 className="text-3xl font-serif font-medium tracking-tight md:text-5xl">Auction</h1>
-          <p className="mt-2 text-sm text-muted-foreground">{selectedCalcutta.name} · {selectedCalcutta.sport} {selectedCalcutta.year}</p>
-        </header>
-        <p className="rounded-md border border-border bg-card p-4 text-sm text-muted-foreground">
-          Auction activity is scoped to this Calcutta. NFL historical summaries and scoring rubrics are not shown here.
-        </p>
-        <AuctionRoom
-          calcuttaId={selectedCalcutta.id}
-          year={selectedCalcutta.year}
-          adminKey={adminKey}
-          historicalSummaryRefetch={refetch}
-          activeAuction={activeAuction}
-          hasHistoricalResults={false}
-          isLoading={loadingActiveAuction}
-          error={activeAuctionError}
-        />
-      </div>
-    );
-  }
-
   if (loadingSummary) {
     return (
       <div className="p-4 md:p-8 space-y-8 animate-pulse">
@@ -188,7 +164,16 @@ export default function Dashboard() {
     );
   }
 
-  if (!summary) return null;
+  if (!summary && isNflCalcutta) return null;
+  const auctionResults = !isNflCalcutta && activeAuction?.sales?.length
+    ? activeAuction.sales.map((sale) => ({
+        teamId: sale.lotId,
+        teamName: activeAuction.lots.find((lot) => lot.id === sale.lotId)?.displayName ?? "Unknown lot",
+        draftOrder: activeAuction.lots.find((lot) => lot.id === sale.lotId)?.nominationSequence ?? null,
+        winnerName: sale.allocations.map((allocation) => allocation.consortiumName || allocation.bidderName).join(" / "),
+        bidAmount: sale.totalCents / 100,
+      }))
+    : summary?.auctionResults ?? [];
 
   return (
     <div className="space-y-5 px-4 pb-6 pt-4 md:space-y-8 md:p-8 max-w-7xl mx-auto">
@@ -229,7 +214,7 @@ export default function Dashboard() {
 
         {/* Admin controls */}
         <div className={cn("flex items-center gap-3 flex-wrap", isPreview && "justify-center")}>
-          {adminKey && !activeAuction && (
+          {adminKey && isNflCalcutta && !activeAuction && (
             <button
               onClick={() => { setImportResult(null); setConfirmOpen(true); }}
               disabled={importing}
@@ -268,14 +253,15 @@ export default function Dashboard() {
           adminKey={adminKey}
           historicalSummaryRefetch={refetch}
           activeAuction={activeAuction}
-          hasHistoricalResults={summary.auctionResults.length > 0}
+           hasHistoricalResults={auctionResults.length > 0}
+          isSeasonComplete={selectedCalcutta?.isComplete ?? false}
           isLoading={loadingActiveAuction}
           error={activeAuctionError}
         />
       )}
 
       {/* Headline Stats */}
-      {!isPreview && (
+       {!isPreview && isNflCalcutta && summary && (
         <div className="grid grid-cols-1 md:grid-cols-3 gap-0 border border-border bg-card rounded-md overflow-hidden">
           <StatCard title="Total Pot" value={formatCurrency(summary.potSize)} icon={DollarSign} className="border-b md:border-b-0 md:border-r" />
           <StatCard title="Avg Bid / Team" value={formatCurrency(summary.avgBidPerTeam)} icon={Activity} className="border-b md:border-b-0 md:border-r" />
@@ -287,7 +273,7 @@ export default function Dashboard() {
         </div>
       )}
 
-      {pointsRubric && (
+       {isNflCalcutta && pointsRubric && (
         <section className="rounded-md border border-border bg-card p-5">
           <h2 className="font-mono text-sm font-bold uppercase tracking-widest">
             Points Rubric
@@ -320,7 +306,7 @@ export default function Dashboard() {
                     </tr>
                   </thead>
                   <tbody>
-                    {summary.auctionResults.map((result) => (
+                     {auctionResults.map((result) => (
                       <tr
                         key={result.teamId}
                         id={`auction-result-${result.teamId}`}
@@ -342,7 +328,7 @@ export default function Dashboard() {
                         </td>
                       </tr>
                     ))}
-                    {summary.auctionResults.length === 0 && (
+                     {auctionResults.length === 0 && (
                       <tr>
                         <td colSpan={4} className="p-8 text-center text-muted-foreground">
                           No auction results for {year} yet.
@@ -359,7 +345,7 @@ export default function Dashboard() {
                    <div className="col-span-3">Winner</div>
                    <div className="col-span-3 text-right">Bid</div>
                   </div>
-                  {summary.auctionResults.map((result) => (
+                   {auctionResults.map((result) => (
                    <div
                      key={result.teamId}
                       id={`auction-result-${result.teamId}`}
@@ -381,7 +367,7 @@ export default function Dashboard() {
                      </div>
                    </div>
                   ))}
-                  {summary.auctionResults.length === 0 && (
+                   {auctionResults.length === 0 && (
                    <div className="p-8 text-center text-muted-foreground">
                       No auction results for {year} yet.
                    </div>
@@ -392,7 +378,7 @@ export default function Dashboard() {
         </div>
 
         {/* Conference Breakdown */}
-        {!isPreview && (
+         {!isPreview && isNflCalcutta && summary && (
           <div className="space-y-4">
             <h2 className="text-xl font-bold uppercase tracking-tight flex items-center gap-2">
               <div className="w-3 h-3 bg-primary" /> Conference Splits

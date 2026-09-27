@@ -39,6 +39,7 @@ import type {
   AuctionNominationInput,
   AuctionSaleInput,
   AuctionSnapshot,
+  AuctionStartInput,
   AuctionSummary,
   Bidder,
   BidderInput,
@@ -4179,6 +4180,81 @@ export function useGetAuction<TData = Awaited<ReturnType<typeof getAuction>>, TE
 
 
 
+
+export const getStartAuctionUrl = (calcuttaId: number,
+    auctionId: number,) => {
+
+
+
+
+  return `/api/calcuttas/${calcuttaId}/auctions/${auctionId}/start`
+}
+
+/**
+ * Requires the ADMIN_API_KEY bearer token. Atomically changes a setup auction to live, records startedAt and an auction_started event, increments the revision, and returns the updated snapshot. The expected revision must match.
+ * @summary Start a setup auction without nominating a lot
+ */
+export const startAuction = async (calcuttaId: number,
+    auctionId: number,
+    auctionStartInput: AuctionStartInput, options?: Parameters<typeof customFetch>[1]): Promise<AuctionSnapshot> => {
+
+  return customFetch<AuctionSnapshot>(getStartAuctionUrl(calcuttaId,auctionId),
+  {
+    ...options,
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json', ...options?.headers },
+    body: JSON.stringify(auctionStartInput)
+  }
+);}
+
+
+
+
+
+export const getStartAuctionMutationOptions = <TError = ErrorType<ErrorResponse>,
+    TContext = unknown>(options?: { mutation?:UseMutationOptions<Awaited<ReturnType<typeof startAuction>>, TError,{calcuttaId: number;auctionId: number;data: BodyType<AuctionStartInput>}, TContext>, request?: SecondParameter<typeof customFetch>}
+): UseMutationOptions<Awaited<ReturnType<typeof startAuction>>, TError,{calcuttaId: number;auctionId: number;data: BodyType<AuctionStartInput>}, TContext> => {
+
+const mutationKey = ['startAuction'];
+const {mutation: mutationOptions, request: requestOptions} = options ?
+      options.mutation && 'mutationKey' in options.mutation && options.mutation.mutationKey ?
+      options
+      : {...options, mutation: {...options.mutation, mutationKey}}
+      : {mutation: { mutationKey, }, request: undefined};
+
+
+
+
+      const mutationFn: MutationFunction<Awaited<ReturnType<typeof startAuction>>, {calcuttaId: number;auctionId: number;data: BodyType<AuctionStartInput>}> = (props) => {
+          const {calcuttaId,auctionId,data} = props ?? {};
+
+          return  startAuction(calcuttaId,auctionId,data,requestOptions)
+        }
+
+
+
+
+
+
+  return  { mutationFn, ...mutationOptions }}
+
+    export type StartAuctionMutationResult = NonNullable<Awaited<ReturnType<typeof startAuction>>>
+    export type StartAuctionMutationBody = BodyType<AuctionStartInput>
+    export type StartAuctionMutationError = ErrorType<ErrorResponse>
+
+    /**
+ * @summary Start a setup auction without nominating a lot
+ */
+export const useStartAuction = <TError = ErrorType<ErrorResponse>,
+    TContext = unknown>(options?: { mutation?:UseMutationOptions<Awaited<ReturnType<typeof startAuction>>, TError,{calcuttaId: number;auctionId: number;data: BodyType<AuctionStartInput>}, TContext>, request?: SecondParameter<typeof customFetch>}
+ ): UseMutationResult<
+        Awaited<ReturnType<typeof startAuction>>,
+        TError,
+        {calcuttaId: number;auctionId: number;data: BodyType<AuctionStartInput>},
+        TContext
+      > => {
+      return useMutation(getStartAuctionMutationOptions(options));
+    }
 
 export const getGetAuctionEligibleEntriesUrl = (calcuttaId: number,
     auctionId: number,) => {

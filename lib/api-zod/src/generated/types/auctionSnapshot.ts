@@ -15,7 +15,14 @@ export interface AuctionSnapshot {
   id: number;
   calcuttaId: number;
   status: AuctionSnapshotStatus;
+  /** @nullable */
+  currentLotId: number | null;
   revision: number;
+  createdAt: Date;
+  /** @nullable */
+  startedAt: Date | null;
+  /** @nullable */
+  completedAt: Date | null;
   lots: AuctionLot[];
   consortia: AuctionConsortium[];
   sales: AuctionSale[];

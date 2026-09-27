@@ -73,6 +73,7 @@ export * from './auctionSaleAllocation';
 export * from './auctionSaleInput';
 export * from './auctionSnapshot';
 export * from './auctionSnapshotStatus';
+export * from './auctionStartInput';
 export * from './auctionSummary';
 export * from './bidder';
 export * from './bidderInput';

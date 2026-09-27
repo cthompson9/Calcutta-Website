@@ -27,6 +27,10 @@ export async function createAuction(calcuttaId: number, adminKey: string): Promi
   return adminFetch(`/api/calcuttas/${calcuttaId}/auctions`, "POST", adminKey);
 }
 
+export async function startAuctionSession(calcuttaId: number, auctionId: number, expectedRevision: number, adminKey: string): Promise<AuctionSnapshot> {
+  return adminFetch(`/api/calcuttas/${calcuttaId}/auctions/${auctionId}/start`, "POST", adminKey, { expectedRevision });
+}
+
 export async function nominateNext(calcuttaId: number, auctionId: number, expectedRevision: number, adminKey: string): Promise<AuctionSnapshot> {
   return adminFetch(`/api/calcuttas/${calcuttaId}/auctions/${auctionId}/nominate-next`, "POST", adminKey, {
     expectedRevision,

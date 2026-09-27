@@ -2048,11 +2048,19 @@ export const CreateAuctionSessionBody = zod.object({
 
 })
 
+export const createAuctionSessionResponseCurrentLotIdMultipleOf = 1;
+
+
+
 export const CreateAuctionSessionResponse = zod.object({
   "id": zod.number(),
   "calcuttaId": zod.number(),
   "status": zod.enum(['setup', 'live', 'complete']),
+  "currentLotId": zod.number().multipleOf(createAuctionSessionResponseCurrentLotIdMultipleOf).nullable(),
   "revision": zod.number(),
+  "createdAt": zod.coerce.date(),
+  "startedAt": zod.coerce.date().nullable(),
+  "completedAt": zod.coerce.date().nullable(),
   "lots": zod.array(zod.object({
   "id": zod.number(),
   "auctionId": zod.number(),
@@ -2129,11 +2137,19 @@ export const GetActiveAuctionSnapshotParams = zod.object({
   "calcuttaId": zod.coerce.number()
 })
 
+export const getActiveAuctionSnapshotResponseCurrentLotIdMultipleOf = 1;
+
+
+
 export const GetActiveAuctionSnapshotResponse = zod.object({
   "id": zod.number(),
   "calcuttaId": zod.number(),
   "status": zod.enum(['setup', 'live', 'complete']),
+  "currentLotId": zod.number().multipleOf(getActiveAuctionSnapshotResponseCurrentLotIdMultipleOf).nullable(),
   "revision": zod.number(),
+  "createdAt": zod.coerce.date(),
+  "startedAt": zod.coerce.date().nullable(),
+  "completedAt": zod.coerce.date().nullable(),
   "lots": zod.array(zod.object({
   "id": zod.number(),
   "auctionId": zod.number(),
@@ -2211,11 +2227,126 @@ export const GetAuctionParams = zod.object({
   "auctionId": zod.coerce.number()
 })
 
+export const getAuctionResponseCurrentLotIdMultipleOf = 1;
+
+
+
 export const GetAuctionResponse = zod.object({
   "id": zod.number(),
   "calcuttaId": zod.number(),
   "status": zod.enum(['setup', 'live', 'complete']),
+  "currentLotId": zod.number().multipleOf(getAuctionResponseCurrentLotIdMultipleOf).nullable(),
   "revision": zod.number(),
+  "createdAt": zod.coerce.date(),
+  "startedAt": zod.coerce.date().nullable(),
+  "completedAt": zod.coerce.date().nullable(),
+  "lots": zod.array(zod.object({
+  "id": zod.number(),
+  "auctionId": zod.number(),
+  "externalId": zod.string(),
+  "displayName": zod.string(),
+  "aliases": zod.array(zod.string()).optional(),
+  "metadata": zod.object({
+  "note": zod.string().nullish(),
+  "source": zod.string().nullish(),
+  "lotId": zod.number().nullish(),
+  "saleId": zod.number().nullish(),
+  "totalCents": zod.number().nullish(),
+  "reason": zod.string().nullish(),
+  "cents": zod.number().nullish(),
+  "count": zod.number().nullish(),
+  "consortiumId": zod.number().nullish(),
+  "before": zod.array(zod.object({
+  "bidderId": zod.number(),
+  "share": zod.number(),
+  "costBasis": zod.number().nullish(),
+  "cents": zod.number().nullish()
+})).nullish(),
+  "after": zod.array(zod.object({
+  "bidderId": zod.number(),
+  "share": zod.number(),
+  "costBasis": zod.number().nullish(),
+  "cents": zod.number().nullish()
+})).nullish()
+}).optional(),
+  "entryId": zod.number(),
+  "status": zod.enum(['available', 'bidding', 'sold']),
+  "nominationId": zod.string().nullish(),
+  "nominationSequence": zod.number().nullish(),
+  "currentBidCents": zod.number().nullish(),
+  "nominatedAt": zod.coerce.date().nullish(),
+  "updatedAt": zod.coerce.date().optional()
+})),
+  "consortia": zod.array(zod.object({
+  "id": zod.number(),
+  "auctionId": zod.number(),
+  "displayName": zod.string(),
+  "aliases": zod.array(zod.string()).optional(),
+  "bidderId": zod.number().nullish(),
+  "active": zod.number()
+})),
+  "sales": zod.array(zod.object({
+  "id": zod.number(),
+  "auctionId": zod.number(),
+  "lotId": zod.number(),
+  "totalCents": zod.number(),
+  "source": zod.string(),
+  "reason": zod.string().nullish(),
+  "createdAt": zod.coerce.date().optional(),
+  "correctedAt": zod.coerce.date().nullish(),
+  "allocations": zod.array(zod.object({
+  "saleId": zod.number(),
+  "bidderId": zod.number(),
+  "share": zod.string(),
+  "cents": zod.number(),
+  "bidderName": zod.string(),
+  "consortiumName": zod.string().nullish()
+}))
+})),
+  "metrics": zod.object({
+  "poolSizeCents": zod.number(),
+  "lotsSold": zod.number(),
+  "totalLots": zod.number(),
+  "averageSaleCents": zod.number().nullable()
+})
+})
+
+
+/**
+ * Requires the ADMIN_API_KEY bearer token. Atomically changes a setup auction to live, records startedAt and an auction_started event, increments the revision, and returns the updated snapshot. The expected revision must match.
+ * @summary Start a setup auction without nominating a lot
+ */
+
+
+
+
+export const StartAuctionParams = zod.object({
+  "calcuttaId": zod.coerce.number().int().min(1),
+  "auctionId": zod.coerce.number().int().min(1)
+})
+
+export const startAuctionBodyExpectedRevisionMin = 0;
+export const startAuctionBodyExpectedRevisionMultipleOf = 1;
+
+
+
+export const StartAuctionBody = zod.object({
+  "expectedRevision": zod.number().min(startAuctionBodyExpectedRevisionMin).multipleOf(startAuctionBodyExpectedRevisionMultipleOf)
+})
+
+export const startAuctionResponseCurrentLotIdMultipleOf = 1;
+
+
+
+export const StartAuctionResponse = zod.object({
+  "id": zod.number(),
+  "calcuttaId": zod.number(),
+  "status": zod.enum(['setup', 'live', 'complete']),
+  "currentLotId": zod.number().multipleOf(startAuctionResponseCurrentLotIdMultipleOf).nullable(),
+  "revision": zod.number(),
+  "createdAt": zod.coerce.date(),
+  "startedAt": zod.coerce.date().nullable(),
+  "completedAt": zod.coerce.date().nullable(),
   "lots": zod.array(zod.object({
   "id": zod.number(),
   "auctionId": zod.number(),
@@ -2358,11 +2489,19 @@ export const NominateAuctionLotBody = zod.object({
   "idempotencyKey": zod.string()
 })
 
+export const nominateAuctionLotResponseCurrentLotIdMultipleOf = 1;
+
+
+
 export const NominateAuctionLotResponse = zod.object({
   "id": zod.number(),
   "calcuttaId": zod.number(),
   "status": zod.enum(['setup', 'live', 'complete']),
+  "currentLotId": zod.number().multipleOf(nominateAuctionLotResponseCurrentLotIdMultipleOf).nullable(),
   "revision": zod.number(),
+  "createdAt": zod.coerce.date(),
+  "startedAt": zod.coerce.date().nullable(),
+  "completedAt": zod.coerce.date().nullable(),
   "lots": zod.array(zod.object({
   "id": zod.number(),
   "auctionId": zod.number(),
@@ -2461,11 +2600,19 @@ export const FinalizeAuctionSaleBody = zod.object({
 }))
 })
 
+export const finalizeAuctionSaleResponseCurrentLotIdMultipleOf = 1;
+
+
+
 export const FinalizeAuctionSaleResponse = zod.object({
   "id": zod.number(),
   "calcuttaId": zod.number(),
   "status": zod.enum(['setup', 'live', 'complete']),
+  "currentLotId": zod.number().multipleOf(finalizeAuctionSaleResponseCurrentLotIdMultipleOf).nullable(),
   "revision": zod.number(),
+  "createdAt": zod.coerce.date(),
+  "startedAt": zod.coerce.date().nullable(),
+  "completedAt": zod.coerce.date().nullable(),
   "lots": zod.array(zod.object({
   "id": zod.number(),
   "auctionId": zod.number(),
@@ -2543,11 +2690,19 @@ export const CompleteAuctionParams = zod.object({
   "auctionId": zod.coerce.number().int()
 })
 
+export const completeAuctionResponseCurrentLotIdMultipleOf = 1;
+
+
+
 export const CompleteAuctionResponse = zod.object({
   "id": zod.number(),
   "calcuttaId": zod.number(),
   "status": zod.enum(['setup', 'live', 'complete']),
+  "currentLotId": zod.number().multipleOf(completeAuctionResponseCurrentLotIdMultipleOf).nullable(),
   "revision": zod.number(),
+  "createdAt": zod.coerce.date(),
+  "startedAt": zod.coerce.date().nullable(),
+  "completedAt": zod.coerce.date().nullable(),
   "lots": zod.array(zod.object({
   "id": zod.number(),
   "auctionId": zod.number(),

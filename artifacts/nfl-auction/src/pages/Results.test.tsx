@@ -1,3 +1,6 @@
+vi.mock("@/hooks/useActiveAuction", () => ({
+  useActiveAuction: () => ({ data: null, isLoading: false, error: null }),
+}));
 import { render, screen, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { beforeEach, describe, expect, it, vi } from "vitest";
@@ -343,8 +346,11 @@ describe("Results Calcutta data source", () => {
     await selectCalcutta(user, "Calcutta I - NCAAM 2022");
 
     expect(await screen.findByRole("region", { name: "NCAAM results" })).toBeInTheDocument();
-    expect(screen.getByText(/auction summary is not available for this pool yet/i)).toBeInTheDocument();
-    expect(screen.getByText(/scoring, final standings, and payout calculations are not supported/i)).toBeInTheDocument();
+    expect(screen.getByText(/no auction sales yet/i)).toBeInTheDocument();
+    expect(screen.getByText(/scoring, payouts and mtm are not available/i)).toBeInTheDocument();
+    expect(screen.getByText("total pot")).toBeInTheDocument();
+    expect(screen.getByRole("complementary", { name: "Detail panel" })).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: "By Consortium" })).toBeInTheDocument();
     expect(screen.queryByText("Blue Bloods")).not.toBeInTheDocument();
   });
 
