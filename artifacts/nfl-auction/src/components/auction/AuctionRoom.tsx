@@ -3,6 +3,7 @@ import { type AuctionSnapshot, useGetBidders } from "@workspace/api-client-react
 import { formatCurrency } from "@/lib/utils";
 import { Loader2, AlertCircle, Users, DollarSign, List, Play, CheckCircle2, Gavel, Activity, RotateCcw } from "lucide-react";
 import { SaleEditor } from "./SaleEditor";
+import { SoldSaleAllocations } from "./SoldSaleAllocations";
 import { LotInventory } from "./LotInventory";
 import { ManageRosterDialog } from "./AdminDialogs";
 import { ListenerConnect, ListenerTranscript } from "./ListenerConnect";
@@ -294,14 +295,7 @@ export function AuctionRoom({ calcuttaId, adminKey, historicalSummaryRefetch, ac
                             <div className="font-mono text-3xl font-black tracking-tight">
                               {formatCurrency(sale.totalCents / 100)}
                             </div>
-                            <div className="space-y-1">
-                              {((sale as any).allocations || []).map((alloc: any, i: number) => (
-                                <div key={i} className="text-sm font-sans">
-                                  <span className="font-bold">{alloc.consortiumName || alloc.bidderName}</span>
-                                  <span className="text-muted-foreground ml-2 font-mono text-xs">{(alloc.share * 100).toFixed(2)}%</span>
-                                </div>
-                              ))}
-                            </div>
+                            <SoldSaleAllocations allocations={sale.allocations} />
                           </>
                         );
                       })()}
