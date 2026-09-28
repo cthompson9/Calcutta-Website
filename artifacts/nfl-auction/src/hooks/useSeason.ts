@@ -65,6 +65,12 @@ export function SeasonProvider({ children }: { children: ReactNode }) {
         calcutta.year === storedSelection.year && calcutta.sport === "NFL",
     ) ??
     calcuttas.find((calcutta) => calcutta.year === storedSelection.year) ??
+    calcuttas.find(
+      (calcutta) =>
+        calcutta.name === "Calcutta XII" &&
+        calcutta.sport === "NFL" &&
+        calcutta.year === 2026,
+    ) ??
     calcuttas[0] ??
     null;
   const year = selectedCalcutta?.year ?? storedSelection.year ?? DEFAULT_YEAR;
