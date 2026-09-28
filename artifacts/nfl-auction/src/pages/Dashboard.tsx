@@ -15,6 +15,7 @@ import { useQueryClient } from "@tanstack/react-query";
 import { useLocation } from "wouter";
 import { parseResultSourceTarget } from "@/lib/resultSourceLinks";
 import { AuctionRoom } from "@/components/auction/AuctionRoom";
+import { MlbPostseasonRubric } from "@/components/auction/MlbPostseasonRubric";
 import { useActiveAuction } from "@/hooks/useActiveAuction";
 import {
   AlertDialog,
@@ -62,6 +63,8 @@ function rubricRuleText(
 export default function Dashboard() {
   const { year, setYear, selectedCalcutta } = useSeason();
   const isNflCalcutta = selectedCalcutta?.sport === "NFL";
+  const isCalcuttaXiiiMlb = selectedCalcutta?.sport === "MLB" &&
+    /^Calcutta XIII(?:\b|$)/i.test(selectedCalcutta.name);
   const calcuttaId = selectedCalcutta?.id;
   const summaryParams = { season: year, calcuttaId };
   const [location] = useLocation();
@@ -289,6 +292,7 @@ export default function Dashboard() {
           </ul>
         </section>
       )}
+      {isCalcuttaXiiiMlb && <MlbPostseasonRubric />}
 
       <div className={cn("grid gap-8 items-start", isPreview ? "grid-cols-1" : "md:grid-cols-3")}>
          {/* Auction results */}
