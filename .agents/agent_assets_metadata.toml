@@ -280,3 +280,17 @@ mtime_ms = 1789954454325
 storage_uri = "gcs://replit-rams-assets-picard/rams/assets/repl:20ced4e6-12f6-4285-a30b-9d56cdf8826c/6a56d14f-0ed2-43d0-b583-79d2be518ea5/993707d4-1e9d-403e-a84e-d6187cc1e6f8"
 storage_version_token = "1789954689802510"
 content_type = "application/octet-stream"
+
+[[outputs]]
+id = "akF4SPPZYiK2uUaakxtTz"
+uri = "file://docs/mlb-postseason-compatibility-design.md"
+type = "text"
+title = "MLB postseason compatibility design"
+description = "Gap-only design plan for sharing existing NFL and MLB primitives."
+logical_id = "39af4afe-9a5b-40b3-a895-aa28dc093eda"
+content_hash = "sha256:640d017e18ed1190ad1d04e80a200b63c0b256e884b68f9bb8d84db42f99d7a4"
+size = 8263
+mtime_ms = 1790602628305
+storage_uri = "gcs://replit-rams-assets-picard/rams/assets/repl:20ced4e6-12f6-4285-a30b-9d56cdf8826c/39af4afe-9a5b-40b3-a895-aa28dc093eda/3d4671e7-faf4-478e-b94a-40a3815d755c"
+storage_version_token = "1790602643536405"
+content_type = "text/markdown"
