@@ -13,7 +13,7 @@ import { requireAdmin } from "../middlewares/requireAdmin";
 import { ErrorResponse, sendParsedJson } from "../lib/sendParsedJson";
 
 import { snapshot, event } from "../lib/auctionState";
-import { expandSaleAllocations, validateAllocationInput, shareBasisPoints } from "../lib/auctionAllocations";
+import { distributeIntegerTotal, expandSaleAllocations, validateAllocationInput, shareBasisPoints } from "../lib/auctionAllocations";
 import { finalizeAuctionSale } from "../lib/finalizeAuctionSale";
 
 const router: IRouter = Router();
@@ -478,6 +478,156 @@ router.patch("/calcuttas/:calcuttaId/auctions/:auctionId/consortia/:consortiumId
   if (!row) return sendParsedJson(res, ErrorResponse, { error: "Consortium not found." }, 404);
   const current = await snapshot(auctionId);
   res.json(current?.consortia.find((consortium) => consortium.id === row.id));
+});
+
+// Calcutta XIII's completed auction can be corrected without rewriting a prior
+// pool. The roster and every affected sale move in one audited transaction.
+router.post("/calcuttas/:calcuttaId/auctions/:auctionId/consortia/:consortiumId/correction", requireAdmin, async (req, res): Promise<any> => {
+  const { calcuttaId, auctionId } = routeIds(req);
+  const consortiumId = Number(req.params.consortiumId);
+  const body = z.object({
+    displayName: z.string().trim().min(1).max(200),
+    owners: z.array(consortiumOwnerInput).min(1),
+    reason: z.string().trim().min(1).max(500),
+    expectedRevision: z.number().int().nonnegative(),
+    idempotencyKey: z.string().uuid(),
+  }).safeParse(req.body);
+  if (!body.success || !id.safeParse(consortiumId).success || !(await ownsAuction(calcuttaId, auctionId))) {
+    return sendParsedJson(res, ErrorResponse, { error: "Invalid consortium correction." }, 400);
+  }
+  try { validateOwners(body.data.owners); }
+  catch (error) { return sendParsedJson(res, ErrorResponse, { error: error instanceof Error ? error.message : "Invalid owner shares." }, 422); }
+  try {
+    await db.transaction(async (tx) => {
+      const [calcutta] = await tx.select({ seasonId: calcuttasTable.seasonId, name: calcuttasTable.name, sport: calcuttasTable.sport })
+        .from(calcuttasTable).where(eq(calcuttasTable.id, calcuttaId));
+      if (!calcutta || !/^Calcutta XIII(?:\b|$)/i.test(calcutta.name) || calcutta.sport !== "MLB") {
+        throw new Error("Post-auction consortium corrections are limited to Calcutta XIII.");
+      }
+      await tx.execute(sql`select pg_advisory_xact_lock(${OWNERSHIP_SEASON_LOCK_NAMESPACE}, ${calcutta.seasonId})`);
+      const [session] = await tx.select().from(auctionSessionsTable)
+        .where(and(eq(auctionSessionsTable.id, auctionId), eq(auctionSessionsTable.calcuttaId, calcuttaId))).for("update");
+      if (!session || session.status !== "complete" || session.revision !== body.data.expectedRevision) {
+        throw new Error("This correction requires a completed auction and its current revision.");
+      }
+      const [replayed] = await tx.select({ id: auctionEventsTable.id }).from(auctionEventsTable)
+        .where(and(eq(auctionEventsTable.auctionId, auctionId), eq(auctionEventsTable.idempotencyKey, body.data.idempotencyKey)));
+      if (replayed) throw new Error("This correction was already submitted. Refresh the auction.");
+      const [current] = await tx.select().from(auctionConsortiaTable)
+        .where(and(eq(auctionConsortiaTable.id, consortiumId), eq(auctionConsortiaTable.auctionId, auctionId)));
+      if (!current) throw new Error("Consortium not found in this auction.");
+      const roster = await tx.select().from(auctionConsortiaTable).where(eq(auctionConsortiaTable.auctionId, auctionId));
+      const labels = [body.data.displayName, ...(current.aliases ?? [])].map(normalizedLabel);
+      if (new Set(labels).size !== labels.length || roster.some((row) =>
+        row.id !== consortiumId && [row.displayName, ...(row.aliases ?? [])].map(normalizedLabel).some((label) => labels.includes(label)))) {
+        throw new Error("Consortium name conflicts with an existing name or alias.");
+      }
+      const previousOwners = await tx.select().from(auctionConsortiumOwnersTable)
+        .where(eq(auctionConsortiumOwnersTable.consortiumId, consortiumId));
+      const nextOwners = await resolveOwnerBidderIds(tx, auctionId, body.data.owners, consortiumId);
+      const ownerChanged = nextOwners.length !== previousOwners.length || nextOwners.some((owner) =>
+        !previousOwners.some((old) => old.bidderId === owner.bidderId && shareBasisPoints(Number(old.share)) === owner.share));
+      if (ownerChanged && previousOwners.length) {
+        const previousIds = previousOwners.map((owner) => owner.bidderId);
+        const [ambiguous] = await tx.select({ id: auctionSaleAllocationsTable.id })
+          .from(auctionSaleAllocationsTable)
+          .innerJoin(auctionSalesTable, eq(auctionSalesTable.id, auctionSaleAllocationsTable.saleId))
+          .where(and(
+            eq(auctionSalesTable.auctionId, auctionId),
+            inArray(auctionSaleAllocationsTable.bidderId, previousIds),
+            sql`${auctionSaleAllocationsTable.consortiumId} is distinct from ${consortiumId}`,
+          )).limit(1);
+        if (ambiguous) throw new Error("A prior owner has an ambiguous sale attribution; correction was blocked.");
+      }
+      const saleRows = await tx.select({
+        saleId: auctionSalesTable.id, lotId: auctionLotsTable.id,
+        entryId: auctionLotsTable.entryId, teamId: calcuttaEntriesTable.teamId,
+        totalCents: auctionSalesTable.totalCents,
+      }).from(auctionSaleAllocationsTable)
+        .innerJoin(auctionSalesTable, eq(auctionSalesTable.id, auctionSaleAllocationsTable.saleId))
+        .innerJoin(auctionLotsTable, eq(auctionLotsTable.id, auctionSalesTable.lotId))
+        .innerJoin(calcuttaEntriesTable, eq(calcuttaEntriesTable.id, auctionLotsTable.entryId))
+        .where(and(eq(auctionSalesTable.auctionId, auctionId), eq(auctionSaleAllocationsTable.consortiumId, consortiumId)));
+      const affectedSales = [...new Map(saleRows.map((sale) => [sale.saleId, sale])).values()];
+      const corrected: Array<{ saleId: number; lotId: number; before: unknown; after: unknown }> = [];
+      if (ownerChanged) for (const sale of affectedSales) {
+        const [approved] = await tx.select({ id: tradesTable.id }).from(tradesTable)
+          .where(and(eq(tradesTable.entryId, sale.entryId), eq(tradesTable.status, "approved"))).limit(1);
+        if (approved) throw new Error("An approved trade protects a sold lot. Use a correcting trade instead.");
+        const allocations = await tx.select().from(auctionSaleAllocationsTable)
+          .where(eq(auctionSaleAllocationsTable.saleId, sale.saleId)).for("update");
+        const primary = await tx.select().from(positionsTable)
+          .where(and(eq(positionsTable.entryId, sale.entryId), eq(positionsTable.source, "primary"))).for("update");
+        const recorded = new Map(allocations.map((row) => [row.bidderId, row]));
+        if (recorded.size !== allocations.length || primary.length !== allocations.length ||
+          primary.some((position) => {
+            const row = recorded.get(position.bidderId);
+            return !row || Math.round(Number(position.ownershipShare) * 1_000_000) !== Math.round(Number(row.share) * 1_000_000)
+              || Math.round(Number(position.costBasis) * 100) !== row.cents;
+          }) || allocations.reduce((sum, row) => sum + row.cents, 0) !== sale.totalCents ||
+          allocations.reduce((sum, row) => sum + Math.round(Number(row.share) * 10000), 0) !== 10000) {
+          throw new Error("Recorded sale and primary ownership differ. Correction was blocked.");
+        }
+        const group = allocations.filter((row) => row.consortiumId === consortiumId);
+        const groupCents = group.reduce((sum, row) => sum + row.cents, 0);
+        const groupBps = group.reduce((sum, row) => sum + Math.round(Number(row.share) * 10000), 0);
+        if (!group.length || groupCents < nextOwners.length || groupBps < nextOwners.length) {
+          throw new Error("This sale cannot allocate a positive share and cent to every new owner.");
+        }
+        const shares = distributeIntegerTotal(nextOwners.map((owner) => ({ bidderId: owner.bidderId, weight: owner.share })), groupBps);
+        const amounts = distributeIntegerTotal(shares.map((owner) => ({ bidderId: owner.bidderId, weight: owner.amount })), groupCents);
+        const amountByBidder = new Map(amounts.map((row) => [row.bidderId, row.amount]));
+        const groupNext = shares.map((owner) => ({
+          bidderId: owner.bidderId, consortiumId, share: (owner.amount / 10000).toFixed(6),
+          cents: amountByBidder.get(owner.bidderId)!,
+        }));
+        const remaining = allocations.filter((row) => row.consortiumId !== consortiumId);
+        const next = [...remaining, ...groupNext];
+        if (next.some((row) => row.cents <= 0 || Number(row.share) <= 0) ||
+          new Set(next.map((row) => row.bidderId)).size !== next.length) {
+          throw new Error("A corrected owner already has an allocation in this sale.");
+        }
+        const before = allocations.map((row) => ({ bidderId: row.bidderId, consortiumId: row.consortiumId, share: Number(row.share), cents: row.cents }));
+        const after = next.map((row) => ({ bidderId: row.bidderId, consortiumId: row.consortiumId, share: Number(row.share), cents: row.cents }));
+        await tx.delete(auctionSaleAllocationsTable).where(eq(auctionSaleAllocationsTable.saleId, sale.saleId));
+        await tx.insert(auctionSaleAllocationsTable).values(next.map((row) => ({
+          saleId: sale.saleId, bidderId: row.bidderId, consortiumId: row.consortiumId, share: row.share, cents: row.cents,
+        })));
+        await tx.delete(positionsTable).where(and(eq(positionsTable.entryId, sale.entryId), eq(positionsTable.source, "primary")));
+        await tx.insert(positionsTable).values(next.map((row) => ({
+          entryId: sale.entryId, bidderId: row.bidderId, ownershipShare: row.share,
+          source: "primary", costBasis: (row.cents / 100).toFixed(2),
+        })));
+        await tx.insert(ownershipAdjustmentsTable).values({
+          seasonId: calcutta.seasonId, teamId: sale.teamId, source: "auction_sale_correction",
+          note: body.data.reason, owners: { before, after },
+        });
+        await tx.update(auctionSalesTable).set({ reason: body.data.reason, correctedAt: new Date() })
+          .where(eq(auctionSalesTable.id, sale.saleId));
+        corrected.push({ saleId: sale.saleId, lotId: sale.lotId, before, after });
+      }
+      if (ownerChanged) {
+        await tx.delete(auctionConsortiumOwnersTable).where(eq(auctionConsortiumOwnersTable.consortiumId, consortiumId));
+        await tx.insert(auctionConsortiumOwnersTable).values(nextOwners.map((owner) => ({
+          auctionId, consortiumId, bidderId: owner.bidderId, share: (owner.share / 10000).toFixed(4),
+        })));
+      }
+      await tx.update(auctionConsortiaTable).set({
+        displayName: body.data.displayName,
+        bidderId: nextOwners.length === 1 ? nextOwners[0].bidderId : null,
+      }).where(eq(auctionConsortiaTable.id, consortiumId));
+      await tx.update(auctionSessionsTable).set({ revision: session.revision + 1 }).where(eq(auctionSessionsTable.id, auctionId));
+      await event(tx, auctionId, "consortium_corrected", {
+        consortiumId, beforeName: current.displayName, afterName: body.data.displayName,
+        beforeOwners: previousOwners.map((owner) => ({ bidderId: owner.bidderId, share: Number(owner.share) })),
+        afterOwners: nextOwners.map((owner) => ({ bidderId: owner.bidderId, share: owner.share / 10000 })),
+        correctedSales: corrected, reason: body.data.reason,
+      }, body.data.idempotencyKey);
+    });
+    res.json(await snapshot(auctionId));
+  } catch (error) {
+    sendParsedJson(res, ErrorResponse, { error: error instanceof Error ? error.message : "Consortium correction rejected." }, 409);
+  }
 });
 
 router.post("/calcuttas/:calcuttaId/auctions/:auctionId/nominate-next", requireAdmin, async (req, res): Promise<any> => {

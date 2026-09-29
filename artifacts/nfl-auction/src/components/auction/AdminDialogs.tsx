@@ -1,7 +1,7 @@
 import { useState } from "react";
 import { type AuctionConsortium, type AuctionSale, type BidderSummary, type AuctionLot, getGetBiddersQueryKey } from "@workspace/api-client-react";
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription } from "@/components/ui/dialog";
-import { editConsortium, addConsortium, addLotBulk, deleteLot, type ConsortiumOwnerInput } from "./admin-actions";
+import { correctConsortium, editConsortium, addConsortium, addLotBulk, deleteLot, type ConsortiumOwnerInput } from "./admin-actions";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { useToast } from "@/hooks/use-toast";
 import { Loader2, Plus, Trash2, X } from "lucide-react";
@@ -14,7 +14,7 @@ export function equalOwnerShares(owners: Owner[]): Owner[] {
   return owners.map((owner, index) => ({ ...owner, percent: ((index === owners.length - 1 ? 10000 - each * (owners.length - 1) : each) / 100).toFixed(2) }));
 }
 
-export function ManageRosterDialog({ open, onOpenChange, calcuttaId, auctionId, consortia, sales, bidders, biddersLoading, biddersError, retryBidders, adminKey, revision }: { open: boolean, onOpenChange: (open: boolean) => void, calcuttaId: number, auctionId: number, consortia: AuctionConsortium[], sales: AuctionSale[], bidders: BidderSummary[], biddersLoading: boolean, biddersError: boolean, retryBidders: () => void, adminKey: string, revision: number }) {
+export function ManageRosterDialog({ open, onOpenChange, calcuttaId, auctionId, consortia, sales, bidders, biddersLoading, biddersError, retryBidders, adminKey, revision, postAuctionCorrectionAllowed = false, auctionComplete = false }: { open: boolean, onOpenChange: (open: boolean) => void, calcuttaId: number, auctionId: number, consortia: AuctionConsortium[], sales: AuctionSale[], bidders: BidderSummary[], biddersLoading: boolean, biddersError: boolean, retryBidders: () => void, adminKey: string, revision: number, postAuctionCorrectionAllowed?: boolean, auctionComplete?: boolean }) {
   const queryClient = useQueryClient();
   const { toast } = useToast();
   const [isPending, setIsPending] = useState(false);
@@ -22,11 +22,13 @@ export function ManageRosterDialog({ open, onOpenChange, calcuttaId, auctionId, 
   const [name, setName] = useState("");
   const [editingId, setEditingId] = useState<number | null>(null);
   const [owners, setOwners] = useState<Owner[]>([{ newBidderName: "", percent: "100.00" }]);
+  const [reason, setReason] = useState("");
 
-  const reset = () => { setEditingId(null); setName(""); setOwners([{ newBidderName: "", percent: "100.00" }]); };
+  const reset = () => { setEditingId(null); setName(""); setOwners([{ newBidderName: "", percent: "100.00" }]); setReason(""); };
   const edit = (c: RosterConsortium) => {
     setEditingId(c.id);
     setName(c.displayName);
+    setReason("");
     setOwners(c.owners?.length
       ? c.owners.map(o => ({ bidderId: o.bidderId, newBidderName: "", percent: (o.share * 100).toFixed(2) }))
       : [{ newBidderName: "", percent: "100.00" }]);
@@ -35,6 +37,9 @@ export function ManageRosterDialog({ open, onOpenChange, calcuttaId, auctionId, 
   const soldConsortiumIds = new Set(sales.flatMap(sale => sale.allocations.map(allocation =>
     allocation.consortiumId ?? consortia.find(c => c.bidderId === allocation.bidderId)?.id
   )).filter((id): id is number => id != null));
+  const needsCorrection = editingId != null && auctionComplete;
+  const affectedSaleCount = editingId == null ? 0 : sales.filter(sale =>
+    sale.allocations.some(allocation => allocation.consortiumId === editingId)).length;
   const namesByOther = new Set((consortia as RosterConsortium[]).filter(c => c.id !== editingId).flatMap(c => (c.owners || []).map(o => o.bidderName.trim().toLocaleLowerCase())));
   const duplicate = owners.some((o, i) => {
     const normalized = (o.bidderId ? bidders.find(b => b.id === o.bidderId)?.name : o.newBidderName)?.trim().toLocaleLowerCase();
@@ -45,7 +50,8 @@ export function ManageRosterDialog({ open, onOpenChange, calcuttaId, auctionId, 
   const total = owners.reduce((sum, o) => sum + (Number(o.percent) || 0), 0);
   const valid = !biddersLoading && !biddersError && !!name.trim() && owners.length > 0 && !duplicate &&
     owners.every(o => (o.bidderId != null || !!o.newBidderName.trim()) && /^\d+(\.\d{1,2})?$/.test(o.percent) && Number(o.percent) > 0) &&
-    owners.reduce((sum, o) => sum + Math.round(Number(o.percent) * 100), 0) === 10000;
+    owners.reduce((sum, o) => sum + Math.round(Number(o.percent) * 100), 0) === 10000 &&
+    (!needsCorrection || (postAuctionCorrectionAllowed && !!reason.trim()));
 
   const handleAdd = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -55,10 +61,11 @@ export function ManageRosterDialog({ open, onOpenChange, calcuttaId, auctionId, 
       const payload: ConsortiumOwnerInput[] = owners.map(o => o.bidderId != null
         ? { bidderId: o.bidderId, share: Math.round(Number(o.percent) * 100) / 10000 }
         : { newBidderName: o.newBidderName.trim(), share: Math.round(Number(o.percent) * 100) / 10000 });
-      if (editingId != null) await editConsortium(calcuttaId, auctionId, editingId, { displayName: name.trim(), owners: payload }, adminKey, revision);
+      if (editingId != null && needsCorrection) await correctConsortium(calcuttaId, auctionId, editingId, name.trim(), payload, reason.trim(), adminKey, revision);
+      else if (editingId != null) await editConsortium(calcuttaId, auctionId, editingId, { displayName: name.trim(), owners: payload }, adminKey, revision);
       else await addConsortium(calcuttaId, auctionId, name.trim(), payload, adminKey, revision);
       await Promise.all([
-        queryClient.invalidateQueries({ queryKey: ["active-auction", calcuttaId] }),
+        queryClient.invalidateQueries(),
         queryClient.invalidateQueries({ queryKey: getGetBiddersQueryKey() }),
       ]);
       reset();
@@ -109,7 +116,7 @@ export function ManageRosterDialog({ open, onOpenChange, calcuttaId, auctionId, 
             <h4 className="font-mono text-xs font-bold uppercase tracking-widest mb-4">{editingId != null ? "Edit Consortium" : "Add New Consortium"}</h4>
             {biddersLoading && <p role="status" className="text-sm text-muted-foreground">Loading owner directory…</p>}
             {biddersError && <div role="alert" className="mb-4 border border-destructive/30 bg-destructive/5 p-3 text-sm text-destructive">Could not load owner directory. Changes cannot be saved until it loads. <button type="button" onClick={retryBidders} className="underline font-bold">Retry</button></div>}
-            {!biddersLoading && !biddersError && <form onSubmit={handleAdd} className="space-y-4">
+            {!biddersLoading && !biddersError && (!auctionComplete || editingId != null) && <form onSubmit={handleAdd} className="space-y-4">
               <label className="block space-y-1 text-xs font-mono text-muted-foreground">Consortium name
                 <input aria-label="Consortium name" type="text" value={name} onChange={e => setName(e.target.value)} className="w-full bg-background border border-border px-3 py-2 text-sm text-foreground" placeholder="Consortium name" />
               </label>
@@ -136,6 +143,17 @@ export function ManageRosterDialog({ open, onOpenChange, calcuttaId, auctionId, 
                 <span className={`text-xs font-mono ${Math.abs(total - 100) > 0.001 ? "text-destructive" : "text-foreground"}`}>Total {total.toFixed(2)}% / 100%</span>
               </div>
               {duplicate && <p role="alert" className="text-xs text-destructive">An owner is already listed here or in another consortium. Choose a different owner.</p>}
+              {needsCorrection && postAuctionCorrectionAllowed && (
+                <div className="space-y-2 border border-amber-500/40 bg-amber-500/10 p-3 text-sm">
+                  <p>{affectedSaleCount > 0
+                    ? `This will correct ownership and cost basis on ${affectedSaleCount} recorded sale${affectedSaleCount === 1 ? "" : "s"} in Calcutta XIII. Approved trades block the correction.`
+                    : "This post-auction roster or name correction will be recorded in the auction audit."}</p>
+                  <label className="block text-xs font-mono uppercase">Correction reason
+                    <input aria-label="Correction reason" value={reason} onChange={e => setReason(e.target.value)}
+                      maxLength={500} className="mt-1 w-full bg-background border border-border px-3 py-2 text-sm normal-case" placeholder="Why is this ownership being corrected?" />
+                  </label>
+                </div>
+              )}
               <div className="flex gap-2 justify-end">
                 {editingId != null && <button type="button" onClick={reset} className="border border-border px-4 py-2 text-xs font-mono uppercase">Cancel</button>}
                 <button disabled={isPending || !valid} type="submit" className="bg-primary text-primary-foreground font-mono text-xs font-bold uppercase tracking-widest px-4 py-2 hover:bg-primary/90 disabled:opacity-50">
@@ -159,23 +177,23 @@ export function ManageRosterDialog({ open, onOpenChange, calcuttaId, auctionId, 
                 </tr>
               </thead>
               <tbody className="divide-y divide-border">
-                {consortia.map(c => (
+              {consortia.map(c => (
                   <tr key={c.id} className={c.active === 0 ? "opacity-50" : ""}>
                     <td className="px-3 py-2 font-bold">
                       {c.displayName}
                     </td>
                     <td className="px-3 py-2 font-mono text-xs text-muted-foreground">
                       {c.aliases?.join(", ") || "—"}
-                      <button onClick={() => handleEditAliases(c)} disabled={isPending} className="ml-2 text-[10px] text-primary hover:underline font-sans">Edit</button>
+                      {!auctionComplete && <button onClick={() => handleEditAliases(c)} disabled={isPending} className="ml-2 text-[10px] text-primary hover:underline font-sans">Edit</button>}
                     </td>
                     <td className="px-3 py-2">
                        {((c as RosterConsortium).owners || []).map(o => <div key={o.bidderId} className="text-xs whitespace-nowrap">{o.bidderName} <span className="font-mono text-muted-foreground">{(o.share * 100).toFixed(2)}%</span></div>)}
                     </td>
                     <td className="px-3 py-2 text-right">
-                       <button onClick={() => edit(c as RosterConsortium)} disabled={isPending || biddersLoading || biddersError || soldConsortiumIds.has(c.id)} title={soldConsortiumIds.has(c.id) ? "Owner shares are locked after a recorded sale. Use an audited sale correction to change ownership." : undefined} className="mr-3 text-[10px] font-mono uppercase tracking-widest text-primary hover:underline disabled:opacity-50 disabled:no-underline">{soldConsortiumIds.has(c.id) ? "Ownership locked" : "Edit owners"}</button>
-                      <button onClick={() => handleToggleActive(c)} disabled={isPending} className="text-[10px] font-mono uppercase tracking-widest text-primary hover:underline">
+                       <button onClick={() => edit(c as RosterConsortium)} disabled={isPending || biddersLoading || biddersError || (auctionComplete && !postAuctionCorrectionAllowed) || (!auctionComplete && soldConsortiumIds.has(c.id))} title={!auctionComplete && soldConsortiumIds.has(c.id) ? "Owner shares are locked after a recorded sale. Complete the auction before correcting this consortium." : undefined} className="mr-3 text-[10px] font-mono uppercase tracking-widest text-primary hover:underline disabled:opacity-50 disabled:no-underline">{!auctionComplete && soldConsortiumIds.has(c.id) ? "Ownership locked" : "Edit name / owners"}</button>
+                      {!auctionComplete && <button onClick={() => handleToggleActive(c)} disabled={isPending} className="text-[10px] font-mono uppercase tracking-widest text-primary hover:underline">
                         {c.active === 1 ? "Deactivate" : "Activate"}
-                      </button>
+                      </button>}
                     </td>
                   </tr>
                 ))}

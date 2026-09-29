@@ -14,6 +14,7 @@ import { useState } from "react";
 
 interface AuctionRoomProps {
   calcuttaId: number;
+  allowPostAuctionEdits?: boolean;
   year: number;
   adminKey: string | null;
   historicalSummaryRefetch: () => void;
@@ -24,7 +25,7 @@ interface AuctionRoomProps {
   error: any;
 }
 
-export function AuctionRoom({ calcuttaId, adminKey, historicalSummaryRefetch, activeAuction, hasHistoricalResults, isSeasonComplete, isLoading, error }: AuctionRoomProps) {
+export function AuctionRoom({ calcuttaId, allowPostAuctionEdits = false, adminKey, historicalSummaryRefetch, activeAuction, hasHistoricalResults, isSeasonComplete, isLoading, error }: AuctionRoomProps) {
   const queryClient = useQueryClient();
   const { toast } = useToast();
   const [isPending, setIsPending] = useState(false);
@@ -395,7 +396,7 @@ export function AuctionRoom({ calcuttaId, adminKey, historicalSummaryRefetch, ac
                 <p className="p-4 text-sm text-muted-foreground text-center italic">No consortia registered.</p>
               )}
             </div>
-            {adminKey && status !== "complete" && (
+            {adminKey && (status !== "complete" || allowPostAuctionEdits) && (
               <div className="p-3 border-t border-border bg-muted/50">
                 <button
                   className="w-full py-2 text-xs font-mono font-bold uppercase tracking-widest text-muted-foreground hover:text-foreground hover:bg-muted transition-colors border border-dashed border-border"
@@ -466,6 +467,8 @@ export function AuctionRoom({ calcuttaId, adminKey, historicalSummaryRefetch, ac
            retryBidders={() => { void retryBidders(); }}
           adminKey={adminKey}
           revision={activeAuction.revision}
+          postAuctionCorrectionAllowed={allowPostAuctionEdits}
+          auctionComplete={status === "complete"}
         />
       )}
       {adminKey && status === "live" && (

@@ -72,6 +72,12 @@ export async function editConsortium(calcuttaId: number, auctionId: number, cons
   });
 }
 
+export async function correctConsortium(calcuttaId: number, auctionId: number, consortiumId: number, displayName: string, owners: ConsortiumOwnerInput[], reason: string, adminKey: string, expectedRevision: number): Promise<AuctionSnapshot> {
+  return adminFetch(`/api/calcuttas/${calcuttaId}/auctions/${auctionId}/consortia/${consortiumId}/correction`, "POST", adminKey, {
+    displayName, owners, reason, expectedRevision, idempotencyKey: crypto.randomUUID(),
+  });
+}
+
 export async function addLotBulk(calcuttaId: number, auctionId: number, lots: any[], adminKey: string, expectedRevision: number) {
   return adminFetch(`/api/calcuttas/${calcuttaId}/auctions/${auctionId}/lots/bulk`, "POST", adminKey, {
     lots,

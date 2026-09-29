@@ -52,6 +52,7 @@ import {
 } from "lucide-react";
 import { Link } from "wouter";
 import { auctionConsortiumsByBidderId, ownerLabelById } from "@/lib/ownerDisplay";
+import { groupSaleBuyers, saleBuyerLabel, summarizeSaleBuyers } from "@/lib/auctionSaleBuyers";
 import { AuctionRosterSummary } from "@/components/auction/AuctionRosterSummary";
 import { ConsortiumLabel } from "@/components/ConsortiumLabel";
 import { auctionResultHref, tradeHref } from "@/lib/resultSourceLinks";
@@ -137,44 +138,47 @@ function NonNflResults({ calcutta }: { calcutta: CalcuttaOption }) {
         return {
           teamId: sale.lotId,
           teamName: lot?.displayName ?? "Unknown lot",
-          winnerName: sale.allocations.map((allocation) => allocation.consortiumName || allocation.bidderName).join(" / "),
+          winnerName: saleBuyerLabel(sale.allocations),
           bidAmount: sale.totalCents / 100,
         };
       })
     : summary?.auctionResults ?? [];
-  const buyersByName = (auction?.sales?.length
-      ? auction.sales.flatMap((sale) => sale.allocations.map((allocation) => ({
-          buyer: allocation.consortiumName || allocation.bidderName,
-          cost: allocation.cents / 100,
-        })))
-      : sales.map((sale) => ({ buyer: sale.winnerName, cost: sale.bidAmount }))
-    ).reduce((groups, sale) => {
-      const buyer = sale.buyer?.trim();
-      if (buyer) {
-        const entry = groups.get(buyer) ?? { name: buyer, lots: 0, spent: 0 };
-        entry.lots += 1;
-        entry.spent += sale.cost;
-        groups.set(buyer, entry);
-      }
-      return groups;
-    }, new Map<string, { name: string; lots: number; spent: number }>());
+  const saleGroups = auction?.sales?.map((sale) => ({
+    sale,
+    buyers: groupSaleBuyers(sale.allocations),
+  })) ?? [];
+  const buyersByName = new Map<string, { key: string; name: string; lots: number; spent: number }>();
+  if (auction?.sales?.length) {
+    for (const buyer of summarizeSaleBuyers(auction.sales).values()) {
+      buyersByName.set(buyer.key, { key: buyer.key, name: buyer.name, lots: buyer.lots, spent: buyer.cents / 100 });
+    }
+  } else {
+    for (const sale of sales) {
+      const key = `fallback:${sale.winnerName}`;
+      const entry = buyersByName.get(key) ?? { key, name: sale.winnerName, lots: 0, spent: 0 };
+      entry.lots += 1;
+      entry.spent += sale.bidAmount;
+      buyersByName.set(key, entry);
+    }
+  }
   for (const consortium of auction?.consortia ?? []) {
-    if (!buyersByName.has(consortium.displayName)) {
-      buyersByName.set(consortium.displayName, { name: consortium.displayName, lots: 0, spent: 0 });
+    const key = `consortium:${consortium.id}`;
+    if (!buyersByName.has(key)) {
+      buyersByName.set(key, { key, name: consortium.displayName, lots: 0, spent: 0 });
     }
   }
   const buyers = Array.from(buyersByName.values());
-  const selected = buyers.find((buyer) => buyer.name === selectedBuyer);
+  const selected = buyers.find((buyer) => buyer.key === selectedBuyer);
   const filteredBuyers = buyers.filter((buyer) => buyer.name.toLowerCase().includes(search.toLowerCase().trim()));
   const filteredSales = sales.filter((sale) => `${sale.teamName} ${sale.winnerName}`.toLowerCase().includes(search.toLowerCase().trim()));
   const total = sales.reduce((amount, sale) => amount + sale.bidAmount, 0);
   const buyerLots = selected
     ? auction?.sales?.length
-      ? auction.sales.flatMap((sale) => sale.allocations
-          .filter((allocation) => (allocation.consortiumName || allocation.bidderName) === selected.name)
-          .map((allocation) => ({
+      ? saleGroups.flatMap(({ sale, buyers: saleBuyers }) => saleBuyers
+          .filter((buyer) => buyer.key === selected.key)
+          .map((buyer) => ({
             name: auction.lots.find((lot) => lot.id === sale.lotId)?.displayName ?? "Unknown lot",
-            cost: allocation.cents / 100,
+            cost: buyer.cents / 100,
           })))
       : sales.filter((sale) => sale.winnerName === selected.name).map((sale) => ({ name: sale.teamName, cost: sale.bidAmount }))
     : [];
@@ -268,9 +272,9 @@ function NonNflResults({ calcutta }: { calcutta: CalcuttaOption }) {
                   </thead>
                   <tbody className="divide-y divide-border/70">
                     {tab === "byOwner" ? filteredBuyers.map((buyer, index) => (
-                      <tr key={buyer.name} tabIndex={0} onClick={() => setSelectedBuyer(buyer.name)} onKeyDown={(event) => { if (event.key === "Enter" || event.key === " ") { event.preventDefault(); setSelectedBuyer(buyer.name); } }}
+                      <tr key={buyer.key} tabIndex={0} onClick={() => setSelectedBuyer(buyer.key)} onKeyDown={(event) => { if (event.key === "Enter" || event.key === " ") { event.preventDefault(); setSelectedBuyer(buyer.key); } }}
                         aria-label={`Inspect ${buyer.name}`} data-testid={`row-consortium-${index}`}
-                        className={cn("cursor-pointer hover:bg-muted/40 focus:bg-muted/40 focus:outline-none", selectedBuyer === buyer.name && "bg-primary/5")}>
+                        className={cn("cursor-pointer hover:bg-muted/40 focus:bg-muted/40 focus:outline-none", selectedBuyer === buyer.key && "bg-primary/5")}>
                         <td className="px-4 py-3 text-center font-mono text-muted-foreground">{index + 1}</td>
                         <td className="px-3 py-3 font-bold">{buyer.name}</td>
                          <td className="px-3 py-3 text-right font-mono tabular-nums">{buyer.lots ? formatCurrency(buyer.spent) : "—"}</td>

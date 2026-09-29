@@ -1,4 +1,5 @@
 import { useEffect, useState, type ReactNode } from "react";
+import { saleBuyerLabel } from "@/lib/auctionSaleBuyers";
 import {
   useGetAuctionSummary,
   useGetPointsRubricV2,
@@ -172,7 +173,7 @@ export default function Dashboard() {
         teamId: sale.lotId,
         teamName: activeAuction.lots.find((lot) => lot.id === sale.lotId)?.displayName ?? "Unknown lot",
         draftOrder: activeAuction.lots.find((lot) => lot.id === sale.lotId)?.nominationSequence ?? null,
-        winnerName: sale.allocations.map((allocation) => allocation.consortiumName || allocation.bidderName).join(" / "),
+        winnerName: saleBuyerLabel(sale.allocations),
         bidAmount: sale.totalCents / 100,
       }))
     : summary?.auctionResults ?? [];
@@ -251,6 +252,7 @@ export default function Dashboard() {
       {calcuttaId && (
         <AuctionRoom
           calcuttaId={calcuttaId}
+          allowPostAuctionEdits={isCalcuttaXiiiMlb}
           year={year}
           adminKey={adminKey}
           historicalSummaryRefetch={refetch}

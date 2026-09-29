@@ -27,7 +27,7 @@ export function shareBasisPoints(share: number): number {
   }
   return Math.round(share * 10000);
 }
-function distributeIntegerTotal<T extends { bidderId: number; weight: number }>(
+export function distributeIntegerTotal<T extends { bidderId: number; weight: number }>(
   rows: T[],
   total: number,
 ): Array<T & { amount: number }> {
