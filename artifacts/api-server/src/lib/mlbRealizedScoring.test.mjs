@@ -6,6 +6,14 @@ import { getCompetitionScoringAdapter, getSeriesActualsAdapter } from './competi
 import { referenceGames, terminalGames, rules, ruleRows, ids, series } from './mlbResults.fixture.mjs';
 const score=(games=referenceGames,r=rules)=>calculateMlbActuals(games,r,ids);
 
+test('accepts saved points calculations and WS Sweep alias without weakening modifiers',()=>{
+  const saved=ruleRows.map(row=>({...row,calculation:'points',
+    ruleName:row.ruleName==='World Series Sweep'?'WS Sweep':row.ruleName}));
+  assert.deepEqual(parseMlbRules(saved),rules);
+  assert.throws(()=>parseMlbRules([...saved,{...saved.at(-1),ruleName:'World Series Sweep'}]),/duplicate/);
+  assert.throws(()=>parseMlbRules(saved.map((r,i)=>i? r:{...r,calculation:'multiply'})),/modifiers/);
+});
+
 test('approved WC actuals 18 plus bye 20 yields 190, not a forced 170 or NFL denominator',()=>{
   const result=score();
   assert.deepEqual(result.reasons,[]);

@@ -33,6 +33,7 @@
 - [Provider event reconciliation](provider-event-reconciliation.md) — CFB provider updates are scoped, non-destructive upserts unless the source proves snapshot completeness.
 - [Schema push safety](schema-push-safety.md) — never use an auto-generated push that proposes truncation on populated ownership or MTM tables; use guarded migrations instead.
 - [Historical owner identity](historical-owner-identity.md) — cross-pool history uses the approved explicit identity map; unanchored records stay separate and are never fuzzy-merged.
+- [Live team identity](live-team-identity-authority.md) — exact provider aliases are allowed; substituting a different franchise for a sold entry requires commissioner confirmation.
 - [Immutable MTM evidence](immutable-mtm-evidence.md) — every pipeline execution is a distinct audit attempt; same-hour retries never replace its quotes or diagnostics.
 - [Trade recovery authority](trade-recovery-authority.md) — reconcile remapped trades by natural-key multiplicity and never promote historical workbook evidence into a live-pool trade.
 - [PostgreSQL backup safety](backup-catalog-visibility.md) — use pg_catalog for limited roles; full production clones need native consistent dumps, not the query bridge.

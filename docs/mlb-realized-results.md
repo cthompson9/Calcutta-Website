@@ -71,12 +71,23 @@ The calendar contains ordered rounds, 11 stable series slots, legal contingent
 games, actual participants and verified advancement links. Games after a clinch
 are unneeded and earn nothing. Suspended/postponed games are not finals.
 
-The API's independent MLB poller checks every five minutes in the September
-15–November 15 discovery season. Each execution fetches at most eight daily
+The API's independent MLB poller is scoped to Calcutta XIII and checks every
+minute in the September 15–November 15 discovery season. During game windows,
+successful refreshes become due again after one minute; off-window discovery
+retains its five-minute due interval. The Results UI rechecks stored actuals
+every 30 seconds. Each execution fetches at most eight daily
 pages, at most four concurrently, with ten-second request timeouts. Historical
 coverage backfills progressively; recent game-window/post-game checks and
 advancement-triggered next-day discovery share that bound. Previously discovered
 days are rechecked in bounded daily batches for corrections.
+
+Calcutta XIII's auction/sidebar reference rate uses its approved 190-point basis,
+never the NFL 11,420 denominator. The Results projection continues to explain its
+whole-tournament provisional inventory and any revaluation as series finish.
+Stored `calculation = points` is an identity calculation, and `WS Sweep` is the
+saved alias for `World Series Sweep`. Other modifiers still fail closed.
+ESPN's optional `If Necessary` suffix does not turn a contingent game into a
+final or an award. Imported nicknames match only exact provider-supplied aliases.
 
 The existing refresh-state store retains coverage, failure/backoff, next retry,
 last attempt/success and a renewable three-minute coalescing lease. No database

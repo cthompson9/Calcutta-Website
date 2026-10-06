@@ -15,6 +15,7 @@ export function startMlbRefreshPoller(): () => void {
       const year = Number(today.slice(0, 4));
       if (today < `${year}-09-15` || today > `${year}-11-15`) return;
       const pools = await db.select().from(calcuttasTable).where(and(
+        eq(calcuttasTable.id, 2061),
         eq(calcuttasTable.sport, "MLB"), eq(calcuttasTable.competitionFormat, "MLB_POSTSEASON"),
         eq(calcuttasTable.year, year),
       ));
@@ -25,7 +26,7 @@ export function startMlbRefreshPoller(): () => void {
     } catch (err) { logger.warn({ err }, "MLB results poller failed"); }
     finally { running = false; }
   };
-  const timer = setInterval(() => void tick(), 5 * 60_000);
+  const timer = setInterval(() => void tick(), 60_000);
   timer.unref();
   void tick();
   return () => { stopped = true; clearInterval(timer); };

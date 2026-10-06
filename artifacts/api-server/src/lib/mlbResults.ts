@@ -11,7 +11,7 @@ import {
   mlbRefreshScope, readMlbCache,
 } from "./mlbRefresh";
 import {
-  allocateMlbCents, calculateMlbActuals, MLB_RULE_NAMES, type MlbResults,
+  allocateMlbCents, calculateMlbActuals, MLB_RULE_NAMES, normalizeMlbRuleName, type MlbResults,
 } from "./mlbRealizedScoring";
 import { ESPN_MLB_SCOREBOARD_URL } from "./mlbEspnClient";
 import { getSeriesActualsAdapter } from "./competitionScoring";
@@ -72,7 +72,7 @@ export async function getMlbResults(
     if (stale && state?.lastSucceededAt) reasons.push("Retained actuals are stale; they are not a current provider snapshot.");
     const rules = await tx.select().from(calcuttaRulesTable).where(eq(calcuttaRulesTable.calcuttaId, pool.id));
     const displayedRules = MLB_RULE_NAMES.map((name) => {
-      const row = rules.filter((r) => r.active && r.ruleName.trim().replace(/\s+/g, " ").toLowerCase() === name.toLowerCase());
+      const row = rules.filter((r) => r.active && normalizeMlbRuleName(r.ruleName) === name.toLowerCase());
       const value = row.length === 1 && row[0]!.value != null ? Number(row[0]!.value) : null;
       return { name, points: value != null && Number.isFinite(value) ? value : null };
     });

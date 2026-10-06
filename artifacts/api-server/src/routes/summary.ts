@@ -13,6 +13,7 @@ import {
   auctionLotsTable,
   auctionSalesTable,
   auctionSaleAllocationsTable,
+  calcuttasTable,
 } from "@workspace/db";
 import { GetAuctionSummaryQueryParams, GetAuctionSummaryResponse } from "@workspace/api-zod";
 import { loadSeasonOwnership } from "../lib/seasonOwnership";
@@ -60,6 +61,12 @@ router.get("/summary", async (req, res): Promise<void> => {
     sendParsedJson(res, ErrorResponse, { error: "Calcutta not found for this season." }, 404);
     return;
   }
+  const [selectedPool] = await db.select({
+    id: calcuttasTable.id, sport: calcuttasTable.sport,
+  }).from(calcuttasTable).where(eq(calcuttasTable.id, calcuttaId));
+  // Calcutta XIII's approved MLB display basis. Preserve XII/NFL unchanged.
+  const pointDenominator = selectedPool?.id === 2061 && selectedPool.sport === "MLB"
+    ? 190 : LEAGUE_POINT_TOTAL;
 
   // The selected Calcutta's primary positions are its immutable auction ledger.
   // Do not read season-wide legacy auction rows: a season can have multiple pools.
@@ -180,7 +187,7 @@ router.get("/summary", async (req, res): Promise<void> => {
     potSize: Math.round(potSize * 100) / 100,
     teamsAuctioned,
     avgBidPerTeam: Math.round(avgBidPerTeam * 100) / 100,
-    dollarsPerPoint: Math.round((potSize / LEAGUE_POINT_TOTAL) * 100) / 100,
+    dollarsPerPoint: Math.round((potSize / pointDenominator) * 100) / 100,
     mostExpensiveTeam: mostExpensive
       ? {
           name: mostExpensive.teamName,

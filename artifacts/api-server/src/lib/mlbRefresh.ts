@@ -128,7 +128,7 @@ export async function refreshMlbResults(
       const signature = createHash("sha256").update(JSON.stringify(currentGames
         .map((g) => ({ ...g, sourceUrl: undefined })).sort((a, b) => a.providerId.localeCompare(b.providerId)))).digest("hex");
       const next = { ...cache, covered: { ...cache.covered }, leaseToken: null, leaseUntil: null,
-        retryAt: null, pollAt: new Date(now.getTime() + 5 * 60_000).toISOString(), failures: 0,
+        retryAt: null, pollAt: new Date(now.getTime() + (activeGame ? 60_000 : 5 * 60_000)).toISOString(), failures: 0,
         advancementDiscovery: signature !== state?.lastGameStatusSignature && currentGames.some((g) => g.status === "final") };
       for (const payload of payloads) next.covered[payload.provenance.requestedDate] = now.toISOString();
       await tx.update(refreshJobStatesTable).set({

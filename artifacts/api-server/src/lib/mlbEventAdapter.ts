@@ -28,6 +28,17 @@ export type IngestedMlbEvent = IngestedEvent & {
 };
 
 type EspnCompetitor = EspnMlbEvent["competitions"][number]["competitors"][number];
+export function resolveMlbParticipant(
+  team: ProviderTeamIdentity, entries: Array<{ teamId: number; name: string }>,
+): number {
+  const normalize = (name: string) => name.trim().replace(/\s+/g, " ").toLowerCase();
+  const aliases = new Set([team.canonicalName, ...team.aliases].map(normalize));
+  const matches = new Set(entries.filter(entry => aliases.has(normalize(entry.name))).map(entry => entry.teamId));
+  if (matches.size !== 1) {
+    throw new Error(`ESPN MLB team "${team.canonicalName}" is not an unambiguous exact participant in this pool.`);
+  }
+  return [...matches][0]!;
+}
 function teamIdentity(competitor: EspnCompetitor): ProviderTeamIdentity {
   const team = competitor.team;
   if (!team.id.trim() || !team.displayName.trim()) throw new Error("ESPN MLB team identity is missing.");
@@ -69,7 +80,7 @@ function roundOf(event: EspnMlbEvent): {
   round: MlbRound; league: "AL" | "NL" | null; gameNumber: number;
 } {
   const candidates = event.competitions[0]?.notes?.flatMap((note) => {
-    const match = /^(ALWC|NLWC|ALDS|NLDS|ALCS|NLCS|WS|World Series)\s*-\s*Game\s+(\d+)$/i
+    const match = /^(ALWC|NLWC|ALDS|NLDS|ALCS|NLCS|WS|World Series)\s*-\s*Game\s+(\d+)(?:\s+If Necessary)?$/i
       .exec(note.headline?.trim() ?? "");
     return match ? [match] : [];
   }) ?? [];

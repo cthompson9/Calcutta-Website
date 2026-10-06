@@ -14,6 +14,11 @@ export const MLB_RULE_NAMES = [
   "LCS Win", "LCS Sweep", "World Series Win", "World Series Sweep",
 ] as const;
 export type MlbRules = Record<typeof MLB_RULE_NAMES[number], number>;
+/** Stored MLB rubrics use both labels for the same World Series sweep award. */
+export function normalizeMlbRuleName(name: string): string {
+  const normalized = name.trim().replace(/\s+/g, " ").toLowerCase();
+  return normalized === "ws sweep" ? "world series sweep" : normalized;
+}
 const labels: Record<MlbRound, { label: string; win: keyof MlbRules; sweep: keyof MlbRules }> = {
   wild_card: { label: "Wild Card", win: "WC Round Win", sweep: "WC Sweep" },
   division_series: { label: "Division Series", win: "LDS Win", sweep: "LDS Sweep" },
@@ -28,11 +33,13 @@ export function parseMlbRules(rows: Array<{
   const rules = {} as MlbRules;
   const expected = new Map(MLB_RULE_NAMES.map((name) => [name.toLowerCase(), name]));
   for (const row of rows.filter((r) => r.active)) {
-    const name = expected.get(row.ruleName.trim().replace(/\s+/g, " ").toLowerCase());
+    const name = expected.get(normalizeMlbRuleName(row.ruleName));
     if (!name || row.ruleType && row.ruleType !== "points") {
       throw new Error(`Unsupported MLB points rule: ${row.ruleName}.`);
     }
-    if (row.multiplier != null && Number(row.multiplier) !== 1 || row.calculation || row.condition) {
+    if (row.multiplier != null && Number(row.multiplier) !== 1 ||
+        row.calculation?.trim() && row.calculation.trim().toLowerCase() !== "points" ||
+        row.condition?.trim()) {
       throw new Error(`Unsupported MLB rule modifiers: ${row.ruleName}.`);
     }
     const value = row.value == null ? NaN : Number(row.value);

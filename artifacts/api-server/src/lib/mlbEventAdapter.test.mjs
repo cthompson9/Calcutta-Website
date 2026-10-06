@@ -1,7 +1,14 @@
 import assert from "node:assert/strict";
 import test from "node:test";
 import { buildEspnMlbDateUrl, fetchEspnMlbForDate } from "./mlbEspnClient.ts";
-import { parseEspnMlbPostseason } from "./mlbEventAdapter.ts";
+import { parseEspnMlbPostseason, resolveMlbParticipant } from "./mlbEventAdapter.ts";
+
+test("pool nicknames match exact ESPN short names, never fuzzy or ambiguous names", () => {
+  const identity={canonicalName:"Cleveland Guardians",aliases:["Cleveland Guardians","Guardians","CLE"]};
+  assert.equal(resolveMlbParticipant(identity,[{teamId:1796,name:"Guardians"}]),1796);
+  assert.throws(()=>resolveMlbParticipant(identity,[{teamId:1,name:"Guardian"}]),/unambiguous exact/);
+  assert.throws(()=>resolveMlbParticipant(identity,[{teamId:1,name:"Guardians"},{teamId:2,name:"CLE"}]),/unambiguous exact/);
+});
 
 function game(overrides = {}) {
   return {
@@ -72,6 +79,7 @@ test("retains repeated same-matchup games and stable series identity across home
 for (const [headline, bestOf, period] of [
   ["NLWC - Game 3", 3, 1], ["ALDS - Game 5", 5, 2],
   ["NLCS - Game 7", 7, 3], ["WS - Game 7", 7, 4], ["World Series - Game 1", 7, 4],
+  ["NLDS - Game 4 If Necessary", 5, 2],
 ]) {
   test(`maps ${headline} to explicit round and series length`, () => {
     const event = game();

@@ -5,7 +5,7 @@ import {
   calendarSlotsTable, calendarSlotCandidatesTable, calendarSeriesTable,
   calendarGamesTable, calendarContingentGamesTable,
 } from "@workspace/db";
-import { MLB_ROUNDS, parseEspnMlbPostseason, type MlbRound } from "./mlbEventAdapter";
+import { MLB_ROUNDS, parseEspnMlbPostseason, resolveMlbParticipant, type MlbRound } from "./mlbEventAdapter";
 import type { EspnMlbPayload } from "./mlbEspnClient";
 import type { MlbGame } from "./mlbRealizedScoring";
 import { todayInNewYork } from "./newYorkTime";
@@ -54,7 +54,6 @@ export async function syncMlbEventsTx(tx: MlbTx, pool: MlbPool, payloads: EspnMl
     .from(calcuttaEntriesTable).innerJoin(teamsTable, eq(teamsTable.id, calcuttaEntriesTable.teamId))
     .where(eq(calcuttaEntriesTable.calcuttaId, pool.id));
   if (entries.length !== 12) throw new Error("MLB results require a complete 12-team payout universe.");
-  const ids = new Map(entries.map((e) => [e.name.toLowerCase().replace(/\s+/g, " ").trim(), e.teamId]));
   const parsedById = new Map<string, ReturnType<typeof parseEspnMlbPostseason>[number]>();
   const evidenceById = new Map<string, Array<{ sourceUrl: string; fetchedAt: string; raw: Record<string, unknown> }>>();
   const comparable = (game: ReturnType<typeof parseEspnMlbPostseason>[number]) => JSON.stringify({
@@ -77,16 +76,11 @@ export async function syncMlbEventsTx(tx: MlbTx, pool: MlbPool, payloads: EspnMl
     });
   }
   for (const game of parsedById.values()) {
-    const resolve = (name: string) => {
-      const id = ids.get(name.toLowerCase().replace(/\s+/g, " ").trim());
-      if (!id) throw new Error(`ESPN MLB team "${name}" is not an exact participant in this pool.`);
-      return id;
-    };
     const row = {
       seasonId: pool.seasonId, ...MLB_SCOPE, sourceEventId: game.providerEventId,
       week: game.period, eventDate: game.eventDate, kickoffAt: game.kickoffAt,
-      timezone: "America/New_York", homeTeamId: resolve(game.homeTeam.canonicalName),
-      awayTeamId: resolve(game.awayTeam.canonicalName),
+      timezone: "America/New_York", homeTeamId: resolveMlbParticipant(game.homeTeam, entries),
+      awayTeamId: resolveMlbParticipant(game.awayTeam, entries),
       venue: game.venue, network: game.network, status: game.status,
       homeScore: game.homeScore, awayScore: game.awayScore,
       sourceData: {

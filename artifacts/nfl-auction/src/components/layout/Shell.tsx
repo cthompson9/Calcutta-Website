@@ -54,7 +54,8 @@ export function Shell({ children, isPreview }: ShellProps) {
     { season: selectedCalcutta?.year ?? 0, calcuttaId: selectedCalcutta?.id },
     {
       query: {
-        enabled: isPreview && selectedCalcutta?.sport === "NFL",
+        enabled: isPreview && (selectedCalcutta?.sport === "NFL" ||
+          selectedCalcutta?.id === 2061 && selectedCalcutta.sport === "MLB"),
         queryKey: getGetAuctionSummaryQueryKey({
           season: selectedCalcutta?.year ?? 0,
           calcuttaId: selectedCalcutta?.id,
@@ -161,7 +162,7 @@ export function Shell({ children, isPreview }: ShellProps) {
                   }).format(summary.potSize)}
                 </div>
                 <div className="mt-2 font-mono text-[10px] font-bold uppercase tracking-widest text-muted-foreground">
-                  $ Per Point
+                  $ Per Point{selectedCalcutta?.id === 2061 && selectedCalcutta.sport === "MLB" ? " · 190-point basis" : ""}
                 </div>
                 <div className="text-xl font-bold font-mono tracking-tight text-foreground">
                   {new Intl.NumberFormat("en-US", {
