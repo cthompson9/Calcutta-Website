@@ -30,3 +30,6 @@ AUCTIONPRO_SOURCE_URL = "https://nfl-calcutta-bid-helper.replit.app"
 
 [userenv.production]
 LISTENER_PUBLIC_ORIGIN = "https://thecalcutta.app"
+
+[userenv.development]
+MLB_RESULTS_ENABLED = "true"

@@ -1,5 +1,5 @@
 ---
-name: Backup catalog visibility
+name: PostgreSQL backup safety
 description: PostgreSQL read-only metadata visibility and bulk production-copy safety.
 ---
 
@@ -23,6 +23,12 @@ Use native PostgreSQL dump/restore for full production-to-dev refreshes, with a 
 **Why:** Valuation history is too large for the query bridge's retained notebook state. Even bounded, checksum-verified query exports can exceed its 32 MiB notebook limit. They also cannot share one source transaction across calls.
 
 **How to apply:** Use the read-only production query bridge for scoped inspection and verification, not full bulk transfer. Obtain any missing direct source connection through the secure secrets flow; never print credentials. Keep production read-only and validate the destination before restoring.
+
+Keep platform-owned metadata and destination schema privileges outside application-data replacement.
+
+**Why:** Source ownership and grants belong to a different deployment; copying them can remove development-tool access. Application data replacement does not authorize replacing platform bookkeeping.
+
+**How to apply:** Preserve the destination schema and its privileges while replacing app objects. Capture validation counts in the same source snapshot as the native dump, and check them inside the destination restore transaction before committing.
 
 Treat read-replica row estimates as non-authoritative.
 
