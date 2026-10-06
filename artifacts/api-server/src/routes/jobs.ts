@@ -19,7 +19,6 @@ import {
   NFL_REGULAR_SEASON,
   NFL_SPORT,
   type EventCompetition,
-  type EventSport,
 } from "../lib/eventIngestion";
 import {
   fetchNflScheduleWithPayload,
@@ -58,7 +57,7 @@ const RefreshJobBody = z
 
 type RefreshScope = {
   seasonId: number;
-  sport: EventSport;
+  sport: typeof NFL_SPORT | typeof CFB_SPORT;
   competition: EventCompetition;
 };
 

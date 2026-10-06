@@ -7,15 +7,17 @@
  */
 export const NFL_SPORT = "NFL" as const;
 export const CFB_SPORT = "CFB" as const;
+export const MLB_SPORT = "MLB" as const;
 export const NFL_REGULAR_SEASON = "NFL_REGULAR_SEASON" as const;
 export const CFB_REGULAR_SEASON = "CFB_REGULAR_SEASON" as const;
+export const MLB_POSTSEASON = "MLB_POSTSEASON" as const;
 
-export type EventSport = typeof NFL_SPORT | typeof CFB_SPORT;
+export type EventSport = typeof NFL_SPORT | typeof CFB_SPORT | typeof MLB_SPORT;
 export type EventCompetition =
   | typeof NFL_REGULAR_SEASON
   | typeof CFB_REGULAR_SEASON
   | (string & {});
-export type EventStatus = "scheduled" | "in_progress" | "final";
+export type EventStatus = "scheduled" | "in_progress" | "final" | "postponed" | "suspended" | "cancelled";
 
 export type ProviderTeamIdentity = {
   providerTeamId: string;
