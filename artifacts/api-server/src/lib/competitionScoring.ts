@@ -1,4 +1,22 @@
 import { LEAGUE_POINT_TOTAL } from "./weekZeroValuation";
+import { calculateMlbActuals, parseMlbRules } from "./mlbRealizedScoring";
+
+/**
+ * Knockout actuals need a whole-tournament inventory, not fixed-denominator
+ * regular-season snapshots. Keep this format capability separate from the
+ * fixed-denominator adapter below: it cannot advertise projected MTM.
+ */
+export const MLB_SERIES_ACTUALS_ADAPTER = {
+  sport: "MLB", competitionFormat: "MLB_POSTSEASON",
+  normalizationPolicy: "unfinished_maximum_games_completed_actuals" as const,
+  supportsProjectedMtm: false as const,
+  validateRules: parseMlbRules,
+  calculateActuals: calculateMlbActuals,
+};
+export function getSeriesActualsAdapter(sport: string, competitionFormat: string) {
+  return sport === MLB_SERIES_ACTUALS_ADAPTER.sport && competitionFormat === MLB_SERIES_ACTUALS_ADAPTER.competitionFormat
+    ? MLB_SERIES_ACTUALS_ADAPTER : undefined;
+}
 
 export type CompetitionPeriod = {
   sequence: number;

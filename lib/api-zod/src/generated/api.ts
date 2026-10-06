@@ -9,6 +9,226 @@ import * as zod from 'zod';
 
 
 /**
+ * @summary Pool-scoped MLB realized points and provisional values
+ */
+export const GetMlbResultsParams = zod.object({
+  "calcuttaId": zod.coerce.number()
+})
+
+export const GetMlbResultsResponse = zod.object({
+  "calcuttaId": zod.number(),
+  "name": zod.string(),
+  "year": zod.number(),
+  "status": zod.enum(['available', 'partial', 'unavailable']),
+  "reasons": zod.array(zod.string()),
+  "pot": zod.number().nullable(),
+  "provisionalPoints": zod.number().nullable(),
+  "earnedPoints": zod.number().nullable(),
+  "dollarsPerPoint": zod.number().nullable(),
+  "tournamentComplete": zod.boolean(),
+  "mtmReason": zod.string(),
+  "rules": zod.array(zod.object({
+  "name": zod.string(),
+  "points": zod.number().nullable()
+})),
+  "rounds": zod.array(zod.object({
+  "key": zod.string(),
+  "label": zod.string(),
+  "bestOf": zod.number(),
+  "seriesCount": zod.number(),
+  "completedSeries": zod.number(),
+  "gamePoints": zod.number(),
+  "sweepPoints": zod.number(),
+  "byePoints": zod.number(),
+  "inventoryPoints": zod.number()
+})),
+  "series": zod.array(zod.object({
+  "key": zod.string(),
+  "round": zod.string(),
+  "bestOf": zod.number(),
+  "homeTeam": zod.string(),
+  "awayTeam": zod.string(),
+  "homeWins": zod.number(),
+  "awayWins": zod.number(),
+  "complete": zod.boolean(),
+  "sweep": zod.boolean(),
+  "inventoryPoints": zod.number(),
+  "games": zod.array(zod.object({
+  "providerId": zod.string(),
+  "gameNumber": zod.number(),
+  "scheduledAt": zod.string().nullable(),
+  "status": zod.string(),
+  "homeTeam": zod.string(),
+  "awayTeam": zod.string(),
+  "homeScore": zod.number().nullable(),
+  "awayScore": zod.number().nullable(),
+  "sourceUrl": zod.string()
+}))
+})),
+  "teams": zod.array(zod.object({
+  "entryId": zod.number(),
+  "teamId": zod.number(),
+  "name": zod.string(),
+  "gamePoints": zod.number().nullable(),
+  "sweepPoints": zod.number().nullable(),
+  "byePoints": zod.number().nullable(),
+  "points": zod.number().nullable(),
+  "cost": zod.number(),
+  "gross": zod.number().nullable(),
+  "net": zod.number().nullable(),
+  "owners": zod.array(zod.object({
+  "bidderId": zod.number(),
+  "name": zod.string(),
+  "share": zod.number(),
+  "points": zod.number().nullable(),
+  "cost": zod.number(),
+  "gross": zod.number().nullable(),
+  "net": zod.number().nullable()
+}))
+})),
+  "consortia": zod.array(zod.object({
+  "key": zod.string(),
+  "name": zod.string(),
+  "points": zod.number().nullable(),
+  "cost": zod.number(),
+  "gross": zod.number().nullable(),
+  "net": zod.number().nullable(),
+  "members": zod.array(zod.object({
+  "bidderId": zod.number(),
+  "name": zod.string(),
+  "share": zod.number(),
+  "points": zod.number().nullable(),
+  "cost": zod.number(),
+  "gross": zod.number().nullable(),
+  "net": zod.number().nullable()
+}))
+})),
+  "refresh": zod.object({
+  "enabled": zod.boolean(),
+  "lastAttempt": zod.string().nullable(),
+  "lastSuccess": zod.string().nullable(),
+  "lastFailure": zod.string().nullable(),
+  "error": zod.string().nullable(),
+  "nextRetry": zod.string().nullable(),
+  "coveredDays": zod.number(),
+  "requiredDays": zod.number(),
+  "sourceUrl": zod.string(),
+  "stale": zod.boolean()
+})
+})
+
+
+/**
+ * @summary Commissioner retry of the bounded MLB results refresh
+ */
+export const RefreshMlbResultsParams = zod.object({
+  "calcuttaId": zod.coerce.number()
+})
+
+export const RefreshMlbResultsResponse = zod.object({
+  "calcuttaId": zod.number(),
+  "name": zod.string(),
+  "year": zod.number(),
+  "status": zod.enum(['available', 'partial', 'unavailable']),
+  "reasons": zod.array(zod.string()),
+  "pot": zod.number().nullable(),
+  "provisionalPoints": zod.number().nullable(),
+  "earnedPoints": zod.number().nullable(),
+  "dollarsPerPoint": zod.number().nullable(),
+  "tournamentComplete": zod.boolean(),
+  "mtmReason": zod.string(),
+  "rules": zod.array(zod.object({
+  "name": zod.string(),
+  "points": zod.number().nullable()
+})),
+  "rounds": zod.array(zod.object({
+  "key": zod.string(),
+  "label": zod.string(),
+  "bestOf": zod.number(),
+  "seriesCount": zod.number(),
+  "completedSeries": zod.number(),
+  "gamePoints": zod.number(),
+  "sweepPoints": zod.number(),
+  "byePoints": zod.number(),
+  "inventoryPoints": zod.number()
+})),
+  "series": zod.array(zod.object({
+  "key": zod.string(),
+  "round": zod.string(),
+  "bestOf": zod.number(),
+  "homeTeam": zod.string(),
+  "awayTeam": zod.string(),
+  "homeWins": zod.number(),
+  "awayWins": zod.number(),
+  "complete": zod.boolean(),
+  "sweep": zod.boolean(),
+  "inventoryPoints": zod.number(),
+  "games": zod.array(zod.object({
+  "providerId": zod.string(),
+  "gameNumber": zod.number(),
+  "scheduledAt": zod.string().nullable(),
+  "status": zod.string(),
+  "homeTeam": zod.string(),
+  "awayTeam": zod.string(),
+  "homeScore": zod.number().nullable(),
+  "awayScore": zod.number().nullable(),
+  "sourceUrl": zod.string()
+}))
+})),
+  "teams": zod.array(zod.object({
+  "entryId": zod.number(),
+  "teamId": zod.number(),
+  "name": zod.string(),
+  "gamePoints": zod.number().nullable(),
+  "sweepPoints": zod.number().nullable(),
+  "byePoints": zod.number().nullable(),
+  "points": zod.number().nullable(),
+  "cost": zod.number(),
+  "gross": zod.number().nullable(),
+  "net": zod.number().nullable(),
+  "owners": zod.array(zod.object({
+  "bidderId": zod.number(),
+  "name": zod.string(),
+  "share": zod.number(),
+  "points": zod.number().nullable(),
+  "cost": zod.number(),
+  "gross": zod.number().nullable(),
+  "net": zod.number().nullable()
+}))
+})),
+  "consortia": zod.array(zod.object({
+  "key": zod.string(),
+  "name": zod.string(),
+  "points": zod.number().nullable(),
+  "cost": zod.number(),
+  "gross": zod.number().nullable(),
+  "net": zod.number().nullable(),
+  "members": zod.array(zod.object({
+  "bidderId": zod.number(),
+  "name": zod.string(),
+  "share": zod.number(),
+  "points": zod.number().nullable(),
+  "cost": zod.number(),
+  "gross": zod.number().nullable(),
+  "net": zod.number().nullable()
+}))
+})),
+  "refresh": zod.object({
+  "enabled": zod.boolean(),
+  "lastAttempt": zod.string().nullable(),
+  "lastSuccess": zod.string().nullable(),
+  "lastFailure": zod.string().nullable(),
+  "error": zod.string().nullable(),
+  "nextRetry": zod.string().nullable(),
+  "coveredDays": zod.number(),
+  "requiredDays": zod.number(),
+  "sourceUrl": zod.string(),
+  "stale": zod.boolean()
+})
+})
+
+
+/**
  * @summary Health check
  */
 export const HealthCheckResponse = zod.object({

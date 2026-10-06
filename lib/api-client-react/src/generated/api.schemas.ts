@@ -5,6 +5,150 @@
  * NFL Auction Manager API
  * OpenAPI spec version: 0.1.0
  */
+export type MlbResultsStatus = typeof MlbResultsStatus[keyof typeof MlbResultsStatus];
+
+
+export const MlbResultsStatus = {
+  available: 'available',
+  partial: 'partial',
+  unavailable: 'unavailable',
+} as const;
+
+export type MlbResultsRulesItem = {
+  name: string;
+  /** @nullable */
+  points: number | null;
+};
+
+export type MlbResultsRoundsItem = {
+  key: string;
+  label: string;
+  bestOf: number;
+  seriesCount: number;
+  completedSeries: number;
+  gamePoints: number;
+  sweepPoints: number;
+  byePoints: number;
+  inventoryPoints: number;
+};
+
+export type MlbResultsSeriesItemGamesItem = {
+  providerId: string;
+  gameNumber: number;
+  /** @nullable */
+  scheduledAt: string | null;
+  status: string;
+  homeTeam: string;
+  awayTeam: string;
+  /** @nullable */
+  homeScore: number | null;
+  /** @nullable */
+  awayScore: number | null;
+  sourceUrl: string;
+};
+
+export type MlbResultsSeriesItem = {
+  key: string;
+  round: string;
+  bestOf: number;
+  homeTeam: string;
+  awayTeam: string;
+  homeWins: number;
+  awayWins: number;
+  complete: boolean;
+  sweep: boolean;
+  inventoryPoints: number;
+  games: MlbResultsSeriesItemGamesItem[];
+};
+
+export interface MlbOwnerResult {
+  bidderId: number;
+  name: string;
+  share: number;
+  /** @nullable */
+  points: number | null;
+  cost: number;
+  /** @nullable */
+  gross: number | null;
+  /** @nullable */
+  net: number | null;
+}
+
+export type MlbResultsConsortiaItem = {
+  key: string;
+  name: string;
+  /** @nullable */
+  points: number | null;
+  cost: number;
+  /** @nullable */
+  gross: number | null;
+  /** @nullable */
+  net: number | null;
+  members: MlbOwnerResult[];
+};
+
+export type MlbResultsRefresh = {
+  enabled: boolean;
+  /** @nullable */
+  lastAttempt: string | null;
+  /** @nullable */
+  lastSuccess: string | null;
+  /** @nullable */
+  lastFailure: string | null;
+  /** @nullable */
+  error: string | null;
+  /** @nullable */
+  nextRetry: string | null;
+  coveredDays: number;
+  requiredDays: number;
+  sourceUrl: string;
+  stale: boolean;
+};
+
+export interface MlbTeamResult {
+  entryId: number;
+  teamId: number;
+  name: string;
+  /** @nullable */
+  gamePoints: number | null;
+  /** @nullable */
+  sweepPoints: number | null;
+  /** @nullable */
+  byePoints: number | null;
+  /** @nullable */
+  points: number | null;
+  cost: number;
+  /** @nullable */
+  gross: number | null;
+  /** @nullable */
+  net: number | null;
+  owners: MlbOwnerResult[];
+}
+
+export interface MlbResults {
+  calcuttaId: number;
+  name: string;
+  year: number;
+  status: MlbResultsStatus;
+  reasons: string[];
+  /** @nullable */
+  pot: number | null;
+  /** @nullable */
+  provisionalPoints: number | null;
+  /** @nullable */
+  earnedPoints: number | null;
+  /** @nullable */
+  dollarsPerPoint: number | null;
+  tournamentComplete: boolean;
+  mtmReason: string;
+  rules: MlbResultsRulesItem[];
+  rounds: MlbResultsRoundsItem[];
+  series: MlbResultsSeriesItem[];
+  teams: MlbTeamResult[];
+  consortia: MlbResultsConsortiaItem[];
+  refresh: MlbResultsRefresh;
+}
+
 export interface AuctionCreateInput { [key: string]: unknown }
 
 export interface AuctionNominationInput {

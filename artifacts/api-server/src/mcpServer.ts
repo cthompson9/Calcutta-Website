@@ -68,6 +68,7 @@ import { NflStandingsImportError } from "./lib/nflStandingsImport";
 import { runNflStandingsRefresh } from "./lib/nflStandingsRefresh";
 import { getMtmPipelineStatus } from "./lib/mtmPipeline";
 import { readMtmReferenceMarkets } from "./lib/mtmReferenceMarketRead";
+import { getMlbResults } from "./lib/mlbResults";
 import { getNormalizedMtmValuation } from "./lib/mtmValuation";
 import { createPendingTrade, validateTradeOwnership } from "./lib/tradeService";
 import {
@@ -1240,6 +1241,17 @@ function buildMcpServer(isAdmin: boolean) {
     { ...ownerInput, ...requiredSeason, ...calcuttaInput, ...basisInput },
     async ({ owner, season, calcuttaId, basis, period }) =>
       jsonText(await getOwnerPortfolioPerformance({ owner, season, calcuttaId, basis, period })),
+  );
+
+  server.tool(
+    "get_mlb_results",
+    "Returns the exact REST projection for an explicitly selected MLB postseason Calcutta: stored rubric, final-game evidence, earned game/sweep/bye points, whole-tournament provisional inventory and rate, team and consolidated consortium realized values, signed ownership, source timestamps, failures and coverage. Values are provisional until the tournament completes, never cash settlements. Missing evidence stays unavailable; MLB projected MTM is not supported. Read-only; never fetches ESPN or recalculates an official mark.",
+    { calcuttaId: z.number().int().positive().describe("Explicit MLB postseason Calcutta ID; no season-only or NFL fallback.") },
+    async ({ calcuttaId }) => {
+      const report = await getMlbResults(calcuttaId);
+      if (!report) throw new Error("MLB postseason pool not found.");
+      return jsonText({ status: 200, body: report });
+    },
   );
 
   server.tool(

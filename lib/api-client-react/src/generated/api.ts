@@ -87,6 +87,7 @@ import type {
   HistoricalPoolOwner,
   HistoricalPoolTrade,
   InitializeWeekZeroPointsInput,
+  MlbResults,
   MtmData,
   MtmPipelineAttemptDeletion,
   MtmPipelineAttemptDeletionResult,
@@ -149,6 +150,154 @@ const withQueryKey = <T extends object, K>(query: T, queryKey: K): T & { queryKe
   }
   return result;
 };
+
+export const getGetMlbResultsUrl = (calcuttaId: number,) => {
+
+
+
+
+  return `/api/calcuttas/${calcuttaId}/mlb-results`
+}
+
+/**
+ * @summary Pool-scoped MLB realized points and provisional values
+ */
+export const getMlbResults = async (calcuttaId: number, options?: Parameters<typeof customFetch>[1]): Promise<MlbResults> => {
+
+  return customFetch<MlbResults>(getGetMlbResultsUrl(calcuttaId),
+  {
+    ...options,
+    method: 'GET'
+
+
+  }
+);}
+
+
+
+
+
+export const getGetMlbResultsQueryKey = (calcuttaId: number,) => {
+    return [
+    `/api/calcuttas/${calcuttaId}/mlb-results`
+    ] as const;
+    }
+
+
+export const getGetMlbResultsQueryOptions = <TData = Awaited<ReturnType<typeof getMlbResults>>, TError = ErrorType<void>>(calcuttaId: number, options?: { query?:UseQueryOptions<Awaited<ReturnType<typeof getMlbResults>>, TError, TData>, request?: SecondParameter<typeof customFetch>}
+) => {
+
+const {query: queryOptions, request: requestOptions} = options ?? {};
+
+  const queryKey =  queryOptions?.queryKey ?? getGetMlbResultsQueryKey(calcuttaId);
+
+
+
+    const queryFn: QueryFunction<Awaited<ReturnType<typeof getMlbResults>>> = ({ signal }) => getMlbResults(calcuttaId, { signal, ...requestOptions });
+
+
+
+
+
+   return  { queryKey, queryFn, enabled: calcuttaId !== null && calcuttaId !== undefined, ...queryOptions} as UseQueryOptions<Awaited<ReturnType<typeof getMlbResults>>, TError, TData> & { queryKey: QueryKey }
+}
+
+export type GetMlbResultsQueryResult = NonNullable<Awaited<ReturnType<typeof getMlbResults>>>
+export type GetMlbResultsQueryError = ErrorType<void>
+
+
+/**
+ * @summary Pool-scoped MLB realized points and provisional values
+ */
+
+export function useGetMlbResults<TData = Awaited<ReturnType<typeof getMlbResults>>, TError = ErrorType<void>>(
+ calcuttaId: number, options?: { query?:UseQueryOptions<Awaited<ReturnType<typeof getMlbResults>>, TError, TData>, request?: SecondParameter<typeof customFetch>}
+
+ ):  UseQueryResult<TData, TError> & { queryKey: QueryKey } {
+
+  const queryOptions = getGetMlbResultsQueryOptions(calcuttaId,options)
+
+  const query = useQuery(queryOptions) as  UseQueryResult<TData, TError> & { queryKey: QueryKey };
+
+  return withQueryKey(query, queryOptions.queryKey);
+}
+
+
+
+
+
+
+
+export const getRefreshMlbResultsUrl = (calcuttaId: number,) => {
+
+
+
+
+  return `/api/calcuttas/${calcuttaId}/mlb-results/refresh`
+}
+
+/**
+ * @summary Commissioner retry of the bounded MLB results refresh
+ */
+export const refreshMlbResults = async (calcuttaId: number, options?: Parameters<typeof customFetch>[1]): Promise<MlbResults> => {
+
+  return customFetch<MlbResults>(getRefreshMlbResultsUrl(calcuttaId),
+  {
+    ...options,
+    method: 'POST'
+
+
+  }
+);}
+
+
+
+
+
+export const getRefreshMlbResultsMutationOptions = <TError = ErrorType<void>,
+    TContext = unknown>(options?: { mutation?:UseMutationOptions<Awaited<ReturnType<typeof refreshMlbResults>>, TError,{calcuttaId: number}, TContext>, request?: SecondParameter<typeof customFetch>}
+): UseMutationOptions<Awaited<ReturnType<typeof refreshMlbResults>>, TError,{calcuttaId: number}, TContext> => {
+
+const mutationKey = ['refreshMlbResults'];
+const {mutation: mutationOptions, request: requestOptions} = options ?
+      options.mutation && 'mutationKey' in options.mutation && options.mutation.mutationKey ?
+      options
+      : {...options, mutation: {...options.mutation, mutationKey}}
+      : {mutation: { mutationKey, }, request: undefined};
+
+
+
+
+      const mutationFn: MutationFunction<Awaited<ReturnType<typeof refreshMlbResults>>, {calcuttaId: number}> = (props) => {
+          const {calcuttaId} = props ?? {};
+
+          return  refreshMlbResults(calcuttaId,requestOptions)
+        }
+
+
+
+
+
+
+  return  { mutationFn, ...mutationOptions }}
+
+    export type RefreshMlbResultsMutationResult = NonNullable<Awaited<ReturnType<typeof refreshMlbResults>>>
+
+    export type RefreshMlbResultsMutationError = ErrorType<void>
+
+    /**
+ * @summary Commissioner retry of the bounded MLB results refresh
+ */
+export const useRefreshMlbResults = <TError = ErrorType<void>,
+    TContext = unknown>(options?: { mutation?:UseMutationOptions<Awaited<ReturnType<typeof refreshMlbResults>>, TError,{calcuttaId: number}, TContext>, request?: SecondParameter<typeof customFetch>}
+ ): UseMutationResult<
+        Awaited<ReturnType<typeof refreshMlbResults>>,
+        TError,
+        {calcuttaId: number},
+        TContext
+      > => {
+      return useMutation(getRefreshMlbResultsMutationOptions(options));
+    }
 
 export const getHealthCheckUrl = () => {
 

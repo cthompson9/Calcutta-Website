@@ -62,7 +62,7 @@ export const eventsTable = pgTable(
       t.week,
       t.awayTeamId,
       t.homeTeamId,
-    ),
+    ).where(sql`${t.sport} <> 'MLB'`),
     index("events_season_scope_week_idx").on(t.seasonId, t.sport, t.competition, t.week),
     index("events_home_team_idx").on(t.homeTeamId),
     index("events_away_team_idx").on(t.awayTeamId),

@@ -14,3 +14,9 @@ For MLB's provisional realized rate, the user describes seven games as “a comp
 **Why:** The user wants a transparent maximum-game-count allowance for unfinished series, not a probabilistic game-count forecast or a reserve for every possible future sweep bonus.
 
 **How to apply:** Replace each completed series' game-count allowance with actual game-win points and earned sweep points. Do not add already played games on top of the unfinished series allowance.
+
+The user explicitly chose to include the saved Wild Card bye awards in MLB realized points and the provisional inventory. The reference WC 18 excludes byes; four saved five-point bye awards add 20, so that reference's whole-tournament inventory is 190 rather than 170.
+
+**Why:** The user approved including byes when asked to resolve the conflict between their reference arithmetic and the saved rubric.
+
+**How to apply:** Preserve bye awards from the selected pool's rubric and require affirmative participant/advancement evidence. Never omit them merely to force the earlier 170-point reference.

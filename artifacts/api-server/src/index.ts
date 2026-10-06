@@ -6,6 +6,7 @@ import {
   runDatabaseMigrations,
 } from "@workspace/db";
 import { startNflRefreshPoller } from "./jobs/nflRefreshPoller";
+import { startMlbRefreshPoller } from "./jobs/mlbRefreshPoller";
 
 const rawPort = process.env["PORT"];
 
@@ -41,6 +42,9 @@ const stopNflRefreshPoller =
   process.env.NODE_ENV === "production" || process.env.NFL_REFRESH_POLLER_ENABLED === "true"
     ? startNflRefreshPoller()
     : () => undefined;
+const stopMlbRefreshPoller = process.env.MLB_RESULTS_ENABLED === "true"
+  ? startMlbRefreshPoller()
+  : () => undefined;
 
 let shuttingDown = false;
 async function shutdown(signal: string): Promise<void> {
@@ -48,6 +52,7 @@ async function shutdown(signal: string): Promise<void> {
   shuttingDown = true;
   logger.info({ signal }, "Shutting down API server");
   stopNflRefreshPoller();
+  stopMlbRefreshPoller();
   server.close(async (error) => {
     if (error) logger.error({ err: error }, "Error closing API server");
     try {

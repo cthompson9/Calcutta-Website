@@ -65,6 +65,7 @@ import {
 import { ReleaseNotes } from "@/components/ReleaseNotes";
 import { HistoricalResultsView } from "@/components/HistoricalResultsView";
 import { trackEvent } from "@/lib/analytics";
+import { MlbResults } from "@/components/results/MlbResults";
 
 type TabId = "byOwner" | "byTeam" | "historicalTrades";
 
@@ -114,6 +115,9 @@ function clearResultsReturnState(): void {
 
 export default function Results() {
   const { selectedCalcutta } = useSeason();
+  if (selectedCalcutta?.sport === "MLB") {
+    return <MlbResults key={selectedCalcutta.id} calcutta={selectedCalcutta} />;
+  }
   if (selectedCalcutta && selectedCalcutta.sport !== "NFL") {
     return <NonNflResults calcutta={selectedCalcutta} />;
   }

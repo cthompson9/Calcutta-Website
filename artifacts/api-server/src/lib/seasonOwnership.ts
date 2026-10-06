@@ -204,10 +204,11 @@ function getOrCreateEntry(
 export async function loadSeasonOwnership(
   seasonId: number,
   calcuttaId?: number,
+  database: Pick<typeof db, "select"> = db,
 ): Promise<SeasonOwnership> {
   // Positions are the ownership ledger.  The season-only form is retained only
   // as a canonical-NFL selection compatibility shim, never as a legacy read.
-  const positionRows = await db
+  const positionRows = await database
     .select({
       teamId: calcuttaEntriesTable.teamId,
       bidderId: positionsTable.bidderId,
@@ -231,9 +232,8 @@ export async function loadSeasonOwnership(
     .where(
       and(
         eq(calcuttasTable.seasonId, seasonId),
-        eq(calcuttasTable.sport, "NFL"),
         calcuttaId == null
-          ? eq(calcuttasTable.isCanonical, true)
+          ? and(eq(calcuttasTable.sport, "NFL"), eq(calcuttasTable.isCanonical, true))
           : eq(calcuttasTable.id, calcuttaId),
       ),
     );
@@ -267,7 +267,7 @@ export async function loadSeasonOwnership(
 
   const bidderNames = new Map<number, string>();
   if (participantIds.size > 0) {
-    const bidderRows = await db
+    const bidderRows = await database
       .select({ id: biddersTable.id, name: biddersTable.name })
       .from(biddersTable);
     for (const b of bidderRows) {

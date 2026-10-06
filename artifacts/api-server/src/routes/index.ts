@@ -17,6 +17,7 @@ import normalizedHistoricalRouter from "./normalizedHistorical";
 import calendarsRouter from "./calendars";
 import auctionsRouter from "./auctions";
 import listenerRouter from "./listener";
+import mlbResultsRouter from "./mlbResults";
 
 const router = Router();
 
@@ -27,6 +28,7 @@ router.use(summaryRouter);
 router.use(seasonsRouter);
 router.use(calcuttasRouter);
 router.use(resultsRouter);
+router.use(mlbResultsRouter);
 router.use(tradesRouter);
 router.use(mtmRouter);
 router.use(auctionImportRouter);

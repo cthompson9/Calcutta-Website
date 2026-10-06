@@ -23,6 +23,42 @@ tags:
   - name: calendars
 
 paths:
+  /calcuttas/{calcuttaId}/mlb-results:
+    get:
+      operationId: getMlbResults
+      tags: [results]
+      summary: Pool-scoped MLB realized points and provisional values
+      parameters:
+        - in: path
+          name: calcuttaId
+          required: true
+          schema: { type: number }
+      responses:
+        "200":
+          description: Results with explicit coverage and refresh evidence
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/MlbResults" }
+        "404":
+          description: MLB postseason pool not found
+  /calcuttas/{calcuttaId}/mlb-results/refresh:
+    post:
+      operationId: refreshMlbResults
+      tags: [results]
+      summary: Commissioner retry of the bounded MLB results refresh
+      parameters:
+        - in: path
+          name: calcuttaId
+          required: true
+          schema: { type: number }
+      responses:
+        "200":
+          description: Refreshed results or coalesced job status
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/MlbResults" }
+        "503":
+          description: Results activation requires separate authorization
   /healthz:
     get:
       operationId: healthCheck
@@ -2082,6 +2118,135 @@ components:
       in: query
       schema: { type: boolean, default: false }
   schemas:
+    MlbResults:
+      type: object
+      required: [calcuttaId, name, year, status, reasons, pot, provisionalPoints, earnedPoints, dollarsPerPoint, tournamentComplete, rules, rounds, series, teams, consortia, refresh, mtmReason]
+      properties:
+        calcuttaId: { type: number }
+        name: { type: string }
+        year: { type: number }
+        status: { type: string, enum: [available, partial, unavailable] }
+        reasons: { type: array, items: { type: string } }
+        pot: { type: [number, "null"] }
+        provisionalPoints: { type: [number, "null"] }
+        earnedPoints: { type: [number, "null"] }
+        dollarsPerPoint: { type: [number, "null"] }
+        tournamentComplete: { type: boolean }
+        mtmReason: { type: string }
+        rules:
+          type: array
+          items:
+            type: object
+            required: [name, points]
+            properties:
+              name: { type: string }
+              points: { type: [number, "null"] }
+        rounds:
+          type: array
+          items:
+            type: object
+            required: [key, label, bestOf, seriesCount, completedSeries, gamePoints, sweepPoints, byePoints, inventoryPoints]
+            properties:
+              key: { type: string }
+              label: { type: string }
+              bestOf: { type: number }
+              seriesCount: { type: number }
+              completedSeries: { type: number }
+              gamePoints: { type: number }
+              sweepPoints: { type: number }
+              byePoints: { type: number }
+              inventoryPoints: { type: number }
+        series:
+          type: array
+          items:
+            type: object
+            required: [key, round, bestOf, homeTeam, awayTeam, homeWins, awayWins, complete, sweep, inventoryPoints, games]
+            properties:
+              key: { type: string }
+              round: { type: string }
+              bestOf: { type: number }
+              homeTeam: { type: string }
+              awayTeam: { type: string }
+              homeWins: { type: number }
+              awayWins: { type: number }
+              complete: { type: boolean }
+              sweep: { type: boolean }
+              inventoryPoints: { type: number }
+              games:
+                type: array
+                items:
+                  type: object
+                  required: [providerId, gameNumber, scheduledAt, status, homeTeam, awayTeam, homeScore, awayScore, sourceUrl]
+                  properties:
+                    providerId: { type: string }
+                    gameNumber: { type: number }
+                    scheduledAt: { type: [string, "null"] }
+                    status: { type: string }
+                    homeTeam: { type: string }
+                    awayTeam: { type: string }
+                    homeScore: { type: [number, "null"] }
+                    awayScore: { type: [number, "null"] }
+                    sourceUrl: { type: string }
+        teams:
+          type: array
+          items: { $ref: "#/components/schemas/MlbTeamResult" }
+        consortia:
+          type: array
+          items:
+            type: object
+            required: [key, name, points, cost, gross, net, members]
+            properties:
+              key: { type: string }
+              name: { type: string }
+              points: { type: [number, "null"] }
+              cost: { type: number }
+              gross: { type: [number, "null"] }
+              net: { type: [number, "null"] }
+              members:
+                type: array
+                items: { $ref: "#/components/schemas/MlbOwnerResult" }
+        refresh:
+          type: object
+          required: [enabled, lastAttempt, lastSuccess, lastFailure, error, nextRetry, coveredDays, requiredDays, sourceUrl, stale]
+          properties:
+            enabled: { type: boolean }
+            lastAttempt: { type: [string, "null"] }
+            lastSuccess: { type: [string, "null"] }
+            lastFailure: { type: [string, "null"] }
+            error: { type: [string, "null"] }
+            nextRetry: { type: [string, "null"] }
+            coveredDays: { type: number }
+            requiredDays: { type: number }
+            sourceUrl: { type: string }
+            stale: { type: boolean }
+    MlbOwnerResult:
+      type: object
+      required: [bidderId, name, share, points, cost, gross, net]
+      properties:
+        bidderId: { type: number }
+        name: { type: string }
+        share: { type: number }
+        points: { type: [number, "null"] }
+        cost: { type: number }
+        gross: { type: [number, "null"] }
+        net: { type: [number, "null"] }
+    MlbTeamResult:
+      type: object
+      required: [entryId, teamId, name, gamePoints, sweepPoints, byePoints, points, cost, gross, net, owners]
+      properties:
+        entryId: { type: number }
+        teamId: { type: number }
+        name: { type: string }
+        gamePoints: { type: [number, "null"] }
+        sweepPoints: { type: [number, "null"] }
+        byePoints: { type: [number, "null"] }
+        points: { type: [number, "null"] }
+        cost: { type: number }
+        gross: { type: [number, "null"] }
+        net: { type: [number, "null"] }
+        owners:
+          type: array
+          items: { $ref: "#/components/schemas/MlbOwnerResult" }
     AuctionCreateInput:
       type: object
       additionalProperties: false
