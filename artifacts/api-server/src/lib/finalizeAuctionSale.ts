@@ -34,6 +34,7 @@ type ListenerSubmission = {
   fingerprint: string;
   nominationId: string;
 };
+import { recordExactPrimaryFractions } from "./exactPrimaryOwnership";
 
 // Both commissioner and listener sales use the same ownership transaction.
 export async function finalizeAuctionSale(
@@ -48,7 +49,7 @@ export async function finalizeAuctionSale(
     shares = input.allocations;
   if (!Number.isSafeInteger(total) || total <= 0 || total > 2147483647)
     throw new Error("Invalid sale price.");
-  validateAllocationInput(shares);
+  validateAllocationInput(shares, calcuttaId === 2061);
   return database.transaction(async (tx) => {
     const [calcutta] = await tx
       .select({ seasonId: calcuttasTable.seasonId })
@@ -167,6 +168,7 @@ export async function finalizeAuctionSale(
       auctionId,
       shares,
       total,
+      calcuttaId === 2061,
     );
     const [sale] = await tx
       .insert(auctionSalesTable)
@@ -207,6 +209,9 @@ export async function finalizeAuctionSale(
           costBasis: (a.cents / 100).toFixed(2),
         })),
       );
+    if (calcuttaId === 2061) await recordExactPrimaryFractions(tx, calcuttaId, lot.entryId,
+      allocations.map(owner => ({ bidderId: owner.bidderId, numerator: owner.numerator!, denominator: owner.denominator! })),
+      "Exact fractional ownership recorded when the Calcutta XIII sale was finalized.");
     await tx
       .update(auctionLotsTable)
       .set({ status: "sold", currentBidCents: total })

@@ -15,6 +15,7 @@ import {
 } from "./mlbRealizedScoring";
 import { ESPN_MLB_SCOREBOARD_URL } from "./mlbEspnClient";
 import { getSeriesActualsAdapter } from "./competitionScoring";
+import { allocateExactCents, decimalFraction, fraction, sumFractions } from "./exactOwnershipFractions";
 
 type OwnerResult = MlbResults["teams"][number]["owners"][number];
 const money = (value: number) => Math.round(value * 100) / 100;
@@ -102,8 +103,14 @@ export async function getMlbResults(
     const primaryCents = new Map<number, number>();
     for (const team of entries) {
       const owners = rawOwners.get(team.teamId) ?? [];
-      const originalUnits = owners.reduce((total, row) => total + Math.round(row.entry.originalShare * 10_000), 0);
-      const effectiveUnits = owners.reduce((total, row) => total + Math.round(row.entry.effectiveShare * 10_000), 0);
+      const originalExact = sumFractions(owners.map(row => row.entry.originalFraction ?? decimalFraction(row.entry.originalShare)));
+      const effectiveExact = sumFractions(owners.map(row => row.entry.effectiveFraction ?? decimalFraction(row.entry.effectiveShare)));
+      const originalUnits = pool.id === 2061
+        ? (originalExact.numerator === originalExact.denominator ? 10_000 : 0)
+        : owners.reduce((total, row) => total + Math.round(row.entry.originalShare * 10_000), 0);
+      const effectiveUnits = pool.id === 2061
+        ? (effectiveExact.numerator === effectiveExact.denominator ? 10_000 : 0)
+        : owners.reduce((total, row) => total + Math.round(row.entry.effectiveShare * 10_000), 0);
       const rawCost = owners.reduce((total, row) => total + row.entry.originalCostBasis, 0);
       const cents = Math.round(rawCost * 100);
       if (originalUnits !== 10_000 || effectiveUnits !== 10_000 ||
@@ -126,9 +133,13 @@ export async function getMlbResults(
       const grossCents = available ? grossByTeam.get(team.teamId)! : null;
       const costCents = primaryCents.get(team.teamId) ?? 0;
       let ownerGross = new Map<number, number>(), ownerCosts = new Map<number, number>();
-      if (grossCents != null) ownerGross = allocateSignedMlbCents(grossCents, signed.map((row) => ({
-        id: row.id, numerator: BigInt(grossCents) * BigInt(Math.round(row.entry.effectiveShare * 10_000)),
-      })), 10_000n);
+      if (grossCents != null) ownerGross = pool.id === 2061
+        ? allocateExactCents(grossCents, signed.map(row => ({
+            id: row.id, share: row.entry.effectiveFraction ?? fraction(BigInt(Math.round(row.entry.effectiveShare * 1_000_000)), 1_000_000n),
+          })))
+        : allocateSignedMlbCents(grossCents, signed.map(row => ({
+            id: row.id, numerator: BigInt(grossCents) * BigInt(Math.round(row.entry.effectiveShare * 10_000)),
+          })), 10_000n);
       if (signed.length) ownerCosts = allocateSignedMlbCents(costCents, signed.map((row) => ({
         id: row.id, numerator: BigInt(Math.round((row.entry.originalCostBasis + row.entry.tradePaid - row.entry.tradeReceived) * 10_000)),
       })), 100n);
@@ -141,7 +152,7 @@ export async function getMlbResults(
         const cost = ownerCosts.has(row.id) ? ownerCosts.get(row.id)! / 100 : shared.cost;
         return {
           bidderId: row.id, name: ownership.bidderNames.get(row.id) ?? "Unknown owner",
-          share: Number(row.entry.effectiveShare.toFixed(4)),
+          share: pool.id === 2061 ? row.entry.effectiveShare : Number(row.entry.effectiveShare.toFixed(4)),
           points: points == null ? null : Number((points.total * row.entry.effectiveShare).toFixed(6)),
           cost, gross, net: gross == null ? null : money(gross - cost),
         };

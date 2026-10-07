@@ -1,4 +1,4 @@
-import { and, asc, eq, sql } from "drizzle-orm";
+import { and, asc, eq, inArray, sql } from "drizzle-orm";
 import {
   db,
   auctionSessionsTable,
@@ -9,7 +9,10 @@ import {
   auctionSaleAllocationsTable,
   auctionEventsTable,
   biddersTable,
+  positionsTable,
 } from "@workspace/db";
+import { loadExactPrimaryFractions } from "./exactPrimaryOwnership";
+import { exactShareVector, fractionNumber } from "./exactOwnershipFractions";
 export async function snapshot(
   auctionId: number,
   executor: Pick<typeof db, "select"> = db,
@@ -73,6 +76,9 @@ export async function snapshot(
     )
     .where(eq(auctionConsortiumOwnersTable.auctionId, auctionId))
     .orderBy(asc(auctionConsortiumOwnersTable.id));
+  const primaryRows = session.calcuttaId === 2061 && lots.length
+    ? await executor.select().from(positionsTable).where(inArray(positionsTable.entryId, lots.map(lot => lot.entryId))) : [];
+  const exactPrimary = await loadExactPrimaryFractions(executor, session.calcuttaId, primaryRows);
   const consortiaWithOwners = consortia.map((consortium) => ({
     ...consortium,
     owners: ownerRows
@@ -82,6 +88,10 @@ export async function snapshot(
         share: Number(owner.share),
       })),
   }));
+  if (session.calcuttaId === 2061) for (const consortium of consortiaWithOwners) {
+    const fractions = exactShareVector(consortium.owners.map(owner => owner.share));
+    consortium.owners.forEach((owner, index) => { owner.share = fractionNumber(fractions[index]!); });
+  }
   const finalized = sales.reduce((sum, sale) => sum + sale.totalCents, 0);
   const live =
     lots.find((lot) => lot.status === "bidding")?.currentBidCents ?? 0;
@@ -93,7 +103,11 @@ export async function snapshot(
       ...sale,
       allocations: allocations.filter(
         (allocation) => allocation.saleId === sale.id,
-      ),
+      ).map(allocation => {
+        const entryId = lots.find(lot => lot.id === sale.lotId)?.entryId;
+        const exact = exactPrimary.get(`${entryId}:${allocation.bidderId}`);
+        return exact ? { ...allocation, share: fractionNumber(exact) } : allocation;
+      }),
     })),
     metrics: {
       poolSizeCents: finalized + live,

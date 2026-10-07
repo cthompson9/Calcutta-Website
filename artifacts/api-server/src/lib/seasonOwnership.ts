@@ -27,10 +27,15 @@ import {
   loadCalcuttaConsortiums,
   type MembershipView,
 } from "./consortiumMemberships";
+import { loadExactPrimaryFractions } from "./exactPrimaryOwnership";
+import { addFractions, decimalFraction, fraction, fractionNumber, type ExactFraction } from "./exactOwnershipFractions";
 
 // ── Types ─────────────────────────────────────────────────────────────────────
 
 export interface OwnerEntry {
+  /** Exact XIII intent; finite-decimal ledger values remain compatibility evidence. */
+  originalFraction?: ExactFraction;
+  effectiveFraction?: ExactFraction;
   /** Fraction held at auction time (from primary position rows). */
   originalShare: number;
   /** Original auction cost recorded on this bidder's primary ledger positions. */
@@ -210,6 +215,7 @@ export async function loadSeasonOwnership(
   // as a canonical-NFL selection compatibility shim, never as a legacy read.
   const positionRows = await database
     .select({
+      entryId: positionsTable.entryId,
       teamId: calcuttaEntriesTable.teamId,
       bidderId: positionsTable.bidderId,
       ownershipShare: positionsTable.ownershipShare,
@@ -238,6 +244,7 @@ export async function loadSeasonOwnership(
       ),
     );
   const primaryRows = positionRows.filter((row) => row.source === "primary");
+  const exactPrimary = await loadExactPrimaryFractions(database, calcuttaId, positionRows);
 
   // 3. Build byBidder map
   const byBidder: Map<number, TeamOwnerMap> = new Map();
@@ -258,6 +265,19 @@ export async function loadSeasonOwnership(
       const cost = Number(row.costBasis);
       if (cost > 0) entry.tradePaid += cost;
       if (cost < 0) entry.tradeReceived -= cost;
+    }
+    if (calcuttaId === 2061) {
+      const exact = row.source === "primary"
+        ? exactPrimary.get(`${row.entryId}:${row.bidderId}`) ?? decimalFraction(row.ownershipShare)
+        : decimalFraction(row.ownershipShare);
+      const effectiveFraction = addFractions(entry.effectiveFraction ?? fraction(0n, 1n), exact);
+      Object.defineProperty(entry, "effectiveFraction", { value: effectiveFraction, writable: true, configurable: true });
+      entry.effectiveShare = fractionNumber(effectiveFraction);
+      if (row.source === "primary") {
+        const originalFraction = addFractions(entry.originalFraction ?? fraction(0n, 1n), exact);
+        Object.defineProperty(entry, "originalFraction", { value: originalFraction, writable: true, configurable: true });
+        entry.originalShare = fractionNumber(originalFraction);
+      }
     }
   }
 
@@ -287,7 +307,7 @@ export async function loadSeasonOwnership(
     addOwnershipSegment(row.teamId, {
       bidderId: row.bidderId,
       bidderName: bidderNames.get(row.bidderId) ?? "Unknown",
-      ownershipShare: parseFloat(row.ownershipShare),
+      ownershipShare: fractionNumber(exactPrimary.get(`${row.entryId}:${row.bidderId}`) ?? decimalFraction(row.ownershipShare)),
       source: "primary",
     });
   }
@@ -394,6 +414,8 @@ export async function loadCrossCalcuttaRollup(args: {
       db
         .select({
           calcuttaId: calcuttasTable.id,
+          entryId: positionsTable.entryId,
+          source: positionsTable.source,
           seasonId: calcuttasTable.seasonId,
           teamId: calcuttaEntriesTable.teamId,
           teamName: teamsTable.name,
@@ -462,6 +484,8 @@ export async function loadCrossCalcuttaRollup(args: {
     costBasis: number;
   };
   const positionsByTeamBidder = new Map<string, Position>();
+  const exactPrimary = await loadExactPrimaryFractions(db,
+    positionRows.some(row => row.calcuttaId === 2061) ? 2061 : undefined, positionRows);
   for (const row of positionRows) {
     const key = `${row.calcuttaId}:${row.teamId}:${row.bidderId}`;
     const position = positionsByTeamBidder.get(key) ?? {
@@ -474,7 +498,9 @@ export async function loadCrossCalcuttaRollup(args: {
       signedShare: 0,
       costBasis: 0,
     };
-    position.signedShare += Number(row.ownershipShare);
+    const exact = row.calcuttaId === 2061 && row.source === "primary"
+      ? exactPrimary.get(`${row.entryId}:${row.bidderId}`) : undefined;
+    position.signedShare += exact ? fractionNumber(exact) : Number(row.ownershipShare);
     position.costBasis += Number(row.costBasis);
     positionsByTeamBidder.set(key, position);
   }

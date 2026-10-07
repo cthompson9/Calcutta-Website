@@ -3,6 +3,7 @@ import {
   auctionConsortiaTable,
   auctionConsortiumOwnersTable,
 } from "@workspace/db";
+import { exactShareVector, multiplyFractions, fractionNumber, allocateExactCents, type ExactFraction } from "./exactOwnershipFractions";
 export type AllocationInput = {
   bidderId?: number;
   consortiumId?: number;
@@ -13,6 +14,8 @@ type ExpandedAllocation = {
   consortiumId: number;
   basisPoints: number;
   cents: number;
+  numerator?: string;
+  denominator?: string;
 };
 export function shareBasisPoints(share: number): number {
   if (
@@ -49,7 +52,7 @@ export function distributeIntegerTotal<T extends { bidderId: number; weight: num
     return result as T & { amount: number };
   });
 }
-export function validateAllocationInput(shares: AllocationInput[]): void {
+export function validateAllocationInput(shares: AllocationInput[], exactFractions = false): void {
   const seen = new Set<string>();
   let total = 0;
   for (const allocation of shares) {
@@ -63,9 +66,10 @@ export function validateAllocationInput(shares: AllocationInput[]): void {
         : `b${allocation.bidderId}`;
     if (seen.has(key)) throw new Error("Allocation buyers must be unique.");
     seen.add(key);
-    total += shareBasisPoints(allocation.share);
+    if (!exactFractions) total += shareBasisPoints(allocation.share);
   }
-  if (total !== 10000)
+  if (exactFractions) exactShareVector(shares.map(row => row.share));
+  else if (total !== 10000)
     throw new Error(
       "Allocation shares must be unique, use at most four decimals, and total exactly 100%.",
     );
@@ -75,8 +79,10 @@ export async function expandSaleAllocations(
   auctionId: number,
   inputs: AllocationInput[],
   totalCents: number,
+  exactFractions = false,
 ): Promise<ExpandedAllocation[]> {
-  validateAllocationInput(inputs);
+  validateAllocationInput(inputs, exactFractions);
+  const inputFractions = exactFractions ? exactShareVector(inputs.map(input => input.share)) : [];
   const consortia = await tx
     .select({
       id: auctionConsortiaTable.id,
@@ -96,8 +102,9 @@ export async function expandSaleAllocations(
     bidderId: number;
     consortiumId: number;
     weight: number;
+    exact?: ExactFraction;
   }> = [];
-  for (const input of inputs) {
+  for (const [inputIndex, input] of inputs.entries()) {
     const consortium =
       input.consortiumId != null
         ? consortia.find(
@@ -123,7 +130,7 @@ export async function expandSaleAllocations(
       throw new Error(
         "Every buyer must belong to an active consortium in this auction.",
       );
-    const inputBps = shareBasisPoints(input.share);
+    const inputBps = exactFractions ? Math.round(fractionNumber(inputFractions[inputIndex]!) * 10000) : shareBasisPoints(input.share);
     if (input.bidderId != null) {
       if (!directOwner || directOwner.consortiumId !== resolvedConsortium.id)
         throw new Error(
@@ -133,6 +140,7 @@ export async function expandSaleAllocations(
         bidderId: input.bidderId,
         consortiumId: resolvedConsortium.id,
         weight: inputBps,
+        ...(exactFractions ? { exact: inputFractions[inputIndex]! } : {}),
       });
     } else {
       const owners = ownerRows.filter(
@@ -148,11 +156,13 @@ export async function expandSaleAllocations(
         throw new Error(
           "The selected consortium does not have a complete owner roster.",
         );
-      for (const owner of owners) {
+      const ownerFractions = exactFractions ? exactShareVector(owners.map((owner: { ownerShare: string }) => Number(owner.ownerShare))) : [];
+      for (const [ownerIndex, owner] of owners.entries()) {
         selected.push({
           bidderId: owner.bidderId,
           consortiumId: resolvedConsortium.id,
           weight: inputBps * Math.round(Number(owner.ownerShare) * 10000),
+          ...(exactFractions ? { exact: multiplyFractions(inputFractions[inputIndex]!, ownerFractions[ownerIndex]!) } : {}),
         });
       }
     }
@@ -164,7 +174,11 @@ export async function expandSaleAllocations(
       "Expanded allocations cannot assign one bidder more than once.",
     );
   }
-  const shares = distributeIntegerTotal(selected, 10000).map((row) => ({
+  if (exactFractions) for (const row of selected) row.weight = fractionNumber(row.exact!);
+  const exactUnits = exactFractions ? allocateExactCents(10000, selected.map(item => ({ id: item.bidderId, share: item.exact! }))) : null;
+  const shares = (exactFractions
+    ? selected.map(row => ({ ...row, amount: exactUnits!.get(row.bidderId)! }))
+    : distributeIntegerTotal(selected, 10000)).map((row) => ({
     bidderId: row.bidderId,
     consortiumId: row.consortiumId,
     basisPoints: row.amount,
@@ -182,6 +196,13 @@ export async function expandSaleAllocations(
     basisPoints: row.basisPoints,
     cents: row.amount,
   }));
+  if (exactFractions) {
+    const cents = allocateExactCents(totalCents, selected.map(row => ({ id: row.bidderId, share: row.exact! })));
+    for (const row of withCents) {
+      const exact = selected.find(item => item.bidderId === row.bidderId)!.exact!;
+      Object.assign(row, { cents: cents.get(row.bidderId)!, numerator: exact.numerator.toString(), denominator: exact.denominator.toString() });
+    }
+  }
   if (withCents.some((allocation) => allocation.cents <= 0))
     throw new Error("Every owner must receive at least one cent.");
   return withCents;

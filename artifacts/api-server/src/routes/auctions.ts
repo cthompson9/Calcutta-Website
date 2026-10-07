@@ -14,6 +14,8 @@ import { ErrorResponse, sendParsedJson } from "../lib/sendParsedJson";
 
 import { snapshot, event } from "../lib/auctionState";
 import { distributeIntegerTotal, expandSaleAllocations, validateAllocationInput, shareBasisPoints } from "../lib/auctionAllocations";
+import { recordExactPrimaryFractions } from "../lib/exactPrimaryOwnership";
+import { exactShareVector, allocateExactCents } from "../lib/exactOwnershipFractions";
 import { finalizeAuctionSale } from "../lib/finalizeAuctionSale";
 
 const router: IRouter = Router();
@@ -306,8 +308,9 @@ const consortiumOwnerInput = z.object({
   newBidderName: z.string().trim().min(1).max(200).optional(),
   share: z.number().positive().max(1),
 }).refine((value) => (value.bidderId != null) !== (value.newBidderName != null), "Each owner must select an existing bidder or provide a new name.");
-function validateOwners(owners: Array<{ bidderId?: number; newBidderName?: string; share: number }>): void {
-  const total = owners.reduce((sum, owner) => sum + shareBasisPoints(owner.share), 0);
+function validateOwners(owners: Array<{ bidderId?: number; newBidderName?: string; share: number }>, exactFractions = false): void {
+  const total = exactFractions ? (exactShareVector(owners.map(owner => owner.share)), 10000)
+    : owners.reduce((sum, owner) => sum + shareBasisPoints(owner.share), 0);
   const existingIds = owners.flatMap((owner) => owner.bidderId == null ? [] : [owner.bidderId]);
   const newNames = owners.flatMap((owner) => owner.newBidderName == null ? [] : [normalizedLabel(owner.newBidderName)]);
   if (total !== 10000 || new Set(existingIds).size !== existingIds.length || new Set(newNames).size !== newNames.length) {
@@ -315,7 +318,9 @@ function validateOwners(owners: Array<{ bidderId?: number; newBidderName?: strin
   }
 }
 async function resolveOwnerBidderIds(tx: any, auctionId: number, owners: Array<{ bidderId?: number; newBidderName?: string; share: number }>, excludeConsortiumId?: number) {
-  validateOwners(owners);
+  const [auction] = await tx.select({ calcuttaId: auctionSessionsTable.calcuttaId }).from(auctionSessionsTable).where(eq(auctionSessionsTable.id, auctionId));
+  const exactFractions = auction?.calcuttaId === 2061;
+  validateOwners(owners, exactFractions);
   const names = owners.flatMap((owner) => owner.newBidderName == null ? [] : [owner.newBidderName]);
   if (names.length) {
     for (const normalizedName of [...new Set(names.map(normalizedLabel))].sort()) {
@@ -349,7 +354,12 @@ async function resolveOwnerBidderIds(tx: any, auctionId: number, owners: Array<{
       const [created] = await tx.insert(biddersTable).values({ name: owner.newBidderName }).returning({ id: biddersTable.id });
       bidderId = created.id;
     }
-    output.push({ bidderId: bidderId!, share: shareBasisPoints(owner.share) });
+    output.push({ bidderId: bidderId!, share: exactFractions ? 0 : shareBasisPoints(owner.share) });
+  }
+  if (exactFractions) {
+    const fractions = exactShareVector(owners.map(owner => owner.share));
+    const shares = allocateExactCents(10000, output.map((owner, index) => ({ id: owner.bidderId, share: fractions[index]! })));
+    for (const owner of output) owner.share = shares.get(owner.bidderId)!;
   }
   return output;
 }
@@ -575,7 +585,11 @@ router.post("/calcuttas/:calcuttaId/auctions/:auctionId/consortia/:consortiumId/
           throw new Error("This sale cannot allocate a positive share and cent to every new owner.");
         }
         const shares = distributeIntegerTotal(nextOwners.map((owner) => ({ bidderId: owner.bidderId, weight: owner.share })), groupBps);
-        const amounts = distributeIntegerTotal(shares.map((owner) => ({ bidderId: owner.bidderId, weight: owner.amount })), groupCents);
+        const amounts = calcuttaId === 2061 ? (() => {
+          const fractions = exactShareVector(nextOwners.map(owner => owner.share / 10000));
+          const cents = allocateExactCents(groupCents, nextOwners.map((owner, index) => ({ id: owner.bidderId, share: fractions[index]! })));
+          return nextOwners.map(owner => ({ bidderId: owner.bidderId, amount: cents.get(owner.bidderId)! }));
+        })() : distributeIntegerTotal(shares.map((owner) => ({ bidderId: owner.bidderId, weight: owner.amount })), groupCents);
         const amountByBidder = new Map(amounts.map((row) => [row.bidderId, row.amount]));
         const groupNext = shares.map((owner) => ({
           bidderId: owner.bidderId, consortiumId, share: (owner.amount / 10000).toFixed(6),
@@ -602,6 +616,12 @@ router.post("/calcuttas/:calcuttaId/auctions/:auctionId/consortia/:consortiumId/
           seasonId: calcutta.seasonId, teamId: sale.teamId, source: "auction_sale_correction",
           note: body.data.reason, owners: { before, after },
         });
+        if (calcuttaId === 2061) {
+          const fractions = exactShareVector(next.map(owner => Number(owner.share)));
+          await recordExactPrimaryFractions(tx, calcuttaId, sale.entryId, next.map((owner, index) => ({
+            bidderId: owner.bidderId, numerator: fractions[index]!.numerator.toString(), denominator: fractions[index]!.denominator.toString(),
+          })), body.data.reason);
+        }
         await tx.update(auctionSalesTable).set({ reason: body.data.reason, correctedAt: new Date() })
           .where(eq(auctionSalesTable.id, sale.saleId));
         corrected.push({ saleId: sale.saleId, lotId: sale.lotId, before, after });
@@ -674,7 +694,7 @@ router.post("/calcuttas/:calcuttaId/auctions/:auctionId/lots/:lotId/sale", requi
   const body = z.object({ totalCents: z.number().int().positive().optional(), price: z.number().positive().optional(), allocations: z.array(allocationInput).min(1), expectedRevision: z.number().int().nonnegative(), reason: z.string().max(500).optional() }).refine((v) => v.totalCents != null || v.price != null).safeParse(req.body);
   if (!body.success || !(await ownsAuction(calcuttaId, auctionId))) return sendParsedJson(res, ErrorResponse, { error: "Invalid sale." }, 400);
   let total: number;
-  try { total = body.data.totalCents ?? cents(body.data.price!); validateAllocationInput(body.data.allocations); }
+  try { total = body.data.totalCents ?? cents(body.data.price!); validateAllocationInput(body.data.allocations, calcuttaId === 2061); }
   catch (e) { return sendParsedJson(res, ErrorResponse, { error: e instanceof Error ? e.message : "Invalid sale allocation." }, 422); }
   try {
     await finalizeAuctionSale(calcuttaId, auctionId, lotId, { ...body.data, totalCents: total }); res.json(await snapshot(auctionId));
@@ -706,7 +726,7 @@ router.patch("/calcuttas/:calcuttaId/auctions/:auctionId/lots/:lotId/sale", requ
       const primary = await tx.select().from(positionsTable).where(and(eq(positionsTable.entryId, lot.entryId), eq(positionsTable.source, "primary")));
       if (!primary.length) throw new Error("No auction-originated primary ownership exists for this lot.");
       const oldOwners = primary.map((p) => ({ bidderId: p.bidderId, share: Number(p.ownershipShare), costBasis: Number(p.costBasis) }));
-      const nextOwners = await expandSaleAllocations(tx, auctionId, body.data.allocations, body.data.totalCents);
+      const nextOwners = await expandSaleAllocations(tx, auctionId, body.data.allocations, body.data.totalCents, calcuttaId === 2061);
       await tx.delete(auctionSaleAllocationsTable).where(eq(auctionSaleAllocationsTable.saleId, sale.id));
       await tx.insert(auctionSaleAllocationsTable).values(nextOwners.map((owner) => ({
         saleId: sale.id, bidderId: owner.bidderId, consortiumId: owner.consortiumId,
@@ -720,6 +740,8 @@ router.patch("/calcuttas/:calcuttaId/auctions/:auctionId/lots/:lotId/sale", requ
         share: owner.basisPoints / 10000, cents: owner.cents,
       }));
       await tx.insert(ownershipAdjustmentsTable).values({ seasonId: calcutta.seasonId, teamId: entry.teamId, source: "auction_sale_correction", note: body.data.reason, owners: { before: oldOwners, after: recordedOwners } });
+      if (calcuttaId === 2061) await recordExactPrimaryFractions(tx, calcuttaId, lot.entryId,
+        nextOwners.map(owner => ({ bidderId: owner.bidderId, numerator: owner.numerator!, denominator: owner.denominator! })), body.data.reason);
       await tx.update(auctionSalesTable).set({ totalCents: body.data.totalCents, reason: body.data.reason, correctedAt: new Date() }).where(and(eq(auctionSalesTable.auctionId, auctionId), eq(auctionSalesTable.lotId, lotId)));
       await tx.update(auctionSessionsTable).set({ revision: session.revision + 1 }).where(eq(auctionSessionsTable.id, auctionId));
       await event(tx, auctionId, "sale_corrected", { lotId, totalCents: body.data.totalCents, reason: body.data.reason, before: oldOwners, after: recordedOwners }, body.data.idempotencyKey);
