@@ -26,3 +26,9 @@ A recorded migration version does not prove that its constraints still match the
 **Why:** The competition-scoring migration was recorded as applied while the development database again held the earlier NFL-only metric constraint, breaking valid CFB rubric writes.
 
 **How to apply:** When runtime behavior contradicts an applied migration, inspect the live `pg_constraint` definition. Repair confirmed drift with a new idempotent convergence migration so every environment receives the correction.
+
+An empty publishing schema preview does not prove that development and production index predicates match.
+
+**Why:** The publishing preview reported no changes while the development event uniqueness index excluded MLB and the production index did not. The live MLB readiness check correctly remained blocked.
+
+**How to apply:** Compare live `pg_indexes.indexdef` in both environments when activation depends on a partial index. Report any unresolved difference explicitly; do not assume publishing will apply it or weaken the readiness gate to bypass it.
