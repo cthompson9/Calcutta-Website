@@ -29,6 +29,6 @@ A recorded migration version does not prove that its constraints still match the
 
 An empty publishing schema preview does not prove that development and production index predicates match.
 
-**Why:** The publishing preview reported no changes while the development event uniqueness index excluded MLB and the production index did not. The live MLB readiness check correctly remained blocked.
+**Why:** The publishing preview reported no changes while the development event uniqueness index excluded MLB and the production index did not. A distinct replacement index name made publishing detect the required old-index drop and partial-index creation without any table, column, or data removal.
 
-**How to apply:** Compare live `pg_indexes.indexdef` in both environments when activation depends on a partial index. Report any unresolved difference explicitly; do not assume publishing will apply it or weaken the readiness gate to bypass it.
+**How to apply:** Compare live `pg_indexes.indexdef` in both environments when activation depends on a partial index. If a predicate-only change is ignored, use a distinct replacement index name in the schema and development database, then verify the publishing preview contains exactly the intended index replacement and no data loss. Keep the readiness gate strict on the predicate, key columns, and absence of a conflicting legacy index. Production schema changes still go through the user-controlled Publish flow; never bypass the gate or assume publishing will apply an undetected change.

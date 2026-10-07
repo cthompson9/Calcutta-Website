@@ -78,8 +78,10 @@ export async function fixture(t,{migrate=true}={}) {
     for(const index of config.indexes) {
       const c=index.config;
       const columns=c.columns.map(column=>`"${column.name}"`).join(',');
-      const where=c.where && c.name!=='events_season_scope_week_matchup_idx'?` WHERE ${dialect.sqlToQuery(c.where).sql}`:'';
-      await pg.exec(`CREATE ${c.unique?'UNIQUE ':''}INDEX "${c.name}" ON "${config.name}" (${columns})${where};`);
+      const legacyMatchup = c.name===schema.NON_MLB_EVENT_MATCHUP_INDEX;
+      const name=legacyMatchup?'events_season_scope_week_matchup_idx':c.name;
+      const where=c.where && !legacyMatchup?` WHERE ${dialect.sqlToQuery(c.where).sql}`:'';
+      await pg.exec(`CREATE ${c.unique?'UNIQUE ':''}INDEX "${name}" ON "${config.name}" (${columns})${where};`);
     }
   }
   const included=new Set(configs.map(c=>c.name));

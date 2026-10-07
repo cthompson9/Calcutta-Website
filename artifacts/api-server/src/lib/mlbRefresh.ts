@@ -1,6 +1,6 @@
 import { randomUUID, createHash } from "node:crypto";
 import { and, eq, sql } from "drizzle-orm";
-import { db, calcuttasTable, refreshJobStatesTable } from "@workspace/db";
+import { db, calcuttasTable, refreshJobStatesTable, NON_MLB_EVENT_MATCHUP_INDEX } from "@workspace/db";
 import { fetchEspnMlbForDate, type EspnMlbPayload } from "./mlbEspnClient";
 import { isMlbGameWindowOpen, loadMlbGames, syncMlbEventsTx, MLB_SCOPE, type MlbPool } from "./mlbEventSync";
 import { todayInNewYork } from "./newYorkTime";
@@ -38,10 +38,23 @@ export const mlbRefreshScope = (pool: MlbPool) => and(
 );
 export async function mlbIdentityMigrationReady(database: Pick<typeof db, "execute">): Promise<boolean> {
   const result = await database.execute(sql`
-    select indexdef from pg_indexes where schemaname = current_schema()
-      and indexname = 'events_season_scope_week_matchup_idx'
+    select indexname, indexdef from pg_indexes where schemaname = current_schema()
+      and tablename = 'events'
   `);
-  return result.rows.some((row) => typeof row.indexdef === "string" && /WHERE.*sport.*<>.*MLB/i.test(row.indexdef));
+  const expectedColumns = ["season_id", "sport", "competition", "week", "away_team_id", "home_team_id"].sort().join(",");
+  const protectsMatchup = (definition: unknown): definition is string => {
+    if (typeof definition !== "string" || !/^CREATE UNIQUE INDEX /i.test(definition)) return false;
+    const columns = /USING btree \(([^)]+)\)/i.exec(definition)?.[1];
+    return columns != null && columns.split(",").map(column => column.trim().replaceAll('"', "")).sort().join(",") === expectedColumns;
+  };
+  const excludesMlb = (definition: string) => {
+    const predicate = definition.split(/\bWHERE\b/i)[1]?.replace(/[()\s"]/g, "");
+    return predicate === "sport<>'MLB'::text" || predicate === "sport<>'MLB'";
+  };
+  const indexes = result.rows.filter(row => protectsMatchup(row.indexdef));
+  // A correct new index is insufficient if a legacy full index still blocks MLB.
+  return indexes.some(row => row.indexname === NON_MLB_EVENT_MATCHUP_INDEX && excludesMlb(row.indexdef as string)) &&
+    indexes.every(row => excludesMlb(row.indexdef as string));
 }
 export async function loadMlbPool(id: number, database: Pick<typeof db, "select"> = db): Promise<MlbPool | null> {
   const [pool] = await database.select().from(calcuttasTable).where(and(
@@ -90,7 +103,7 @@ export async function refreshMlbResults(
   if (!(options.authorized ?? process.env.MLB_RESULTS_ENABLED === "true")) {
     return { ran: false, reason: "MLB results activation has not been authorized." };
   }
-  if (!await mlbIdentityMigrationReady(database)) return { ran: false, reason: "MLB event identity migration has not been activated." };
+  if (!await mlbIdentityMigrationReady(database)) return { ran: false, reason: "MLB event identity migration is not ready; publish the prepared schema change." };
   const initial = emptyMlbCache();
   await database.insert(refreshJobStatesTable).values({
     seasonId: pool.seasonId, ...{ sport: "MLB", competition: "MLB_POSTSEASON" },

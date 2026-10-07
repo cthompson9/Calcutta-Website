@@ -47,6 +47,38 @@ test('repeated matchup games persist individually; repeated refresh is idempoten
   const overdue=await read(f,{now:new Date(now.getTime()+20*60000)});
   assert.equal(overdue.refresh.stale,true);assert.equal(overdue.dollarsPerPoint,126);
 });
+test('readiness requires the correct exclusion and rejects a remaining restrictive legacy index',async t=>{
+  const f=await fixture(t);
+  assert.equal(await mlbIdentityMigrationReady(f.db),true);
+  await f.db.execute(sql`CREATE UNIQUE INDEX events_season_scope_week_matchup_idx
+    ON events(season_id,sport,competition,week,away_team_id,home_team_id)`);
+  assert.equal(await mlbIdentityMigrationReady(f.db),false);
+  await f.db.execute(sql`DROP INDEX events_season_scope_week_matchup_idx`);
+  assert.equal(await mlbIdentityMigrationReady(f.db),true);
+  await f.db.execute(sql`DROP INDEX events_non_mlb_week_matchup_idx`);
+  await f.db.execute(sql`CREATE UNIQUE INDEX events_non_mlb_week_matchup_idx
+    ON events(season_id,sport,competition,week,away_team_id,home_team_id) WHERE sport <> 'mlb'`);
+  assert.equal(await mlbIdentityMigrationReady(f.db),false);
+  await f.db.execute(sql`DROP INDEX events_non_mlb_week_matchup_idx`);
+  await f.db.execute(sql`CREATE UNIQUE INDEX events_non_mlb_week_matchup_idx ON events(week) WHERE sport <> 'MLB'`);
+  assert.equal(await mlbIdentityMigrationReady(f.db),false);
+});
+test('replacement index preserves NFL matchup uniqueness and MLB provider identity',async t=>{
+  const f=await fixture(t);
+  const [nfl]=await f.db.select().from(f.schema.eventsTable).where(eq(f.schema.eventsTable.sport,'NFL'));
+  await assert.rejects(f.db.insert(f.schema.eventsTable).values({
+    ...nfl,id:90001,sourceEventId:'distinct-nfl-provider-event',
+  }),error=>error.cause?.code==='23505' && /events_non_mlb_week_matchup_idx/.test(error.cause.message));
+  const mlb={...nfl,sport:'MLB',competition:'MLB_POSTSEASON',homeTeamId:1,awayTeamId:2,source:'espn'};
+  await f.db.insert(f.schema.eventsTable).values([
+    {...mlb,id:90002,sourceEventId:'mlb-repeated-matchup-1'},
+    {...mlb,id:90003,sourceEventId:'mlb-repeated-matchup-2'},
+  ]);
+  await assert.rejects(f.db.insert(f.schema.eventsTable).values({
+    ...mlb,id:90004,sourceEventId:'mlb-repeated-matchup-1',
+  }),error=>error.cause?.code==='23505' && /events_season_scope_source_event_idx/.test(error.cause.message));
+  assert.equal(await mlbIdentityMigrationReady(f.db),true);
+});
 test('calendar series slots stay stable as advancing matchups appear',async t=>{
   const f=await fixture(t);
   await sync(f,referenceGames.filter(g=>g.homeTeamId!==10));

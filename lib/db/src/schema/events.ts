@@ -15,6 +15,8 @@ import { createInsertSchema } from "drizzle-zod";
 import { z } from "zod/v4";
 import { seasonsTable } from "./seasons";
 import { teamsTable } from "./teams";
+// A distinct name lets managed publishing detect the MLB predicate replacement.
+export const NON_MLB_EVENT_MATCHUP_INDEX = "events_non_mlb_week_matchup_idx";
 
 /** Provider-neutral scheduled or completed sporting event. */
 export const eventsTable = pgTable(
@@ -55,7 +57,7 @@ export const eventsTable = pgTable(
       t.source,
       t.sourceEventId,
     ),
-    uniqueIndex("events_season_scope_week_matchup_idx").on(
+    uniqueIndex(NON_MLB_EVENT_MATCHUP_INDEX).on(
       t.seasonId,
       t.sport,
       t.competition,

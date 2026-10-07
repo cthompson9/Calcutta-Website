@@ -62,7 +62,7 @@ export async function getMlbResults(
     const coveredDays = requiredDates.filter((date) => cache.covered[date]).length;
     const missingAsOf = asOfDates.filter((date) => !cache.covered[date]);
     if (!enabled) reasons.push("Automatic MLB results refresh is not activated.");
-    if (!await mlbIdentityMigrationReady(tx)) blocking.push("MLB event identity migration is awaiting separate authorization.");
+    if (!await mlbIdentityMigrationReady(tx)) blocking.push("MLB event identity migration is awaiting publishing.");
     if (!state?.lastSucceededAt) blocking.push("No successful MLB source refresh is available.");
     if (missingAsOf.length) blocking.push(`Postseason discovery is incomplete (${asOfDates.length - missingAsOf.length}/${asOfDates.length} days).`);
     if (coveredDays < requiredDates.length && !missingAsOf.length) reasons.push("The retained actuals precede today's schedule discovery.");
